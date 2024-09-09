@@ -78,8 +78,9 @@ func WaitForCreateEARTask(
 		}
 
 		earsCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: ear.NewEARFormat(viper.GetString("output")),
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ear.NewEARFormat(viper.GetString("output")),
 		}
 
 		ear.Write(earsCtx, kmsConfigs)

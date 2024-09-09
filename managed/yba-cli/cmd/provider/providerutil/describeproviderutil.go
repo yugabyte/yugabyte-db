@@ -50,7 +50,7 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 
-	if len(r) > 0 && util.IsOutputType("table") {
+	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullProviderContext := *provider.NewFullProviderContext()
 		fullProviderContext.Output = os.Stdout
 		fullProviderContext.Format = provider.NewFullProviderFormat(viper.GetString("output"))
@@ -68,8 +68,9 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 	}
 
 	providerCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: provider.NewProviderFormat(viper.GetString("output")),
+		Command: "describe",
+		Output:  os.Stdout,
+		Format:  provider.NewProviderFormat(viper.GetString("output")),
 	}
 	provider.Write(providerCtx, r)
 }

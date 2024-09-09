@@ -28,7 +28,7 @@ type ProviderContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty

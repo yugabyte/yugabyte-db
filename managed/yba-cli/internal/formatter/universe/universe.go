@@ -56,7 +56,7 @@ type Context struct {
 // NewUniverseFormat for formatting output
 func NewUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUniverseListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -67,7 +67,7 @@ func NewUniverseFormat(source string) formatter.Format {
 // Write renders the context for a list of Universes
 func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of universes into JSON
 		var output []byte
 		var err error

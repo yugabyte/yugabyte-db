@@ -129,8 +129,9 @@ var preflightNodesCmd = &cobra.Command{
 				formatter.Colorize(ip, formatter.GreenColor), nodeUUID)
 
 			nodesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: onprem.NewNodesFormat(viper.GetString("output")),
+				Command: "preflight",
+				Output:  os.Stdout,
+				Format:  onprem.NewNodesFormat(viper.GetString("output")),
 			}
 
 			nodeInstance, response, err := authAPI.GetNodeInstance(nodeUUID).Execute()

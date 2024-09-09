@@ -53,8 +53,9 @@ var listBackupCmd = &cobra.Command{
 		}
 
 		backupCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: backup.NewBackupFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  backup.NewBackupFormat(viper.GetString("output")),
 		}
 
 		var limit int32 = 10
@@ -92,7 +93,7 @@ var listBackupCmd = &cobra.Command{
 
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
-				if util.IsOutputType("table") {
+				if util.IsOutputType(formatter.TableFormatKey) {
 					logrus.Infoln("No backups found\n")
 				} else {
 					logrus.Infoln("[]\n")

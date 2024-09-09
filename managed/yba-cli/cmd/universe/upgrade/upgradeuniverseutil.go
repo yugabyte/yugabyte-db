@@ -51,8 +51,9 @@ func WaitForUpgradeUniverseTask(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universeFormatter.NewUniverseFormat(viper.GetString("output")),
+			Command: "upgrade",
+			Output:  os.Stdout,
+			Format:  universeFormatter.NewUniverseFormat(viper.GetString("output")),
 		}
 
 		universeFormatter.Write(universesCtx, universeData)

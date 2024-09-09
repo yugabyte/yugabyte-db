@@ -79,8 +79,9 @@ func UpdateEARConfig(
 			kmsConfigs = kmsConfigsCode
 		}
 		earsCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: earFormatter.NewEARFormat(viper.GetString("output")),
+			Command: "update",
+			Output:  os.Stdout,
+			Format:  earFormatter.NewEARFormat(viper.GetString("output")),
 		}
 
 		ear.Write(earsCtx, kmsConfigs)

@@ -204,8 +204,9 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: universe.NewUniverseFormat(viper.GetString("output")),
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  universe.NewUniverseFormat(viper.GetString("output")),
 			}
 
 			universe.Write(universesCtx, universeData)

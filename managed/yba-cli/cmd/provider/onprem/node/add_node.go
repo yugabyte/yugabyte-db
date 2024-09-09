@@ -134,8 +134,9 @@ var addNodesCmd = &cobra.Command{
 		}
 
 		nodesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: onprem.NewNodesFormat(viper.GetString("output")),
+			Command: "add",
+			Output:  os.Stdout,
+			Format:  onprem.NewNodesFormat(viper.GetString("output")),
 		}
 
 		logrus.Infof("The node instance %s has been added to provider %s (%s)\n",

@@ -67,7 +67,7 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(r) > 0 && util.IsOutputType("table") {
+		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullUniverseContext := *universe.NewFullUniverseContext()
 			fullUniverseContext.Output = os.Stdout
 			fullUniverseContext.Format = universe.NewFullUniverseFormat(viper.GetString("output"))
@@ -85,8 +85,9 @@ var describeUniverseCmd = &cobra.Command{
 		}
 
 		universeCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewUniverseFormat(viper.GetString("output")),
+			Command: "describe",
+			Output:  os.Stdout,
+			Format:  universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		universe.Write(universeCtx, r)
 

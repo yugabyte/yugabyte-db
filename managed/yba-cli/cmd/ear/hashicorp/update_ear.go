@@ -79,18 +79,18 @@ var updateHashicorpVaultEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		token, err := cmd.Flags().GetString("token")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		if len(strings.TrimSpace(roleID)) != 0 {
 			logrus.Debug("Updating Hashicorp Vault role ID\n")
 			hasUpdates = true
 			requestBody[util.HashicorpVaultRoleIDField] = roleID
 		} else if len(strings.TrimSpace(token)) != 0 {
-				logrus.Debug("Updating Hashicorp Vault token\n")
-				hasUpdates = true
-				requestBody[util.HashicorpVaultTokenField] = token
+			logrus.Debug("Updating Hashicorp Vault token\n")
+			hasUpdates = true
+			requestBody[util.HashicorpVaultTokenField] = token
 		}
 
 		if (requestBody[util.HashicorpVaultRoleIDField] != nil &&
@@ -140,10 +140,9 @@ func init() {
 	updateHashicorpVaultEARCmd.Flags().String("auth-namespace", "",
 		"[Optional] Update Hashicorp Vault AppRole Auth Namespace.")
 	updateHashicorpVaultEARCmd.Flags().String("token", "",
-	fmt.Sprintf("[Optional] Update Hashicorp Vault Token. "+
-		"%s.",
-		formatter.Colorize("Required if AppRole credentials are not provided",
-			formatter.GreenColor)))
-
+		fmt.Sprintf("[Optional] Update Hashicorp Vault Token. "+
+			"%s.",
+			formatter.Colorize("Required if AppRole credentials are not provided",
+				formatter.GreenColor)))
 
 }

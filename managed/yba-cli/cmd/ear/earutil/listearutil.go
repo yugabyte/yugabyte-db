@@ -66,11 +66,12 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	}
 
 	earCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: ear.NewEARFormat(viper.GetString("output")),
+		Command: "list",
+		Output:  os.Stdout,
+		Format:  ear.NewEARFormat(viper.GetString("output")),
 	}
 	if len(kmsConfigs) < 1 {
-		if util.IsOutputType("table") {
+		if util.IsOutputType(formatter.TableFormatKey) {
 			logrus.Infoln("No encryption at rest configurations found\n")
 		} else {
 			logrus.Infoln("[]\n")

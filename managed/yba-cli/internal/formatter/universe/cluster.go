@@ -55,7 +55,7 @@ type ClusterContext struct {
 // NewClusterFormat for formatting output
 func NewClusterFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultCluster
 		return formatter.Format(format)
 	default: // custom format or json or pretty
