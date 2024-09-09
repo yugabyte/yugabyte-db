@@ -225,6 +225,53 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(0, session.execute("SELECT * FROM system_schema.views;").all().size());
   }
 
+  @Test
+  public void testSystemTableColumns() throws Exception {
+    // Table system_schema.aggregates
+    List<Row> results = session.execute("SELECT * FROM system_schema.columns WHERE " +
+        "keyspace_name = 'system_schema' AND table_name = 'aggregates'").all();
+    assertEquals(8, results.size());
+    verifyColumnSchema(results.get(0), "system_schema", "aggregates",
+        "keyspace_name", "partition_key", 0, "text", "none");
+    verifyColumnSchema(results.get(1), "system_schema", "aggregates",
+        "aggregate_name", "clustering", 0, "text", "asc");
+    verifyColumnSchema(results.get(2), "system_schema", "aggregates",
+        "argument_types", "clustering", 1, "frozen<list<text>>", "asc");
+    verifyColumnSchema(results.get(3), "system_schema", "aggregates",
+        "final_func", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(4), "system_schema", "aggregates",
+        "initcond", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(5), "system_schema", "aggregates",
+        "return_type", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(6), "system_schema", "aggregates",
+        "state_func", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(7), "system_schema", "aggregates",
+        "state_type", "regular", -1, "text", "none");
+
+    // Table system_schema.functions
+    results = session.execute("SELECT * FROM system_schema.columns WHERE " +
+        "keyspace_name = 'system_schema' AND table_name = 'functions'").all();
+    assertEquals(8, results.size());
+    verifyColumnSchema(results.get(0), "system_schema", "functions",
+        "keyspace_name", "partition_key", 0, "text", "none");
+    verifyColumnSchema(results.get(1), "system_schema", "functions",
+        "function_name", "clustering", 0, "text", "asc");
+    verifyColumnSchema(results.get(2), "system_schema", "functions",
+        "argument_types", "clustering", 1, "frozen<list<text>>", "asc");
+    verifyColumnSchema(results.get(3), "system_schema", "functions",
+        "argument_names", "regular", -1, "frozen<list<text>>", "none");
+    verifyColumnSchema(results.get(4), "system_schema", "functions",
+        "body", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(5), "system_schema", "functions",
+        "called_on_null_input", "regular", -1, "boolean", "none");
+    verifyColumnSchema(results.get(6), "system_schema", "functions",
+        "language", "regular", -1, "text", "none");
+    verifyColumnSchema(results.get(7), "system_schema", "functions",
+        "return_type", "regular", -1, "text", "none");
+
+    // TODO: Implement for 'system_schema' tables: indexes, triggers, types, views, etc.
+  }
+
   private void checkContactPoints(String column, Row row) {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
     boolean found = false;
@@ -405,15 +452,26 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(UUID.fromString(uuid), results.get(0).getUUID("id"));
   }
 
-  private void verifyColumnSchema(Row row, String table_name, String column_name, String kind,
-                                  int position, String type, String clustering_order) {
-    assertEquals(DEFAULT_TEST_KEYSPACE, row.getString("keyspace_name"));
+  private void verifyColumnSchema(Row row, String keyspace_name, String table_name,
+                                  String column_name, String kind, int position,
+                                  String type, String clustering_order) {
+    assertEquals(keyspace_name, row.getString("keyspace_name"));
     assertEquals(table_name, row.getString("table_name"));
     assertEquals(column_name, row.getString("column_name"));
     assertEquals(clustering_order, row.getString("clustering_order"));
     assertEquals(kind, row.getString("kind"));
+    // Note: the "position" =
+    //   0,1,2,3... for a hash-key column: index of the column among the "partition_key" columns
+    //   0,1,2,3... for a range-key column: index of the column among the "clustering" columns
+    //   -1         for any non-key column
     assertEquals(position, row.getInt("position"));
     assertEquals(type, row.getString("type"));
+  }
+
+  private void verifyColumnSchema(Row row, String table_name, String column_name, String kind,
+                                  int position, String type, String clustering_order) {
+    verifyColumnSchema(row,
+        DEFAULT_TEST_KEYSPACE, table_name, column_name, kind, position, type, clustering_order);
   }
 
   private void verifyTypeSchema(Row row, String type_name,
