@@ -316,11 +316,15 @@ OR
 
 ### %TYPE syntax is unsupported
 
-**GitHub**: [Issue #19169](https://github.com/yugabyte/yugabyte-db/issues/19169)
+**GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
 
-**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
+**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. This syntax is not supported in target YugabyteDB yet and errors out in import schema with error:
 
-**Workaround**: None. A workaround is currently being explored.
+```output
+ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
+```
+
+**Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
 
 ---
 
