@@ -13,7 +13,8 @@ type: docs
 ---
 
 Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development, and testing. Clones are efficient because they start by using the same data files as the original database. After initial creation, the cloned database serves reads and writes independently, and creates and maintains its own changes as delta files, separate from the original database.
-Cloning uses point-in-time restore (PITR), so you can create a clone of the database from a specific point in time within a configurable retention period.
+
+Cloning uses [point-in-time restore](../point-in-time-recovery/) (PITR), so you can create a clone of the database from a specific point in time within a configurable retention period.
 
 Note that you can't have more than one clone of a database at the same time.
 
@@ -245,7 +246,7 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
 
 ## Best practices
 
-Although creating a clone database is quick and doesn't take up much disk space as no data is copied, it's important to understand that a clone does create an independent set of logical tablets. This effectively doubles the number of tablets, although the clone database tablets share the same data files as the original database. Keep in mind the following impacts:
+Although creating a clone database is quick and initially doesn't take up much added disk space as no data is copied, it's important to understand that a clone does create an independent set of logical tablets. This effectively doubles the number of tablets, although the clone database tablets share the same data files as the original database. Keep in mind the following impacts:
 
 - Higher CPU usage due to the additional tablets
 - Increased memory consumption from the extra tablets
