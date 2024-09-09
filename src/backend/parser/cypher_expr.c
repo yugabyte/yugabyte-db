@@ -1321,7 +1321,8 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
     }
 
     /* find the properties column of the NSI and return a var for it */
-    node = scanNSItemForColumn(pstate, pnsi, 0, "properties", cr->location);
+    node = scanNSItemForColumn(pstate, pnsi, levels_up, "properties",
+                               cr->location);
 
     /*
      * Error out if we couldn't find it.

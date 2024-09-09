@@ -617,6 +617,53 @@ SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] a
  [1, 2, 3]
 (1 row)
 
+-- Issue 1955 - variable reference in list comprehension
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE u.list=[i IN u.list] RETURN u $$) AS (result agtype);
+                                                                            result                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"list": [1, 3, 5, 7, 9, 11, 13]}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"list": [12, 14, 16, 18, 20, 22, 24]}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"list": [25.0, 49.0, 81.0, 121.0, 169.0]}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {"a": [], "b": [0, 1, 2, 3, 4, 5], "c": [0, 2, 4, 6, 8, 10, 12], "list": [0, 2, 4, 6, 8, 10, 12]}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"list": [1, 2, 3]}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"list": []}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"list": [6, 8, 10, 12]}}::vertex
+ {"id": 844424930131969, "label": "csm_match", "properties": {"list": ["abc", "def", "ghi"]}}::vertex
+(8 rows)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE u.list=[i IN u.list WHERE i>0] RETURN u $$) AS (result agtype);
+                                                 result                                                 
+--------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"list": [1, 3, 5, 7, 9, 11, 13]}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"list": [12, 14, 16, 18, 20, 22, 24]}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"list": [25.0, 49.0, 81.0, 121.0, 169.0]}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"list": [1, 2, 3]}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"list": [6, 8, 10, 12]}}::vertex
+(5 rows)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE size([e in u.list where e starts with "a"])>0 RETURN u $$) AS (result agtype);
+                                                result                                                
+------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "csm_match", "properties": {"list": ["abc", "def", "ghi"]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list | i+1]}) RETURN u $$) AS (result agtype);
+                                  result                                  
+--------------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"list": []}}::vertex
+(1 row)
+
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list WHERE i>0]}) RETURN u$$) AS (result agtype);
+                                                 result                                                 
+--------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"list": [1, 3, 5, 7, 9, 11, 13]}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {"list": [12, 14, 16, 18, 20, 22, 24]}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"list": [25.0, 49.0, 81.0, 121.0, 169.0]}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"list": [1, 2, 3]}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"list": [6, 8, 10, 12]}}::vertex
+(5 rows)
+
+-- Clean up
 SELECT * FROM drop_graph('list_comprehension', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table list_comprehension._ag_label_vertex

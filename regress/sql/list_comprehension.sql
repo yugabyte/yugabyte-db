@@ -157,4 +157,12 @@ SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WHERE u.list=[i I
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH * WITH *, [i in [1,2,3]] as list RETURN list LIMIT 1 $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WITH *, [i in [1,2,3]] as list WITH * RETURN list LIMIT 1 $$) AS (result agtype);
 
+-- Issue 1955 - variable reference in list comprehension
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE u.list=[i IN u.list] RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE u.list=[i IN u.list WHERE i>0] RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE size([e in u.list where e starts with "a"])>0 RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list | i+1]}) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list WHERE i>0]}) RETURN u$$) AS (result agtype);
+
+-- Clean up
 SELECT * FROM drop_graph('list_comprehension', true);
