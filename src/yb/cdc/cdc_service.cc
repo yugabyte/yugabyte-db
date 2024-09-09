@@ -200,7 +200,7 @@ DEFINE_RUNTIME_AUTO_bool(
     cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
     "When enabled, Update Peers and Metrics will look for entries in the state table that have "
     "either become not of interest or have expired for a stream. The cleanup logic will then "
-    "update these entries in cdc_state table and also move the corresponing table's entry to "
+    "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
@@ -2874,8 +2874,9 @@ void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
 
     if (!s.ok()) {
       failed_tablet_ids->insert(tablet_id);
-      VLOG(1) << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
-              << ", on all tablet peers";
+      YB_LOG_EVERY_N_SECS(INFO, 300)
+          << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
+          << ", on all tablet peers - " << s;
     }
   }
 }
