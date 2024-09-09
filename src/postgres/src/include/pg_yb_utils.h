@@ -490,6 +490,12 @@ extern bool yb_bypass_cond_recheck;
 extern bool yb_make_next_ddl_statement_nonbreaking;
 
 /*
+ * Enables nonincrementing DDL mode in which a DDL statement is considered as a
+ * "same version DDL" and therefore will not cause catalog version to increment.
+ */
+extern bool yb_make_next_ddl_statement_nonincrementing;
+
+/*
  * Allows capability to disable prefetching in a PLPGSQL FOR loop over a query.
  * This is introduced for some test(s) with lazy evaluation in READ COMMITTED
  * isolation that require the read rpcs to be issued over multiple invocations
