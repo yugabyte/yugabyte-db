@@ -464,8 +464,8 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
     metrics->Increment(
-        tablet::TabletEventStats::kReadTimeWait,
-        trim_cast<uint64_t>(safe_time_wait.ToMicroseconds()));
+         tablet::TabletEventStats::kReadTimeWait,
+         make_unsigned(safe_time_wait.ToMicroseconds()));
     if (read_time_was_empty) {
       metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     }
