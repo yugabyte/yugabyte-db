@@ -417,6 +417,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$toDate", &HandleDollarToDate, NULL, NULL, FEATURE_AGG_OPERATOR_TODATE },
 	{ "$toDecimal", &HandleDollarToDecimal, NULL, NULL, FEATURE_AGG_OPERATOR_TODECIMAL },
 	{ "$toDouble", &HandleDollarToDouble, NULL, NULL, FEATURE_AGG_OPERATOR_TODOUBLE },
+	{ "$toHashedIndexKey", NULL, &ParseDollarToHashedIndexKey,
+	  &HandlePreParsedDollarToHashedIndexKey, FEATURE_AGG_OPERATOR_TOHASHEDINDEXKEY },
 	{ "$toInt", &HandleDollarToInt, NULL, NULL, FEATURE_AGG_OPERATOR_TOINT },
 	{ "$toLong", &HandleDollarToLong, NULL, NULL, FEATURE_AGG_OPERATOR_TOLONG },
 	{ "$toLower", &HandleDollarToLower, NULL, NULL, FEATURE_AGG_OPERATOR_TOLOWER },

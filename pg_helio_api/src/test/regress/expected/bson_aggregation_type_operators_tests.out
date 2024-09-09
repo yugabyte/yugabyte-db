@@ -1,0 +1,165 @@
+SET search_path TO helio_api,helio_core;
+SET helio_api.next_collection_id TO 101300;
+SET helio_api.next_collection_index_id TO 101300;
+--test int
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-4918719581749358852"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 3 } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-4918719581749358852"} }
+(1 row)
+
+--test double
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3.1}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "4843356556253255961"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 3.1 } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "4843356556253255961"} }
+(1 row)
+
+--test string
+select *from helio_api_catalog.bson_dollar_project('{"tests": "abc"}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-6969118462091671691"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": "abc" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-6969118462091671691"} }
+(1 row)
+
+--test int64
+select *from helio_api_catalog.bson_dollar_project('{"tests": 123456789012345678}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "1821714458417502614"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": 123456789012345678 } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "1821714458417502614"} }
+(1 row)
+
+--test array
+select *from helio_api_catalog.bson_dollar_project('{"tests": [1, 2, 3.1]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "9190027316038958342"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [1, 2, 3.1] } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "9190027316038958342"} }
+(1 row)
+
+--test nested array
+select *from helio_api_catalog.bson_dollar_project('{"tests": [1, 2, 3.1,[4, 5], 6]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-5553235042546732581"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [1, 2, 3.1,[4, 5], 6] } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-5553235042546732581"} }
+(1 row)
+
+--test nested object
+select *from helio_api_catalog.bson_dollar_project('{"tests": [{"$numberDecimal": "1.2"},3]}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "-893570203633809211"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": [{"$numberDecimal": "1.2"},3] } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "-893570203633809211"} }
+(1 row)
+
+--test null
+select *from helio_api_catalog.bson_dollar_project('{"tests": null}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-4514028574017177401"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": null } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-4514028574017177401"} }
+(1 row)
+
+--test NaN
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "NaN"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-2341399240614902273"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "NaN"} } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-2341399240614902273"} }
+(1 row)
+
+--test Infinity
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "Infinity"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-3715419061678165155"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "Infinity"} } }');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "$numberLong" : "-3715419061678165155"} }
+(1 row)
+
+--test -Infinity
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"$numberDouble": "-Infinity"}}', '{"result": { "$toHashedIndexKey": "$tests" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "8076669524792135709"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$numberDouble": "-Infinity"} } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "8076669524792135709"} }
+(1 row)
+
+--test path
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.test" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "1786987034919379147"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$test" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "4154612158245552303"} }
+(1 row)
+
+select *from helio_api_catalog.bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.tes" } }');
+                   bson_dollar_project                   
+---------------------------------------------------------
+ { "result" : { "$numberLong" : "4154612158245552303"} }
+(1 row)
+

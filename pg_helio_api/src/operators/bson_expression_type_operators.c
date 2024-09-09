@@ -14,7 +14,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
-
+#include "utils/version_utils.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -28,6 +28,8 @@ static bool ProcessDollarTypeElement(bson_value_t *result,
 static bool ProcessDollarToBoolElement(bson_value_t *result,
 									   const bson_value_t *currentElement,
 									   bool isFieldPathExpression, void *state);
+static void SetResultForDollarToHashedIndexKey(bson_value_t *result, const
+											   bson_value_t *arguments);
 static bool ProcessDollarToObjectIdElement(bson_value_t *result,
 										   const bson_value_t *currentElement,
 										   bool isFieldPathExpression, void *state);
@@ -1266,4 +1268,63 @@ ThrowInvalidNumArgsConversionOperator(const char *operatorName, int requiredArgs
 	ereport(ERROR, (errcode(MongoLocation50723), errmsg(
 						"%s requires a single argument, got %d",
 						operatorName, numArgs)));
+}
+
+
+/* Evaluates the output of a $toHashedIndexKey expression. */
+void
+HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
+									  ExpressionResult *expressionResult)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("$toHashedIndexkey is not supported yet")));
+	}
+	AggregationExpressionData *toHashArguments = arguments;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	bool isNullOnEmpty = false;
+	EvaluateAggregationExpressionData(toHashArguments, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedArguments = childExpression.value;
+
+	bson_value_t result;
+	SetResultForDollarToHashedIndexKey(&result, &evaluatedArguments);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Function that processes inputs argument for $toHashedIndexKey. */
+void
+ParseDollarToHashedIndexKey(const bson_value_t *argument, AggregationExpressionData *data,
+							ParseAggregationExpressionContext *context)
+{
+	AggregationExpressionData *argumentAggExpData = palloc0(
+		sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(argumentAggExpData, argument, context);
+
+	/* if the input is constant, calculate hash value directly. */
+	if (IsAggregationExpressionConstant(argumentAggExpData))
+	{
+		SetResultForDollarToHashedIndexKey(&data->value, &argumentAggExpData->value);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(argumentAggExpData);
+	}
+	else
+	{
+		data->operator.arguments = argumentAggExpData;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* Function that calculate the hash value of bson_value_t */
+static void
+SetResultForDollarToHashedIndexKey(bson_value_t *result, const bson_value_t *arguments)
+{
+	int64 hashValue = BsonValueHash(arguments, 0);
+
+	result->value_type = BSON_TYPE_INT64;
+	result->value.v_int64 = hashValue;
 }

@@ -183,6 +183,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_TODATE] = "agg_operator_todate",
 	[FEATURE_AGG_OPERATOR_TODECIMAL] = "agg_operator_todecimal",
 	[FEATURE_AGG_OPERATOR_TODOUBLE] = "agg_operator_todouble",
+	[FEATURE_AGG_OPERATOR_TOHASHEDINDEXKEY] = "agg_operator_tohashedindexkey",
 	[FEATURE_AGG_OPERATOR_TOINT] = "agg_operator_toint",
 	[FEATURE_AGG_OPERATOR_TOLONG] = "agg_operator_tolong",
 	[FEATURE_AGG_OPERATOR_TOLOWER] = "agg_operator_tolower",

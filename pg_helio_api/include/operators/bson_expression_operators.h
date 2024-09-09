@@ -514,6 +514,8 @@ void HandlePreParsedDollarTanh(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarTrunc(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
+void HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
+										   ExpressionResult *expressionResult);
 void HandlePreParsedDollarTsIncrement(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
@@ -720,6 +722,9 @@ void ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *dat
 					ParseAggregationExpressionContext *context);
 void ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
+void ParseDollarToHashedIndexKey(const bson_value_t *argument,
+								 AggregationExpressionData *data,
+								 ParseAggregationExpressionContext *context);
 void ParseDollarTrunc(const bson_value_t *argument, AggregationExpressionData *data,
 					  ParseAggregationExpressionContext *context);
 void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data,
