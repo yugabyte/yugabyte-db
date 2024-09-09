@@ -3034,7 +3034,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -3048,6 +3048,26 @@
           "description" : "Max number of most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "promDumpEndDate" : {
+          "description" : "End date to filter prometheus metrics till",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "promDumpStartDate" : {
+          "description" : "Start date to filter prometheus metrics from",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "prometheusMetricsTypes" : {
+          "description" : "List of exports to be included in the prometheus dump",
+          "items" : {
+            "enum" : [ "MASTER_EXPORT", "NODE_EXPORT", "PLATFORM", "PROMETHEUS", "TSERVER_EXPORT", "CQL_EXPORT", "YSQL_EXPORT" ],
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "required" : [ "components" ],
@@ -12267,7 +12287,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -12287,6 +12307,26 @@
           "description" : "Max number of the most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "promDumpEndDate" : {
+          "description" : "End date to filter prometheus metrics till",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "promDumpStartDate" : {
+          "description" : "Start date to filter prometheus metrics from",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "prometheusMetricsTypes" : {
+          "description" : "List of exports to be included in the prometheus dump",
+          "items" : {
+            "enum" : [ "MASTER_EXPORT", "NODE_EXPORT", "PLATFORM", "PROMETHEUS", "TSERVER_EXPORT", "CQL_EXPORT", "YSQL_EXPORT" ],
+            "type" : "string"
+          },
+          "type" : "array"
         },
         "startDate" : {
           "description" : "Start date to filter logs from",
@@ -24357,7 +24397,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -24369,7 +24409,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
                 "type" : "string"
               },
               "type" : "array"

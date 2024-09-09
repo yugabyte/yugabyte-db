@@ -1,5 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -43,6 +45,7 @@ import java.util.zip.GZIPOutputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.FileUtils;
+import play.libs.Json;
 
 @Slf4j
 public class CreateSupportBundle extends AbstractTaskBase {
@@ -116,6 +119,18 @@ public class CreateSupportBundle extends AbstractTaskBase {
     } else {
       startDate = startDateIsValid ? supportBundle.getStartDate() : new Date(Long.MIN_VALUE);
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
+    }
+
+    // add the supportBundle metadata into the bundle
+    try {
+      JsonNode sbJson = Json.toJson(supportBundle);
+      ((ObjectNode) sbJson).remove("status");
+      ((ObjectNode) sbJson).remove("sizeInBytes");
+      supportBundleUtil.saveMetadata(
+          customer, bundlePath.toAbsolutePath().toString(), sbJson, "manifest.json");
+    } catch (Exception e) {
+      // Log the error and continue with the rest of support bundle collection.
+      log.error("Error occurred while collecting support bundle manifest json", e);
     }
 
     // Filters out the nodes which are unresponsive for 60 seconds or throw error for simple ssh

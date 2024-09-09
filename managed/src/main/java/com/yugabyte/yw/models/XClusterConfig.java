@@ -69,7 +69,7 @@ public class XClusterConfig extends Model {
               TableType.YCQL,
               CommonTypes.TableType.YQL_TABLE_TYPE);
 
-  private static final Finder<UUID, XClusterConfig> find = new Finder<>(XClusterConfig.class) {};
+  public static final Finder<UUID, XClusterConfig> find = new Finder<>(XClusterConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "XCluster config UUID")
