@@ -32,7 +32,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 - Avoid running a backup during or before a scheduled maintenance.
 
 {{< warning title="Backups and high DDL activity" >}}
-In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operstions during scheduled backups or while a backup is in progress.
+In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
 {{< /warning >}}
 
 {{<index/block>}}
