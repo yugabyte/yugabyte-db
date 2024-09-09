@@ -590,9 +590,9 @@ CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
 
 ### Indexes on some complex data types are not supported
 
-**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829) 
 
-**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSON, UDTs, citext, and so on, those will error out in import schema phase with the following error:
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, UDTs, citext, and so on, those will error out in import schema phase with the following error:
 
 ```output
  ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
@@ -623,7 +623,7 @@ CREATE TABLE public.ts_query_table (
 
 CREATE TABLE public.test_json (
     id integer,
-    data json
+    data jsonb
 );
 
 CREATE INDEX tsvector_idx ON public.documents  (title_tsvector);
