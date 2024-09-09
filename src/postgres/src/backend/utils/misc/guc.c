@@ -2422,6 +2422,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_make_next_ddl_statement_nonincrementing", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "catalog version to increment. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonincrementing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("Disable prefetching in a PLPGSQL FOR loop over a query."),
 			NULL
