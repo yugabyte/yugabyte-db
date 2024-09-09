@@ -22,12 +22,13 @@
 #include "aggregation/bson_aggregation_window_operators.h"
 #include "aggregation/bson_aggregation_statistics.h"
 #include "commands/parse_error.h"
+#include "operators/bson_expression_operators.h"
 #include "query/helio_bson_compare.h"
 #include "query/query_operator.h"
+#include "types/decimal128.h"
 #include "utils/date_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/mongo_errors.h"
-#include "types/decimal128.h"
 
 /* --------------------------------------------------------- */
 /* Data types */
@@ -142,6 +143,9 @@ static WindowFunc * GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opV
 static inline void ValidateInputForRankFunctions(const bson_value_t *opValue,
 												 WindowOperatorContext *context,
 												 char *opName);
+static void ParseInputDocumentForDollarShift(const bson_value_t *opValue,
+											 bson_value_t *output, bson_value_t *by,
+											 bson_value_t *defaultValue);
 
 /*===================================*/
 /* Window Operator Handler functions */
@@ -175,6 +179,8 @@ static WindowFunc * HandleDollarLinearFillWindowOperator(const bson_value_t *opV
 														 WindowOperatorContext *context);
 static WindowFunc * HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 													   WindowOperatorContext *context);
+static WindowFunc * HandleDollarShiftWindowOperator(const bson_value_t *opValue,
+													WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -293,7 +299,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$shift",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarShiftWindowOperator
 	},
 	{
 		.operatorName = "$stdDevPop",
@@ -1906,4 +1912,176 @@ HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	windowFunc->args = list_make1(accumFunc);
 	return windowFunc;
+}
+
+
+/*
+ * Handler for $shift window aggregation operator.
+ * $shift syntax:
+ * {
+ *  $shift: {
+ *     output: <output expression>,
+ *     by: <integer>,
+ *     default: <default expression>
+ *  }
+ * }
+ */
+static WindowFunc *
+HandleDollarShiftWindowOperator(const bson_value_t *opValue,
+								WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("$shift is not supported yet")));
+	}
+
+	if (context->isWindowPresent)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("$shift does not accept a 'window' field")));
+	}
+
+	if (context->sortOptions == NIL || list_length(context->sortOptions) < 1)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("'$shift' requires a sortBy")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonShiftFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	/* Parse accumulatorValue to pull out input/N*/
+	bson_value_t output = { 0 };
+	bson_value_t by = { 0 };
+	bson_value_t defaultValue = { 0 };
+	ParseInputDocumentForDollarShift(opValue, &output,
+									 &by, &defaultValue);
+
+	Expr *outConst = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&output));
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+
+	List *args;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		args = list_make4(context->docExpr, outConst, trueConst,
+						  context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		args = list_make3(context->docExpr, outConst, trueConst);
+	}
+
+	Const *byConst = makeConst(INT4OID, -1, InvalidOid, sizeof(int32_t),
+							   Int32GetDatum(by.value.v_int32), false, true);
+	Expr *defaultConst = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&defaultValue));
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	List *aggregateArgs = list_make3(
+		(Expr *) accumFunc,
+		byConst,
+		defaultConst);
+	windowFunc->args = aggregateArgs;
+	return windowFunc;
+}
+
+
+/**
+ * Parses the input document for $shift windpw aggregation operator and extracts the value for output, by and default.
+ * @param opValue: input document for the $shift operator.
+ * @param output:  this is a pointer which after parsing will hold output expression.
+ * @param by: this is a pointer which after parsing will hold by i.e. shift offset value.
+ * @param defaultValue: this is a pointer which after parsing will hold default value in case by value is out of partition bounds.
+ */
+static void
+ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *output,
+								 bson_value_t *by, bson_value_t *defaultValue)
+{
+	if (opValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("Argument to $shift must be an object")));
+	}
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(opValue, &docIter);
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "output") == 0)
+		{
+			*output = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "by") == 0)
+		{
+			*by = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "default") == 0)
+		{
+			*defaultValue = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errmsg("Unknown argument in $shift")));
+		}
+	}
+
+	if (output->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("$shift requires an 'output' expression.")));
+	}
+
+	if (by->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("$shift requires 'by' as an integer value.")));
+	}
+
+	if (defaultValue->value_type == BSON_TYPE_EOD)
+	{
+		defaultValue->value_type = BSON_TYPE_NULL;
+	}
+
+	bool checkFixedInteger = true;
+	if (!IsBsonValue32BitInteger(by, checkFixedInteger))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("'$shift:by' field must be an integer, but found by: %s",
+							   BsonValueToJsonForLogging(by)),
+						errdetail_log(
+							"'$shift:by' field must be an integer, but found by: %s",
+							BsonValueToJsonForLogging(by))));
+	}
+
+	/* by value should be a 32 bit integer */
+	by->value.v_int32 = BsonValueAsInt32WithRoundingMode(by,
+														 ConversionRoundingMode_Floor);
+	by->value_type = BSON_TYPE_INT32;
+
+	AggregationExpressionData *expressionData =
+		palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(expressionData, defaultValue, NULL);
+
+	if (!IsAggregationExpressionConstant(expressionData))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg(
+							"'$shift:default' expression must yield a constant value.")));
+	}
+
+	pfree(expressionData);
 }

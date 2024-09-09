@@ -648,6 +648,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_document_number window function */
 	Oid ApiCatalogBsonDocumentNumberFunctionOid;
 
+	/* OID of the bson_shift window function */
+	Oid ApiCatalogBsonShiftFunctionOid;
+
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
@@ -3265,6 +3268,18 @@ BsonDocumentNumberFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDocumentNumberFunctionOid,
 							 "helio_api_internal", "bson_document_number");
+}
+
+
+Oid
+BsonShiftFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonShiftFunctionOid,
+		"helio_api_internal",
+		"bson_shift",
+		BsonTypeId(), INT4OID,
+		BsonTypeId());
 }
 
 

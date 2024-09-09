@@ -81,3 +81,10 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_document_number()
  STABLE
  WINDOW
 AS 'MODULE_PATHNAME', $function$bson_document_number$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_shift(__CORE_SCHEMA__.bson, integer, __CORE_SCHEMA__.bson)
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_shift$function$;

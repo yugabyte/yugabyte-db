@@ -57,6 +57,7 @@ PG_FUNCTION_INFO_V1(bson_dense_rank);
 PG_FUNCTION_INFO_V1(bson_linear_fill);
 PG_FUNCTION_INFO_V1(bson_locf_fill);
 PG_FUNCTION_INFO_V1(bson_document_number);
+PG_FUNCTION_INFO_V1(bson_shift);
 
 
 Datum
@@ -421,4 +422,16 @@ bson_document_number(PG_FUNCTION_ARGS)
 	bson_value_t finalValue = { .value_type = BSON_TYPE_INT32 };
 	finalValue.value.v_int32 = DatumGetInt64(rank);
 	PG_RETURN_POINTER(BsonValueToDocumentPgbson(&finalValue));
+}
+
+
+/*
+ * Aggregation function for $shift.
+ * Calls postgres function Lead() which can inherently handle positive and negative offsets.
+ */
+Datum
+bson_shift(PG_FUNCTION_ARGS)
+{
+	Datum shift = window_lead_with_offset_and_default(fcinfo);
+	return shift;
 }

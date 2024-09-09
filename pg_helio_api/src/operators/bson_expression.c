@@ -2551,7 +2551,8 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 	Assert(expressionData->kind != AggregationExpressionKind_Invalid);
 
-	if (context->validateParsedExpressionFunc != NULL)
+	if (context != NULL &&
+		context->validateParsedExpressionFunc != NULL)
 	{
 		context->validateParsedExpressionFunc(expressionData);
 	}
