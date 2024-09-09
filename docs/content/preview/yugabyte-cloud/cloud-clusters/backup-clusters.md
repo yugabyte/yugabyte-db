@@ -53,6 +53,10 @@ You can't restore a backup to a cluster with an version of YugabyteDB that is ea
 
 Backups are not supported for Sandbox clusters.
 
+{{< warning title="Backups and high DDL activity" >}}
+In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operstions during scheduled backups or while a backup is in progress.
+{{< /warning >}}
+
 ## Recommendations
 
 - Don't perform cluster operations at the same time as your scheduled backup.

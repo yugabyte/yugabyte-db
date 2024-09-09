@@ -32,6 +32,18 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YugabyteDB Anywhere v2.16 or later for universes with YugabyteDB version 2.16 or later.
 {{< /note >}}
 
+## Best practices
+
+- Don't perform cluster operations at the same time as your scheduled backup.
+- Configure your maintenance window and backup schedule so that they do not conflict.
+- Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
+- Avoid running a backup during or before a scheduled maintenance.
+
+{{< warning title="Backups and high DDL activity" >}}
+In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operstions during scheduled backups or while a backup is in progress. To view active tasks, navigate to **Tasks**.
+{{< /warning >}}
+
+
 {{<index/block>}}
 
   {{<index/item
