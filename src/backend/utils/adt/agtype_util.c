@@ -87,7 +87,6 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                               agtype_value *scalar_val);
 static int compare_two_floats_orderability(float8 lhs, float8 rhs);
 static int get_type_sort_priority(enum agtype_value_type type);
-static void pfree_agtype_value_content(agtype_value* value);
 static void pfree_iterator_agtype_value_token(agtype_iterator_token token,
                                               agtype_value *agtv);
 
@@ -2365,7 +2364,7 @@ void pfree_agtype_value(agtype_value* value)
  * of the passed agtype_value only. It does not deallocate
  * `value` itself.
  */
-static void pfree_agtype_value_content(agtype_value* value)
+void pfree_agtype_value_content(agtype_value* value)
 {
     int i;
 

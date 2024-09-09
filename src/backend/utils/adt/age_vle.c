@@ -2147,7 +2147,6 @@ agtype_value *agtv_materialize_vle_edges(agtype *agt_arg_vpc)
     /* build the AGTV_ARRAY of edges from the VLE_path_container */
     agtv_array = build_edge_list(vpc);
 
-    /* convert the agtype_value to agtype and return it */
     return agtv_array;
 
 }
