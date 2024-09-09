@@ -1338,6 +1338,7 @@ bool yb_enable_index_aggregate_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
+bool yb_make_next_ddl_statement_nonincrementing = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
@@ -1442,13 +1443,19 @@ typedef struct DdlTransactionState {
 static DdlTransactionState ddl_transaction_state = {0};
 
 static void
-YBResetEnableNonBreakingDDLMode()
+YBResetEnableSpecialDDLMode()
 {
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
 	 */
 	yb_make_next_ddl_statement_nonbreaking = false;
+
+	/*
+	 * Reset yb_make_next_ddl_statement_nonincrementing to avoid its further side
+	 * effect that may not be intended.
+	 */
+	yb_make_next_ddl_statement_nonincrementing = false;
 }
 
 /*
@@ -1492,7 +1499,7 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
-	YBResetEnableNonBreakingDDLMode();
+	YBResetEnableSpecialDDLMode();
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1550,7 +1557,7 @@ YBDecrementDdlNestingLevel()
 		 */
 		ddl_transaction_state.mem_context = NULL;
 
-		YBResetEnableNonBreakingDDLMode();
+		YBResetEnableSpecialDDLMode();
 		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
 		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
 		bool is_global_ddl = ddl_transaction_state.is_global_ddl;
@@ -2079,6 +2086,18 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		*is_breaking_catalog_change = false;
+
+	/*
+	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
+	 * will cause a catalog version to increment. Note that we also disable breaking
+	 * catalog change as well because it does not make sense to only increment
+	 * breaking breaking catalog version.
+	 */
+	if (yb_make_next_ddl_statement_nonincrementing)
+	{
+		*is_catalog_version_increment = false;
+		*is_breaking_catalog_change = false;
+	}
 
 	/*
 	 * For DDL, it does not make sense to get breaking catalog change without
