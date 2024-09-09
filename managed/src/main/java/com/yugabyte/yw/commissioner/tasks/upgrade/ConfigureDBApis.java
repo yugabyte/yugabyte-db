@@ -57,6 +57,12 @@ public class ConfigureDBApis extends UpgradeTaskBase {
         () -> {
           Universe universe = getUniverse();
 
+          // Drop system_platform tables while disabling YSQL.
+          if (!taskParams().enableYSQL
+              && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+            createDropSystemPlatformDBTablesTask(universe, getTaskSubGroupType());
+          }
+
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 

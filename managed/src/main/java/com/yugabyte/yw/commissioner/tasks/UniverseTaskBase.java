@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.WRITE_READ_TABLE;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -56,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DropTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
@@ -1431,6 +1433,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  private SubTaskGroup createDropTableTask(
+      Universe universe, CommonTypes.TableType tableType, String dbName, String tableName) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DropTable");
+    DropTable.Params dropTableParams = new DropTable.Params();
+    dropTableParams.setUniverseUUID(universe.getUniverseUUID());
+    dropTableParams.dbName = dbName;
+    dropTableParams.tableName = tableName;
+    dropTableParams.tableType = tableType;
+    DropTable task = createTask(DropTable.class);
+    task.initialize(dropTableParams);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public void createDropSystemPlatformDBTablesTask(
+      Universe universe, SubTaskGroupType subTaskGroupType) {
+    createDropTableTask(
+            universe,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Util.SYSTEM_PLATFORM_DB,
+            Util.WRITE_READ_TABLE)
+        .setSubTaskGroupType(subTaskGroupType);
+
+    createDropTableTask(
+            universe,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Util.SYSTEM_PLATFORM_DB,
+            Util.CONSISTENCY_CHECK)
+        .setSubTaskGroupType(subTaskGroupType);
+  }
+
   public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
     boolean changeYCQLAdminPass =
         primaryCluster.userIntent.enableYCQL
@@ -2770,7 +2805,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     idColumn.sortOrder = SortOrder.ASC;
 
     TableDetails details = new TableDetails();
-    details.tableName = "write_read_test";
+    details.tableName = WRITE_READ_TABLE;
     details.keyspace = SYSTEM_PLATFORM_DB;
     details.columns = new ArrayList<>();
     details.columns.add(idColumn);
