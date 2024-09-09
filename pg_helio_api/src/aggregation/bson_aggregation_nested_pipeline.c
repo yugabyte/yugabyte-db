@@ -2095,7 +2095,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		if (canProcessForeignFieldAsDocumentId)
 		{
 			projectorFunc = makeFuncExpr(
-				BsonLookupExtractFilterArrayFunctionOid(), get_array_type(BsonTypeId()),
+				BsonLookupExtractFilterArrayFunctionOid(), GetBsonArrayTypeOid(),
 				extractFilterArgs,
 				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 		}
@@ -2139,7 +2139,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 			inOperator->useOr = true;
 			inOperator->opno = BsonEqualOperatorId();
 			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
-									get_array_type(BsonTypeId()), -1,
+									GetBsonArrayTypeOid(), -1,
 									InvalidOid, matchLevelsUp);
 			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
 			inOperator->args = inArgs;
@@ -2697,7 +2697,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		else if (optimizationArgs.isLookupJoinOnRightId)
 		{
 			projectorFunc = (Expr *) makeFuncExpr(
-				BsonLookupExtractFilterArrayFunctionOid(), get_array_type(BsonTypeId()),
+				BsonLookupExtractFilterArrayFunctionOid(), GetBsonArrayTypeOid(),
 				extractFilterArgs,
 				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 		}
@@ -2758,7 +2758,7 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 			inOperator->useOr = true;
 			inOperator->opno = BsonEqualOperatorId();
 			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
-									get_array_type(BsonTypeId()), -1,
+									GetBsonArrayTypeOid(), -1,
 									InvalidOid, matchLevelsUp);
 			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
 			inOperator->args = inArgs;

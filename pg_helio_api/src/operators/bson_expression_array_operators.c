@@ -1665,6 +1665,20 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 		case BSON_TYPE_DOUBLE:
 		case BSON_TYPE_DECIMAL128:
 		{
+			if (IsBsonValueNaN(elementsToFetch))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+									"Can't coerce out of range value %s to long",
+									BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
+			if (IsBsonValueInfinity(elementsToFetch) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+									"Can't coerce out of range value %s to long",
+									BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
 			if (!IsBsonValueFixedInteger(elementsToFetch))
 			{
 				ereport(ERROR, (errcode(MongoLocation5787903), errmsg(

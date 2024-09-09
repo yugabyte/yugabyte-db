@@ -3642,11 +3642,99 @@ ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument, bson_value
 
 
 /**
+ * Parses the input document for $top(N) and $bottom(N) group expression operator and extracts the value for output, sortBy and n.
+ * @param inputDocument: input document for the operator
+ * @param output:  this is a pointer which after parsing will hold array expression
+ * @param sortSpec:  this is a pointer which after parsing will hold the sortBy expression
+ * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
+ * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
+ */
+void
+ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_t *output,
+								  bson_value_t *elementsToFetch, bson_value_t *sortSpec,
+								  const char *opName)
+{
+	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788001), errmsg(
+							"specification must be an object; found %s :%s",
+							opName, BsonValueToJsonForLogging(inputDocument)),
+						errdetail_log(
+							"specification must be an object; opname: %s type found :%s",
+							opName, BsonTypeName(inputDocument->value_type))));
+	}
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputDocument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "output") == 0)
+		{
+			*output = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			*elementsToFetch = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "sortBy") == 0)
+		{
+			*sortSpec = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002), errmsg(
+								"Unknown argument to %s '%s'", opName, key),
+							errdetail_log(
+								"%s found an unknown argument", opName)));
+		}
+	}
+
+	/**
+	 * Validation check to see if input and elements to fetch are present otherwise throw error.
+	 */
+	if (elementsToFetch->value_type == BSON_TYPE_EOD && (strcmp(opName, "$topN") == 0 ||
+														 strcmp(opName, "$bottomN") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788003), errmsg(
+							"Missing value for 'n'"),
+						errdetail_log(
+							"%s requires an 'n' field", opName)));
+	}
+
+	if (elementsToFetch->value_type != BSON_TYPE_EOD && (strcmp(opName, "$top") == 0 ||
+														 strcmp(opName, "$bottom") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002), errmsg(
+							"Unknown argument to %s 'n'", opName),
+						errdetail_log(
+							"Unknown argument to %s 'n'", opName)));
+	}
+
+	if (output->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788004), errmsg(
+							"Missing value for 'output'"),
+						errdetail_log(
+							"%s requires an 'output' field", opName)));
+	}
+
+	if (sortSpec->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788005), errmsg(
+							"Missing value for 'sortBy'"),
+						errdetail_log(
+							"%s requires a 'sortBy", opName)));
+	}
+}
+
+
+/**
  * This function validates and throws error in case bson type is not a numeric > 0 and less than max value of int64 i.e. 9223372036854775807
  */
-static void
-ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
-								char *opName)
+void
+ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
+									 char *opName)
 {
 	switch (elementsToFetch->value_type)
 	{
@@ -3655,12 +3743,26 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 		case BSON_TYPE_DOUBLE:
 		case BSON_TYPE_DECIMAL128:
 		{
+			if (IsBsonValueNaN(elementsToFetch))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+									"Can't coerce out of range value %s to long",
+									BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
+			if (IsBsonValueInfinity(elementsToFetch) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+									"Can't coerce out of range value %s to long",
+									BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
 			if (!IsBsonValueFixedInteger(elementsToFetch))
 			{
-				ereport(ERROR, (errcode(MongoLocation5787903), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787903), errmsg(
 									"Value for 'n' must be of integral type, but found %s",
 									BsonValueToJsonForLogging(elementsToFetch)),
-								errhint(
+								errdetail_log(
 									"Value for 'n' must be of integral type, but found of type %s",
 									BsonTypeName(elementsToFetch->value_type))));
 			}
@@ -3673,10 +3775,10 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 
 			if (elementsToFetch->value.v_int64 <= 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation5787908), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
 									"'n' must be greater than 0, found %s",
 									BsonValueToJsonForLogging(elementsToFetch)),
-								errhint(
+								errdetail_log(
 									"'n' must be greater than 0, found %ld",
 									elementsToFetch->value.v_int64)));
 			}
@@ -3686,7 +3788,7 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 				{
 					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN_GT10);
 				}
-				else
+				else if ((strncmp(opName, "$firstN", 7) == 0))
 				{
 					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN_GT10);
 				}
@@ -3696,10 +3798,10 @@ ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch, const
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoLocation5787902), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
 								"Value for 'n' must be of integral type, but found %s",
 								BsonValueToJsonForLogging(elementsToFetch)),
-							errhint(
+							errdetail_log(
 								"Value for 'n' must be of integral type, but found of type %s",
 								BsonTypeName(elementsToFetch->value_type))));
 		}
@@ -3847,7 +3949,7 @@ AddMergeObjectsGroupAccumulator(Query *query, const bson_value_t *accumulatorVal
 	ArrayType *arrayValue = construct_array(sortDatumArray, nelems, BsonTypeId(), -1,
 											false, TYPALIGN_INT);
 
-	Const *sortArrayConst = makeConst(get_array_type(BsonTypeId()), -1, InvalidOid, -1,
+	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
 
 	/*
@@ -3889,22 +3991,18 @@ AddMergeObjectsGroupAccumulator(Query *query, const bson_value_t *accumulatorVal
  * and also adds the necessary data to the bson_expression_map arguments.
  */
 inline static List *
-AddSimpleNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+AddSimpleNGroupAccumulator(Query *query, const bson_value_t *input,
+						   bson_value_t *elementsToFetch,
 						   List *repathArgs, Const *accumulatorText,
 						   ParseState *parseState, char *identifiers,
 						   Expr *documentExpr, Oid aggregateFunctionOid,
 						   StringView *accumulatorName, Expr *variableSpec)
 {
-	/* Parse accumulatorValue to pull out input/N */
-	bson_value_t input = { 0 };
-	bson_value_t elementsToFetch = { 0 };
-	ParseInputDocumentForFirstAndLastN(accumulatorValue, &input, &elementsToFetch,
-									   accumulatorName->string);
-	ValidateElementForFirstAndLastN(&elementsToFetch, accumulatorName->string);
+	ValidateElementForNGroupAccumulators(elementsToFetch, accumulatorName->string);
 
 	/* First add the agg function */
 	Const *nConst = makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
-							  Int64GetDatum(elementsToFetch.value.v_int64), false, true);
+							  Int64GetDatum(elementsToFetch->value.v_int64), false, true);
 	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
 											 list_make2((Expr *) documentExpr, nConst),
 											 list_make2_oid(BsonTypeId(),
@@ -3915,8 +4013,7 @@ AddSimpleNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	Const *fieldConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(""),
 								  false,
 								  false);
-	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
-												  &input));
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(input));
 
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
@@ -3981,7 +4078,7 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	ArrayType *arrayValue = construct_array(sortDatumArray, nelems, BsonTypeId(), -1,
 											false, TYPALIGN_INT);
 
-	Const *sortArrayConst = makeConst(get_array_type(BsonTypeId()), -1, InvalidOid, -1,
+	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
 	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
 											 list_make2(documentExpr, sortArrayConst),
@@ -4028,19 +4125,16 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
  * Add a sorted group accumulator e.g. BSONFIRSTN/BSONLASTN
  */
 inline static List *
-AddSortedNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+AddSortedNGroupAccumulator(Query *query, const bson_value_t *input,
+						   bson_value_t *elementsToFetch,
 						   List *repathArgs, Const *accumulatorText,
 						   ParseState *parseState, char *identifiers,
 						   Expr *documentExpr, Oid aggregateFunctionOid,
 						   const bson_value_t *sortSpec, StringView *accumulatorName,
 						   Expr *variableSpec)
 {
-	/* Parse accumulatorValue to pull out input/N*/
-	bson_value_t input = { 0 };
-	bson_value_t elementsToFetch = { 0 };
-	ParseInputDocumentForFirstAndLastN(accumulatorValue, &input, &elementsToFetch,
-									   accumulatorName->string);
-	ValidateElementForFirstAndLastN(&elementsToFetch, accumulatorName->string);
+	ValidateElementForNGroupAccumulators(elementsToFetch, accumulatorName->string);
+
 
 	/* First apply the sorted agg (FIRSTN/LASTN) */
 	int nelems = BsonDocumentValueCountKeys(sortSpec);
@@ -4060,10 +4154,10 @@ AddSortedNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	}
 
 	Const *nConst = makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
-							  Int64GetDatum(elementsToFetch.value.v_int64), false, true);
+							  Int64GetDatum(elementsToFetch->value.v_int64), false, true);
 	ArrayType *arrayValue = construct_array(sortDatumArray, nelems, BsonTypeId(), -1,
 											false, TYPALIGN_INT);
-	Const *sortArrayConst = makeConst(get_array_type(BsonTypeId()), -1, InvalidOid, -1,
+	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
 	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
 											 list_make3(documentExpr, nConst,
@@ -4077,8 +4171,7 @@ AddSortedNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	Const *fieldConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(""),
 								  false,
 								  false);
-	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
-												  &input));
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(input));
 
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
@@ -4122,6 +4215,8 @@ AddSortedNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
  * with the bson_repath_and_build is added as part of the group.
  * This is done because without this, sharded multi-node group by fails
  * due to a quirk in citus's worker query generation.
+ *
+ * TODO: Support n(elementsToFetch) as an expression for firstN, lastN, topN, bottomN
  */
 Query *
 HandleGroup(const bson_value_t *existingValue, Query *query,
@@ -4363,10 +4458,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		else if (StringViewEqualsCString(&accumulatorName, "$firstN"))
 		{
 			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN);
+			bson_value_t input = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			ParseInputDocumentForFirstAndLastN(&accumulatorElement.bsonValue, &input,
+											   &elementsToFetch, accumulatorName.string);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleNGroupAccumulator(query,
-														&accumulatorElement.bsonValue,
+														&input,
+														&elementsToFetch,
 														repathArgs,
 														accumulatorText, parseState,
 														identifiers,
@@ -4378,7 +4478,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			else
 			{
 				repathArgs = AddSortedNGroupAccumulator(query,
-														&accumulatorElement.bsonValue,
+														&input,
+														&elementsToFetch,
 														repathArgs,
 														accumulatorText, parseState,
 														identifiers,
@@ -4392,10 +4493,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		else if (StringViewEqualsCString(&accumulatorName, "$lastN"))
 		{
 			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN);
+			bson_value_t input = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			ParseInputDocumentForFirstAndLastN(&accumulatorElement.bsonValue, &input,
+											   &elementsToFetch, accumulatorName.string);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleNGroupAccumulator(query,
-														&accumulatorElement.bsonValue,
+														&input,
+														&elementsToFetch,
 														repathArgs,
 														accumulatorText, parseState,
 														identifiers,
@@ -4407,7 +4513,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			else
 			{
 				repathArgs = AddSortedNGroupAccumulator(query,
-														&accumulatorElement.bsonValue,
+														&input,
+														&elementsToFetch,
 														repathArgs,
 														accumulatorText, parseState,
 														identifiers,
@@ -4535,6 +4642,92 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   origEntry->expr,
 												   BsonStdDevPopAggregateFunctionOid(),
 												   context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$top"))
+		{
+			bson_value_t output = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			bson_value_t sortSpec = { 0 };
+			ParseInputDocumentForTopAndBottom(&accumulatorElement.bsonValue, &output,
+											  &elementsToFetch,
+											  &sortSpec,
+											  accumulatorName.string);
+			repathArgs = AddSortedGroupAccumulator(query,
+												   &output,
+												   repathArgs,
+												   accumulatorText, parseState,
+												   identifiers,
+												   origEntry->expr,
+												   BsonFirstAggregateFunctionOid(),
+												   &sortSpec,
+												   context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$bottom"))
+		{
+			bson_value_t output = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			bson_value_t sortSpec = { 0 };
+			ParseInputDocumentForTopAndBottom(&accumulatorElement.bsonValue, &output,
+											  &elementsToFetch,
+											  &sortSpec,
+											  accumulatorName.string);
+			repathArgs = AddSortedGroupAccumulator(query,
+												   &output,
+												   repathArgs,
+												   accumulatorText, parseState,
+												   identifiers,
+												   origEntry->expr,
+												   BsonLastAggregateFunctionOid(),
+												   &sortSpec,
+												   context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$topN"))
+		{
+			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_TOPN);
+
+			/* Parse accumulatorValue to pull output, n and sortBy*/
+			bson_value_t input = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			bson_value_t sortSpec = { 0 };
+
+			ParseInputDocumentForTopAndBottom(&accumulatorElement.bsonValue, &input,
+											  &elementsToFetch, &sortSpec,
+											  accumulatorName.string);
+			repathArgs = AddSortedNGroupAccumulator(query,
+													&input,
+													&elementsToFetch,
+													repathArgs,
+													accumulatorText, parseState,
+													identifiers,
+													origEntry->expr,
+													BsonFirstNAggregateFunctionOid(),
+													&sortSpec,
+													&accumulatorName,
+													context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$bottomN"))
+		{
+			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_BOTTOMN);
+
+			/* Parse accumulatorValue to pull output, n and sortBy*/
+			bson_value_t input = { 0 };
+			bson_value_t elementsToFetch = { 0 };
+			bson_value_t sortSpec = { 0 };
+
+			ParseInputDocumentForTopAndBottom(&accumulatorElement.bsonValue, &input,
+											  &elementsToFetch, &sortSpec,
+											  accumulatorName.string);
+			repathArgs = AddSortedNGroupAccumulator(query,
+													&input,
+													&elementsToFetch,
+													repathArgs,
+													accumulatorText, parseState,
+													identifiers,
+													origEntry->expr,
+													BsonLastNAggregateFunctionOid(),
+													&sortSpec,
+													&accumulatorName,
+													context->variableSpec);
 		}
 		else
 		{

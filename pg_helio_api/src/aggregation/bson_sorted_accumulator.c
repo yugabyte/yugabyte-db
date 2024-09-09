@@ -26,6 +26,15 @@
 #include "operators/bson_expression.h"
 #include "aggregation/bson_sorted_accumulator.h"
 #include "utils/array.h"
+#include "utils/fmgr_utils.h"
+
+
+/* --------------------------------------------------------- */
+/* Forward declaration */
+/* --------------------------------------------------------- */
+static void ParseInputExpressionAndPersistValue(AggregationExpressionData *expressionData,
+												const bson_value_t *expressionValue,
+												ParseAggregationExpressionContext *context);
 
 /*
  * Converts a BsonOrderAggState into a serialized form to allow the internal type to be bytea
@@ -318,10 +327,18 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 					storeInputExpression)
 {
 	MemoryContext aggregateContext;
-	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+
+	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
 							"aggregate function called in non-aggregate context")));
+	}
+
+	/* We store input expression in $setWindowFields context for $top(N)/$bottom(N) */
+	if (aggContext == AGG_CONTEXT_WINDOW)
+	{
+		storeInputExpression = true;
 	}
 
 	BsonOrderAggState inputAggregateState = { 0 };
@@ -880,7 +897,8 @@ Datum
 BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 {
 	MemoryContext aggregateContext;
-	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
 							"aggregate function called in non-aggregate context")));
@@ -919,10 +937,75 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 		PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 	}
 
+	AggregationExpressionData *aggregationExpressionState = NULL;
+	StringView path;
+	ExpressionVariableContext *variableContext = NULL;
+
+	/* Cache aggregationExpressionState for $setWindowFields to avoid re-parsing the expression for each row/partition.
+	 * aggregationExpressionState holds the parsed input expression which stays the same for all rows/partitions.
+	 */
+	if (aggContext == AGG_CONTEXT_WINDOW)
+	{
+		if (state.inputExpression != NULL)
+		{
+			pgbsonelement element;
+			PgbsonToSinglePgbsonElement(state.inputExpression, &element);
+
+			path = (StringView) {
+				.length = element.pathLength,
+				.string = element.path,
+			};
+
+			/*
+			 * Use numArgs as 0 as we want to return true from IsSafeToReuseFmgrFunctionExtraMultiArgs().
+			 * This is to avoid the check for the node being a const or a Param of type extern as the caller knows its safe to reuse
+			 * as this is the common expression for all rows inside the bytea returned by transition function.
+			 */
+			int argPositions[1] = { 0 };
+			int numArgs = 0;
+			ParseAggregationExpressionContext context = { 0 };
+
+			SetCachedFunctionStateMultiArgs(
+				aggregationExpressionState,
+				AggregationExpressionData,
+				argPositions,
+				numArgs,
+				ParseInputExpressionAndPersistValue,
+				&element.bsonValue,
+				&context);
+
+			if (aggregationExpressionState == NULL)
+			{
+				aggregationExpressionState = palloc0(sizeof(AggregationExpressionData));
+				ParseInputExpressionAndPersistValue(
+					aggregationExpressionState,
+					&element.bsonValue,
+					&context);
+			}
+		}
+	}
+
 	pgbson *result = NULL;
 	if (isSingle)
 	{
 		result = state.currentResult[0]->value;
+		if (aggContext == AGG_CONTEXT_WINDOW)
+		{
+			if (state.inputExpression != NULL)
+			{
+				/* Apply the inputExpression to the result documents to calculate result for $top/$bottom */
+				bool isNullOnEmpty = true;
+				pgbson_writer writer;
+				PgbsonWriterInit(&writer);
+				EvaluateAggregationExpressionDataToWriter(aggregationExpressionState,
+														  state.currentResult[0]->value,
+														  path,
+														  &writer,
+														  variableContext, isNullOnEmpty);
+
+				result = PgbsonWriterGetPgbson(&writer);
+			}
+		}
 	}
 	else
 	{
@@ -942,14 +1025,39 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 			/* Check for Null value*/
 			if (state.currentResult[i]->value != NULL)
 			{
-				PgbsonArrayWriterWriteDocument(&arrayWriter,
-											   state.currentResult[i]->value);
+				if (aggContext == AGG_CONTEXT_WINDOW)
+				{
+					if (state.inputExpression != NULL)
+					{
+						/* Apply the inputExpression to the result documents to calculate result for $topN/$bottomN */
+						bool isNullOnEmpty = true;
+						pgbson_writer innerWriter;
+						PgbsonWriterInit(&innerWriter);
+						EvaluateAggregationExpressionDataToWriter(
+							aggregationExpressionState,
+							state.currentResult[i]->value,
+							path,
+							&innerWriter,
+							variableContext,
+							isNullOnEmpty);
+						pgbson *resultpg = PgbsonWriterGetPgbson(&innerWriter);
+						pgbsonelement element;
+						PgbsonToSinglePgbsonElement(resultpg, &element);
+						PgbsonArrayWriterWriteValue(&arrayWriter, &element.bsonValue);
+					}
+				}
+				else
+				{
+					PgbsonArrayWriterWriteDocument(&arrayWriter,
+												   state.currentResult[i]->value);
+				}
 			}
 			else
 			{
 				PgbsonArrayWriterWriteNull(&arrayWriter);
 			}
 		}
+
 		PgbsonWriterEndArray(&writer, &arrayWriter);
 		result = PgbsonWriterGetPgbson(&writer);
 	}
@@ -1049,4 +1157,22 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 		PgbsonWriterEndArray(&writer, &arrayWriter);
 		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 	}
+}
+
+
+/*
+ * Create a copy of the inputExpression bson_value_t to make sure it can be persisted in the cache across partitions in $setWindowFields.
+ * BsonValueToDocumentPgbson creates a new pgbson out of the value in the current memory context which is ExecutorContext
+ * when cache is being created so the value is guaranteed to live across different partitions and rows.
+ */
+static void
+ParseInputExpressionAndPersistValue(AggregationExpressionData *expressionData,
+									const bson_value_t *expressionValue,
+									ParseAggregationExpressionContext *context)
+{
+	pgbson *pgbson = BsonValueToDocumentPgbson(expressionValue);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(pgbson, &element);
+	bson_value_t persistedValue = element.bsonValue;
+	ParseAggregationExpressionData(expressionData, &persistedValue, context);
 }

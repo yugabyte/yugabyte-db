@@ -1,0 +1,300 @@
+SET search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 10120000;
+SET helio_api.next_collection_id TO 101200;
+SET helio_api.next_collection_index_id TO 101200;
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G1", "score": 85 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G1", "score": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G1", "score": 3 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G1", "score": 99 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerE", "gameId": "G1"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerF", "gameId": "G1", "score": [24, 23] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerA", "gameId": "G2", "score": {"$undefined":true} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerB", "gameId": "G2", "score": 33 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerC", "gameId": "G2", "score": 40 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','games','{ "playerId": "PlayerD", "gameId": "G2", "score": 15 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* Negative tests */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ]}}}} ] }'); -- missing sortBy
+ERROR:  Missing value for 'sortBy'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"sortBy": { "score": 1 }}}}} ] }'); -- missing output
+ERROR:  Missing value for 'output'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"sortBy": { "score": 1 }, "n": 1}}}} ] }'); -- n isn't supported with $top
+ERROR:  Unknown argument to $top 'n'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"output": [ "$playerId", "$score" ]}}}} ] }'); -- missing sortBy
+ERROR:  Missing value for 'sortBy'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"sortBy": { "score": 1 }}}}} ] }'); -- missing output
+ERROR:  Missing value for 'output'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"sortBy": { "score": 1 }, "n": 1}}}} ] }'); -- n isn't supported with $top
+ERROR:  Unknown argument to $bottom 'n'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "n": 1}}}} ] }'); -- missing sortBy
+ERROR:  Missing value for 'sortBy'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"sortBy": {"score": 1}, "n": 1}}}} ] }'); -- missing output
+ERROR:  Missing value for 'output'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }'); -- missing n
+ERROR:  Missing value for 'n'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": "a"}}}} ] }'); -- n is not a number
+ERROR:  Value for 'n' must be of integral type, but found "a"
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": {"$undefined": true}}}}} ] }'); -- n is not a number
+ERROR:  Value for 'n' must be of integral type, but found { "$undefined" : true }
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": {"$numberDecimal": "Infinity"}}}}} ] }'); -- n is not a number
+ERROR:  Can't coerce out of range value Infinity to long
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": -1}}}} ] }'); -- n is negative
+ERROR:  'n' must be greater than 0, found -1
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 0.5}}}} ] }'); -- n is not an integer
+ERROR:  Value for 'n' must be of integral type, but found 0.5
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "n": 1}}}} ] }'); -- missing sortBy
+ERROR:  Missing value for 'sortBy'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"sortBy": {"score": 1}, "n": 1}}}} ] }'); -- missing output
+ERROR:  Missing value for 'output'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }'); -- missing n
+ERROR:  Missing value for 'n'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": "a"}}}} ] }'); -- n is not a number
+ERROR:  Value for 'n' must be of integral type, but found "a"
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": {"$undefined": true}}}}} ] }'); -- n is not a number
+ERROR:  Value for 'n' must be of integral type, but found { "$undefined" : true }
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": {"$numberDecimal": "Infinity"}}}}} ] }'); -- n is not a number
+ERROR:  Can't coerce out of range value Infinity to long
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": -1}}}} ] }'); -- n is negative
+ERROR:  'n' must be greater than 0, found -1
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 0.5}}}} ] }'); -- n is not an integer
+ERROR:  Value for 'n' must be of integral type, but found 0.5
+/* $top operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+ { "_id" : "G2", "playerId" : [ "PlayerA", null ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+ { "_id" : "G2", "playerId" : [ "PlayerC", { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$sort": {"playerId": 1}}, {"$group": { "_id": "$gameId",  "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }'); -- different sort in sortBy stage but documents in output field are sorted by $top spec
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+ { "_id" : "G2", "playerId" : [ "PlayerC", { "$numberInt" : "40" } ] }
+(2 rows)
+
+/* $topN operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 3}}}} ] }');
+                                                                document                                                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+ { "_id" : "G2", "playerId" : [ [ "PlayerA", null ], [ "PlayerD", { "$numberInt" : "15" } ], [ "PlayerB", { "$numberInt" : "33" } ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+ { "_id" : "G2", "playerId" : [ [ "PlayerC", { "$numberInt" : "40" } ], [ "PlayerB", { "$numberInt" : "33" } ], [ "PlayerD", { "$numberInt" : "15" } ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$sort": {"playerId": 1}}, {"$group": { "_id": "$gameId",  "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }'); -- different sort in sortBy stage but documents in output field are sorted by $top spec
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+ { "_id" : "G2", "playerId" : [ [ "PlayerC", { "$numberInt" : "40" } ], [ "PlayerB", { "$numberInt" : "33" } ], [ "PlayerD", { "$numberInt" : "15" } ] ] }
+(2 rows)
+
+/* $bottom operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+ { "_id" : "G2", "playerId" : [ "PlayerC", { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+ { "_id" : "G2", "playerId" : [ "PlayerA", null ] }
+(2 rows)
+
+/* $bottomN operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 3}}}} ] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+ { "_id" : "G2", "playerId" : [ [ "PlayerC", { "$numberInt" : "40" } ], [ "PlayerB", { "$numberInt" : "33" } ], [ "PlayerD", { "$numberInt" : "15" } ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                                document                                                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+ { "_id" : "G2", "playerId" : [ [ "PlayerA", null ], [ "PlayerD", { "$numberInt" : "15" } ], [ "PlayerB", { "$numberInt" : "33" } ] ] }
+(2 rows)
+
+/* shard collection */
+SELECT helio_api.shard_collection('db', 'games', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+/* run same queries to ensure consistency */
+/* $top operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ "PlayerA", null ] }
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ "PlayerC", { "$numberInt" : "40" } ] }
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+(2 rows)
+
+/* $topN operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 3}}}} ] }');
+                                                                document                                                                
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ [ "PlayerA", null ], [ "PlayerD", { "$numberInt" : "15" } ], [ "PlayerB", { "$numberInt" : "33" } ] ] }
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$topN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ [ "PlayerC", { "$numberInt" : "40" } ], [ "PlayerB", { "$numberInt" : "33" } ], [ "PlayerD", { "$numberInt" : "15" } ] ] }
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+(2 rows)
+
+/* $bottom operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ "PlayerC", { "$numberInt" : "40" } ] }
+ { "_id" : "G1", "playerId" : [ "PlayerD", { "$numberInt" : "99" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$bottom": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }}}}}] }');
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ "PlayerA", null ] }
+ { "_id" : "G1", "playerId" : [ "PlayerE", null ] }
+(2 rows)
+
+/* $bottomN operator with $group */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 3}}}} ] }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ [ "PlayerC", { "$numberInt" : "40" } ], [ "PlayerB", { "$numberInt" : "33" } ], [ "PlayerD", { "$numberInt" : "15" } ] ] }
+ { "_id" : "G1", "playerId" : [ [ "PlayerD", { "$numberInt" : "99" } ], [ "PlayerA", { "$numberInt" : "85" } ], [ "PlayerF", [ { "$numberInt" : "24" }, { "$numberInt" : "23" } ] ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$match" : { "gameId" : "G1" }}, {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [{"$group": { "_id": "$gameId",  "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": -1 }, "n": 3}}}}] }'); 
+                                                                document                                                                
+---------------------------------------------------------------------
+ { "_id" : "G2", "playerId" : [ [ "PlayerA", null ], [ "PlayerD", { "$numberInt" : "15" } ], [ "PlayerB", { "$numberInt" : "33" } ] ] }
+ { "_id" : "G1", "playerId" : [ [ "PlayerE", null ], [ "PlayerB", { "$numberInt" : "2" } ], [ "PlayerC", { "$numberInt" : "3" } ] ] }
+(2 rows)
+

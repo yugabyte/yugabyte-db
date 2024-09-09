@@ -702,6 +702,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONLAST aggregate function */
 	Oid ApiCatalogBsonLastAggregateFunctionOid;
 
+	/* OID of the BSONFIRST aggregate function with 3 args */
+	Oid ApiCatalogBsonFirstAggregateAllArgsFunctionOid;
+
+	/* OID of the BSONLAST aggregate function with 3 args */
+	Oid ApiCatalogBsonLastAggregateAllArgsFunctionOid;
+
 	/* OID of the BSONFIRSTNONSORTED aggregate function */
 	Oid ApiCatalogBsonFirstNOnSortedAggregateFunctionOid;
 
@@ -713,6 +719,12 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the BSONLASTN aggregate function */
 	Oid ApiCatalogBsonLastNAggregateFunctionOid;
+
+	/* OID of the BSONFIRSTN aggregate function with 4 args  */
+	Oid ApiCatalogBsonFirstNAggregateAllArgsFunctionOid;
+
+	/* OID of the BSONLASTN aggregate function with 4 args */
+	Oid ApiCatalogBsonLastNAggregateAllArgsFunctionOid;
 
 	/* OID of the bson_add_to_set function. */
 	Oid ApiCatalogBsonAddToSetAggregateFunctionOid;
@@ -941,6 +953,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the helio_api_internal.delete_worker function */
 	Oid DeleteWorkerFunctionOid;
+
+	/* Oid of array type for bson */
+	Oid BsonArrayTypeOid;
 } HelioApiOidCacheData;
 
 static HelioApiOidCacheData Cache;
@@ -3495,6 +3510,84 @@ BsonMinAggregateFunctionOid(void)
 }
 
 
+/* Returns the correct aggregate function Oid for top(N)/bottom(N)/first(N)/last(N) based on number of arguments*/
+static Oid
+GetBsonFirstNLastNAggregateFunctionOid(Oid *function, bool allArgs, char *aggregateName)
+{
+	InitializeHelioApiExtensionCache();
+
+	String *schemaName;
+	if (allArgs)
+	{
+		schemaName = makeString("helio_api_internal");
+	}
+	else
+	{
+		schemaName = makeString(ApiCatalogSchemaName);
+	}
+
+	if (*function == InvalidOid)
+	{
+		ObjectWithArgs *objectWithArgs = makeNode(ObjectWithArgs);
+		List *functionNameList = list_make2(schemaName,
+											makeString(aggregateName));
+
+		objectWithArgs->objname = functionNameList;
+
+		FunctionParameter *inBsonArgParam = makeNode(FunctionParameter);
+		inBsonArgParam->argType = ParseTypeNameCore(FullBsonTypeName);
+		inBsonArgParam->mode = FUNC_PARAM_IN;
+
+		FunctionParameter *inBsonArrayArgParam = makeNode(FunctionParameter);
+		StringInfo fullBsonArrayTypeName = makeStringInfo();
+		appendStringInfo(fullBsonArrayTypeName, "%s[]", FullBsonTypeName);
+		inBsonArrayArgParam->argType = ParseTypeNameCore(fullBsonArrayTypeName->data);
+		inBsonArrayArgParam->mode = FUNC_PARAM_IN;
+
+		if (strcmp(aggregateName, "bsonfirstn") == 0 ||
+			strcmp(aggregateName, "bsonlastn") == 0)
+		{
+			objectWithArgs->objargs =
+				list_make3(ParseTypeNameCore(FullBsonTypeName),
+						   ParseTypeNameCore("bigint"),
+						   ParseTypeNameCore(fullBsonArrayTypeName->data));
+
+			FunctionParameter *inIntArgParam = makeNode(FunctionParameter);
+			inIntArgParam->argType = ParseTypeNameCore("bigint");
+			inIntArgParam->mode = FUNC_PARAM_IN;
+
+			objectWithArgs->objfuncargs = list_make3(inBsonArgParam, inIntArgParam,
+													 inBsonArrayArgParam);
+		}
+		else
+		{
+			objectWithArgs->objargs =
+				list_make2(ParseTypeNameCore(FullBsonTypeName),
+						   ParseTypeNameCore(fullBsonArrayTypeName->data));
+			objectWithArgs->objfuncargs = list_make2(inBsonArgParam, inBsonArrayArgParam);
+		}
+
+		if (allArgs)
+		{
+			objectWithArgs->objargs = lappend(objectWithArgs->objargs, ParseTypeNameCore(
+												  FullBsonTypeName));
+
+			FunctionParameter *inBsonArgExpressionParam = makeNode(FunctionParameter);
+			inBsonArgExpressionParam->argType = ParseTypeNameCore(FullBsonTypeName);
+			inBsonArgExpressionParam->mode = FUNC_PARAM_IN;
+
+			objectWithArgs->objfuncargs = lappend(objectWithArgs->objfuncargs,
+												  inBsonArgExpressionParam);
+		}
+
+		bool missingOK = false;
+		*function = LookupFuncWithArgs(OBJECT_AGGREGATE, objectWithArgs, missingOK);
+	}
+
+	return *function;
+}
+
+
 Oid
 BsonFirstOnSortedAggregateFunctionOid(void)
 {
@@ -3507,16 +3600,36 @@ BsonFirstOnSortedAggregateFunctionOid(void)
 Oid
 BsonFirstAggregateFunctionOid(void)
 {
-	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonFirstAggregateFunctionOid,
-									  ApiCatalogSchemaName, "bsonfirst");
+	bool allArgs = false;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonFirstAggregateFunctionOid, allArgs, "bsonfirst");
+}
+
+
+Oid
+BsonFirstAggregateAllArgsFunctionOid(void)
+{
+	bool allArgs = true;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonFirstAggregateFunctionOid, allArgs, "bsonfirst");
 }
 
 
 Oid
 BsonLastAggregateFunctionOid(void)
 {
-	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonLastAggregateFunctionOid,
-									  ApiCatalogSchemaName, "bsonlast");
+	bool allArgs = false;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonLastAggregateFunctionOid, allArgs, "bsonlast");
+}
+
+
+Oid
+BsonLastAggregateAllArgsFunctionOid(void)
+{
+	bool allArgs = true;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonLastAggregateFunctionOid, allArgs, "bsonlast");
 }
 
 
@@ -3532,8 +3645,18 @@ BsonLastOnSortedAggregateFunctionOid(void)
 Oid
 BsonFirstNAggregateFunctionOid(void)
 {
-	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonFirstNAggregateFunctionOid,
-									  ApiCatalogSchemaName, "bsonfirstn");
+	bool allArgs = false;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonFirstNAggregateFunctionOid, allArgs, "bsonfirstn");
+}
+
+
+Oid
+BsonFirstNAggregateAllArgsFunctionOid(void)
+{
+	bool allArgs = true;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonFirstNAggregateAllArgsFunctionOid, allArgs, "bsonfirstn");
 }
 
 
@@ -3549,8 +3672,18 @@ BsonFirstNOnSortedAggregateFunctionOid(void)
 Oid
 BsonLastNAggregateFunctionOid(void)
 {
-	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonLastNAggregateFunctionOid,
-									  ApiCatalogSchemaName, "bsonlastn");
+	bool allArgs = false;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonLastNAggregateFunctionOid, allArgs, "bsonlastn");
+}
+
+
+Oid
+BsonLastNAggregateAllArgsFunctionOid(void)
+{
+	bool allArgs = true;
+	return GetBsonFirstNLastNAggregateFunctionOid(
+		&Cache.ApiCatalogBsonLastNAggregateAllArgsFunctionOid, allArgs, "bsonlastn");
 }
 
 
@@ -5551,4 +5684,21 @@ ApiDataNamespaceOid(void)
 	}
 
 	return Cache.ApiDataNamespaceOid;
+}
+
+
+/*
+ * Returns Oid of array type for bson
+ */
+Oid
+GetBsonArrayTypeOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonArrayTypeOid == InvalidOid)
+	{
+		Cache.BsonArrayTypeOid = get_array_type(BsonTypeId());
+	}
+
+	return Cache.BsonArrayTypeOid;
 }

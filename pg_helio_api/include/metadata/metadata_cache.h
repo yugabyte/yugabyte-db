@@ -136,6 +136,7 @@ Oid VectorTypeId(void);
 Oid IndexSpecTypeId(void);
 Oid MongoCatalogCollectionsTypeOid(void);
 Oid GetClusterBsonQueryTypeId(void);
+Oid GetBsonArrayTypeOid(void);
 
 /* sequences */
 Oid ApiCatalogCollectionIdSequenceId(void);
@@ -302,10 +303,14 @@ Oid BsonDollarFacetProjectFunctionOid(void);
 Oid BsonFirstOnSortedAggregateFunctionOid(void);
 Oid BsonLastOnSortedAggregateFunctionOid(void);
 Oid BsonFirstAggregateFunctionOid(void);
+Oid BsonFirstAggregateAllArgsFunctionOid(void);
 Oid BsonLastAggregateFunctionOid(void);
+Oid BsonLastAggregateAllArgsFunctionOid(void);
 Oid BsonFirstNAggregateFunctionOid(void);
+Oid BsonFirstNAggregateAllArgsFunctionOid(void);
 Oid BsonFirstNOnSortedAggregateFunctionOid(void);
 Oid BsonLastNAggregateFunctionOid(void);
+Oid BsonLastNAggregateAllArgsFunctionOid(void);
 Oid BsonLastNOnSortedAggregateFunctionOid(void);
 Oid BsonAddToSetAggregateFunctionOid(void);
 Oid BsonStdDevPopAggregateFunctionOid(void);

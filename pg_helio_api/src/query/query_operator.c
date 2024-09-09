@@ -2928,7 +2928,7 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 
 					/* Second arg is an ArrayExpr containing the documents */
 					ArrayExpr *arrayExpr = makeNode(ArrayExpr);
-					arrayExpr->array_typeid = get_array_type(BsonTypeId());
+					arrayExpr->array_typeid = GetBsonArrayTypeOid();
 					arrayExpr->element_typeid = BsonTypeId();
 					arrayExpr->multidims = false;
 					arrayExpr->elements = inArgs;

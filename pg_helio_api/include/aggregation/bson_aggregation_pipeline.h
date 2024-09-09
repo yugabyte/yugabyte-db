@@ -86,5 +86,11 @@ void GraphLookupExtractCollection(const bson_value_t *lookupValue,
 								  StringView *collection);
 void ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
 					bson_value_t *pipeline);
+void ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument,
+									   bson_value_t *input,
+									   bson_value_t *elementsToFetch,
+									   bson_value_t *sortSpec, const char *opName);
+void ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
+										  char *opName);
 
 #endif
