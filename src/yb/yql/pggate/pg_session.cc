@@ -17,11 +17,8 @@
 
 #include <algorithm>
 #include <future>
-#include <memory>
 #include <optional>
 #include <utility>
-
-#include <boost/functional/hash.hpp>
 
 #include "yb/client/table_info.h"
 
@@ -42,7 +39,6 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
@@ -387,80 +383,6 @@ class PgSession::RunHelper {
   const ForceNonBufferable force_non_bufferable_;
   const ForceFlushBeforeNonBufferableOp force_flush_before_non_bufferable_op_;
 };
-
-//--------------------------------------------------------------------------------------------------
-// Class TableYbctidHasher
-//--------------------------------------------------------------------------------------------------
-
-size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const {
-  size_t hash = 0;
-  boost::hash_combine(hash, value.table_id);
-  boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
-  return hash;
-}
-
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(
-    TableYbctidVectorProvider& ybctid_container_provider,
-    std::reference_wrapper<const YbctidReader> ybctid_reader)
-    : ybctid_container_provider_(ybctid_container_provider), ybctid_reader_(ybctid_reader) {
-}
-
-Status ExplicitRowLockBuffer::Add(
-    Info&& info, const LightweightTableYbctid& key, bool is_region_local) {
-  if (info_ && *info_ != info) {
-    RETURN_NOT_OK(DoFlush());
-  }
-  if (!info_) {
-    info_.emplace(std::move(info));
-  } else if (intents_.contains(key)) {
-    return Status::OK();
-  }
-
-  if (is_region_local) {
-    region_local_tables_.insert(key.table_id);
-  }
-  DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
-  intents_.emplace(key.table_id, std::string(key.ybctid));
-  return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-      ? DoFlush() : Status::OK();
-}
-
-Status ExplicitRowLockBuffer::Flush() {
-  return IsEmpty() ? Status::OK() : DoFlush();
-}
-
-Status ExplicitRowLockBuffer::DoFlush() {
-  DCHECK(!IsEmpty());
-  auto scope = ScopeExit([this] { Clear(); });
-  auto ybctids = ybctid_container_provider_.Get();
-  auto initial_intents_size = intents_.size();
-  ybctids->reserve(initial_intents_size);
-  for (auto it = intents_.begin(); it != intents_.end();) {
-    auto node = intents_.extract(it++);
-    ybctids->push_back(std::move(node.value()));
-  }
-  RETURN_NOT_OK(ybctid_reader_(
-      info_->database_id, ybctids, region_local_tables_,
-      make_lw_function(
-          [&info = *info_](PgExecParameters& params) {
-            params.rowmark = info.rowmark;
-            params.pg_wait_policy = info.pg_wait_policy;
-            params.docdb_wait_policy = info.docdb_wait_policy;
-          })));
-  SCHECK(initial_intents_size == ybctids->size(), NotFound,
-        "Some of the requested ybctids are missing");
-  return Status::OK();
-}
-
-void ExplicitRowLockBuffer::Clear() {
-  intents_.clear();
-  info_.reset();
-  region_local_tables_.clear();
-}
-
-bool ExplicitRowLockBuffer::IsEmpty() const {
-  return !info_;
-}
 
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
