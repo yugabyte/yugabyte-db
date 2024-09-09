@@ -35,7 +35,7 @@ type Context struct {
 // NewStorageConfigFormat for formatting output
 func NewStorageConfigFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultStorageConfigListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -46,7 +46,7 @@ func NewStorageConfigFormat(source string) formatter.Format {
 // Write renders the context for a list of StorageConfigs
 func Write(ctx formatter.Context, storageConfigs []ybaclient.CustomerConfigUI) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of storage configurations into JSON
 		var output []byte
 		var err error

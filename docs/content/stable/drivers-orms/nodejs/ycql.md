@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js driver for YCQL
 menu:
   stable:
-    identifier: ycql-node-driver
+    identifier: node-driver-3-ycql
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 

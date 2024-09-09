@@ -120,6 +120,20 @@ public class DrConfigGetResp {
     return drConfig.getBootstrapBackupParams();
   }
 
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
+  public long getPitrRetentionPeriodSec() {
+    return drConfig.getPitrRetentionPeriodSec();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
+  public long getPitrSnapshotIntervalSec() {
+    return drConfig.getPitrSnapshotIntervalSec();
+  }
+
   @ApiModelProperty(value = "Replication group name in the dr replica universe cluster config")
   public String getReplicationGroupName() {
     return xClusterConfig.getReplicationGroupName();

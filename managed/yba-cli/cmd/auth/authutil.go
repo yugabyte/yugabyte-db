@@ -54,8 +54,9 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	}
 
 	sessionCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: session.NewSessionFormat(viper.GetString("output")),
+		Command: "auth",
+		Output:  os.Stdout,
+		Format:  session.NewSessionFormat(viper.GetString("output")),
 	}
 
 	session.Write(sessionCtx, []ybaclient.SessionInfo{r})

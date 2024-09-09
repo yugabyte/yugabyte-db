@@ -67,7 +67,7 @@ type EARContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -78,7 +78,7 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -89,7 +89,7 @@ func NewRegionFormat(source string) formatter.Format {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty

@@ -39,11 +39,11 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		accessKeyID, err := cmd.Flags().GetString("role-id")
+		roleID, err := cmd.Flags().GetString("role-id")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(token) > 0 && len(accessKeyID) > 0 {
+		if len(token) > 0 && len(roleID) > 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Cannot set both AppRole credentials and token"+
@@ -156,7 +156,7 @@ func init() {
 			"Can also be set using environment variable %s",
 			util.HashicorpVaultAddressEnv))
 	createHashicorpVaultEARCmd.Flags().String("role-id", "",
-		"[Optional] Hashicorp Vault AppRole ID. ")
+		"[Optional] Hashicorp Vault AppRole ID.")
 	createHashicorpVaultEARCmd.Flags().String("secret-id", "",
 		"[Optional] Hashicorp Vault AppRole Secret ID.")
 	createHashicorpVaultEARCmd.Flags().String("auth-namespace", "",

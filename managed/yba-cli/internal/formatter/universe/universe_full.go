@@ -55,7 +55,7 @@ func (fu *FullUniverseContext) SetFullUniverse(universe ybaclient.UniverseResp) 
 // NewFullUniverseFormat for formatting output
 func NewFullUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUniverseListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

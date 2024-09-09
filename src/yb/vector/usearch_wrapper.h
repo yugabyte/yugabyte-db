@@ -16,43 +16,40 @@
 #include <cstddef>
 #include <memory>
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 #include "yb/vector/distance.h"
 #include "yb/vector/hnsw_options.h"
 #include "yb/vector/coordinate_types.h"
 #include "yb/vector/vector_index_if.h"
-
-// Derived from the available add() overloads in index_dense.hpp.
-#define YB_USEARCH_SUPPORTED_COORDINATE_TYPES \
-    (float) /* NOLINT */  \
-    (double) /* NOLINT */ \
-    (int8_t)
+#include "yb/vector/vector_index_wrapper_util.h"
 
 namespace yb::vectorindex {
 
-template<IndexableVectorType Vector>
-class UsearchIndex : public VectorIndexReaderIf<Vector>, public VectorIndexWriterIf<Vector> {
+namespace detail {
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndexImpl;
+}  // namespace detail
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndex : public VectorIndexBase<
+    detail::UsearchIndexImpl<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
   explicit UsearchIndex(const HNSWOptions& options);
   virtual ~UsearchIndex();
-
-  void Reserve(size_t num_vectors) override;
-
-  Status Insert(VertexId vertex_id, const Vector& vector) override;
-
-  std::vector<VertexWithDistance> Search(
-      const Vector& query_vector, size_t max_num_results) const override;
-
-  Vector GetVector(VertexId vertex_id) const override;
-
  private:
-  class Impl;
-
-  std::unique_ptr<Impl> impl_;
+  using Impl = detail::UsearchIndexImpl<Vector, DistanceResult>;
 };
 
-// Maps the given coordinate kind to a type supported by the usearch.
-CoordinateKind UsearchSupportedCoordinateKind(CoordinateKind coordinate_kind);
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
+ public:
+  UsearchIndexFactory() = default;
+
+  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
+    return std::make_unique<UsearchIndex<Vector, DistanceResult>>(this->hnsw_options_);
+  }
+};
 
 }  // namespace yb::vectorindex

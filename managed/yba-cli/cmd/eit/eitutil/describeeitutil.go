@@ -76,7 +76,7 @@ func DescribeEITUtil(cmd *cobra.Command, commandCall, certType string) {
 		}
 	}
 
-	if len(r) > 0 && util.IsOutputType("table") {
+	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullEITContext := *eit.NewFullEITContext()
 		fullEITContext.Output = os.Stdout
 		fullEITContext.Format = eit.NewFullEITFormat(viper.GetString("output"))
@@ -94,8 +94,9 @@ func DescribeEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	}
 
 	eitCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: eit.NewEITFormat(viper.GetString("output")),
+		Command: "describe",
+		Output:  os.Stdout,
+		Format:  eit.NewEITFormat(viper.GetString("output")),
 	}
 	eit.Write(eitCtx, r)
 }

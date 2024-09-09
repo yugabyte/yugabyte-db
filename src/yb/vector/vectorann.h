@@ -14,14 +14,36 @@
 
 #pragma once
 
-#include "yb/common/vector_types.h"
-#include "yb/rocksdb/status.h"
+#include <cstdint>
+
+#include "yb/gutil/macros.h"
+
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+
+#include "yb/common/vector_types.h"
+
 #include "yb/vector/coordinate_types.h"
 #include "yb/vector/vectorann_util.h"
 
+#include "yb/rocksdb/status.h"
+
 namespace yb::vectorindex {
+
+// This MUST match the Vector struct definition in
+// src/postgres/third-party-extensions/pgvector/src/vector.h.
+struct YSQLVector {
+  // Commented out as this field is not transferred over the wire for all
+  // Varlens.
+  // int32  vl_len_;    /* varlena header (do not touch directly!) */
+  int16_t dim; /* number of dimensions */
+  int16_t unused;
+  float elems[];
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(YSQLVector);
+};
+
 
 // Base class for all ANN vector indexes.
 

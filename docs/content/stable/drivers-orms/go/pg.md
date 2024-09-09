@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: pg-orm
     parent: go-drivers
-    weight: 610
+    weight: 600
 type: docs
 ---
 
@@ -84,11 +84,11 @@ db := pg.Connect(opt)
 
 #### Use SSL
 
-For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+$ export PGSSLROOTCERT=~/root.crt  # CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
 | Environment Variable | Description |
@@ -224,7 +224,7 @@ func main() {
 
 #### Using pg.Options()
 
-If the password contains these special characters (#, %, ^), the driver may fail to parse the URL. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except PGPASSWORD and PGSSLROOTCERT are implicitly read by the driver. Set the PG variables as follows (replace the values as appropriate for YugabyteDB Aeon):
+If the password contains these special characters (#, %, ^), the driver may fail to parse the URL. In such a case, use `pg.Options()` instead of `pg.ParseURL()` to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except PGPASSWORD and PGSSLROOTCERT are implicitly read by the driver. Set the PG variables as follows (replace the values as appropriate for YugabyteDB Aeon):
 
 ```sh
 $ export PGHOST=127.0.0.1
@@ -234,7 +234,7 @@ $ export PGPASSWORD=password#with%special^chars
 $ export PGDATABASE=yugabyte
 ```
 
-To use pg.Options(), replace the main function in your file with the following:
+To use `pg.Options()`, replace the main function in your file with the following:
 
 ```go
 /* Modify the main() from the ybsql_hello_world.go script by replacing the first few lines and enabling pg.Options() */
@@ -334,5 +334,4 @@ Query for id=1 returned: Employee<1 John 35 [%!l(string=Go)]>
 
 ## Learn more
 
-- Build Go applications using [GORM](../gorm/)
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

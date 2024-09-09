@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/python/postgres-psycopg2-reference/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Python.
+The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../drivers-orms/python/postgres-psycopg2/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Python.
 
 ## Prerequisites
 
@@ -165,4 +165,4 @@ except (Exception, psycopg2.DatabaseError) as e:
 
 ## Learn more
 
-[Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2)
+[Python psycopg2 PostgreSQL database adapter](../../../../drivers-orms/python/postgres-psycopg2/)

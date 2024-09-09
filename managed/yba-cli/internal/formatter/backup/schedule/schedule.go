@@ -31,7 +31,7 @@ type Context struct {
 // NewSchedulesFormat for formatting output
 func NewSchedulesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultScheduleListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -42,7 +42,7 @@ func NewSchedulesFormat(source string) formatter.Format {
 // Write renders the context for a list of Schedules
 func Write(ctx formatter.Context, schedules []ybaclient.Schedule) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of schedules into JSON
 		var output []byte
 		var err error

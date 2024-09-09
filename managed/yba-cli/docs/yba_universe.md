@@ -39,5 +39,6 @@ yba universe [flags]
 * [yba universe list](yba_universe_list.md)	 - List YugabyteDB Anywhere universes
 * [yba universe node](yba_universe_node.md)	 - Manage YugabyteDB Anywhere universe nodes
 * [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe
+* [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
 * [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
 

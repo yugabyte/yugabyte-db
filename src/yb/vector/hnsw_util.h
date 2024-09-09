@@ -35,24 +35,4 @@ namespace yb::vectorindex {
 // 3. If ml = 1/log(4)  (~0.7213), then p = 1 - 1/4  (~0.75), and the expected level is ~1.333.
 VectorIndexLevel SelectRandomLevel(double ml, VectorIndexLevel max_level);
 
-template<IndexableVectorType Vector>
-FloatVector ToFloatVector(const Vector& v) {
-  FloatVector fv;
-  fv.reserve(v.size());
-  for (auto x : v) {
-    fv.push_back(static_cast<float>(x));
-  }
-  return fv;
-}
-
-template<IndexableVectorType Vector>
-std::vector<FloatVector> ToFloatVectorOfVectors(const std::vector<Vector>& v) {
-  std::vector<FloatVector> result;
-  result.reserve(v.size());
-  for (const auto& subvector : v) {
-    result.push_back(ToFloatVector(subvector));
-  }
-  return result;
-}
-
 }  // namespace yb::vectorindex

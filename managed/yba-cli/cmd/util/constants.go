@@ -247,6 +247,8 @@ const (
 	UpgradeOperation = "Upgrade"
 	// EditOperation type
 	EditOperation = "Edit"
+	// SecurityOperation type
+	SecurityOperation = "Security"
 )
 
 // Different resource types that are supported in CLI
@@ -336,6 +338,18 @@ const (
 	CustomCertHostPathCertificateType = "CustomCertHostPath"
 	// CustomServerCertCertificateType type
 	CustomServerCertCertificateType = "CustomServerCert"
+)
+
+// KMSOpType
+const (
+	// EnableKMSOpType type
+	EnableKMSOpType = "ENABLE"
+	// DisableKMSOpType type
+	DisableKMSOpType = "DISABLE"
+	// RotateKMSConfigKMSOpType type
+	RotateKMSConfigKMSOpType = "ROTATE-KMS-CONFIG"
+	// RotateUniverseKeyKMSOpType type
+	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

@@ -3,6 +3,11 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +59,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .collect(Collectors.toSet());
     this.tableInfoList = tableInfoList;
     this.pitrParams = pitrParams;
+    if (this.pitrParams == null) {
+      updatePitrParams(xClusterConfig);
+    }
   }
 
   /** It is used in the basic/txn create method. */
@@ -70,6 +78,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
         null /* pitrParams */);
+    if (this.pitrParams == null) {
+      updatePitrParams(xClusterConfig);
+    }
   }
 
   /** It is used in the db scoped create method. */
@@ -83,6 +94,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.bootstrapParams = bootstrapParams;
     this.dbs = dbs;
     this.pitrParams = pitrParams;
+    if (this.pitrParams == null) {
+      updatePitrParams(xClusterConfig);
+    }
   }
 
   public XClusterConfigTaskParams(
@@ -93,6 +107,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       boolean isForceBootstrap) {
     this(xClusterConfig, bootstrapParams, dbs, pitrParams);
     this.isForceBootstrap = isForceBootstrap;
+    if (this.pitrParams == null) {
+      updatePitrParams(xClusterConfig);
+    }
   }
 
   /** It is used in the edit method. */
@@ -117,6 +134,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .collect(Collectors.toSet());
     this.tableIdsToRemove = tableIdsToRemove;
     this.tableInfoList = tableInfoList;
+    updatePitrParams(xClusterConfig);
 
     // Todo: add support for accepting pitr params from the user for the transactional xCluster
     //  to make it consistent with the DR config api.
@@ -133,6 +151,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.editFormData = editFormData;
     this.databaseIdsToAdd = databaseIdsToAdd;
     this.databaseIdsToRemove = databaseIdsToRemove;
+    updatePitrParams(xClusterConfig);
   }
 
   /** It is used in the restart method. */
@@ -157,6 +176,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .map(Entry::getKey)
             .collect(Collectors.toSet());
     this.isForceBootstrap = isForceBootstrap;
+    updatePitrParams(xClusterConfig);
 
     // Todo: add support for accepting pitr params from the user for the transactional xCluster
     //  to make it consistent with the DR config api.
@@ -183,5 +203,59 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
     this.syncFormData = syncFormData;
     this.setUniverseUUID(syncFormData.targetUniverseUUID);
+  }
+
+  public void updatePitrParams(XClusterConfig xClusterConfig) {
+    if (xClusterConfig.getType().equals(XClusterConfig.ConfigType.Basic)) {
+      return;
+    }
+
+    RuntimeConfGetter confGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+
+    // Fetch the previous default values for pitr params from the target universe runtime config
+    // as old DR configs might not have these parameters.
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    long pitrRetentionPeriodSec =
+        confGetter
+            .getConfForScope(targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+            .getSeconds();
+    ;
+    long pitrSnapshotIntervalSec =
+        confGetter
+            .getConfForScope(
+                targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+            .getSeconds();
+    ;
+    DrConfig drConfig = xClusterConfig.getDrConfig();
+    if (drConfig != null
+        && drConfig.getPitrRetentionPeriodSec() != 0
+        && drConfig.getPitrSnapshotIntervalSec() != 0) {
+      if (drConfig.getPitrRetentionPeriodSec() != 0) {
+        pitrSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
+      }
+      if (drConfig.getPitrSnapshotIntervalSec() != 0) {
+        pitrRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
+      }
+    }
+    this.pitrParams =
+        new DrConfigCreateForm.PitrParams(pitrRetentionPeriodSec, pitrSnapshotIntervalSec);
+  }
+
+  /** It is used in the edit DR Config method. */
+  public XClusterConfigTaskParams(DrConfigEditForm drConfigEditForm) {
+    this.pitrParams = drConfigEditForm.pitrParams;
+    if (editFormData.bootstrapParams != null) {
+      editFormData.bootstrapParams.backupRequestParams =
+          editFormData.bootstrapParams.backupRequestParams;
+    }
+  }
+
+  public void setPitrParams(DrConfigCreateForm.PitrParams pitrParams) {
+    this.pitrParams = pitrParams;
+  }
+
+  public void setBootstrapParams(XClusterConfigCreateFormData.BootstrapParams bootstrapParams) {
+    this.bootstrapParams = bootstrapParams;
   }
 }

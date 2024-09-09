@@ -10,7 +10,6 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +38,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
@@ -442,6 +442,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
+            new PitrParams(),
             Set.of(sourceNamespace));
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.getActiveXClusterConfig().update();
@@ -508,6 +509,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
+            new PitrParams(),
             Set.of(sourceNamespace));
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.getActiveXClusterConfig().update();
@@ -544,6 +546,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
+            new PitrParams(),
             Set.of(sourceNamespace));
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.getActiveXClusterConfig().update();
@@ -609,6 +612,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
+            new PitrParams(),
             Set.of(sourceNamespace));
     drConfig.setState(State.Halted);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Initialized);
@@ -633,7 +637,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.RestartDrConfig), paramsArgumentCaptor.capture());
     XClusterConfigTaskParams params = paramsArgumentCaptor.getValue();
-    assertNull(params.getPitrParams());
+    assertNotNull(params.getPitrParams());
     assertEquals(drConfig.getActiveXClusterConfig().getDbIds(), params.getDbs());
     assertTrue(params.isForceBootstrap());
   }
@@ -648,6 +652,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                 sourceUniverse.getUniverseUUID(),
                 targetUniverse.getUniverseUUID(),
                 new BootstrapBackupParams(),
+                new PitrParams(),
                 Set.of("sourceNamespace")));
     drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
@@ -672,7 +677,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     verify(mockCommissioner).submit(eq(TaskType.EditDrConfig), paramsArgumentCaptor.capture());
     XClusterConfigTaskParams params = paramsArgumentCaptor.getValue();
     assertEquals(drConfig.getActiveXClusterConfig().getDbIds(), params.getDbs());
-    assertNull(params.getPitrParams());
+    assertNotNull(params.getPitrParams());
 
     drConfig.refresh();
     XClusterConfig newConfig = drConfig.getFailoverXClusterConfig();
@@ -688,6 +693,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
+            new PitrParams(),
             Set.of("sourceNamespace"));
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);

@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: ycql-python-driver
     parent: python-drivers
-    weight: 600
+    weight: 530
 type: docs
 ---
 

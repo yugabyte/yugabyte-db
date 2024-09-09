@@ -39,7 +39,7 @@ type RestoreKeyspaceContext struct {
 // NewRestoreKeyspaceFormat for formatting output
 func NewRestoreKeyspaceFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultRestoreKeyspace
 		return formatter.Format(format)
 	default: // custom format or json or pretty

@@ -1,11 +1,13 @@
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -79,13 +81,20 @@ public class DrConfig extends Model {
   @ApiModelProperty(value = "The state of the DR config")
   private State state;
 
+  @ApiModelProperty(value = "PITR Retention Period in seconds", accessMode = READ_WRITE)
+  private long pitrRetentionPeriodSec;
+
+  @ApiModelProperty(value = "PITR Retention Period in seconds", accessMode = READ_WRITE)
+  private long pitrSnapshotIntervalSec;
+
   @Transactional
   public static DrConfig create(
       String name,
       UUID sourceUniverseUUID,
       UUID targetUniverseUUID,
       Set<String> tableIds,
-      BootstrapParams.BootstrapBackupParams bootstrapBackupParams) {
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams,
+      PitrParams pitrParams) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
@@ -93,6 +102,8 @@ public class DrConfig extends Model {
     drConfig.setState(State.Initializing);
     drConfig.setStorageConfigUuid(bootstrapBackupParams.storageConfigUUID);
     drConfig.setParallelism(bootstrapBackupParams.parallelism);
+    drConfig.setPitrRetentionPeriodSec(pitrParams.retentionPeriodSec);
+    drConfig.setPitrSnapshotIntervalSec(pitrParams.snapshotIntervalSec);
 
     // Create a corresponding xCluster object.
     XClusterConfig xClusterConfig =
@@ -109,6 +120,7 @@ public class DrConfig extends Model {
       UUID sourceUniverseUUID,
       UUID targetUniverseUUID,
       BootstrapParams.BootstrapBackupParams bootstrapBackupParams,
+      PitrParams pitrParams,
       Set<String> sourceNamespaceIds) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
@@ -117,6 +129,8 @@ public class DrConfig extends Model {
     drConfig.setState(State.Initializing);
     drConfig.setStorageConfigUuid(bootstrapBackupParams.storageConfigUUID);
     drConfig.setParallelism(bootstrapBackupParams.parallelism);
+    drConfig.setPitrRetentionPeriodSec(pitrParams.retentionPeriodSec);
+    drConfig.setPitrSnapshotIntervalSec(pitrParams.snapshotIntervalSec);
 
     XClusterConfig xClusterConfig =
         drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Db);

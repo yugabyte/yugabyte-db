@@ -429,6 +429,7 @@ ADD_YB_TEST(user-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(write_buffer-test)
+ADD_YB_TEST(enums-test)
 
 #######################################
 # jsonwriter_test_proto

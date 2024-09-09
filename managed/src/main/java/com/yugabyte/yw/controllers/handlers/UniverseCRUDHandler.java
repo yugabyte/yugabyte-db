@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_STABLE_VERSION;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -600,9 +602,7 @@ public class UniverseCRUDHandler {
       }
       validateRegionsAndZones(provider, c);
       // Configure the defaultimageBundle in case not specified.
-      if (c.userIntent.imageBundleUUID == null
-          && provider.getCloudCode().imageBundleSupported()
-          && !cloudEnabled) {
+      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
         if (provider.getImageBundles().size() > 0) {
           List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
           if (bundles.size() > 0) {
@@ -837,6 +837,19 @@ public class UniverseCRUDHandler {
                   + " 'yb.universe.allow_connection_pooling' to true.");
         }
 
+        if (Util.compareYBVersions(
+                taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+                CONNECTION_POOLING_STABLE_VERSION,
+                CONNECTION_POOLING_PREVIEW_VERSION,
+                true)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
+                  CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
+        }
+
         if (taskParams.communicationPorts.ysqlServerRpcPort
             == taskParams.communicationPorts.internalYsqlServerRpcPort) {
           throw new PlatformServiceException(
@@ -963,7 +976,7 @@ public class UniverseCRUDHandler {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
 
-        maybeSetMemoryLimitGflags(universe, primaryCluster);
+        maybeSetMemoryLimitGflags(customer, universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -2421,43 +2434,44 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetMemoryLimitGflags(Universe universe, Cluster primaryCluster) {
+  private void maybeSetMemoryLimitGflags(
+      Customer customer, Universe universe, Cluster primaryCluster) {
 
-    if (null == primaryCluster) {
+    if (null == primaryCluster
+        || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
+        || Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2.23.0.0", "2024.1.0.0", true)
+            < 0
+        || !primaryCluster.userIntent.providerType.isVM()
+        || primaryCluster.userIntent.dedicatedNodes) {
       return;
     }
 
-    if (Util.compareYBVersions(
-                primaryCluster.userIntent.ybSoftwareVersion, "2.23.0.0", "2024.1.0.0", true)
-            >= 0
-        && primaryCluster.userIntent.providerType.isVM()
-        && !primaryCluster.userIntent.dedicatedNodes) {
-      Map<String, String> masterNewInstGflags =
-          new HashMap<>(
-              Map.of(
-                  "enforce_tablet_replica_limits",
-                  "true",
-                  "split_respects_tablet_replica_limits",
-                  "true"));
-      Map<String, String> tserverNewInstGFlags = new HashMap<>();
+    Map<String, String> masterNewInstGflags =
+        new HashMap<>(
+            Map.of(
+                "enforce_tablet_replica_limits",
+                "true",
+                "split_respects_tablet_replica_limits",
+                "true"));
+    Map<String, String> tserverNewInstGFlags = new HashMap<>();
 
-      Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
-      tserverNewInstGFlags.putAll(memNewInstFlag);
-      masterNewInstGflags.putAll(memNewInstFlag);
+    Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
+    tserverNewInstGFlags.putAll(memNewInstFlag);
+    masterNewInstGflags.putAll(memNewInstFlag);
 
-      SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
-      if (!tserverNewInstGFlags.isEmpty()) {
-        newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
-      }
-      if (!masterNewInstGflags.isEmpty()) {
-        newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
-      }
-      LOG.info(
-          "Setting new install gflags to {} on universe {}",
-          newInstallGFlags.value,
-          universe.getName());
-      universe.setNewInstallGFlags(newInstallGFlags);
+    SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
+    if (!tserverNewInstGFlags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
     }
+    if (!masterNewInstGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+    }
+    LOG.info(
+        "Setting new install gflags to {} on universe {}",
+        newInstallGFlags.value,
+        universe.getName());
+    universe.setNewInstallGFlags(newInstallGFlags);
   }
 
   // This method enforces the user tags provided in runtime config.

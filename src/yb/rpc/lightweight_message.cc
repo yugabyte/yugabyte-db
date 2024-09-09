@@ -31,7 +31,27 @@ DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
     "The maximum size of a message of any RPC that the server will accept. The sum of "
     "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
 
-DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
+
+namespace {
+
+bool RpcMaxMessageSizeValidator(const char* flag_name, uint64_t value) {
+  // This validation depends on the value of: protobuf_message_total_bytes_limit.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (value >= FLAGS_protobuf_message_total_bytes_limit) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Must be less than protobuf_message_total_bytes_limit "
+        << FLAGS_protobuf_message_total_bytes_limit;
+    return false;
+  }
+
+  return true;
+}
+
+} // namespace
+
+DEFINE_validator(rpc_max_message_size, &RpcMaxMessageSizeValidator);
 
 using google::protobuf::internal::WireFormatLite;
 using google::protobuf::io::CodedOutputStream;

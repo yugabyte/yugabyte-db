@@ -43,7 +43,7 @@ func (feit *FullEITContext) SetFullEIT(eit ybaclient.CertificateInfoExt) {
 // NewFullEITFormat for formatting output
 func NewFullEITFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultEITListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

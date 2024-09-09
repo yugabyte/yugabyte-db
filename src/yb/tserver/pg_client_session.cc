@@ -89,6 +89,8 @@ DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
+DECLARE_uint64(rpc_max_message_size);
+
 namespace yb::tserver {
 namespace {
 
@@ -395,8 +397,16 @@ struct PerformData {
     if (status.ok()) {
       status = ProcessResponse(used_read_time_applier ? &used_read_time : nullptr);
     }
+
+    size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+    if (status.ok() && sidecars.size() > max_size) {
+      status = STATUS_FORMAT(
+          InvalidArgument, "Sending too long RPC message ($0 bytes of data)", sidecars.size());
+    }
+
     if (!status.ok()) {
       StatusToPB(status, resp.mutable_status());
+      sidecars.Reset();
       used_read_time = {};
     }
     if (cache_setter) {

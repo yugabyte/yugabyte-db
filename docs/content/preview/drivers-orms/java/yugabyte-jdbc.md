@@ -3,6 +3,7 @@ title: JDBC smart driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB JDBC Smart Driver
+badges: ysql
 aliases:
   - /develop/client-drivers/java/
   - /preview/develop/client-drivers/java/
@@ -11,9 +12,9 @@ aliases:
   - /preview/integrations/jdbc-drivers/
 menu:
   preview:
-    identifier: yugabyte-jdbc-driver
+    identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 
@@ -252,8 +253,5 @@ If you receive no output or an error, check the parameters in the connection str
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
-- Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../ebean/)

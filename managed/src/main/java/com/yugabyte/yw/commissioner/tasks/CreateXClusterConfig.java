@@ -173,7 +173,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
-        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+        // Check equality of auto flags on both universes only if universe is used for DR.
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse, xClusterConfig.isUsedForDr())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
 
         createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Updating);

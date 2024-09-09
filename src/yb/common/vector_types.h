@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <vector>
+
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 
@@ -27,19 +28,5 @@ using FloatVector = std::vector<float>;
 using Int32Vector = std::vector<int32_t>;
 using UInt64Vector = std::vector<uint64_t>;
 using UInt8Vector = std::vector<uint8_t>;
-
-// This MUST match the Vector struct definition in
-// src/postgres/third-party-extensions/pgvector/src/vector.h.
-struct YSQLVector {
-  // Commented out as this field is not transferred over the wire for all
-  // Varlens.
-  // int32  vl_len_;    /* varlena header (do not touch directly!) */
-  int16 dim; /* number of dimensions */
-  int16 unused;
-  float elems[];
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(YSQLVector);
-};
 
 }  // namespace yb

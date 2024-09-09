@@ -37,7 +37,7 @@ func (fear *FullEARContext) SetFullEAR(ear util.KMSConfig) {
 // NewFullEARFormat for formatting output
 func NewFullEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultEARListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -61,9 +61,9 @@ func (fear *FullEARContext) Write() error {
 	}
 	fearc.EAR.ear = fear.ear
 
-	if fear.ear.HashiCorp != nil {
+	if fear.ear.Hashicorp != nil {
 		fearc.HashicorpEAR = &hashicorp.EARContext{
-			Hashicorp: *fear.ear.HashiCorp,
+			Hashicorp: *fear.ear.Hashicorp,
 		}
 	}
 

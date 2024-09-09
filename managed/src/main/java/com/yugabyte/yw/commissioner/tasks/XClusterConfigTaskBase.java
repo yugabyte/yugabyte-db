@@ -1799,6 +1799,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param sourceTableInfoList The list of table information from the source universe.
    * @param targetUniverseUUID The UUID of the target universe.
    * @param targetTableInfoList The list of table information from the target universe.
+   * @param skipTxnReplicationCheck Whether to skip the check for tables in transactional
    * @throws PlatformServiceException if any of the specified tables are already in replication
    *     between the universes in the same direction.
    */
@@ -1809,7 +1810,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       UUID sourceUniverseUUID,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       UUID targetUniverseUUID,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      boolean skipTxnReplicationCheck) {
     List<XClusterConfig> xClusterConfigs =
         XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
     xClusterConfigs.forEach(
@@ -1847,7 +1849,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     if (configType.equals(XClusterConfig.ConfigType.Basic)) {
       checkTableIdsInTxnReplicationOnUniverse(targetUniverse, targetClusterConfig, targetTableIds);
       checkTableIdsInTxnReplicationOnUniverse(sourceUniverse, sourceClusterConfig, tableIds);
-    } else {
+    } else if (!skipTxnReplicationCheck) {
       checkTableIdsInReplicationOnUniverse(
           targetUniverse, targetClusterConfig, targetTableIds, new HashSet<>());
       checkTableIdsInReplicationOnUniverse(

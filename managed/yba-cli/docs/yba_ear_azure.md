@@ -38,4 +38,5 @@ yba ear azure [flags]
 * [yba ear azure delete](yba_ear_azure_delete.md)	 - Delete a YugabyteDB Anywhere Azure encryption at rest configuration
 * [yba ear azure describe](yba_ear_azure_describe.md)	 - Describe an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear azure list](yba_ear_azure_list.md)	 - List Azure YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear azure update](yba_ear_azure_update.md)	 - Update a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
 

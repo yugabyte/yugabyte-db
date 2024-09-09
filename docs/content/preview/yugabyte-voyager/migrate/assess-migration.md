@@ -137,7 +137,7 @@ For the most accurate migration assessment, the source database must be actively
 
 ## Assess a fleet of databases (Oracle only)
 
-Use the Bulk Assessment command ([assess-migration-bulk](../reference/assess-migration/#assess-migration-bulk)) to assess multiple schemas across one or more database instances simultaneously. It offers:
+Use the Bulk Assessment command ([assess-migration-bulk](../../reference/assess-migration/#assess-migration-bulk)) to assess multiple schemas across one or more database instances simultaneously. It offers:
 
 - Multi-Schema Assessment: Assess multiple schemas in different database instances with a single command, simplifying migration planning.
 - Centralized Reporting: All assessment reports are generated and stored in one organized directory, making
