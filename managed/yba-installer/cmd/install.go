@@ -61,6 +61,9 @@ var installCmd = &cobra.Command{
 
 		// Preflight checks
 		// TODO: Add preflight checks for ybdb.
+		if dataless {
+			skippedPreflightChecks = append(skippedPreflightChecks, "disk-availability")
+		}
 		var results *checks.MappedResults
 		if common.IsPostgresEnabled() {
 			results = preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)

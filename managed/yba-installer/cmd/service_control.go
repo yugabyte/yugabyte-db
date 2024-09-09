@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
@@ -36,7 +38,15 @@ var startCmd = &cobra.Command{
 			log.Fatal("cannot start services - need installed state got " +
 				state.CurrentStatus.String())
 		}
+
+		// Initialize if it has not already happened. Do this instead of normal start workflow
 		if !state.Initialized {
+			// Run preflight check for data directory size if we have to initialize.
+			results := preflight.Run([]preflight.Check{checks.DiskAvail})
+			preflight.PrintPreflightResults(results)
+			if preflight.ShouldFail(results) {
+				log.Fatal("preflight failed")
+			}
 			log.Info("Initializing YBA before starting services")
 			if err := common.Initialize(); err != nil {
 				log.Fatal("Failed to initialize common components: " + err.Error())
@@ -56,6 +66,10 @@ var startCmd = &cobra.Command{
 			getAndPrintStatus()
 			// We can exit early, as initialize will also start the services
 			return
+		}
+
+		if err := common.CheckDataVersionFile(); err != nil {
+			log.Fatal("Failed to validate data version: " + err.Error())
 		}
 		if len(args) == 1 {
 			if err := services[args[0]].Start(); err != nil {

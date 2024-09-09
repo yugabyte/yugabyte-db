@@ -104,6 +104,11 @@ func Initialize() error {
 		return err
 	}
 
+	// Validate or create the data version file.
+	if err := CheckOrCreateDataVersionFile(); err != nil {
+		return err
+	}
+
 	// Generate certs if required.
 	var serverCertPath, serverKeyPath string
 	if len(viper.GetString("server_cert_path")) == 0 {
@@ -169,6 +174,34 @@ func CreateDirs(createDirs []string) error {
 		}
 	}
 	return nil
+}
+
+// CheckOrCreateDataVersionFile checks if the YBA Version is older than the data version file. This is not
+// supported as an older YBA cannot run with newer data due to PG migrations. If the file does not
+// exist, it will instead create it with the current version
+func CheckOrCreateDataVersionFile() error {
+	_, err := os.Stat(DataVersionFile())
+	if os.IsNotExist(err) {
+		return os.WriteFile(DataVersionFile(), []byte(Version), 0644)
+	}
+	return CheckDataVersionFile()
+}
+
+// CheckDataVersionFile checks if the YBA Version is older than the data version file. This is not
+// supported as an older YBA cannot run with newer data due to PG migrations
+func CheckDataVersionFile() error {
+	buf, err := os.ReadFile(DataVersionFile())
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return fmt.Errorf("could not open data version file: %w", err)
+		}
+		dataVersion := strings.TrimSpace(string(buf))
+		if LessVersions(Version, dataVersion) {
+			return fmt.Errorf("YBA version %s is older than data version %s", Version, dataVersion)
+		}
+	}
+	// Update to the latest version.
+	return os.WriteFile(DataVersionFile(), []byte(Version), 0644)
 }
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
