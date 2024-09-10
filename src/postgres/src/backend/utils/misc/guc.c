@@ -5417,7 +5417,12 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&wal_level,
-		WAL_LEVEL_REPLICA, wal_level_options,
+		/*
+		 * YB NOTE: wal_level is not applicable to YB. So for user experience,
+		 * we set the default to logical, so that any logical replication
+		 * client doesn't throw any errors based on the value of the wal_level.
+		 */
+		WAL_LEVEL_LOGICAL, wal_level_options,
 		NULL, NULL, NULL
 	},
 
