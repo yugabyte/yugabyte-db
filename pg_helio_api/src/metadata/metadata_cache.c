@@ -671,6 +671,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_locf_fill window function */
 	Oid ApiCatalogBsonLocfFillFunctionOid;
 
+	/* OID of the BSONINTEGRAL aggregate function */
+	Oid ApiCatalogBsonIntegralAggregateFunctionOid;
+
+	/* OID of the BSONDERIVATIVE aggregate function */
+	Oid ApiCatalogBsonDerivativeAggregateFunctionOid;
+
 	/* OID of the BSONAVERAGE aggregate function */
 	Oid ApiCatalogBsonAverageAggregateFunctionOid;
 
@@ -3406,6 +3412,24 @@ BsonLocfFillFunctionOid(void)
 	}
 
 	return Cache.ApiCatalogBsonLocfFillFunctionOid;
+}
+
+
+Oid
+BsonIntegralAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonIntegralAggregateFunctionOid,
+		"helio_api_internal", "bsonintegral");
+}
+
+
+Oid
+BsonDerivativeAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonDerivativeAggregateFunctionOid,
+		"helio_api_internal", "bsonderivative");
 }
 
 

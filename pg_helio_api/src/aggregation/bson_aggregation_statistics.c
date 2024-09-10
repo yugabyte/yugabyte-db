@@ -55,6 +55,18 @@ enum InputValidFlags
 	InputValidFlags_Input = 4
 };
 
+typedef struct BsonIntegralAndDerivativeAggState
+{
+	/* The result value of current window */
+	bson_value_t result;
+
+	/* anchorX/anchorY is an anchor point for calculating integral or derivative.
+	 * For $integral, anchorX is updated to the previous document of the window,
+	 * For $derivative, anchorX is always updated to the first document of the window.
+	 */
+	bson_value_t anchorX;
+	bson_value_t anchorY;
+} BsonIntegralAndDerivativeAggState;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -103,7 +115,24 @@ static void CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *
 static bool CalculateExpMovingAvg(bson_value_t *currentValue, bson_value_t *perValue,
 								  bson_value_t *weightValue, bool isAlpha,
 								  bson_value_t *resultValue);
+static bytea * AllocateBsonIntegralAndDerivativeAggState(void);
 
+static void HandleIntegralDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
+									 long timeUnitInMs,
+									 BsonIntegralAndDerivativeAggState *currentState,
+									 const bool isIntegralOperator);
+static void RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue,
+												 bson_value_t *yBsonValue,
+												 long timeUnitInMs,
+												 const bool isIntegralOperator);
+static bool IntegralOfTwoPointsByTrapezoidalRule(bson_value_t *xValue,
+												 bson_value_t *yValue,
+												 BsonIntegralAndDerivativeAggState *
+												 currentState,
+												 bson_value_t *timeUnitInMs);
+static bool DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
+								  BsonIntegralAndDerivativeAggState *currentState,
+								  bson_value_t *timeUnitInMs);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -119,7 +148,9 @@ PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_combine);
 PG_FUNCTION_INFO_V1(bson_std_dev_pop_final);
 PG_FUNCTION_INFO_V1(bson_std_dev_samp_final);
 PG_FUNCTION_INFO_V1(bson_exp_moving_avg);
-
+PG_FUNCTION_INFO_V1(bson_derivative_transition);
+PG_FUNCTION_INFO_V1(bson_integral_transition);
+PG_FUNCTION_INFO_V1(bson_integral_derivative_final);
 
 /*
  * Transition function for the BSONCOVARIANCEPOP and BSONCOVARIANCESAMP aggregate.
@@ -873,14 +904,210 @@ bson_exp_moving_avg(PG_FUNCTION_ARGS)
 }
 
 
+/* transition function for the BSON_INTEGRAL aggregate
+ * use the trapzoidal rule to calculate the integral
+ */
+Datum
+bson_integral_transition(PG_FUNCTION_ARGS)
+{
+	bytea *bytes;
+	bool isIntegral = true;
+	BsonIntegralAndDerivativeAggState *currentState;
+
+	pgbson *xValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	pgbson *yValue = PG_GETARG_MAYBE_NULL_PGBSON(2);
+	long timeUnitInt64 = PG_GETARG_INT64(3);
+	pgbsonelement xValueElement, yValueElement;
+	PgbsonToSinglePgbsonElement(xValue, &xValueElement);
+	PgbsonToSinglePgbsonElement(yValue, &yValueElement);
+	if (IsPgbsonEmptyDocument(xValue) || IsPgbsonEmptyDocument(yValue))
+	{
+		PG_RETURN_NULL();
+	}
+	RunTimeCheckForIntegralAndDerivative(&xValueElement.bsonValue,
+										 &yValueElement.bsonValue, timeUnitInt64,
+										 isIntegral);
+	if (PG_ARGISNULL(0))
+	{
+		MemoryContext aggregateContext;
+		if (AggCheckCallContext(fcinfo, &aggregateContext) != AGG_CONTEXT_WINDOW)
+		{
+			ereport(ERROR, errmsg(
+						"window aggregate function called in non-window-aggregate context"));
+		}
+
+		/* Create the aggregate state in the aggregate context. */
+		MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+		bytes = AllocateBsonIntegralAndDerivativeAggState();
+		currentState = (BsonIntegralAndDerivativeAggState *) VARDATA(bytes);
+		currentState->result.value_type = BSON_TYPE_DOUBLE;
+
+		/* update the anchor point with current document in window */
+		currentState->anchorX = xValueElement.bsonValue;
+		currentState->anchorY = yValueElement.bsonValue;
+
+		/* if xValue is a date, convert it to double */
+		if (xValueElement.bsonValue.value_type == BSON_TYPE_DATE_TIME)
+		{
+			currentState->anchorX.value_type = BSON_TYPE_DOUBLE;
+			currentState->anchorX.value.v_double = BsonValueAsDouble(
+				&xValueElement.bsonValue);
+		}
+		MemoryContextSwitchTo(oldContext);
+		PG_RETURN_POINTER(bytes);
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonIntegralAndDerivativeAggState *) VARDATA_ANY(bytes);
+	}
+	HandleIntegralDerivative(&xValueElement.bsonValue, &yValueElement.bsonValue,
+							 timeUnitInt64,
+							 currentState, isIntegral);
+
+	/* update the anchor point with current document in window */
+	currentState->anchorX = xValueElement.bsonValue;
+	currentState->anchorY = yValueElement.bsonValue;
+
+	/* if xValue is a date, convert it to double */
+	if (xValueElement.bsonValue.value_type == BSON_TYPE_DATE_TIME)
+	{
+		currentState->anchorX.value_type = BSON_TYPE_DOUBLE;
+		currentState->anchorX.value.v_double = BsonValueAsDouble(
+			&xValueElement.bsonValue);
+	}
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/* transition function for the BSON_DERIVATIVE aggregate
+ * use dy/dx to calculate the derivative
+ */
+Datum
+bson_derivative_transition(PG_FUNCTION_ARGS)
+{
+	pgbson *xValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	pgbson *yValue = PG_GETARG_MAYBE_NULL_PGBSON(2);
+	long timeUnitInt64 = PG_GETARG_INT64(3);
+	pgbsonelement xValueElement, yValueElement;
+	PgbsonToSinglePgbsonElement(xValue, &xValueElement);
+	PgbsonToSinglePgbsonElement(yValue, &yValueElement);
+
+	bytea *bytes;
+	bool isIntegral = false;
+	BsonIntegralAndDerivativeAggState *currentState;
+	if (IsPgbsonEmptyDocument(xValue) || IsPgbsonEmptyDocument(yValue))
+	{
+		PG_RETURN_NULL();
+	}
+	RunTimeCheckForIntegralAndDerivative(&xValueElement.bsonValue,
+										 &yValueElement.bsonValue, timeUnitInt64,
+										 isIntegral);
+	if (PG_ARGISNULL(0))
+	{
+		MemoryContext aggregateContext;
+		if (AggCheckCallContext(fcinfo, &aggregateContext) != AGG_CONTEXT_WINDOW)
+		{
+			ereport(ERROR, errmsg(
+						"window aggregate function called in non-window-aggregate context"));
+		}
+
+		/* Create the aggregate state in the aggregate context. */
+		MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+		bytes = AllocateBsonIntegralAndDerivativeAggState();
+		currentState = (BsonIntegralAndDerivativeAggState *) VARDATA(bytes);
+		currentState->result.value_type = BSON_TYPE_NULL;
+
+		/* anchor points are always the first document in the window for $derivative*/
+		/* if xValue is a date, convert it to double */
+		if (xValueElement.bsonValue.value_type == BSON_TYPE_DATE_TIME)
+		{
+			currentState->anchorX.value_type = BSON_TYPE_DOUBLE;
+			currentState->anchorX.value.v_double = BsonValueAsDouble(
+				&xValueElement.bsonValue);
+		}
+		else
+		{
+			currentState->anchorX = xValueElement.bsonValue;
+		}
+		currentState->anchorY = yValueElement.bsonValue;
+
+		/* We have the first document in state and the second incoming document
+		 * it's ready to calculate the derivative */
+		MemoryContextSwitchTo(oldContext);
+		PG_RETURN_POINTER(bytes);
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonIntegralAndDerivativeAggState *) VARDATA_ANY(bytes);
+	}
+	if (IsPgbsonEmptyDocument(xValue) || IsPgbsonEmptyDocument(yValue))
+	{
+		PG_RETURN_POINTER(bytes);
+	}
+	HandleIntegralDerivative(&xValueElement.bsonValue, &yValueElement.bsonValue,
+							 timeUnitInt64,
+							 currentState, isIntegral);
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/* final function for the BSON_INTEGRAL and BSON_DERIVATIVE aggregate
+ * This takes the final value created and outputs a bson "integral" or "derivative"
+ * with the appropriate type.
+ */
+Datum
+bson_integral_derivative_final(PG_FUNCTION_ARGS)
+{
+	bytea *currentState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+
+	if (currentState != NULL)
+	{
+		BsonIntegralAndDerivativeAggState *state =
+			(BsonIntegralAndDerivativeAggState *) VARDATA_ANY(
+				currentState);
+		if (state->result.value_type != BSON_TYPE_NULL)
+		{
+			finalValue.bsonValue = state->result;
+		}
+		else if (state->result.value_type == BSON_TYPE_NULL)
+		{
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		}
+	}
+	else
+	{
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+	}
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
 /* --------------------------------------------------------- */
 /* Private helper methods */
 /* --------------------------------------------------------- */
 
-bytea *
+static bytea *
 AllocateBsonCovarianceOrVarianceAggState()
 {
 	int bson_size = sizeof(BsonCovarianceAndVarianceAggState) + VARHDRSZ;
+	bytea *combinedStateBytes = (bytea *) palloc0(bson_size);
+	SET_VARSIZE(combinedStateBytes, bson_size);
+
+	return combinedStateBytes;
+}
+
+
+static bytea *
+AllocateBsonIntegralAndDerivativeAggState()
+{
+	int bson_size = sizeof(BsonIntegralAndDerivativeAggState) + VARHDRSZ;
 	bytea *combinedStateBytes = (bytea *) palloc0(bson_size);
 	SET_VARSIZE(combinedStateBytes, bson_size);
 
@@ -1646,4 +1873,195 @@ CalculateExpMovingAvg(bson_value_t *bsonCurrentValue, bson_value_t *bsonPerValue
 		}
 	}
 	return isDecimalOpSuccess;
+}
+
+
+/* This function is used to handle the $integral and $derivative operators
+ *  1. Calculate the integral or derivative value
+ *  2. Update the result value in the currentState
+ */
+static void
+HandleIntegralDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
+						 long timeUnitInt64,
+						 BsonIntegralAndDerivativeAggState *currentState,
+						 const bool isIntegralOperator)
+{
+	/* Intermidiate variables for calculation */
+	bson_value_t timeUnitInMs, yValue, xValue;
+	timeUnitInMs.value_type = BSON_TYPE_DOUBLE;
+	timeUnitInMs.value.v_double = timeUnitInt64;
+	yValue = *yBsonValue;
+	xValue = *xBsonValue;
+
+	/* Convert date time to double to avoid calucation error*/
+	if (xBsonValue->value_type == BSON_TYPE_DATE_TIME)
+	{
+		xValue.value_type = BSON_TYPE_DOUBLE;
+		xValue.value.v_double = BsonValueAsDouble(xBsonValue);
+	}
+
+	/* Calculation status */
+	bool success = isIntegralOperator ?
+				   IntegralOfTwoPointsByTrapezoidalRule(&xValue, &yValue,
+														currentState,
+														&timeUnitInMs) :
+				   DerivativeOfTwoPoints(&xValue, &yValue, currentState,
+										 &timeUnitInMs);
+
+	/* If calculation failed, throw an error */
+	if (!success)
+	{
+		char *opName = isIntegralOperator ? "$integral" : "$derivative";
+		ereport(ERROR, errcode(MongoInternalError),
+				errmsg(
+					"Handling %s: yValue = %f, xValue = %f, currentState->anchorX = %f, currentState->anchorY = %f, currentState->result = %f",
+					opName, BsonValueAsDouble(&yValue), BsonValueAsDouble(&xValue),
+					BsonValueAsDouble(&currentState->anchorX), BsonValueAsDouble(
+						&currentState->anchorY), BsonValueAsDouble(
+						&currentState->result)),
+				errdetail_log(
+					"Handling %s: yValue = %f, xValue = %f, currentState->anchorX = %f, currentState->anchorY = %f, currentState->result = %f",
+					opName, BsonValueAsDouble(&yValue), BsonValueAsDouble(&xValue),
+					BsonValueAsDouble(&currentState->anchorX), BsonValueAsDouble(
+						&currentState->anchorY), BsonValueAsDouble(
+						&currentState->result)));
+	}
+}
+
+
+/* This function is used to check the runtime syntax, input, and unit for $integral and $derivative operators */
+static void
+RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
+									 long timeUnitInt64, bool isIntegralOperator)
+{
+	const char *opName = isIntegralOperator ? "$integral" : "$derivative";
+
+	/* if xBsonValue is not a date and unit is specified, throw an error */
+	if (IsBsonValueDateTimeFormat(xBsonValue->value_type) ||
+		xBsonValue->value_type == BSON_TYPE_NULL)
+	{
+		if (!timeUnitInt64)
+		{
+			int errorCode = isIntegralOperator ? ERRCODE_HELIO_LOCATION5423902 :
+							ERRCODE_HELIO_LOCATION5624901;
+			const char *errorMsg = isIntegralOperator
+								   ?
+								   "%s (with no 'unit') expects the sortBy field to be numeric"
+								   : "%s where the sortBy is a Date requires an 'unit'";
+			ereport(ERROR, errcode(errorCode),
+					errmsg(errorMsg, opName),
+					errdetail_log(errorMsg, opName));
+		}
+	}
+	/* if xBsonValue is a number and unit is specified, throw an error */
+	else if (BsonTypeIsNumber(xBsonValue->value_type))
+	{
+		if (timeUnitInt64)
+		{
+			int errorCode = isIntegralOperator ? ERRCODE_HELIO_LOCATION5423901 :
+							ERRCODE_HELIO_LOCATION5624900;
+			const char *errorMsg = "%s with 'unit' expects the sortBy field to be a Date";
+			ereport(ERROR, errcode(errorCode),
+					errmsg(errorMsg, opName),
+					errdetail_log(errorMsg, opName));
+		}
+	}
+
+	/* if unit is specifed but x is not a date, throw an error */
+	if (timeUnitInt64 && xBsonValue->value_type != BSON_TYPE_DATE_TIME)
+	{
+		ereport(ERROR, (errcode(MongoLocation5429513), errmsg(
+							"Expected the sortBy field to be a Date, but it was %s",
+							BsonTypeName(
+								xBsonValue->value_type))));
+	}
+	/* if unit is not specified and x is a date, throw an error */
+	else if (!timeUnitInt64 && xBsonValue->value_type == BSON_TYPE_DATE_TIME)
+	{
+		ereport(ERROR, (errcode(MongoLocation5429513), errmsg(
+							"For windows that involve date or time ranges, a unit must be provided.")));
+	}
+
+	/* y must be a number */
+	if (!BsonTypeIsNumber(yBsonValue->value_type))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5423900),
+						errmsg(
+							"The input value of %s window function must be a vector"
+							" of 2 value, the first value must be numeric or date type "
+							"and the second must be numeric.", opName),
+						errdetail_log("Input value is: %s",
+									  BsonTypeName(yBsonValue->value_type))));
+	}
+}
+
+
+/* This function is used to calculate the integral
+ * of current state and current document in window by Trapezoidal Rule.
+ * The result will be promoted to decimal if one of the input is decimal.
+ */
+bool
+IntegralOfTwoPointsByTrapezoidalRule(bson_value_t *xValue,
+									 bson_value_t *yValue,
+									 BsonIntegralAndDerivativeAggState *currentState,
+									 bson_value_t *timeUnitInMs)
+{
+	bool success = true;
+	bson_value_t stateXValue = currentState->anchorX;
+	const bson_value_t stateYValue = currentState->anchorY;
+
+	bool overflowedFromInt64, convertInt64OverflowToDouble = false;
+
+	/* get time delta */
+	success &= SubtractNumberFromBsonValue(xValue, &stateXValue, &overflowedFromInt64);
+
+	/* add anchorY axis */
+	success &= AddNumberToBsonValue(yValue, &stateYValue, &overflowedFromInt64);
+
+	/* get area */
+	success &= MultiplyWithFactorAndUpdate(yValue, xValue, convertInt64OverflowToDouble);
+	bson_value_t bsonValueTwo;
+	bsonValueTwo.value_type = BSON_TYPE_DOUBLE;
+	bsonValueTwo.value.v_double = 2.0;
+
+	success &= DivideBsonValueNumbers(yValue, &bsonValueTwo);
+	if (timeUnitInMs->value.v_double != 0.0)
+	{
+		success &= DivideBsonValueNumbers(yValue, timeUnitInMs);
+	}
+
+	success &= AddNumberToBsonValue(&currentState->result, yValue, &overflowedFromInt64);
+	return success;
+}
+
+
+/* This function is used to calculate the derivative
+ * of current state and current document in window by derivative rule.
+ * The result will be promoted to decimal if one of the input is decimal.
+ */
+bool
+DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
+					  BsonIntegralAndDerivativeAggState *currentState,
+					  bson_value_t *timeUnitInMs)
+{
+	bool success = true;
+	bson_value_t stateXValue = currentState->anchorX;
+	const bson_value_t stateYValue = currentState->anchorY;
+
+	bool overflowedFromInt64 = false;
+
+	/* get time delta */
+	success &= SubtractNumberFromBsonValue(xValue, &stateXValue, &overflowedFromInt64);
+	if (timeUnitInMs->value.v_double != 0.0)
+	{
+		success &= DivideBsonValueNumbers(xValue, timeUnitInMs);
+	}
+
+	/* get value delta */
+	success &= SubtractNumberFromBsonValue(yValue, &stateYValue, &overflowedFromInt64);
+
+	/* get derivative */
+	success &= DivideBsonValueNumbers(yValue, xValue);
+	currentState->result = *yValue;
+	return success;
 }

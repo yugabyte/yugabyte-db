@@ -18,6 +18,7 @@
 #include <optimizer/optimizer.h>
 #include <utils/builtins.h>
 #include <utils/fmgroids.h>
+#include <utils/datetime.h>
 #include <utils/array.h>
 
 #include "aggregation/bson_aggregation_window_operators.h"
@@ -116,6 +117,19 @@ typedef struct
 
 static void ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 								   DateUnit timeUnit, int *frameOptions);
+static WindowFunc * HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
+													   WindowOperatorContext *context);
+static WindowFunc * HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
+														 WindowOperatorContext *context);
+static void ParseIntegralDerivativeExpression(const bson_value_t *opValue,
+											  WindowOperatorContext *context,
+											  Expr **xExpr,
+											  Expr **yExpr,
+											  long *unitInMs,
+											  bool isIntegralOperator);
+static WindowFunc * GetIntegralDerivativeWindowFunc(const bson_value_t *opValue,
+													WindowOperatorContext *context,
+													bool isIntegral);
 static Datum EnsureValidUnitOffsetAndGetInterval(const bson_value_t *value,
 												 DateUnit dateUnit);
 
@@ -244,7 +258,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$derivative",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = HandleDollarDerivativeWindowOperator
 	},
 	{
 		.operatorName = "$documentNumber",
@@ -264,7 +278,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$integral",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = HandleDollarIntegralWindowOperator
 	},
 	{
 		.operatorName = "$last",
@@ -602,6 +616,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 				BsonIterToPgbsonElement(&sortByIter, &element);
 
 				pgbson *sortDoc = PgbsonElementToPgbson(&element);
+
 				Const *sortBson = MakeBsonConst(sortDoc);
 				bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
 
@@ -1374,6 +1389,209 @@ GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opValue,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	windowFunc->args = list_make1(accumFunc);
 	return windowFunc;
+}
+
+
+/*
+ * Handle for $integral window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonintegral`
+ */
+static WindowFunc *
+HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
+								   WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"$integral is only supported on vCore 1.22.0 and above")));
+	}
+	return GetIntegralDerivativeWindowFunc(opValue, context, true);
+}
+
+
+/*
+ * Handle for $derivative window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonderivative`
+ */
+static WindowFunc *
+HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
+									 WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"$derivative is only supported on vCore 1.22.0 and above")));
+	}
+	return GetIntegralDerivativeWindowFunc(opValue, context, false);
+}
+
+
+/*
+ * Get the window function for the integral or derivative window aggregation operator.
+ */
+WindowFunc *
+GetIntegralDerivativeWindowFunc(const bson_value_t *opValue,
+								WindowOperatorContext *context,
+								bool isIntegral)
+{
+	if (!(context->isWindowPresent || isIntegral))
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("$derivative requires explicit window bounds")));
+	}
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = isIntegral ? BsonIntegralAggregateFunctionOid() :
+						   BsonDerivativeAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+	Expr *xExpr = NULL;
+	Expr *yExpr = NULL;
+	long unitInMs = 0;
+	ParseIntegralDerivativeExpression(opValue, context, &xExpr, &yExpr, &unitInMs,
+									  isIntegral);
+
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+	Const *unitConst = (Const *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
+										   unitInMs, false, true);
+	List *xArgs, *yArgs;
+	Oid functionOid;
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		xArgs = list_make4(context->docExpr, xExpr, trueConst,
+						   context->variableContext);
+		yArgs = list_make4(context->docExpr, yExpr, trueConst,
+						   context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		xArgs = list_make3(context->docExpr, xExpr, trueConst);
+		yArgs = list_make3(context->docExpr, yExpr, trueConst);
+	}
+
+	FuncExpr *xAccumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), xArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	FuncExpr *yAccumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), yArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	windowFunc->args = list_make3(xAccumFunc, yAccumFunc, unitConst);
+	return windowFunc;
+}
+
+
+/*
+ * Parse the integral or derivative expression and return the expression.
+ */
+inline void
+ParseIntegralDerivativeExpression(const bson_value_t *opValue,
+								  WindowOperatorContext *context,
+								  Expr **xExpr,        /* Pointer to pointer */
+								  Expr **yExpr,        /* Pointer to pointer */
+								  long *unitInMs,
+								  bool isIntegralOperator)
+{
+	const char *operatorName = isIntegralOperator ? "$integral" : "$derivative";
+	SetWindowFieldSortOption *sortField;
+	if (!list_length(context->sortOptions))
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("%s requires a sortBy", operatorName)));
+	}
+	else if (list_length(context->sortOptions) > 1)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("%s requires a non-compound sortBy", operatorName)));
+	}
+	else
+	{
+		sortField = (SetWindowFieldSortOption *) list_nth(
+			context->sortOptions, 0);
+	}
+	pgbson *sortSpecBson = DatumGetPgBson(sortField->sortSpecConst->constvalue);
+	pgbson *opValueBson = BsonValueToDocumentPgbson(opValue);
+	bson_iter_t iterOpValue, iterSortSpec;
+
+	PgbsonInitIterator(opValueBson, &iterOpValue);
+	PgbsonInitIterator(sortSpecBson, &iterSortSpec);
+	while (bson_iter_next(&iterOpValue))
+	{
+		const bson_value_t *valueUserInput = bson_iter_value(&iterOpValue);
+		bson_iter_t valueIter;
+		BsonValueInitIterator(valueUserInput, &valueIter);
+		while (bson_iter_next(&valueIter))
+		{
+			const char *key = bson_iter_key(&valueIter);
+			const bson_value_t *value = bson_iter_value(&valueIter);
+			if (strcmp(key, "input") == 0)
+			{
+				*yExpr = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(value)); /* Dereference to modify the pointer */
+			}
+			else if (strcmp(key, "unit") == 0)
+			{
+				DateUnit unit = GetDateUnitFromString(value->value.v_utf8.str);
+				if (unit == DateUnit_Invalid)
+				{
+					ereport(ERROR, (errcode(MongoFailedToParse),
+									errmsg("unknown time unit value: %s",
+										   value->value.v_utf8.str),
+									errhint("unknown time unit value: %s",
+											value->value.v_utf8.str)));
+				}
+				else if (unit < DateUnit_Week)
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5490710), errmsg(
+										"unit must be 'week' or smaller"),
+									errdetail_log("unit must be 'week' or smaller")));
+				}
+				*unitInMs =
+					((Interval *) DatumGetIntervalP(
+						 GetIntervalFromDateUnitAndAmount(
+							 unit,
+							 1)))
+					->time / 1000;
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg("%s got unexpected argument: %s", operatorName,
+									   key)));
+			}
+		}
+	}
+	if (!(*yExpr))
+	{
+		ereport(ERROR, (
+					errcode(MongoFailedToParse),
+					errmsg(
+						"%s requires an 'input' expression", operatorName)));
+	}
+	if (bson_iter_next(&iterSortSpec))
+	{
+		const char *key = bson_iter_key(&iterSortSpec);
+		char *result;
+		result = (char *) palloc(strlen(key) + 1);
+		result[0] = '$';
+		strcpy(result + 1, key);
+		bson_value_t resultBsonValue;
+		resultBsonValue.value_type = BSON_TYPE_UTF8;
+		resultBsonValue.value.v_utf8.len = strlen(result);
+		resultBsonValue.value.v_utf8.str = result;
+		*xExpr = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&resultBsonValue)); /* Dereference to modify the pointer */
+		pfree(result);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("%s requires a non-compound sortBy", operatorName)));
+	}
 }
 
 

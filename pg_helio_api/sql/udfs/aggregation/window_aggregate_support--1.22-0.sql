@@ -88,3 +88,21 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_shift(__CORE_SCHEMA__.bson, i
  STABLE
  WINDOW
 AS 'MODULE_PATHNAME', $function$bson_shift$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_derivative_transition(bytea, __CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_derivative_transition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_integral_transition(bytea, __CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bigint)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_integral_transition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_integral_derivative_final(bytea)
+ RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_integral_derivative_final$function$;
