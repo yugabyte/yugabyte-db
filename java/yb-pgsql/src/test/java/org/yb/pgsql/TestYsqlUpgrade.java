@@ -275,10 +275,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ", datfrozenxid   xid       NOT NULL"
           + ", datminmxid     xid       NOT NULL"
           + ", dattablespace  oid       NOT NULL"
-          + ", datcollate     text      NOT NULL"
-          + ", datctype       text      NOT NULL"
-          + ", daticulocale   text"
-          + ", datcollversion text"
+          + ", datcollate     text      NOT NULL COLLATE \"C\""
+          + ", datctype       text      NOT NULL COLLATE \"C\""
+          + ", daticulocale   text COLLATE \"C\""
+          + ", datcollversion text COLLATE \"C\""
           + ", datacl         aclitem[]"
           + ", CONSTRAINT " + newTi.indexes.get(1).getLeft() + " PRIMARY KEY (oid ASC)"
           + "    WITH (table_oid = " + newTi.indexes.get(1).getRight() + ")"
@@ -306,7 +306,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Create a system relation just like pg_class and verify they look the same. */
   @Test
   public void creatingSystemRelsIsLikeInitdb() throws Exception {
-    TableInfo origTi = new TableInfo("pg_class", 1259L, 83L,
+    TableInfo origTi = new TableInfo("pg_class", 1259L, 83L, 273L,
         Arrays.asList(
             Pair.of("pg_class_oid_index", 2662L),
             Pair.of("pg_class_relname_nsp_index", 2663L),
@@ -1252,6 +1252,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertSysGeneratedOid(ti.getTypeOid());
       }
 
+      if (ti.getArrayTypeOid() == 0) {
+        Row row = getSingleRow(stmtForNew,
+            "SELECT typarray FROM pg_type WHERE oid = " + ti.getTypeOid());
+        ti.setArrayTypeOid(row.getLong(0));
+        assertSysGeneratedOid(ti.getArrayTypeOid());
+      }
+
       if (ti instanceof ViewInfo) {
         ViewInfo vi = (ViewInfo) ti;
         vi.setRuleOid(getSingleRow(stmtForNew, "SELECT oid FROM pg_rewrite"
@@ -1272,6 +1279,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .stream()
           .map(r -> excluded(r, "reltuples"))
           .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
+          .map(r -> excluded(r, "relacl")) // pg_class.relacl will be compared separately.
+          .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
           .collect(Collectors.toList());
     };
 
@@ -1279,9 +1288,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       List<Row> rows = getRowList(stmtForNew, formatter.format(newTi));
       return rows.stream()
           .map(r -> excluded(r, "reltuples"))
+          .map(r -> excluded(r, "relacl")) // pg_class.relacl will be compared separately.
+          .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
           .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
           .map(r -> replaced(r, newTi.getOid(), origTi.getOid()))
           .map(r -> replaced(r, newTi.getTypeOid(), origTi.getTypeOid()))
+          .map(r -> replaced(r, newTi.getArrayTypeOid(), origTi.getArrayTypeOid()))
           .map(r -> origTi instanceof ViewInfo
               ? replaced(r, ((ViewInfo) newTi).getRuleOid(), ((ViewInfo) origTi).getRuleOid())
               : r)
@@ -1302,6 +1314,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " FROM pg_class cl"
           + " LEFT JOIN pg_type tp ON cl.oid = tp.typrelid"
           + " WHERE cl.oid = %d ORDER By cl.oid, tp.oid";
+      {
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
+        assertRows(origTi.name,
+            fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+      }
+      for (int i = 0; i < origTi.indexes.size(); ++i) {
+        final int fi = i;
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.indexes.get(fi).getRight());
+        assertRows(newTi.indexes.get(i).getLeft(),
+            fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+      }
+    }
+
+    {
+      // pg_class.relacl
+      String sql = "SELECT unnest(relacl::text[]) FROM pg_class WHERE oid = %d ORDER BY 1";
       {
         TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
         assertRows(origTi.name,
@@ -1406,6 +1434,20 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String sql = "SELECT * FROM pg_init_privs"
           + " WHERE objoid IN (%s)"
           + " ORDER BY objoid";
+      TableInfoSqlFormatter fmt = (ti) -> {
+        List<Long> list = new ArrayList<>(Arrays.asList(ti.getOid(), ti.getTypeOid()));
+        list.addAll(ti.indexes.stream().map(p -> p.getRight()).collect(Collectors.toList()));
+        return String.format(sql, StringUtils.join(list, ","));
+      };
+      assertRows("pg_init_privs",
+          fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+    }
+
+    {
+      // pg_init_privs.initprivs
+      String sql = "SELECT objoid, unnest(initprivs::text[]) FROM pg_init_privs"
+          + " WHERE objoid IN (%s)"
+          + " ORDER BY 2";
       TableInfoSqlFormatter fmt = (ti) -> {
         List<Long> list = new ArrayList<>(Arrays.asList(ti.getOid(), ti.getTypeOid()));
         list.addAll(ti.indexes.stream().map(p -> p.getRight()).collect(Collectors.toList()));
@@ -2007,13 +2049,26 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // OIDs, 0 means not known in advance or not applicable.
     private long oid;
     private long typeOid;
+    private long arrayTypeOid;
 
     public final List<Pair<String, Long>> indexes;
+
+    // To be used by rels for which arrayTypeOid is hardcoded (pg_type,
+    // pg_attribute, pg_proc, and pg_class).
+    public TableInfo(
+        String name, long oid, long typeOid, long arrayTypeOid, List<Pair<String, Long>> indexes) {
+      this.name = name;
+      this.setOid(oid);
+      this.setTypeOid(typeOid);
+      this.setArrayTypeOid(arrayTypeOid);
+      this.indexes = Collections.unmodifiableList(new ArrayList<>(indexes));
+    }
 
     public TableInfo(String name, long oid, long typeOid, List<Pair<String, Long>> indexes) {
       this.name = name;
       this.setOid(oid);
       this.setTypeOid(typeOid);
+      this.setArrayTypeOid(0L);
       this.indexes = Collections.unmodifiableList(new ArrayList<>(indexes));
     }
 
@@ -2031,6 +2086,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     public void setTypeOid(long typeOid) {
       this.typeOid = typeOid;
+    }
+
+    public long getArrayTypeOid() {
+      return arrayTypeOid;
+    }
+
+    public void setArrayTypeOid(long arrayTypeOid) {
+      this.arrayTypeOid = arrayTypeOid;
     }
   }
 

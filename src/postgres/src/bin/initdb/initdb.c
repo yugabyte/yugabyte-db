@@ -1427,11 +1427,13 @@ bootstrap_template1(void)
 	char	  **bki_lines;
 	char		headerline[MAXPGPATH];
 	char		buf[64];
+	char	  **yb_orig_bki_lines;
 
 	printf(_("running bootstrap script ... "));
 	fflush(stdout);
 
 	bki_lines = readfile(bki_file);
+	yb_orig_bki_lines = bki_lines;
 
 	/* Check that bki file appears to be of the right version */
 
@@ -1509,6 +1511,13 @@ bootstrap_template1(void)
 	PG_CMD_CLOSE;
 
 	free(bki_lines);
+
+	/*
+	 * YB note: free the memory allocated by readfile(), if not done already.
+	 * Without this, initdb fails on ASAN intermittently.
+	 */
+	if (yb_orig_bki_lines != bki_lines)
+		free(yb_orig_bki_lines);
 
 	check_ok();
 }
