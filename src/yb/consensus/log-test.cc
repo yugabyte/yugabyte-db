@@ -1655,15 +1655,18 @@ TEST_F(LogTest, CopyUpTo) {
         ASSERT_OK(CheckReadEntriesResultEq(entries_copy_result, entries_result));
       }
 
+      bool has_replicated_entries = false;
       for (size_t entry_idx = 0; entry_idx < num_copied_segment_entries; ++entry_idx) {
         const auto& copied_entry = entries_copy_result.entries[entry_idx];
         if (copied_entry->has_replicate()) {
+          has_replicated_entries = true;
           const auto& op_id = OpId::FromPB(copied_entry->replicate().id());
           op_id_with_entry_meta_by_idx[op_id.index] =
               std::make_pair(op_id, entries_copy_result.entry_metadata[entry_idx]);
         }
       }
       num_ops_copied += num_copied_segment_entries;
+      ASSERT_EQ(has_replicated_entries, segment_copy->footer().has_close_timestamp_micros());
     }
 
     if (num_ops_copied > copy_num_ops) {
