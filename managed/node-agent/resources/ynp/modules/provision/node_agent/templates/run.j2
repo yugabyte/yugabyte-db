@@ -194,10 +194,10 @@ airgap_flag=""
 
 installer_dir="{{ ynp_dir }}/../../bin"
 su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
-    -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
-    --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
-    --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
-    --node_ip {{ node_ip }} --silent --skip_verify_cert $airgap_flag"
+-u {{ url }} -t {{ api_key }} --provider_id $provider_id \
+--instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} \
+--node_name {{ node_name }} --node_ip {{ node_external_fqdn }} \
+--bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
 
 loginctl enable-linger {{ yb_user }}
 # install node_agent service
@@ -219,7 +219,7 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
         # Extract IPs using sed and grep
         ips=$(echo "$response_body" | sed -n 's/.*"ip":"\([a-zA-Z0-9\.-]*\)".*/\1/p')
         for ip in $ips; do
-            if [[ "$ip" == "{{ node_ip }}" ]]; then
+            if [[ "$ip" == "{{ node_external_fqdn }}" ]]; then
                 matched=true
                 break
             fi
