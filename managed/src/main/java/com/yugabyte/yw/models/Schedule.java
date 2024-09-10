@@ -411,12 +411,12 @@ public class Schedule extends Model {
     ScheduleUpdater updater =
         s -> {
           if (newScheduleParams.schedulingFrequency > 0L) {
-            s.frequency = newScheduleParams.schedulingFrequency;
-            s.frequencyTimeUnit = newScheduleParams.frequencyTimeUnit;
-            s.cronExpression = null;
+            s.setFrequency(newScheduleParams.schedulingFrequency);
+            s.setFrequencyTimeUnit(newScheduleParams.frequencyTimeUnit);
+            s.setCronExpression(null /* cronExpression */);
           } else if (StringUtils.isNotBlank(newScheduleParams.cronExpression)) {
-            s.cronExpression = newScheduleParams.cronExpression;
-            s.frequency = 0L;
+            s.setCronExpression(newScheduleParams.cronExpression);
+            s.setFrequency(0L /* frequency */);
           }
           s.setTaskParams(Json.toJson(newScheduleParams));
           s.updateNewBackupScheduleTimes();
