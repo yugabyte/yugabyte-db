@@ -1782,7 +1782,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 				}
 				else
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_PATHNOTVIABLE),
 									errmsg(
 										"Cannot create field '%s' in element {%s : %s}",
 										path.string, path.string,
