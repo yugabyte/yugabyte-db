@@ -128,6 +128,13 @@ To create an export configuration, do the following:
 1. On the **Integrations** page, click **Configure** for the Prometheus provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Enter the endpoint URL of the Prometheus instance.
+
+    The URL must be in the form
+
+    ```sh
+    http://<prometheus-endpoint-host-address>/api/v1/otlp
+    ```
+
 1. Click **Create Configuration**.
 
   {{% /tab %}}
@@ -158,6 +165,13 @@ To create an export configuration, do the following:
 1. On the **Integrations** page, click **Configure** for the VictoriaMetrics provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Enter the endpoint URL of the VictoriaMetrics instance.
+
+    The URL must be in the form
+
+    ```sh
+    http://<victoria-metrics-endpoint-host-address>/api/v1/otlp
+    ```
+
 1. Click **Create Configuration**.
 
   {{% /tab %}}
