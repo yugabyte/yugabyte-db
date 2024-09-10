@@ -291,6 +291,12 @@ message SetupUniverseReplicationRequestPB {
   // Used for DB Scoped replication. transactional must be set.
   // Both id and name must be set. Only YQL_DATABASE_PGSQL are allowed.
   repeated NamespaceIdentifierPB producer_namespaces = 6;
+
+  // Whether automatic DDL replication is enabled - Creates the
+  // yb_xcluster_ddl_replication extension and sequences_data table.
+  // Requires DB Scoped replication, transactional and producer_namespace to be
+  // set.
+  optional bool automatic_ddl_mode = 7; // [default = false]
 }
 
 message SetupUniverseReplicationResponsePB {
@@ -555,6 +561,7 @@ message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
   repeated string namespace_ids = 2;
+  optional bool automatic_ddl_mode = 3; // [default = false]
 }
 
 message XClusterCreateOutboundReplicationGroupResponsePB {
@@ -724,6 +731,7 @@ message GetXClusterOutboundReplicationGroupInfoResponsePB {
     map<string, string> table_streams = 2;
   }
   repeated NamespaceInfoPB namespace_infos = 2;
+  optional bool automatic_ddl_mode = 4; // [default = false]
 }
 
 message GetUniverseReplicationsRequestPB {
@@ -758,6 +766,7 @@ message GetUniverseReplicationInfoResponsePB {
   }
 
   repeated DbScopedInfoPB db_scoped_infos = 5;
+  optional bool automatic_ddl_mode = 6; // [default = false]
 }
 
 message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {

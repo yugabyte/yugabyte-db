@@ -274,7 +274,8 @@ std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
 
 Status XClusterSourceManager::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch) {
+    const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode,
+    const LeaderEpoch& epoch) {
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     SCHECK(
@@ -291,7 +292,8 @@ Status XClusterSourceManager::CreateOutboundReplicationGroup(
     outbound_replication_group_map_.erase(replication_group_id);
   });
 
-  SysXClusterOutboundReplicationGroupEntryPB metadata;  // Empty metadata.
+  SysXClusterOutboundReplicationGroupEntryPB metadata;
+  metadata.set_automatic_ddl_mode(automatic_ddl_mode);
   auto outbound_replication_group = InitOutboundReplicationGroup(replication_group_id, metadata);
 
   // This will persist the group to SysCatalog.
@@ -1136,14 +1138,14 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroups(NamespaceId namespac
   return replication_groups;
 }
 
-Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+Result<XClusterSourceManager::XClusterOutboundReplicationGroupUserInfo>
 XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     const xcluster::ReplicationGroupId& replication_group_id) {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
   const auto namespace_ids = VERIFY_RESULT(outbound_replication_group->GetNamespaces());
 
-  std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>> result;
+  XClusterOutboundReplicationGroupUserInfo result;
   for (const auto& namespace_id : namespace_ids) {
     const auto namespace_info =
         VERIFY_RESULT(outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id));
@@ -1154,8 +1156,10 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     for (const auto& table_info : namespace_info->table_infos) {
       ns_info.emplace(table_info.table_id, table_info.stream_id);
     }
-    result[namespace_id] = std::move(ns_info);
+    result.namespace_table_map[namespace_id] = std::move(ns_info);
   }
+  result.automatic_ddl_mode = VERIFY_RESULT(outbound_replication_group->AutomaticDDLMode());
+
   return result;
 }
 

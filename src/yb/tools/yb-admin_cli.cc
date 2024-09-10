@@ -2610,7 +2610,10 @@ Status get_universe_replication_info_action(
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
     std::cout << std::endl
               << "DB Scoped info(s):" << std::endl
+              << "DDL mode: " << (group_info.automatic_ddl_mode ? "Automatic" : "Semi-automatic")
+              << std::endl
               << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
+
     for (const auto& [target_namespace_id, source_namespace_id] :
          group_info.db_scope_namespace_id_map) {
       auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);
