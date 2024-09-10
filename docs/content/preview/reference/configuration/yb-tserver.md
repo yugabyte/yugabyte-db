@@ -1749,10 +1749,10 @@ Default: true
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
-| true | false | Default. Bitmap scans allowed only on temp tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode). Bitmap scans are allowed on temp tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
-| false | false | Bitmap scans allowed only on temp tables, but only if every other scan type is also disabled / not possible. |
-| false | true  | Bitmap scans allowed on temp tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
+| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
+| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
 Default: false
 
