@@ -1706,11 +1706,13 @@ public class DrConfigController extends AuthenticatedController {
     if (formData.pitrParams != null) {
       changeInParams = true;
       validatePitrParams(formData.pitrParams);
-      long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
-      long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
+      Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
+      Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
 
-      if (oldRetentionPeriodSec == formData.pitrParams.retentionPeriodSec
-          && oldSnapshotIntervalSec == formData.pitrParams.snapshotIntervalSec) {
+      if (oldRetentionPeriodSec != null
+          && oldRetentionPeriodSec.equals(formData.pitrParams.retentionPeriodSec)
+          && oldSnapshotIntervalSec != null
+          && oldSnapshotIntervalSec.equals(formData.pitrParams.snapshotIntervalSec)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(

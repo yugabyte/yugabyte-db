@@ -82,10 +82,10 @@ public class DrConfig extends Model {
   private State state;
 
   @ApiModelProperty(value = "PITR Retention Period in seconds", accessMode = READ_WRITE)
-  private long pitrRetentionPeriodSec;
+  private Long pitrRetentionPeriodSec;
 
   @ApiModelProperty(value = "PITR Retention Period in seconds", accessMode = READ_WRITE)
-  private long pitrSnapshotIntervalSec;
+  private Long pitrSnapshotIntervalSec;
 
   @Transactional
   public static DrConfig create(

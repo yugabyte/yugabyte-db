@@ -143,7 +143,7 @@ export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
                         }`
                     : userIntent?.numNodes}
                 </b>
-                &nbsp;{t('universeForm.kubernetesPlacementModal.nodes')}
+                &nbsp;{t('universeForm.kubernetesPlacementModal.pods')}
               </Box>
             }
           </>

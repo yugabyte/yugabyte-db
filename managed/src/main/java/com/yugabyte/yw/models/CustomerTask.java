@@ -381,82 +381,85 @@ public class CustomerTask extends Model {
     RestoreYbaBackup,
 
     @EnumValue("RestoreContinuousBackup")
-    RestoreContinuousBackup;
+    RestoreContinuousBackup,
+
+    @EnumValue("EnableNodeAgent")
+    EnableNodeAgent;
 
     public String toString(boolean completed) {
       switch (this) {
         case Add:
-          return completed ? "Added " : "Adding ";
+          return completed ? "Added" : "Adding";
         case Create:
-          return completed ? "Created " : "Creating ";
+          return completed ? "Created" : "Creating";
         case Pause:
-          return completed ? "Paused " : "Pausing ";
+          return completed ? "Paused" : "Pausing";
         case Release:
-          return completed ? "Released " : "Releasing ";
+          return completed ? "Released" : "Releasing";
         case Reboot:
         case HardReboot:
-          return completed ? "Rebooted " : "Rebooting ";
+          return completed ? "Rebooted" : "Rebooting";
         case Remove:
-          return completed ? "Removed " : "Removing ";
+          return completed ? "Removed" : "Removing";
         case ResizeNode:
-          return completed ? "Resized Node " : "Resizing Node ";
+          return completed ? "Resized Node" : "Resizing Node";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
-          return completed ? "Resumed " : "Resuming ";
+          return completed ? "Resumed" : "Resuming";
         case Start:
-          return completed ? "Started " : "Starting ";
+          return completed ? "Started" : "Starting";
         case Stop:
-          return completed ? "Stopped " : "Stopping ";
+          return completed ? "Stopped" : "Stopping";
         case Update:
-          return completed ? "Updated " : "Updating ";
+          return completed ? "Updated" : "Updating";
         case Delete:
-          return completed ? "Deleted " : "Deleting ";
+          return completed ? "Deleted" : "Deleting";
         case Edit:
-          return completed ? "Edited " : "Editing ";
+          return completed ? "Edited" : "Editing";
         case Sync:
-          return completed ? "Synchronized " : "Synchronizing ";
+          return completed ? "Synchronized" : "Synchronizing";
         case LdapSync:
-          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
+          return completed ? "LDAP Sync Completed on" : "LDAP Sync in Progress on";
         case RestartUniverse:
-          return completed ? "Restarted " : "Restarting ";
+          return completed ? "Restarted" : "Restarting";
         case SoftwareUpgrade:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case SoftwareUpgradeYB:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case FinalizeUpgrade:
-          return completed ? "Finalized Upgrade " : "Finalizing Upgrade ";
+          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
         case RollbackUpgrade:
-          return completed ? "Rolled back upgrade " : "Rolling back upgrade ";
+          return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case SystemdUpgrade:
-          return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
+          return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:
-          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+          return completed ? "Upgraded GFlags" : "Upgrading GFlags";
         case KubernetesOverridesUpgrade:
-          return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
+          return completed ? "Upgraded Kubernetes Overrides" : "Upgrading Kubernetes Overrides";
         case EditKubernetesUniverse:
-          return completed ? "Edited Kubernetes Universe  " : "Editing Kubernetes Universe";
+          return completed ? "Edited Kubernetes Universe" : "Editing Kubernetes Universe";
         case CertsRotate:
-          return completed ? "Updated Certificates " : "Updating Certificates ";
+          return completed ? "Updated Certificates" : "Updating Certificates";
         case TlsToggle:
-          return completed ? "Toggled TLS " : "Toggling TLS ";
+          return completed ? "Toggled TLS" : "Toggling TLS";
         case VMImageUpgrade:
         case UpgradeVMImage:
-          return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
+          return completed ? "Upgraded VM Image" : "Upgrading VM Image";
         case UpgradeSoftware:
-          return completed ? "Upgraded Software " : "Upgrading Software ";
+          return completed ? "Upgraded Software" : "Upgrading Software";
         case UpdateDiskSize:
-          return completed ? "Updated Disk Size " : "Updating Disk Size ";
+          return completed ? "Updated Disk Size" : "Updating Disk Size";
         case UpdateLoadBalancerConfig:
-          return completed ? "Updated Load Balancer Config " : "Updating Load Balancer Config ";
+          return completed ? "Updated Load Balancer Config" : "Updating Load Balancer Config";
         case UpdateCert:
-          return completed ? "Updated Cert " : "Updating Cert ";
+          return completed ? "Updated Cert" : "Updating Cert";
         case UpgradeGflags:
-          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+          return completed ? "Upgraded GFlags" : "Upgrading GFlags";
         case BulkImportData:
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
-          return completed ? "Restored " : "Restoring ";
+          return completed ? "Restored" : "Restoring";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
         case DeletePitrConfig:
@@ -464,9 +467,9 @@ public class CustomerTask extends Model {
         case RestoreSnapshotSchedule:
           return completed ? "Restored Snapshot Schedule" : "Restoring Snapshot Schedule";
         case Restart:
-          return completed ? "Restarted " : "Restarting ";
+          return completed ? "Restarted" : "Restarting";
         case Backup:
-          return completed ? "Backed up " : "Backing up ";
+          return completed ? "Backed up" : "Backing up";
         case SetEncryptionKey:
           return completed ? "Set encryption key" : "Setting encryption key";
         case EnableEncryptionAtRest:
@@ -478,45 +481,45 @@ public class CustomerTask extends Model {
         case DisableEncryptionAtRest:
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
-          return completed ? "Started Master process on " : "Starting Master process on ";
+          return completed ? "Started Master process on" : "Starting Master process on";
         case CreateAlertDefinitions:
-          return completed ? "Created alert definitions " : "Creating alert definitions ";
+          return completed ? "Created alert definitions" : "Creating alert definitions";
         case ManageAlertDefinitions:
-          return completed ? "Managed alert definitions " : "Managing alert definitions ";
+          return completed ? "Managed alert definitions" : "Managing alert definitions";
         case ExternalScript:
-          return completed ? "Script execution completed " : "Script execution is running";
+          return completed ? "Script execution completed" : "Script execution is running";
         case CreateXClusterConfig:
-          return completed ? "Created xcluster config " : "Creating xcluster config ";
+          return completed ? "Created xcluster config" : "Creating xcluster config";
         case DeleteXClusterConfig:
-          return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
+          return completed ? "Deleted xcluster config" : "Deleting xcluster config";
         case EditXClusterConfig:
-          return completed ? "Edited xcluster config " : "Editing xcluster config ";
+          return completed ? "Edited xcluster config" : "Editing xcluster config";
         case SyncXClusterConfig:
-          return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
+          return completed ? "Synchronized xcluster config" : "Synchronizing xcluster config";
         case Failover:
-          return completed ? "Failed over dr config " : "Failing over dr config ";
+          return completed ? "Failed over dr config" : "Failing over dr config";
         case Switchover:
-          return completed ? "Switched over dr config " : "Switching over dr config ";
+          return completed ? "Switched over dr config" : "Switching over dr config";
         case PrecheckNode:
-          return completed ? "Performed preflight check on " : "Performing preflight check on ";
+          return completed ? "Performed preflight check on" : "Performing preflight check on";
         case Abort:
-          return completed ? "Task aborted " : "Aborting task ";
+          return completed ? "Task aborted" : "Aborting task";
         case CreateSupportBundle:
-          return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
+          return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
         case ThirdpartySoftwareUpgrade:
           return completed
-              ? "Upgraded third-party software for "
-              : "Upgrading third-party software for ";
+              ? "Upgraded third-party software for"
+              : "Upgrading third-party software for";
         case ModifyAuditLoggingConfig:
           return completed
-              ? "Modified audit logging config for "
-              : "Modifying audit logging config for ";
+              ? "Modified audit logging config for"
+              : "Modifying audit logging config for";
         case CreateTableSpaces:
-          return completed ? "Created tablespaces in " : "Creating tablespaces in ";
+          return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:
           return completed ? "Rotated Access Key" : "Rotating Access Key";
         case RebootUniverse:
-          return completed ? "Rebooted " : "Rebooting ";
+          return completed ? "Rebooted" : "Rebooting";
         case CreateAndRotateAccessKey:
           return completed
               ? "Creating Access Key and Rotation Tasks"
@@ -545,15 +548,17 @@ public class CustomerTask extends Model {
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         case MasterFailover:
-          return completed ? "Started master on new node" : "Starting master on new node";
+          return completed ? "Started master on new node in" : "Starting master on new node in";
         case SyncMasterAddresses:
-          return completed ? "Synced master addresses" : "Syncing master addresses";
+          return completed ? "Synced master addresses in" : "Syncing master addresses in";
         case CreateYbaBackup:
-          return completed ? "Creating YBA backup" : "Created YBA backup";
+          return completed ? "Created YBA backup" : "Creating YBA backup";
         case RestoreYbaBackup:
-          return completed ? "Restoring YBA backup" : "Restored YBA backup";
+          return completed ? "Restored YBA backup" : "Restoring YBA backup";
         case RestoreContinuousBackup:
-          return completed ? "Restoring continuous YBA backup" : "Restored continuous YBA backup";
+          return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
+        case EnableNodeAgent:
+          return completed ? "Enabled node agent on" : "Enabling node agent on";
         default:
           return null;
       }
@@ -789,7 +794,8 @@ public class CustomerTask extends Model {
 
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
-    sb.append(type.toString(completionTime != null));
+    sb.append(type.toString(completionTime != null).trim());
+    sb.append(" ");
     sb.append(targetType.name());
     sb.append(" : ").append(targetName);
     return sb.toString();
