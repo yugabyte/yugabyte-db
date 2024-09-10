@@ -3,7 +3,7 @@ title: Configure a CLion project
 headerTitle: Configure a CLion project
 linkTitle: Configure a CLion project
 description: Configure a CLion project for building YugabyteDB using cmake or ninja.
-headcontent: CLion project setup.
+headcontent: Set up a CLion project
 menu:
   preview:
     identifier: configure-clion
@@ -30,17 +30,17 @@ Click **File > Open…** to open the project root directory.
 
 If you want to build with Ninja, use `build/debug-clang-dynamic-ninja` as a "Generation path" and add `-G Ninja` into "CMake options":
 
-![Clion Ninja options](/images/contribute/clion-cmake-options-ninja.png)
+![CLion Ninja options](/images/contribute/clion-cmake-options-ninja.png)
 
 ##### Setting CMake preferences when using Make
 
-Select `build/debug-clang-dynamic` as the **Generation path** in **Preferences > Build, Execution, Deployment/CMake”**, and do not specify anything for **CMake options**.
+Select `build/debug-clang-dynamic` as the **Generation path** in **Preferences > Build, Execution, Deployment/CMake**, and do not specify anything for **CMake options**.
 
 ![CLion Make options](/images/contribute/clion-cmake-options.png)
 
 #### Reloading the project
 
-Use **"File / Reload CMake Project"**. CLion will start updating symbols, which also can take a while.
+Use **File / Reload CMake Project**. CLion will start updating symbols, which also can take a while.
 
 #### Doing the build from CLion
 
@@ -60,7 +60,7 @@ To improve performance, you can try opening the project as a compilation databas
 
 1. Move the `compile_commands.json` file to the project root.
 
-1. Close the Clion project.
+1. Close the CLion project.
 
 1. Delete the `.idea` folder in the `yugabyte-db` directory:
 
