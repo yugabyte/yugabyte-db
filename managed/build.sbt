@@ -1207,7 +1207,7 @@ def runNpmInstall(implicit dir: File): Int =
     println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
     println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
     println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
-    Process("npm" :: "ci" :: Nil, dir).!
+    Process("npm" :: "ci" :: "--legacy-peer-deps" :: Nil, dir).!
   }
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
