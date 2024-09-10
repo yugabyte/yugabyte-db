@@ -48,7 +48,19 @@ public class RestartXClusterConfig extends EditXClusterConfig {
                 sourceUniverse, targetUniverse, false /* checkAutoFlagsEqualityOnBothUniverses */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
 
-        // TODO full DB scoped restart support
+        // Delete extra xCluster configs for DR configs.
+        if (xClusterConfig.isUsedForDr()) {
+          xClusterConfig.getDrConfig().getXClusterConfigs().stream()
+              .filter(config -> !config.getUuid().equals(xClusterConfig.getUuid()))
+              .forEach(
+                  config ->
+                      createDeleteXClusterConfigSubtasks(
+                          config,
+                          false /* keepEntry */,
+                          true /* forceDelete */,
+                          false /* deletePitrConfigs */));
+        }
+
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
             taskParams().getTableInfoList();
         Set<String> tableIds = getTableIds(tableInfoList);
@@ -123,6 +135,18 @@ public class RestartXClusterConfig extends EditXClusterConfig {
                 null,
                 taskParams().getPitrParams(),
                 taskParams().isForceBootstrap());
+          }
+
+          // After all the other subtasks are done, set the DR states to show replication is
+          // happening.
+          if (xClusterConfig.isUsedForDr()) {
+            createSetDrStatesTask(
+                    xClusterConfig,
+                    State.Replicating,
+                    SourceUniverseState.ReplicatingData,
+                    TargetUniverseState.ReceivingData,
+                    null /* keyspacePending */)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
           }
         } else {
           createXClusterConfigSetStatusForTablesTask(

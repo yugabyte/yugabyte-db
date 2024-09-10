@@ -257,6 +257,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     setDatabasesData.databases = new HashSet<>(Set.of("db1", "db2"));
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
 
     taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -309,7 +311,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
             authToken,
             Json.toJson(data));
-
     assertOk(result);
     List<DrConfig> drConfigs =
         DrConfig.getBetweenUniverses(
@@ -323,6 +324,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     xClusterConfig.updateStatusForNamespace(namespaceId, XClusterNamespaceConfig.Status.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
 
     // Trying to add the existing databases.
     Exception exception =
@@ -370,6 +373,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
 
     // Try giving an empty list.
     setDatabasesData.databases = new HashSet<>();
@@ -444,8 +449,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             new BootstrapBackupParams(),
             new PitrParams(),
             Set.of(sourceNamespace));
+    drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
-    drConfig.getActiveXClusterConfig().update();
+    drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.SwitchoverDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     String targetNamespace = "targetNamespace";
@@ -511,8 +517,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             new BootstrapBackupParams(),
             new PitrParams(),
             Set.of(sourceNamespace));
+    drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
-    drConfig.getActiveXClusterConfig().update();
+    drConfig.update();
 
     String targetNamespace = "targetNamespace";
     setupMockGetUniverseReplicationInfo(drConfig, sourceNamespace, targetNamespace);
@@ -548,8 +555,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             new BootstrapBackupParams(),
             new PitrParams(),
             Set.of(sourceNamespace));
+    drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
-    drConfig.getActiveXClusterConfig().update();
+    drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.FailoverDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
@@ -654,6 +662,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                 new BootstrapBackupParams(),
                 new PitrParams(),
                 Set.of("sourceNamespace")));
+    drConfig.setState(State.Replicating);
     drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);

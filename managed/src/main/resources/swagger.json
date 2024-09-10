@@ -5159,7 +5159,7 @@
         },
         "state" : {
           "description" : "The state of the DR config",
-          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted", "Updating", "Error" ],
+          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted", "Updating", "Failed" ],
           "type" : "string"
         },
         "status" : {
@@ -16120,7 +16120,6 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -16133,6 +16132,7 @@
           "items" : {
             "type" : "string"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -16363,7 +16363,6 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -16376,6 +16375,7 @@
           "items" : {
             "type" : "string"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -16490,7 +16490,6 @@
     "XClusterTableConfig" : {
       "properties" : {
         "backupUuid" : {
-          "description" : "The backup config used to do bootstrapping for this table",
           "format" : "uuid",
           "type" : "string"
         },
@@ -16516,7 +16515,6 @@
           "type" : "string"
         },
         "restoreUuid" : {
-          "description" : "The restore config used to do bootstrapping for this table",
           "format" : "uuid",
           "type" : "string"
         },
@@ -16544,6 +16542,7 @@
           "description" : "tableInfo from target universe"
         }
       },
+      "required" : [ "backupUuid", "restoreUuid" ],
       "type" : "object"
     },
     "YBPCreateSuccess" : {

@@ -140,6 +140,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigE
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.DnsManager;
@@ -211,6 +212,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Universe.UniverseUpdaterConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
@@ -3653,14 +3655,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (ybcBackup) {
         backup.getBackupInfo().initializeBackupDBStates();
       }
-
-      // Save backupUUID to taskInfo of the CreateBackup task.
-      try {
-        TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-        taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
-        taskInfo.save();
-      } catch (Exception ex) {
-        log.error(ex.getMessage());
+      if (!forXCluster) {
+        // Save backupUUID to taskInfo of the CreateBackup task.
+        try {
+          TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
+          taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
+          taskInfo.save();
+        } catch (Exception ex) {
+          log.error(ex.getMessage());
+        }
       }
     }
     backup.setTaskUUID(getUserTaskUUID());
@@ -3712,7 +3715,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Save restore category to task params.
   private void getAndSaveRestoreBackupCategory(
-      RestoreBackupParams restoreParams, TaskInfo taskInfo) {
+      RestoreBackupParams restoreParams, TaskInfo taskInfo, boolean forXCluster) {
     Set<String> backupLocations =
         restoreParams.backupStorageInfoList.parallelStream()
             .map(bSI -> bSI.storageLocation)
@@ -3726,10 +3729,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             YbcBackupUtil.YBC_SUCCESS_MARKER_FILE_NAME,
             true);
     restoreParams.category = isYbc ? BackupCategory.YB_CONTROLLER : BackupCategory.YB_BACKUP_SCRIPT;
-    // Update task params for this
-    ObjectMapper mapper = new ObjectMapper();
-    taskInfo.setTaskParams(mapper.valueToTree(restoreParams));
-    taskInfo.save();
+    if (!forXCluster) {
+      // Update task params for this
+      ObjectMapper mapper = new ObjectMapper();
+      taskInfo.setTaskParams(mapper.valueToTree(restoreParams));
+      taskInfo.save();
+    }
   }
 
   protected Restore createAllRestoreSubtasks(
@@ -3751,7 +3756,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // itself is used for populating restore task.
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
         && pCluster.userIntent.providerType != CloudType.local) {
-      getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
+      getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo, forXCluster);
       createPreflightValidateRestoreTask(restoreBackupParams)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks)
           .setShouldRunPredicate(predicate);
@@ -5431,7 +5436,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected SubTaskGroup createDeleteXClusterConfigEntryTask(XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteXClusterConfigEntry");
     XClusterConfigTaskParams deleteXClusterConfigEntryParams = new XClusterConfigTaskParams();
-    deleteXClusterConfigEntryParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     deleteXClusterConfigEntryParams.xClusterConfig = xClusterConfig;
 
     DeleteXClusterConfigEntry task = createTask(DeleteXClusterConfigEntry.class);
@@ -5540,12 +5544,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected SubTaskGroup createChangeXClusterRoleTask(
       XClusterConfig xClusterConfig,
       @Nullable XClusterRole sourceRole,
-      @Nullable XClusterRole targetRole) {
+      @Nullable XClusterRole targetRole,
+      boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeXClusterRole");
     ChangeXClusterRole.Params ChangeXClusterRoleParams = new ChangeXClusterRole.Params();
     ChangeXClusterRoleParams.xClusterConfig = xClusterConfig;
     ChangeXClusterRoleParams.sourceRole = sourceRole;
     ChangeXClusterRoleParams.targetRole = targetRole;
+    ChangeXClusterRoleParams.ignoreErrors = ignoreErrors;
 
     ChangeXClusterRole task = createTask(ChangeXClusterRole.class);
     task.initialize(ChangeXClusterRoleParams);
@@ -5629,20 +5635,45 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /**
+   * It creates a subtask to set the status of an xCluster config and save it in the Platform DB.
+   *
+   * @param desiredStatus The xCluster config will have this status
+   * @return The created subtask group; it can be used to assign a subtask group type to this
+   *     subtask
+   */
+  protected SubTaskGroup createXClusterConfigSetStatusTask(
+      XClusterConfig xClusterConfig, XClusterConfigStatusType desiredStatus) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatus");
+    XClusterConfigSetStatus.Params setStatusParams = new XClusterConfigSetStatus.Params();
+    setStatusParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    setStatusParams.xClusterConfig = xClusterConfig;
+    setStatusParams.desiredStatus = desiredStatus;
+    XClusterConfigSetStatus task = createTask(XClusterConfigSetStatus.class);
+    task.initialize(setStatusParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected void createDeleteXClusterConfigSubtasks(
       XClusterConfig xClusterConfig,
       boolean keepEntry,
       boolean forceDelete,
       boolean deletePitrConfigs) {
+
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
         && xClusterConfig.getType() == ConfigType.Txn) {
       // Set back the target universe role to Active.
       createChangeXClusterRoleTask(
-              xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
+              xClusterConfig,
+              null /* sourceRole */,
+              XClusterRole.ACTIVE /* targetRole */,
+              forceDelete)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
-    // Delete the replication CDC streams on the target universe.
+    // Delete the replication group on the target universe.
     createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     if (xClusterConfig.getType() == ConfigType.Db) {
@@ -5669,7 +5700,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         createDeletePitrConfigTask(
             pitrConfig.getUuid(),
-            xClusterConfig.getTargetUniverseUUID(),
+            pitrConfig.getUniverse().getUniverseUUID(),
             forceDelete /* ignoreErrors */);
       }
     }

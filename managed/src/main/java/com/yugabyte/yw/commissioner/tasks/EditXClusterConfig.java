@@ -90,7 +90,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           createChangeXClusterRoleTask(
                   taskParams().getXClusterConfig(),
                   editFormData.sourceRole,
-                  editFormData.targetRole)
+                  editFormData.targetRole,
+                  false /* ignoreErrors */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.tables != null) {
           if (!CollectionUtils.isEmpty(taskParams().getTableInfoList())) {
@@ -311,6 +312,18 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             mainTableIndexTablesMap,
             taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
             taskParams().getPitrParams());
+
+        // After all the other subtasks are done, set the DR states to show replication is
+        // happening.
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Replicating,
+                  SourceUniverseState.ReplicatingData,
+                  TargetUniverseState.ReceivingData,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
       } else {
         createRemoveTableFromXClusterConfigSubtasks(
             xClusterConfig, tableIdsDeleteReplication, true /* keepEntry */);

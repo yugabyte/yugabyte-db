@@ -54,6 +54,7 @@ public class XClusterConfigSetStatusForNamespaces extends XClusterConfigTaskBase
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     }
+
     log.info("Completed {}", getName());
   }
 }

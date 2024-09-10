@@ -62,7 +62,7 @@ public class DrConfigStates {
     FailoverInProgress("Failover in Progress"),
     Halted("Halted"),
     Updating("Updating"),
-    Error("Error");
+    Failed("Failed");
 
     private final String state;
 
@@ -76,5 +76,10 @@ public class DrConfigStates {
     public String toString() {
       return this.state;
     }
+  }
+
+  public enum InternalState {
+    Initialized,
+    CreatedNewXClusterConfig,
   }
 }

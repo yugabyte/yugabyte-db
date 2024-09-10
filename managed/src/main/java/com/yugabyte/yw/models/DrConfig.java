@@ -172,12 +172,40 @@ public class DrConfig extends Model {
               "DrConfig %s(%s) does not have any corresponding xCluster config",
               this.name, this.uuid));
     }
-    // For now just return the first element. For later expansion, a dr config can handle several
-    // xCluster configs.
+    if (xClusterConfigs.size() == 1) {
+      return xClusterConfigs.get(0);
+    }
     return xClusterConfigs.stream()
         .filter(xClusterConfig -> !xClusterConfig.isSecondary())
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
+  }
+
+  @JsonIgnore
+  public Optional<XClusterConfig> getActiveXClusterConfig(
+      UUID sourceUniverseUuid, UUID targetUniverseUuid) {
+    if (xClusterConfigs.size() == 1) {
+      return Optional.of(xClusterConfigs.get(0));
+    }
+    // For a DR config, there could be at most one xCluster config from universe A to universe B.
+    List<XClusterConfig> xClusterConfigsFromSourceToTarget =
+        xClusterConfigs.stream()
+            .filter(
+                xClusterConfig ->
+                    xClusterConfig.getSourceUniverseUUID().equals(sourceUniverseUuid)
+                        && xClusterConfig.getTargetUniverseUUID().equals(targetUniverseUuid))
+            .toList();
+    if (xClusterConfigsFromSourceToTarget.size() > 1) {
+      throw new IllegalStateException(
+          String.format(
+              "DrConfig %s(%s) has more than one xCluster config from source universe %s to target"
+                  + " universe %s",
+              this.name, this.uuid, sourceUniverseUuid, targetUniverseUuid));
+    }
+    if (xClusterConfigsFromSourceToTarget.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(xClusterConfigsFromSourceToTarget.get(0));
   }
 
   @JsonIgnore
