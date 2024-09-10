@@ -33,7 +33,7 @@
 #include "opclass/helio_gin_index_term.h"
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/metadata_cache.h"
 #include "collation/collation.h"
 

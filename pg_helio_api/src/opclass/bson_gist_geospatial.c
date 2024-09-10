@@ -16,7 +16,7 @@
 #include "fmgr.h"
 #include "math.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"

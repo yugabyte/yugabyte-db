@@ -35,7 +35,7 @@
 #include "query/helio_bson_compare.h"
 #include "query/bson_dollar_operators.h"
 #include "query/query_operator.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include <math.h>
 
 /* --------------------------------------------------------- */

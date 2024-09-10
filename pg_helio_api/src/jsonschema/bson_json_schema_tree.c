@@ -12,7 +12,7 @@
 #include "query/helio_bson_compare.h"
 #include "types/decimal128.h"
 #include "jsonschema/bson_json_schema_tree.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /*              Forward Declerations                         */
@@ -174,25 +174,25 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BsonTypeIsNumber(value->value_type))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'multipleOf' must be a number")));
 			}
 			if ((value->value_type == BSON_TYPE_DECIMAL128 && IsDecimal128Zero(value)) ||
 				(BsonValueAsDouble(value) == 0.0))
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"$jsonSchema keyword 'multipleOf' must have a positive value")));
 			}
 			if (IsBsonValueNaN(value))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("divisor cannot be NaN")));
 			}
 			if (IsBsonValueInfinity(value))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("divisor cannot be infinite")));
 			}
 			node->validations.numeric->multipleOf = (bson_value_t *) palloc0(
@@ -204,7 +204,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BsonTypeIsNumber(value->value_type))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'maximum' must be a number")));
 			}
@@ -217,7 +217,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_BOOL(schemaIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'exclusiveMaximum' must be a boolean")));
 			}
@@ -228,7 +228,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BsonTypeIsNumber(value->value_type))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'minimum' must be a number")));
 			}
@@ -241,7 +241,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_BOOL(schemaIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'exclusiveMinimum' must be a boolean")));
 			}
@@ -269,7 +269,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(schemaIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'pattern' must be a string")));
 			}
@@ -309,7 +309,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_BOOL(schemaIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'uniqueItems' must be a boolean")));
 			}
@@ -325,7 +325,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 				 !strcmp(key, "default") || !strcmp(key, "definitions") ||
 				 !strcmp(key, "format") || !strcmp(key, "id"))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("$jsonSchema keyword '%s' is not currently supported",
 								   key)));
 		}
@@ -336,7 +336,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Unknown $jsonSchema keyword: %s", key)));
 		}
 	}
@@ -344,7 +344,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 	if ((node->validationFlags.numeric & NumericValidationTypes_ExclusiveMaximum) &&
 		!(node->validationFlags.numeric & NumericValidationTypes_Maximum))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$jsonSchema keyword 'maximum' must be a present if exclusiveMaximum is present")));
 	}
@@ -352,7 +352,7 @@ BuildSchemaTreeCoreOnNode(bson_iter_t *schemaIter, SchemaNode *node)
 	if ((node->validationFlags.numeric & NumericValidationTypes_ExclusiveMinimum) &&
 		!(node->validationFlags.numeric & NumericValidationTypes_Minimum))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$jsonSchema keyword 'minimum' must be a present if exclusiveMinimum is present")));
 	}
@@ -370,7 +370,7 @@ ParseProperties(const bson_value_t *value, SchemaNode *node)
 {
 	if (value->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("$jsonSchema keyword 'properties' must be an object")));
 	}
 
@@ -383,7 +383,7 @@ ParseProperties(const bson_value_t *value, SchemaNode *node)
 		/* TODO: Add support for dot notation paths */
 		if (strchr(field, '.') != NULL)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Dot notation paths are currently not supported: %s",
 								   field)));
 		}
@@ -391,7 +391,7 @@ ParseProperties(const bson_value_t *value, SchemaNode *node)
 		const bson_value_t *fieldValue = bson_iter_value(&iter);
 		if (!BSON_ITER_HOLDS_DOCUMENT(&iter))
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(
 								"Nested schema for $jsonSchema property '%s' must be an object",
 								field)));
@@ -416,7 +416,7 @@ ParseJsonType(const bson_value_t *value, SchemaNode *node)
 {
 	if (node->validationFlags.common & CommonValidationTypes_BsonType)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"Cannot specify both $jsonSchema keywords 'type' and 'bsonType'")));
 	}
@@ -435,7 +435,7 @@ ParseJsonType(const bson_value_t *value, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&arrayIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'type' array elements must be strings")));
 			}
@@ -444,7 +444,7 @@ ParseJsonType(const bson_value_t *value, SchemaNode *node)
 			BsonTypeFlags jsonType = GetJsonTypeEnumFromJsonTypeString(jsonTypeStr);
 			if (jsonTypes & jsonType)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"$jsonSchema keyword 'type' has duplicate value: %s",
 									jsonTypeStr)));
@@ -454,14 +454,14 @@ ParseJsonType(const bson_value_t *value, SchemaNode *node)
 
 		if (jsonTypes == 0)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"$jsonSchema keyword 'type' must name at least one type")));
 		}
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"$jsonSchema keyword 'type' must be either a string or an array of strings")));
 	}
@@ -480,7 +480,7 @@ ParseBsonType(const bson_value_t *value, SchemaNode *node)
 {
 	if (node->validationFlags.common & CommonValidationTypes_JsonType)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"Cannot specify both $jsonSchema keywords 'type' and 'bsonType'")));
 	}
@@ -499,7 +499,7 @@ ParseBsonType(const bson_value_t *value, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&arrayIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'bsonType' array elements must be strings")));
 			}
@@ -508,7 +508,7 @@ ParseBsonType(const bson_value_t *value, SchemaNode *node)
 			BsonTypeFlags bsonType = GetBsonTypeEnumFromBsonTypeString(bsonTypeStr);
 			if (bsonTypes & bsonType)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"$jsonSchema keyword 'bsonType' has duplicate value: %s",
 									bsonTypeStr)));
@@ -518,14 +518,14 @@ ParseBsonType(const bson_value_t *value, SchemaNode *node)
 
 		if (bsonTypes == 0)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"$jsonSchema keyword 'bsonType' must name at least one type")));
 		}
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"$jsonSchema keyword 'bsonType' must be either a string or an array of strings")));
 	}
@@ -560,7 +560,7 @@ ParseItems(const bson_value_t *value, SchemaNode *node)
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"$jsonSchema keyword 'items' requires that each element of the array is an object, but found a %s",
 									BsonIterTypeName(&arrayIter))));
@@ -580,7 +580,7 @@ ParseItems(const bson_value_t *value, SchemaNode *node)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"$jsonSchema keyword 'items' must be an array or an object, not %s",
 							BsonTypeName(value->value_type))));
@@ -611,7 +611,7 @@ ParseAdditionalItems(const bson_value_t *value, SchemaNode *node)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"$jsonSchema keyword 'additionalItems' must be either an object or a boolean, but got a %s",
 							BsonTypeName(value->value_type))));
@@ -639,7 +639,7 @@ GetJsonTypeEnumFromJsonTypeString(const char *jsonTypeStr)
 	}
 	else if (!strcmp(jsonTypeStr, "integer"))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$jsonSchema type 'integer' is not currently supported.")));
 	}
@@ -661,7 +661,7 @@ GetJsonTypeEnumFromJsonTypeString(const char *jsonTypeStr)
 		return BsonTypeFlag_UTF8;
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("Unknown type name alias: %s", jsonTypeStr)));
 }
 
@@ -742,7 +742,7 @@ GetBsonTypeEnumFromBsonTypeString(const char *bsonTypeStr)
 	}
 	else if (!strcmp(bsonTypeStr, "integer"))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$jsonSchema type 'integer' is not currently supported.")));
 	}
@@ -767,7 +767,7 @@ GetBsonTypeEnumFromBsonTypeString(const char *bsonTypeStr)
 		return BsonTypeFlag_MINKEY;
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg(" Unknown type name alias: %s", bsonTypeStr)));
 }
 
@@ -981,39 +981,39 @@ GetValidatedBsonIntValue(const bson_value_t *value, const char *nonPIIfield)
 {
 	if (!BsonTypeIsNumber(value->value_type))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Expected a number in: %s: %s", nonPIIfield,
 							   BsonValueToJsonForLogging(value)),
-						errhint("Expected a number in: %s: found %s", nonPIIfield,
-								BsonTypeName(value->value_type))));
+						errdetail_log("Expected a number in: %s: found %s", nonPIIfield,
+									  BsonTypeName(value->value_type))));
 	}
 	if (!IsBsonValue64BitInteger(value, false))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Cannot represent as a 64-bit integer: %s: %s",
 							   nonPIIfield,
 							   BsonValueToJsonForLogging(value)),
-						errhint(
+						errdetail_log(
 							"Cannot represent as a 64-bit integer: %s: input type: %s",
 							nonPIIfield,
 							BsonTypeName(value->value_type))));
 	}
 	if (!IsBsonValueFixedInteger(value))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Expected an integer: %s: %s", nonPIIfield,
 							   BsonValueToJsonForLogging(value)),
-						errhint("Expected an integer: %s: %s", nonPIIfield,
-								BsonTypeName(value->value_type))));
+						errdetail_log("Expected an integer: %s: %s", nonPIIfield,
+									  BsonTypeName(value->value_type))));
 	}
 
 	int64_t intValue = BsonValueAsInt64(value);
 	if (intValue < 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Expected a positive number in: %s: %s", nonPIIfield,
 							   BsonValueToJsonForLogging(value)),
-						errhint("Expected a positive number in: %s", nonPIIfield)));
+						errdetail_log("Expected a positive number in: %s", nonPIIfield)));
 	}
 	return intValue;
 }

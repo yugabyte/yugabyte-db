@@ -27,7 +27,7 @@
 #include "opclass/helio_gin_common.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "opclass/helio_bson_gin_private.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
 #include "opclass/helio_index_support.h"

@@ -32,7 +32,7 @@
 
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/relation_utils.h"
 #include "utils/query_utils.h"
 #include "utils/guc_utils.h"

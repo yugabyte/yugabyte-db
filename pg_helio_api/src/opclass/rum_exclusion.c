@@ -46,7 +46,7 @@
 #include <executor/executor.h>
 #include <utils/typcache.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "opclass/helio_bson_gin_private.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"

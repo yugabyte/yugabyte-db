@@ -198,31 +198,23 @@ SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" 
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": "hello" } } } }');
 ERROR:  Expected a number in: maxLength: "hello"
-HINT:  Expected a number in: maxLength: found string
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": null } } } }');
 ERROR:  Expected a number in: maxLength: null
-HINT:  Expected a number in: maxLength: found null
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "9223372036854775809"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxLength: 9.22337E+18
-HINT:  Cannot represent as a 64-bit integer: maxLength: input type: double
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "NaN"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxLength: NaN
-HINT:  Cannot represent as a 64-bit integer: maxLength: input type: decimal
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxLength: Infinity
-HINT:  Cannot represent as a 64-bit integer: maxLength: input type: decimal
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "-INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxLength: -Infinity
-HINT:  Cannot represent as a 64-bit integer: maxLength: input type: decimal
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "10.3"} } } } }');
 ERROR:  Expected an integer: maxLength: 10.3
-HINT:  Expected an integer: maxLength: double
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "-10"} } } } }');
 ERROR:  Expected a positive number in: maxLength: -10
-HINT:  Expected a positive number in: maxLength
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "10"} } } } }');
  bson_dollar_json_schema 
@@ -234,31 +226,23 @@ SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "propert
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": "hello" } } } }');
 ERROR:  Expected a number in: minLength: "hello"
-HINT:  Expected a number in: minLength: found string
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": null } } } }');
 ERROR:  Expected a number in: minLength: null
-HINT:  Expected a number in: minLength: found null
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "9223372036854775809"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minLength: 9.22337E+18
-HINT:  Cannot represent as a 64-bit integer: minLength: input type: double
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "NaN"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minLength: NaN
-HINT:  Cannot represent as a 64-bit integer: minLength: input type: decimal
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minLength: Infinity
-HINT:  Cannot represent as a 64-bit integer: minLength: input type: decimal
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "-INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minLength: -Infinity
-HINT:  Cannot represent as a 64-bit integer: minLength: input type: decimal
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "1.3"} } } } }');
 ERROR:  Expected an integer: minLength: 1.3
-HINT:  Expected an integer: minLength: double
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "-1"} } } } }');
 ERROR:  Expected a positive number in: minLength: -1
-HINT:  Expected a positive number in: minLength
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "1"} } } } }');
  bson_dollar_json_schema 
@@ -343,28 +327,21 @@ SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }'
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": "hello" } } } }');
 ERROR:  Expected a number in: maxItems: "hello"
-HINT:  Expected a number in: maxItems: found string
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": null } } } }');
 ERROR:  Expected a number in: maxItems: null
-HINT:  Expected a number in: maxItems: found null
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "9223372036854775809"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxItems: 9.22337E+18
-HINT:  Cannot represent as a 64-bit integer: maxItems: input type: double
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxItems: Infinity
-HINT:  Cannot represent as a 64-bit integer: maxItems: input type: double
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "NaN"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: maxItems: NaN
-HINT:  Cannot represent as a 64-bit integer: maxItems: input type: double
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "10.3"} } } } }');
 ERROR:  Expected an integer: maxItems: 10.3
-HINT:  Expected an integer: maxItems: double
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "-10"} } } } }');
 ERROR:  Expected a positive number in: maxItems: -10
-HINT:  Expected a positive number in: maxItems
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "10"} } } } }');
  bson_dollar_json_schema 
@@ -376,28 +353,21 @@ SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }'
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": "hello" } } } }');
 ERROR:  Expected a number in: minItems: "hello"
-HINT:  Expected a number in: minItems: found string
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": null } } } }');
 ERROR:  Expected a number in: minItems: null
-HINT:  Expected a number in: minItems: found null
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "9223372036854775809"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minItems: 9.22337E+18
-HINT:  Cannot represent as a 64-bit integer: minItems: input type: double
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "INF"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minItems: Infinity
-HINT:  Cannot represent as a 64-bit integer: minItems: input type: double
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "NaN"} } } } }');
 ERROR:  Cannot represent as a 64-bit integer: minItems: NaN
-HINT:  Cannot represent as a 64-bit integer: minItems: input type: double
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "1.3"} } } } }');
 ERROR:  Expected an integer: minItems: 1.3
-HINT:  Expected an integer: minItems: double
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "-1"} } } } }');
 ERROR:  Expected a positive number in: minItems: -1
-HINT:  Expected a positive number in: minItems
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "1"} } } } }');
  bson_dollar_json_schema 

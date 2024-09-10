@@ -17,7 +17,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "jsonschema/bson_json_schema_tree.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/metadata_cache.h"
 #include "utils/fmgr_utils.h"
 #include "utils/hashset_utils.h"
@@ -85,7 +85,7 @@ bson_dollar_json_schema(PG_FUNCTION_ARGS)
 	if (element.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR,
-				(errcode(MongoTypeMismatch),
+				(errcode(ERRCODE_HELIO_TYPEMISMATCH),
 				 errmsg("$jsonSchema must be an object")));
 	}
 

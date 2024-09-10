@@ -19,7 +19,7 @@
 #include "io/helio_bson_core.h"
 #include "opclass/helio_gin_common.h"
 #include "opclass/helio_gin_index_mgmt.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "io/bson_traversal.h"
 
 /* --------------------------------------------------------- */

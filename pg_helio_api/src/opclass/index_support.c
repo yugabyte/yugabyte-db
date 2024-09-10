@@ -30,7 +30,7 @@
 #include "opclass/helio_gin_index_mgmt.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "vector/vector_utilities.h"
 #include "vector/vector_spec.h"
 #include "utils/version_utils.h"
