@@ -1,4 +1,40 @@
 service_name="yb-node-agent.service"
+yba_url={{ url }}
+customer_uuid={{ customer_uuid }}
+token={{ api_key }}
+provider_id={{ provider_id }}
+
+_get_nodes_in_provider() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers/${provider_uuid}/nodes/list"
+}
+
+_get_headers() {
+    local token=$1
+    echo "Accept: application/json"
+    echo "X-AUTH-YW-API-TOKEN: ${token}"
+    echo "Content-Type: application/json"
+}
+
+# Function to determine if TLS verification should be skipped
+skip_tls_verify() {
+    local yba_url=$1
+    if [[ "$yba_url" == https* ]]; then
+        echo "--insecure"
+    else
+        echo ""
+    fi
+}
+
+tls_verify_option=$(skip_tls_verify "$yba_url")
+readarray -t headers <<< "$(_get_headers "$token")"
+header_options=()
+for header in "${headers[@]}"; do
+    header_options+=(-H "$header")
+done
+
 
 # Get the status of yb-node-agent Service
 status=$(su - {{ yb_user }} -c \
@@ -22,4 +58,34 @@ if [ "$memory" -gt 0 ]; then
 else
     echo "MemoryCurrent is not greater than 0: $memory"
     add_result "Memory Usage Check" "FAIL" "MemoryCurrent is not greater than 0: $memory"
+fi
+
+# Perform GET request to fetch all the nodes associated with provider
+get_nodes_in_provider=$(_get_nodes_in_provider $yba_url $customer_uuid $provider_id)
+response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
+    "${header_options[@]}" $tls_verify_option "$get_nodes_in_provider")
+http_status="${response:(-3)}"
+response_body=$(<response.txt)
+if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
+    echo "HTTP GET request successful. Processing response..."
+
+    # Extract IPs using sed and grep
+    ips=$(echo "$response_body" | sed -n 's/.*"ip":"\([a-zA-Z0-9\.-]*\)".*/\1/p')
+    for ip in $ips; do
+        if [[ "$ip" == "{{ node_ip }}" ]]; then
+            matched=true
+            break
+        fi
+    done
+else
+    echo "Node addition to the provider failed: {{ node_ip }}"
+    add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
+fi
+
+if [[ "$matched" == false ]]; then
+    echo "Node addition to the provider failed: {{ node_ip }}"
+    add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
+else
+    echo "Node addition to the provider passed: {{ node_ip }}"
+    add_result "Node addition failed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
 fi
