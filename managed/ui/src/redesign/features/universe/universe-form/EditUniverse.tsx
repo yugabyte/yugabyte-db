@@ -17,6 +17,7 @@ import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
 import {
   createErrorMessage,
+  getPrimaryCluster,
   getPrimaryFormData,
   transformTagsArrayToObject,
   transitToUniverse
@@ -48,6 +49,7 @@ import {
   USER_TAGS_FIELD,
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
+import { providerQueryKey, api as helperApi } from '../../../helpers/api';
 
 interface EditUniverseProps {
   uuid: string;
@@ -101,6 +103,15 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
     }
   );
 
+  const primaryProviderUuid = originalData?.universeDetails
+    ? getPrimaryCluster(originalData?.universeDetails)?.userIntent?.provider ?? ''
+    : '';
+  const providerConfigQuery = useQuery(
+    providerQueryKey.detail(primaryProviderUuid),
+    () => helperApi.fetchProvider(primaryProviderUuid),
+    { enabled: !!primaryProviderUuid }
+  );
+
   const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const submitEditUniverse = async (finalPayload: UniverseConfigure) => {
@@ -113,9 +124,18 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
     }
   };
 
-  if (isUniverseLoading || isLoading || !originalData?.universeDetails) return <YBLoading />;
+  if (
+    isUniverseLoading ||
+    isLoading ||
+    !originalData?.universeDetails ||
+    providerConfigQuery.isLoading
+  )
+    return <YBLoading />;
 
-  const initialFormData = getPrimaryFormData(originalData.universeDetails);
+  const initialFormData = getPrimaryFormData(
+    originalData.universeDetails,
+    providerConfigQuery.data
+  );
 
   const onSubmit = async (formData: UniverseFormData) => {
     if (!_.isEqual(formData, initialFormData)) {

@@ -118,6 +118,12 @@ public class NodeAgent extends Model {
     REGISTERING {
       @Override
       public Set<State> nextStates() {
+        return toSet(READY, REGISTERED);
+      }
+    },
+    REGISTERED {
+      @Override
+      public Set<State> nextStates() {
         return toSet(READY);
       }
     },
@@ -393,7 +399,7 @@ public class NodeAgent extends Model {
     updateInTxn(
         n -> {
           n.setState(state);
-          n.save();
+          n.update();
         });
   }
 
@@ -403,7 +409,7 @@ public class NodeAgent extends Model {
           n.setHome(nodeAgentHome);
           n.setVersion(version);
           n.setState(State.READY);
-          n.save();
+          n.update();
         });
   }
 
@@ -492,7 +498,7 @@ public class NodeAgent extends Model {
             n.setState(state);
           }
           n.getConfig().setCertPath(certDirPath.toString());
-          n.save();
+          n.update();
         });
   }
 
@@ -501,7 +507,7 @@ public class NodeAgent extends Model {
       updateInTxn(
           n -> {
             n.getConfig().setOffloadable(offloadable);
-            n.save();
+            n.update();
           });
     }
   }

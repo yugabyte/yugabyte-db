@@ -82,8 +82,9 @@ var retryTaskCmd = &cobra.Command{
 				formatter.Colorize(currentTask.GetTitle(), formatter.GreenColor),
 				newTaskUUID)
 			tasksCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: task.NewTaskFormat(viper.GetString("output")),
+				Command: "retry",
+				Output:  os.Stdout,
+				Format:  task.NewTaskFormat(viper.GetString("output")),
 			}
 
 			tasks, response, err := authAPI.TasksList().Execute()

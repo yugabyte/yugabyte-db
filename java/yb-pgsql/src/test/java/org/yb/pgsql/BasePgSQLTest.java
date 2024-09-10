@@ -607,7 +607,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     Map<String, String> tsFlagMap = getTServerFlags();
     tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
-      warmupMode.toString().toLowerCase());
+      wm.toString().toLowerCase());
     warmupMode = wm;
     Map<String, String> masterFlagMap = getMasterFlags();
     restartClusterWithFlags(masterFlagMap, tsFlagMap);

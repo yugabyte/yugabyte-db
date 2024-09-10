@@ -94,6 +94,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
+  Slice GetRowKey() const;
+
   void set_debug_dump(bool value) { debug_dump_ = value; }
 
   const Schema& schema() const {

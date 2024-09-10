@@ -33,7 +33,7 @@ type ZoneContext struct {
 // NewZoneFormat for formatting output
 func NewZoneFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultZone
 		return formatter.Format(format)
 	default: // custom format or json or pretty

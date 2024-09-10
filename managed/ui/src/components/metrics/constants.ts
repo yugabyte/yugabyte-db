@@ -30,7 +30,8 @@ export const MetricTypesWithOperations = {
       'ysql_connections',
       'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
-      'ysql_sql_advanced_latency'
+      'ysql_sql_advanced_latency',
+      'ysql_catalog_cache_misses'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
@@ -292,7 +293,8 @@ export const MetricTypesWithOperations = {
       'table_memory_rejections',
       'table_compaction',
       'table_block_cache_hit_miss',
-      'table_mem_tracker_db_memtable'
+      'table_mem_tracker_db_memtable',
+      'ysql_catalog_cache_misses'
     ]
   }
 } as const;

@@ -484,10 +484,6 @@ func (plat Platform) Upgrade() error {
 
 // Helper function to update the data/software directories ownership to yugabyte user
 func changeAllPermissions(user string) error {
-	if err := common.Chown(common.GetBaseInstall()+"/data", user, user, true); err != nil {
-		return err
-	}
-
 	if err := common.Chown(common.GetBaseInstall()+"/software", user, user, true); err != nil {
 		return err
 	}

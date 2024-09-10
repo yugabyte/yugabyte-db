@@ -411,6 +411,11 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  EditDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfigParams.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -583,6 +588,11 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
       CustomerTask.TaskType.CreateYbaBackup,
       CustomerTask.TargetType.Yba),
+
+  EnableNodeAgentInUniverse(
+      com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
+      CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
 
@@ -773,6 +783,9 @@ public enum TaskType {
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
 
+  UpdateDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams.class),
+
   XClusterAddNamespaceToOutboundReplicationGroup(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
           .XClusterAddNamespaceToOutboundReplicationGroup.class),
@@ -953,6 +966,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
+
+  CheckCertificateConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig.class),
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 

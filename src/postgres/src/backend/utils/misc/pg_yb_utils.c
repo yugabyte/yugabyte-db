@@ -4677,7 +4677,13 @@ bool
 yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
 {
 	/* Allow setting yb_use_tserver_key_auth to false */
-	if (!(*newval))
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical connections
+	 * can never be of parallel worker type, therefore it makes no sense to restore
+	 * or even do check/assign hooks for ysql connection manager specific guc variables
+	 * on parallel worker process.
+	*/
+	if (!(*newval) || yb_is_parallel_worker == true)
 		return true;
 
 	/*

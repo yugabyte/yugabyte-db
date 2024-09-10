@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Java application using Vert.x PG driver
 menu:
   stable:
-    identifier: vertx-pg-client
+    identifier: java-driver-4-vertx-pg-client
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 

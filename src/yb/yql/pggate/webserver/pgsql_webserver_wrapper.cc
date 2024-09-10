@@ -252,6 +252,10 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
     writer.Int64(entry->total_time);
     writer.String("rows");
     writer.Int64(entry->rows);
+    if (strlen(entry->table_name) > 0) {
+      writer.String("table_name");
+      writer.String(entry->table_name);
+    }
     writer.EndObject();
   }
 
@@ -515,34 +519,19 @@ static void PgPrometheusMetricsHandler(
   MetricPrometheusOptions opts;
   PrometheusWriter writer(output, opts);
 
-  auto cache_miss_prefix_len = sizeof("CatalogCacheMisses");
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    bool is_cache_id_miss = false;
-    std::string name = ybpgm_table[i].name;
-    auto pos = name.find("CatalogCacheMisses");
-    if (pos != std::string::npos) {
-      // Example of name:
-      // handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_pg_authid_oid_index
-      // In this case, we split the name into metric_name and the index table name:
-      // metric_name: handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheIdMisses
-      // table_name: pg_authid_oid_index
-      pos += cache_miss_prefix_len - 1;
-      if (name[pos] == '_') {
-        is_cache_id_miss = true;
-        DCHECK(!prometheus_attr.contains("table_name"));
-        prometheus_attr["table_name"] = name.substr(pos + 1);
-      }
+    std::string metric_name = ybpgm_table[i].name;
+    std::string table_name = ybpgm_table[i].table_name;
+    if (!table_name.empty()) {
+      prometheus_attr["table_name"] = table_name;
     }
-    auto metric_name = is_cache_id_miss ? name.substr(0, pos) : name;
     WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, metric_name + "_count",
         ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
             "Couldn't write text metrics for Prometheus");
     WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, metric_name + "_sum",
         ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
             "Couldn't write text metrics for Prometheus");
-    if (is_cache_id_miss) {
-      prometheus_attr.erase("table_name");
-    }
+    prometheus_attr.erase("table_name");
   }
 
   // Publish sql server connection related metrics

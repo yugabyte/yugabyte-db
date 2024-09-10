@@ -167,6 +167,10 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
       // Force the scan in a single page ...
       ASSERT_OK(read_conn.Execute(Format(
         "SET yb_fetch_row_limit = $0", 2 * kNumInitialRows)));
+    } else {
+      // ... or multiple pages.
+      ASSERT_OK(read_conn.Execute(Format(
+        "SET yb_fetch_row_limit = $0", kNumInitialRows / 100)));
     }
     PopulateReadConnCache(read_conn);
 
@@ -302,6 +306,26 @@ TEST_F(PgLocalLimitOptimizationTest, SinglePageScan) {
   // Test Config
   is_single_tablet_ = true;
   is_single_page_scan_ = true;
+  scan_cmd_ = ScanCmd::kOrdered;
+
+  // Run Test
+  InsertRowConcurrentlyWithTableScan();
+}
+
+// Before #22821, in a multi-page scan, for each subsequent page scan,
+// the read time was set by pggate explicitly based on the used time
+// returned by the response for the previous page.
+//
+// This behavior of overriding the read time also resets the per-tablet
+// local limit map. There is no reason for pggate to send read time
+// explicitly since the read time does not change across multiple pages.
+//
+// This test ensures that there is no read restart error just because the
+// scan spans multiple pages. Fails without #22821.
+TEST_F(PgLocalLimitOptimizationTest, MultiPageScan) {
+  // Test Config
+  is_single_tablet_ = true;
+  is_single_page_scan_ = false;
   scan_cmd_ = ScanCmd::kOrdered;
 
   // Run Test

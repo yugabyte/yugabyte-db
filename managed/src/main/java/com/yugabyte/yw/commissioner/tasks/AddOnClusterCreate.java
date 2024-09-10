@@ -68,6 +68,9 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
+      // Add check for certificateConfig
+      createCheckCertificateConfigTask(universe, Collections.singletonList(cluster));
+
       // Create the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createCreateNodeTasks(

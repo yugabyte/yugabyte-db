@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: sqlalchemy-orm
     parent: python-drivers
-    weight: 600
+    weight: 610
 type: docs
 ---
 

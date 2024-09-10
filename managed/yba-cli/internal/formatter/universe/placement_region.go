@@ -35,7 +35,7 @@ type RegionContext struct {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultRegion
 		return formatter.Format(format)
 	default: // custom format or json or pretty

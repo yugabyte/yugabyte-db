@@ -3700,4 +3700,23 @@ process_open_files:
         "yb-postmaster": "Postmaster"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
-        "node_exporter": "Node Exporter"
+
+
+ysql_catalog_cache_misses:
+  metric: "rpc_latency_count"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "CatalogCacheTableMisses"
+    table_name: "..*"
+  panel_group: "YSQL"
+  layout:
+    title: "Catalog Cache Misses"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        rpc_latency_count: "Catalog Cache Miss Count"

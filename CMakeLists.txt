@@ -607,6 +607,7 @@ include_directories(src)
 
 include_directories("src/inline-thirdparty/usearch")
 include_directories("src/inline-thirdparty/fp16")
+include_directories("src/inline-thirdparty/hnswlib")
 
 
 enable_testing()

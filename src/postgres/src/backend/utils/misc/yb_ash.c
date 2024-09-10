@@ -163,6 +163,16 @@ yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
+bool
+yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
+{
+	/* Autocompute yb_ash_circular_buffer_size if zero */
+	if (*newval == 0)
+		*newval = YBCGetCircularBufferSizeInKiBs();
+
+	return true;
+}
+
 void
 YbAshRegister(void)
 {
@@ -219,6 +229,7 @@ YbAshSetDatabaseId(Oid database_id)
 static int
 yb_ash_cb_max_entries(void)
 {
+	Assert(yb_ash_circular_buffer_size != 0);
 	return yb_ash_circular_buffer_size * 1024 / sizeof(YBCAshSample);
 }
 
@@ -417,19 +428,32 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
 					  char *completionTag)
 {
-	uint64 query_id;
+	uint64		query_id;
+	bool		skip_nested_level;
+	Node	   *parsetree = pstmt->utilityStmt;
 
-	if (yb_enable_ash)
+	/*
+	 * We don't want to set query id if the node is PREPARE, EXECUTE or
+	 * DEALLOCATE because pg_stat_statements also doesn't do it. Check
+	 * comments in pgss_ProcessUtility for more info.
+	 */
+	skip_nested_level = IsA(parsetree, PrepareStmt) || IsA(parsetree, ExecuteStmt) ||
+						IsA(parsetree, DeallocateStmt);
+
+	if (!skip_nested_level)
 	{
-		query_id = pstmt->queryId != 0
-				   ? pstmt->queryId
-				   : yb_ash_utility_query_id(queryString,
-					   						 pstmt->stmt_len,
-											 pstmt->stmt_location);
-		YbAshSetQueryId(query_id);
+		if (yb_enable_ash)
+		{
+			query_id = pstmt->queryId != 0
+					   ? pstmt->queryId
+					   : yb_ash_utility_query_id(queryString,
+												 pstmt->stmt_len,
+												 pstmt->stmt_location);
+			YbAshSetQueryId(query_id);
+		}
+		++nested_level;
 	}
 
-	++nested_level;
 	PG_TRY();
 	{
 		if (prev_ProcessUtility)
@@ -440,18 +464,21 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			standard_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
 									dest, completionTag);
-		--nested_level;
-
-		if (yb_enable_ash)
-			YbAshResetQueryId(query_id);
+		if (!skip_nested_level)
+		{
+			--nested_level;
+			if (yb_enable_ash)
+				YbAshResetQueryId(query_id);
+		}
 	}
 	PG_CATCH();
 	{
-		--nested_level;
-
-		if (yb_enable_ash)
-			YbAshResetQueryId(query_id);
-
+		if (!skip_nested_level)
+		{
+			--nested_level;
+			if (yb_enable_ash)
+				YbAshResetQueryId(query_id);
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -687,9 +714,10 @@ yb_ash_sighup(SIGNAL_ARGS)
 void
 YbAshMain(Datum main_arg)
 {
+	Assert(yb_ash_circular_buffer_size != 0);
 	ereport(LOG,
-			(errmsg("starting bgworker yb_ash collector with max buffer entries %d",
-					yb_ash->max_entries)));
+			(errmsg("starting bgworker yb_ash collector with circular buffer size %d bytes",
+					yb_ash_circular_buffer_size * 1024)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
 	pqsignal(SIGHUP, yb_ash_sighup);

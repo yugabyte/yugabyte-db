@@ -22,7 +22,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func waitForUpgradeUniverseTask(
+// WaitForUpgradeUniverseTask waits for the upgrade task to complete
+func WaitForUpgradeUniverseTask(
 	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID, taskUUID string) {
 
 	var universeData []ybaclient.UniverseResp
@@ -50,8 +51,9 @@ func waitForUpgradeUniverseTask(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universeFormatter.NewUniverseFormat(viper.GetString("output")),
+			Command: "upgrade",
+			Output:  os.Stdout,
+			Format:  universeFormatter.NewUniverseFormat(viper.GetString("output")),
 		}
 
 		universeFormatter.Write(universesCtx, universeData)

@@ -37,6 +37,13 @@ type AzureCredentials struct {
 	ResourceGroup  string `json:"resource_group"`
 }
 
+// HashicorpCredentials required for kms configs
+type HashicorpCredentials struct {
+	Token     string `json:"HC_VAULT_TOKEN"`
+	Address   string `json:"HC_VAULT_ADDRESS"`
+	Namespace string `json:"HC_VAULT_AUTH_NAMESPACE"`
+}
+
 // KuberenetesMetadata to extract image pull secret name
 type KuberenetesMetadata struct {
 	Name string `yaml:"name"`
@@ -59,6 +66,9 @@ func gcpGetCredentials(filePath string) (GCPCredentials, error) {
 		}
 	} else {
 		gcsCredsByteArray, err = gcpCredentialsFromFilePath(filePath)
+		if err != nil {
+			return GCPCredentials{}, err
+		}
 	}
 	gcsCredsJSON := GCPCredentials{}
 	err = json.Unmarshal(gcsCredsByteArray, &gcsCredsJSON)
@@ -205,6 +215,15 @@ func AwsCredentialsFromEnv() (awsCreds.Value, error) {
 	return awsCredentials, nil
 }
 
+// AWSRegionFromEnv retrives value of "AWS_REGION" from env variables
+func AWSRegionFromEnv() (string, error) {
+	region, isPresent := os.LookupEnv(AWSRegionEnv)
+	if !isPresent {
+		return "", fmt.Errorf("%s env variable not found", AWSRegionEnv)
+	}
+	return region, nil
+}
+
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
 func AzureStorageCredentialsFromEnv() (string, error) {
 	azureSasToken, isPresent := os.LookupEnv(AzureStorageSasTokenEnv)
@@ -222,20 +241,21 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 	var isPresentClientID, isPresentClientSecret, isPresentSubscriptionID bool
 	var isPresentTenantID, isPresentRG bool
 	errorString := "Empty env variable: "
-	azureCreds.ClientID, isPresentClientID = os.LookupEnv(AzureClientIDEnv)
-	if !isPresentClientID {
+	var err error
+	azureCreds.ClientID, isPresentClientID, err = AzureClientIDFromEnv()
+	if !isPresentClientID || (err != nil && strings.Contains(err.Error(), errorString)) {
 		errorString = fmt.Sprintf("%s%s ", errorString, AzureClientIDEnv)
 	}
-	azureCreds.ClientSecret, isPresentClientSecret = os.LookupEnv(AzureClientSecretEnv)
-	if !isPresentClientSecret {
+	azureCreds.ClientSecret, isPresentClientSecret, err = AzureClientSecretFromEnv()
+	if !isPresentClientSecret || (err != nil && strings.Contains(err.Error(), errorString)) {
 		errorString = fmt.Sprintf("%s%s ", errorString, AzureClientSecretEnv)
 	}
 	azureCreds.SubscriptionID, isPresentSubscriptionID = os.LookupEnv(AzureSubscriptionIDEnv)
 	if !isPresentSubscriptionID {
 		errorString = fmt.Sprintf("%s%s ", errorString, AzureSubscriptionIDEnv)
 	}
-	azureCreds.TenantID, isPresentTenantID = os.LookupEnv(AzureTenantIDEnv)
-	if !isPresentTenantID {
+	azureCreds.TenantID, isPresentTenantID, err = AzureTenantIDFromEnv()
+	if !isPresentTenantID || (err != nil && strings.Contains(err.Error(), errorString)) {
 		errorString = fmt.Sprintf("%s%s ", errorString, AzureTenantIDEnv)
 	}
 	azureCreds.ResourceGroup, isPresentRG = os.LookupEnv(AzureRGEnv)
@@ -249,8 +269,63 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 	return azureCreds, nil
 }
 
-// ReadSSHPrivateKey retrives private key file contents from env variable
-func ReadSSHPrivateKey(filePath string) (*string, error) {
+// AzureClientIDFromEnv retrives value of "AZURE_CLIENT_ID" from env variables
+func AzureClientIDFromEnv() (string, bool, error) {
+	azureClientID, isPresent := os.LookupEnv(AzureClientIDEnv)
+	if !isPresent {
+		return "", false, fmt.Errorf("%s env variable not found", AzureClientIDEnv)
+	}
+	return azureClientID, true, nil
+}
+
+// AzureClientSecretFromEnv retrives value of "AZURE_CLIENT_SECRET" from env variables
+func AzureClientSecretFromEnv() (string, bool, error) {
+	azureClientSecret, isPresent := os.LookupEnv(AzureClientSecretEnv)
+	if !isPresent {
+		return "", false, fmt.Errorf("%s env variable not found", AzureClientSecretEnv)
+	}
+	return azureClientSecret, true, nil
+}
+
+// AzureTenantIDFromEnv retrives value of "AZURE_TENANT_ID" from env variables
+func AzureTenantIDFromEnv() (string, bool, error) {
+	azureTenantID, isPresent := os.LookupEnv(AzureTenantIDEnv)
+	if !isPresent {
+		return "", false, fmt.Errorf("%s env variable not found", AzureTenantIDEnv)
+	}
+	return azureTenantID, true, nil
+}
+
+// HashicorpVaultTokenFromEnv retrives value of "HASHICORP_VAULT_TOKEN" from env variables
+func HashicorpVaultTokenFromEnv() (string, error) {
+	var hcv HashicorpCredentials
+	var isPresentToken bool
+	errorString := "Empty env variable: "
+
+	hcv.Token, isPresentToken = os.LookupEnv(HashicorpVaultTokenEnv)
+	if !isPresentToken {
+		errorString = fmt.Sprintf("%s%s ", errorString, HashicorpVaultTokenEnv)
+		return "", fmt.Errorf(errorString)
+	}
+	return hcv.Token, nil
+}
+
+// HashicorpVaultAddressFromEnv retrives value of "HASHICORP_VAULT_ADDR" from env variables
+func HashicorpVaultAddressFromEnv() (string, error) {
+	var hca HashicorpCredentials
+	var isPresentAddress bool
+	errorString := "Empty env variable: "
+
+	hca.Address, isPresentAddress = os.LookupEnv(HashicorpVaultAddressEnv)
+	if !isPresentAddress {
+		errorString = fmt.Sprintf("%s%s ", errorString, HashicorpVaultAddressEnv)
+		return "", fmt.Errorf(errorString)
+	}
+	return hca.Address, nil
+}
+
+// ReadFileToString retrieves file content from given file path
+func ReadFileToString(filePath string) (*string, error) {
 	fileContentByte, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed reading data from %s: %s", filePath, err)

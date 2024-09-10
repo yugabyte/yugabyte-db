@@ -183,7 +183,13 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
     (kDdlPostProcessing)
     (kDdlPostProcessingFailed));
 
-YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted));
+// kNoChange is used when a PG DDL statement only increments the table's schema version
+// without any real DocDB table schema change (e.g., alter table t alter column c set not null).
+// In this case we cannot decide whether the PG DDL txn has committed or aborted by doing
+// schema comparison of DocDB current schema or previous schema against the PG catalog schema.
+// That's fine because whether the PG DDL txn has committed or aborted makes no difference for
+// this table's DocDB schema.
+YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted) (kNoChange));
 
 struct YsqlTableDdlTxnState;
 
@@ -352,7 +358,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableInfoPtr& table, const LeaderEpoch& epoch);
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
-  Status VerifyTablePgLayer(scoped_refptr<TableInfo> table, Result<bool> exists,
+  Status VerifyTablePgLayer(scoped_refptr<TableInfo> table, Result<std::optional<bool>> exists,
     const LeaderEpoch& epoch);
 
   // Truncate the specified table.
@@ -474,16 +480,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlTableSchemaChecker(TableInfoPtr table,
                                 const std::string& pb_txn_id,
-                                Result<bool> is_committed,
+                                Result<std::optional<bool>> is_committed,
                                 const LeaderEpoch& epoch);
 
   Status YsqlDdlTxnCompleteCallback(const std::string& pb_txn_id,
-                                    bool is_committed,
+                                    std::optional<bool> is_committed,
                                     const LeaderEpoch& epoch,
                                     const std::string& debug_caller_info);
 
   Status YsqlDdlTxnCompleteCallbackInternal(
-      TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch);
+      TableInfo* table, const TransactionId& txn_id, std::optional<bool> success,
+      const LeaderEpoch& epoch);
 
   Status HandleSuccessfulYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 
@@ -722,6 +729,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
+
+  // Re-fetch all CDCSDK streams for the table and confirm the inserted childrent tablet entries
+  // belong to one of these streams. If not, update such entries and set the checkpoint to max. This
+  // is to handle race condition where the table being removed from the stream splits
+  // simultaneously.
+  Status ReVerifyChildrenEntriesOnTabletSplit(
+      const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
+      const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
 
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
@@ -1463,6 +1478,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids,
       const std::vector<TableInfoPtr>& eligible_tables_info) REQUIRES(mutex_);
 
+  // This method finds the intersection of tables between the qualified & unqualified table list of
+  // a stream to find unprocessed unqualified tables that needs to be removed from the stream.
+  void FindAllUnproccesedUnqualifiedTablesInCDCSDKStream(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<std::string>& qualified_table_ids,
+      const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_ids,
+      const std::vector<TableInfoPtr>& eligible_tables_info);
+
   Status ValidateCDCSDKRequestProperties(
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
       const std::string& record_type_option_value, const std::string& id_type_option_value);
@@ -1474,8 +1497,27 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
 
-  Status RemoveNonEligibleTablesFromCDCSDKStreams(
-      const TableStreamIdsMap& non_user_tables_to_streams_map, const LeaderEpoch& epoch);
+  // Process the removal of tables from CDCSDK streams. This function is common for removal of
+  // non-eligible tables as well as unprocessed unqualified tables from a CDC stream.
+  Status ProcessTablesToBeRemovedFromCDCSDKStreams(
+      const TableStreamIdsMap& unprocessed_tables_to_streams_map, bool non_eligible_table_cleanup,
+      const LeaderEpoch& epoch);
+
+  Status AddTableForRemovalFromCDCSDKStream(
+      const std::unordered_set<TableId>& table_ids, const CDCStreamInfoPtr& stream);
+
+  Status ValidateStreamForTableRemoval(const CDCStreamInfoPtr& stream);
+
+  Status ValidateTableForRemovalFromCDCSDKStream(
+      const scoped_refptr<TableInfo>& table, bool check_for_ineligibility);
+
+  // Validate the streams in 'cdcsdk_unprocessed_unqualified_tables_to_streams_' for table removal
+  // and get the StreamInfo.
+  Status FindCDCSDKStreamsForUnprocessedUnqualifiedTables(
+      TableStreamIdsMap* tables_to_be_removed_streams_map);
+
+  void RemoveStreamsFromUnprocessedRemovedTableMap(
+      const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
 
   // Find all the CDC streams that have been marked as provided state.
   Result<std::vector<CDCStreamInfoPtr>> FindXReplStreamsMarkedForDeletion(
@@ -2887,10 +2929,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
       EXCLUDES(mutex_);
 
-  Result<std::vector<cdc::CDCStateTableEntry>> UpdateCheckpointForTabletEntriesInCDCState(
+  Status UpdateCheckpointForTabletEntriesInCDCState(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata,
-      const TableId& table_to_be_removed = "");
+      const TableInfoPtr& table_to_be_removed);
+
+  // Scans all the entries in cdc_state table. Updates the checkpoint to max if the table of the
+  // entry's tablet is not present in qualified table list of the stream.
+  Result<std::vector<cdc::CDCStateTableEntry>> SyncCDCStateTableEntries(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TableId>& tables_in_stream_metadata);
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id);
@@ -2976,6 +3024,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // function: 'FindAllNonEligibleTablesInCDCSDKStream'.
   std::unordered_map<NamespaceId, std::unordered_set<TableId>>
       namespace_to_cdcsdk_non_eligible_table_map_ GUARDED_BY(cdcsdk_non_eligible_table_mutex_);
+
+  mutable MutexType cdcsdk_unqualified_table_removal_mutex_;
+  // In-memory map containing user tables to be removed from a CDCSDK stream. Will be
+  // populated by two entities:
+  // 1. Table removal requested by yb-admin command
+  // 2. Automatic table removal by UpdatePeersAndMetrics for tables not of interest/expired.
+  // Will be refreshed on master restart / leadership change through the funcion:
+  //  'FindAllUnproccesedUnqualifiedTablesInCDCSDKStream'
+  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
+      cdcsdk_unprocessed_unqualified_tables_to_streams_
+          GUARDED_BY(cdcsdk_unqualified_table_removal_mutex_);
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);

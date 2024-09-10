@@ -181,6 +181,7 @@ public class PlatformReplicationManager {
 
   public void demoteLocalInstance(PlatformInstance localInstance, String leaderAddr)
       throws MalformedURLException {
+    log.info("Demoting local instance.");
     if (!localInstance.getIsLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
@@ -196,6 +197,7 @@ public class PlatformReplicationManager {
   }
 
   public void promoteLocalInstance(PlatformInstance newLeader) {
+    log.info("Promoting local instance to active.");
     HighAvailabilityConfig config = newLeader.getConfig();
     Optional<PlatformInstance> previousLocal = config.getLocal();
 
@@ -212,6 +214,7 @@ public class PlatformReplicationManager {
               i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
+                log.info("Cleaning up received backups.");
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
               } catch (MalformedURLException ignored) {
               }
@@ -225,6 +228,7 @@ public class PlatformReplicationManager {
         .getRemoteInstances()
         .forEach(
             instance -> {
+              log.info("Demoting remote instance {}", instance.getAddress());
               replicationHelper.demoteRemoteInstance(instance, true);
             });
     // Promote the new local leader.
@@ -296,7 +300,7 @@ public class PlatformReplicationManager {
             .getMostRecentBackup()
             .map(
                 backup -> {
-                  HA_LAST_BACKUP_SIZE.set(backup.length() / (1024 * 1024));
+                  HA_LAST_BACKUP_SIZE.set(backup.length() / (1024.0 * 1024.0));
                   return replicationHelper.exportBackups(
                       config, clusterKey, remoteInstance.getAddress(), backup);
                 })

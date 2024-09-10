@@ -27,10 +27,12 @@ export interface YCQLFormFields {
 export interface YSQLFormPayload {
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
-  ysqlPassword: string;
+  ysqlPassword?: string;
+  enableConnectionPooling?: boolean;
   communicationPorts: {
     ysqlServerHttpPort: number;
     ysqlServerRpcPort: number;
+    internalYsqlServerRpcPort?: number;
   };
 }
 

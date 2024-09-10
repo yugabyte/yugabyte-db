@@ -29,7 +29,7 @@ type Context struct {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultEARListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -40,7 +40,7 @@ func NewEARFormat(source string) formatter.Format {
 // Write renders the context for a list of EARs
 func Write(ctx formatter.Context, ears []util.KMSConfig) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of ears into JSON
 		var output []byte
 		var err error

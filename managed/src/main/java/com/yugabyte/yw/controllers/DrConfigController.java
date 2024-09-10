@@ -1,7 +1,6 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getRequestedTableInfoList;
-import static org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
 
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
@@ -16,6 +15,7 @@ import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -85,6 +85,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import play.libs.Json;
 import play.mvc.Http;
@@ -137,6 +138,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the task uuid that is creating the dr config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "createDrConfig",
       value = "Create disaster recovery config",
       response = YBPTask.class)
@@ -159,6 +161,7 @@ public class DrConfigController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result create(UUID customerUUID, Http.Request request) {
     log.info("Received create drConfig request");
 
@@ -191,6 +194,56 @@ public class DrConfigController extends AuthenticatedController {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
+    if (Objects.isNull(createForm.pitrParams)) {
+      createForm.pitrParams = new DrConfigCreateForm.PitrParams();
+      createForm.pitrParams.retentionPeriodSec =
+          confGetter
+              .getConfForScope(
+                  targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+              .getSeconds();
+      createForm.pitrParams.snapshotIntervalSec =
+          confGetter
+              .getConfForScope(
+                  targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+              .getSeconds();
+    }
+    validatePitrParams(createForm.pitrParams);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
+
+    XClusterConfigController.xClusterCreatePreChecks(
+        ybService,
+        requestedTableInfoList,
+        ConfigType.Txn,
+        sourceUniverse,
+        sourceTableInfoList,
+        targetUniverse,
+        targetTableInfoList,
+        confGetter);
+
+    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+    BootstrapParams bootstrapParams =
+        getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
+    XClusterConfigController.xClusterBootstrappingPreChecks(
+        requestedTableInfoList,
+        sourceTableInfoList,
+        targetUniverse,
+        sourceUniverse,
+        sourceTableIdTargetTableIdMap,
+        ybService,
+        bootstrapParams,
+        null /* currentReplicationGroupName */);
+
     DrConfig drConfig;
     DrConfigTaskParams taskParams;
     if (isDbScoped) {
@@ -204,6 +257,7 @@ public class DrConfigController extends AuthenticatedController {
               createForm.sourceUniverseUUID,
               createForm.targetUniverseUUID,
               createForm.bootstrapParams.backupRequestParams,
+              createForm.pitrParams,
               createForm.dbs);
 
       taskParams =
@@ -214,42 +268,13 @@ public class DrConfigController extends AuthenticatedController {
               createForm.dbs,
               createForm.pitrParams);
     } else {
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-          getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
-
-      Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-      Map<String, List<String>> mainTableIndexTablesMap =
-          XClusterConfigTaskBase.getMainTableIndexTablesMap(
-              this.ybService, sourceUniverse, tableIds);
-
-      XClusterConfigController.xClusterCreatePreChecks(
-          requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
-
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-      Map<String, String> sourceTableIdTargetTableIdMap =
-          XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-              requestedTableInfoList, targetTableInfoList);
-
-      BootstrapParams bootstrapParams =
-          getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
-      XClusterConfigController.xClusterBootstrappingPreChecks(
-          requestedTableInfoList,
-          sourceTableInfoList,
-          targetUniverse,
-          sourceUniverse,
-          sourceTableIdTargetTableIdMap,
-          ybService,
-          bootstrapParams,
-          null /* currentReplicationGroupName */);
-
       if (createForm.dryRun) {
         return YBPSuccess.withMessage("The pre-checks are successful");
       }
 
-      // Todo: Ensure the PITR parameters have the right RPOs.
+      Map<String, List<String>> mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService, sourceUniverse, tableIds);
 
       // Create xCluster config object.
       drConfig =
@@ -258,7 +283,8 @@ public class DrConfigController extends AuthenticatedController {
               createForm.sourceUniverseUUID,
               createForm.targetUniverseUUID,
               tableIds,
-              createForm.bootstrapParams.backupRequestParams);
+              createForm.bootstrapParams.backupRequestParams,
+              createForm.pitrParams);
       drConfig
           .getActiveXClusterConfig()
           .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
@@ -297,9 +323,10 @@ public class DrConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "editDrConfig",
       value = "Edit disaster recovery config",
-      response = DrConfig.class)
+      response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "disaster_recovery_edit_form_data",
@@ -329,6 +356,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received edit drConfig request");
 
@@ -340,12 +368,27 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigEditForm editForm = parseEditForm(request);
     validateEditForm(editForm, customer.getUuid(), drConfig);
 
-    drConfig.setStorageConfigUuid(editForm.bootstrapParams.backupRequestParams.storageConfigUUID);
-    drConfig.setParallelism(editForm.bootstrapParams.backupRequestParams.parallelism);
-    drConfig.update();
+    DrConfigTaskParams taskParams =
+        new DrConfigTaskParams(drConfig, editForm.bootstrapParams, editForm.pitrParams);
 
-    DrConfigGetResp resp = new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
-    return PlatformResults.withData(resp);
+    UUID taskUUID = commissioner.submit(TaskType.EditDrConfigParams, taskParams);
+    CustomerTask.create(
+        customer,
+        drConfig.getUuid(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Edit,
+        drConfig.getName());
+    log.info("Submitted edit DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfig.getUuid().toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(editForm),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
   }
 
   /**
@@ -354,6 +397,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the dr config uuid
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "setTablesDrConfig",
       value = "Set tables in disaster recovery config",
       response = YBPTask.class)
@@ -386,6 +430,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
 
@@ -453,6 +498,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the dr config uuid that is restarting the config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "restartDrConfig",
       value = "Restart disaster recovery config",
       response = YBPTask.class)
@@ -485,6 +531,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info("Received restart drConfig request");
@@ -576,6 +623,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the task uuid that is editing the dr config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "replaceReplicaDrConfig",
       value = "Replace Replica in a disaster recovery config",
       response = YBPTask.class)
@@ -608,6 +656,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result replaceReplica(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received replaceReplica drConfig request");
 
@@ -662,15 +711,22 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
             XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
 
-        XClusterConfigTaskBase.verifyTablesNotInReplication(
-            tableIds, sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
-        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
-
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> newTargetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
         Map<String, String> sourceTableIdNewTargetTableIdMap =
             XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
                 requestedTableInfoList, newTargetTableInfoList);
+
+        XClusterConfigTaskBase.verifyTablesNotInReplication(
+            ybService,
+            tableIds,
+            ConfigType.Txn,
+            sourceUniverse.getUniverseUUID(),
+            sourceTableInfoList,
+            newTargetUniverse.getUniverseUUID(),
+            newTargetTableInfoList,
+            true /* skipTxnReplicationCheck */);
+        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
 
         BootstrapParams bootstrapParams =
             getBootstrapParamsFromRestartBootstrapParams(
@@ -744,6 +800,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the task uuid that is running on the dr config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "switchoverDrConfig",
       value = "Switchover a disaster recovery config",
       response = YBPTask.class)
@@ -776,6 +833,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
 
@@ -885,10 +943,12 @@ public class DrConfigController extends AuthenticatedController {
       }
 
       drSwitchoverFailoverPreChecks(
+          ybService,
           CustomerTask.TaskType.Switchover,
           requestedTableInfoList,
           targetTableInfoList,
           targetUniverse,
+          sourceTableInfoList,
           sourceUniverse);
 
       Map<String, List<String>> mainTableIndexTablesMap =
@@ -965,6 +1025,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of YBPTask including the task uuid that is running on the dr config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "failoverDrConfig",
       value = "Failover a disaster recovery config",
       response = YBPTask.class)
@@ -997,6 +1058,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result failover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received failover drConfig request");
 
@@ -1025,6 +1087,9 @@ public class DrConfigController extends AuthenticatedController {
       if (xClusterConfig.getType() != ConfigType.Db) {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.
@@ -1055,10 +1120,12 @@ public class DrConfigController extends AuthenticatedController {
             XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
 
         drSwitchoverFailoverPreChecks(
+            ybService,
             CustomerTask.TaskType.Failover,
             requestedTableInfoList,
             targetTableInfoList,
             targetUniverse,
+            sourceTableInfoList,
             sourceUniverse);
         Map<String, List<String>> mainTableIndexTablesMap =
             XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
@@ -1156,6 +1223,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return A form representing the requested dr config
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "getDrConfig",
       value = "Get disaster recovery config",
       response = DrConfigGetResp.class)
@@ -1181,18 +1249,21 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid")),
   })
-  public Result get(UUID customerUUID, UUID drUUID) {
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
+  public Result get(UUID customerUUID, UUID drUUID, boolean syncWithDB) {
     log.info("Received get DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
-    xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
-    activeXClusterConfig.refresh();
+    if (syncWithDB) {
+      xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
+      activeXClusterConfig.refresh();
 
-    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+      for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+        XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+            this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+      }
     }
 
     DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
@@ -1206,6 +1277,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return Result
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "syncDrConfig",
       value = "Sync disaster recovery config",
       response = YBPTask.class)
@@ -1231,6 +1303,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
 
@@ -1269,6 +1342,7 @@ public class DrConfigController extends AuthenticatedController {
    * @return An instance of {@link YBPTask} indicating whether the task was created successfully
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "deleteXClusterConfig",
       value = "Delete xcluster config",
       response = YBPTask.class)
@@ -1294,6 +1368,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid"))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result delete(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info(
@@ -1402,24 +1477,34 @@ public class DrConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, drConfigUUID).asResult();
   }
 
-  @ApiOperation(nickname = "pauseDrConfig", value = "Pause DR config", response = YBPTask.class)
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "pauseDrConfig",
+      value = "Pause DR config",
+      response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result pause(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
     return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Pause);
   }
 
-  @ApiOperation(nickname = "resumeDrConfig", value = "Resume DR config", response = YBPTask.class)
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "resumeDrConfig",
+      value = "Resume DR config",
+      response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result resume(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
     return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Resume);
   }
@@ -1431,6 +1516,7 @@ public class DrConfigController extends AuthenticatedController {
    *     configuration and the min of those.
    */
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       nickname = "getDrConfigSafetime",
       value = "Get disaster recovery config safetime",
       response = DrConfigSafetimeResp.class)
@@ -1456,6 +1542,7 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid")),
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result getSafetime(UUID customerUUID, UUID drUUID) {
     log.info("Received getSafetime DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1595,19 +1682,48 @@ public class DrConfigController extends AuthenticatedController {
   }
 
   private void validateEditForm(DrConfigEditForm formData, UUID customerUUID, DrConfig drConfig) {
-    validateBackupRequestParamsForBootstrapping(
-        formData.bootstrapParams.backupRequestParams, customerUUID);
 
-    UUID newStorageConfigUUID = formData.bootstrapParams.backupRequestParams.storageConfigUUID;
-    int newParallelism = formData.bootstrapParams.backupRequestParams.parallelism;
-    if (drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
-        && drConfig.getParallelism() == newParallelism) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "No changes were made to drConfig. Current Storage configuration with uuid: %s and"
-                  + " parallelism: %d for drConfig: %s",
-              drConfig.getStorageConfigUuid(), drConfig.getParallelism(), drConfig.getName()));
+    boolean changeInParams = false;
+
+    if (formData.bootstrapParams != null) {
+      changeInParams = true;
+      validateBackupRequestParamsForBootstrapping(
+          formData.bootstrapParams.backupRequestParams, customerUUID);
+
+      UUID newStorageConfigUUID = formData.bootstrapParams.backupRequestParams.storageConfigUUID;
+      int newParallelism = formData.bootstrapParams.backupRequestParams.parallelism;
+      if (drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
+          && drConfig.getParallelism() == newParallelism) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "No changes were made to drConfig. Current Storage configuration with uuid: %s and"
+                    + " parallelism: %d for drConfig: %s",
+                drConfig.getStorageConfigUuid(), drConfig.getParallelism(), drConfig.getName()));
+      }
+    }
+
+    if (formData.pitrParams != null) {
+      changeInParams = true;
+      validatePitrParams(formData.pitrParams);
+      Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
+      Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
+
+      if (oldRetentionPeriodSec != null
+          && oldRetentionPeriodSec.equals(formData.pitrParams.retentionPeriodSec)
+          && oldSnapshotIntervalSec != null
+          && oldSnapshotIntervalSec.equals(formData.pitrParams.snapshotIntervalSec)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "No changes were made to drConfig. Current retentionPeriodSec: %d and"
+                    + " snapshotIntervalSec: %d for drConfig: %s",
+                oldRetentionPeriodSec, oldSnapshotIntervalSec, drConfig.getName()));
+      }
+    }
+
+    if (!changeInParams) {
+      throw new PlatformServiceException(BAD_REQUEST, "No changes were made to drConfig");
     }
   }
 
@@ -1720,6 +1836,7 @@ public class DrConfigController extends AuthenticatedController {
    * reverse direction xCluster config is almost the same as the main xCluster config but in the
    * reverse direction.
    *
+   * @param ybClientService The YB client service to use for the pre-checks.
    * @param taskType This specifies the task that triggered the creation of a reverse direction
    *     xCluster config.
    * @param requestedTableInfoList The table info list on the target universe that will be part of
@@ -1727,20 +1844,30 @@ public class DrConfigController extends AuthenticatedController {
    * @param targetTableInfoList The table info list for all tables on the target universe
    * @param targetUniverse The target universe in the main xCluster config which is the same as the
    *     source universe in the reverse direction xCluster config
+   * @param sourceTableInfoList The table info list for all tables on the source universe
    * @param sourceUniverse The source universe in the main xCluster config which is the same as the
    *     target universe in the reverse direction xCluster config
    */
   public static void drSwitchoverFailoverPreChecks(
+      YBClientService ybClientService,
       CustomerTask.TaskType taskType,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
       Universe targetUniverse,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       Universe sourceUniverse) {
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
 
     // General xCluster pre-checks.
     XClusterConfigTaskBase.verifyTablesNotInReplication(
-        tableIds, targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID());
+        ybClientService,
+        tableIds,
+        ConfigType.Txn,
+        targetUniverse.getUniverseUUID(),
+        targetTableInfoList,
+        sourceUniverse.getUniverseUUID(),
+        sourceTableInfoList,
+        true /* skipTxnReplicationCheck */);
     XClusterConfigController.certsForCdcDirGFlagCheck(targetUniverse, sourceUniverse);
 
     // If table type is YSQL, all tables in that keyspace are selected.
@@ -1858,5 +1985,20 @@ public class DrConfigController extends AuthenticatedController {
       log.error("Could not get the estimatedDataLoss: {}", e.getMessage());
     }
     return estimatedDataLossMs;
+  }
+
+  private void validatePitrParams(DrConfigCreateForm.PitrParams pitrParams) {
+    if (pitrParams.retentionPeriodSec < 5 * 60) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "pitr retentionPeriodSec must be greater than or equal to 5 minutes");
+    }
+    if (pitrParams.snapshotIntervalSec < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "pitr snapshotIntervalSec must be greater than or equal to 0");
+    }
+    if (pitrParams.retentionPeriodSec <= pitrParams.snapshotIntervalSec) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "pitr retentionPeriodSec must be greater than snapshotIntervalSec");
+    }
   }
 }

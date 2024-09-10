@@ -205,6 +205,7 @@ downvoted
 downvotes
 Dpl
 Dreamweaver
+Ebean
 Ecto
 Elasticsearch
 enablement
@@ -425,6 +426,7 @@ Nokogiri
 Northwind
 noteable
 noteables
+Npgsql
 npm
 nullability
 nullable

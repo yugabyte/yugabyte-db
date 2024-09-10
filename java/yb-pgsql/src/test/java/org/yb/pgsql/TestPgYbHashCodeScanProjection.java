@@ -141,6 +141,11 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
       selectList, kTableName, maxHashCode);
     assertTrue(isIndexScan(stmt, query, kTableName + "_pkey"));
     assertFalse(doesNeedPgFiltering(stmt, query));
+    if (isConnMgrWarmupRoundRobinMode()) {
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        stmt.execute(query);
+      }
+    }
     return executeQueryAndCollectScanInfo(stmt, query);
   }
 
@@ -195,6 +200,7 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
 
   @Test
   public void testScans() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     try (Statement stmt = connection.createStatement()) {
       // Note: In case of using yb_hash_code function all its argument columns are fetched.
       //       They are required for row recheck.

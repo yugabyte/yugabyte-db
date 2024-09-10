@@ -31,7 +31,7 @@ type Context struct {
 // NewSessionFormat for formatting output
 func NewSessionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultSessionListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -42,7 +42,7 @@ func NewSessionFormat(source string) formatter.Format {
 // Write renders the context for a list of Sessions
 func Write(ctx formatter.Context, sessions []ybaclient.SessionInfo) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of sessions into JSON
 		var output []byte
 		var err error

@@ -738,14 +738,6 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         }
     }
 
-    for dbObjectType, count := range dbObjectConversionIssuesMap {
-        _, ok := dbObjectsMap[dbObjectType]
-        if ok {
-            dbObjectsMap[dbObjectType] = dbObjectsMap[dbObjectType] - count
-
-        }
-    }
-
     recommendedRefactoringList := []models.RefactoringCount{}
     for sqlObjectType, sqlObjectcount := range dbObjectsMap {
         var refactorCount models.RefactoringCount

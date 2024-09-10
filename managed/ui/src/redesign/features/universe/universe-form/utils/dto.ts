@@ -124,6 +124,7 @@ export interface UserIntent {
   enableYCQLAuth: boolean;
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
+  enableConnectionPooling?: boolean;
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -309,6 +310,7 @@ export interface CommunicationPorts {
   ysqlServerHttpPort: number;
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
+  internalYsqlServerRpcPort?: number;
 }
 
 export interface DeviceInfo {
@@ -366,6 +368,7 @@ export interface UserIntent {
   enableYCQLAuth: boolean;
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
+  enableConnectionPooling?: boolean;
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -545,6 +548,7 @@ export interface AdvancedConfigFormValue {
   ybSoftwareVersion: string | null;
   communicationPorts: CommunicationPorts;
   enablePGCompatibitilty: boolean;
+  enableConnectionPooling?: boolean;
 }
 
 export interface InstanceTag {
@@ -586,6 +590,7 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   yqlServerRpcPort: 9042,
   ysqlServerHttpPort: 13000,
   ysqlServerRpcPort: 5433,
+  internalYsqlServerRpcPort: 6433,
   nodeExporterPort: 9300
 };
 
@@ -643,7 +648,8 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   accessKeyCode: '',
   ybSoftwareVersion: null,
   communicationPorts: DEFAULT_COMMUNICATION_PORTS,
-  enablePGCompatibitilty: false
+  enablePGCompatibitilty: false,
+  enableConnectionPooling: false
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];

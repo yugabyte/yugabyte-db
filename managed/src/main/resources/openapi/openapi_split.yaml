@@ -24,6 +24,8 @@ servers:
 tags:
   - name: Authentication
     description: Authentication operations on YBA
+  - name: Backup and Restore
+    description: Operations related to universe backup and restore
   - name: Continuous Backup
     description: CRUD operations for Continuous YBA Backups
   - name: Isolated Backup

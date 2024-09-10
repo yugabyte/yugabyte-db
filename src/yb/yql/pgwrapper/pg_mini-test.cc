@@ -2208,6 +2208,31 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
+TEST_F(PgMiniTest, ReadHugeRow) {
+  constexpr size_t kNumColumns = 2;
+  constexpr size_t kColumnSize = 254000000;
+
+  std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    create_query += Format(", text$0 TEXT", i);
+  }
+  create_query += ")";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(create_query));
+  ASSERT_OK(conn.Execute("INSERT INTO test(pk) VALUES(0)"));
+
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test SET text$0 = repeat('0', $1) WHERE pk = 0",
+        i, kColumnSize));
+  }
+
+  const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
+}
+
 TEST_F_EX(
     PgMiniTest, CacheRefreshWithDroppedEntries, PgMiniTestSingleNode) {
   auto conn = ASSERT_RESULT(Connect());

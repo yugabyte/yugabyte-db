@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -137,6 +138,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableC
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
@@ -170,6 +172,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
+import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -183,6 +186,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AccessKey;
@@ -193,12 +197,10 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -378,7 +380,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditBackupSchedule,
           TaskType.EditBackupScheduleKubernetes,
           TaskType.DeleteBackupSchedule,
-          TaskType.DeleteBackupScheduleKubernetes);
+          TaskType.DeleteBackupScheduleKubernetes,
+          TaskType.EnableNodeAgentInUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -1629,12 +1632,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to check auto flags before XCluster replication. */
   public SubTaskGroup createCheckXUniverseAutoFlag(
-      Universe sourceUniverse, Universe targetUniverse) {
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      boolean checkAutoFlagsEqualityOnBothUniverses) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckXUniverseAutoFlag");
     CheckXUniverseAutoFlags task = createTask(CheckXUniverseAutoFlags.class);
     CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
     params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     params.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    params.checkAutoFlagsEqualityOnBothUniverses = checkAutoFlagsEqualityOnBothUniverses;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1895,6 +1901,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
+    if (universe.getUniverseDetails().disableNodeAgent) {
+      log.info(
+          "Skipping node agent installation for universe {} as it is managed by node agent enabler",
+          universe.getUniverseUUID());
+      return Collections.emptySet();
+    }
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
@@ -1911,7 +1923,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
-
                         return !provider.getDetails().skipProvisioning;
                       } else if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
@@ -1965,6 +1976,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
+    NodeAgentEnabler nodeAgentEnabler = application.injector().instanceOf(NodeAgentEnabler.class);
+    Optional<Boolean> optional = nodeAgentEnabler.isNodeAgentEnabled(universe);
+    if (!optional.isPresent()) {
+      log.info("Node agent is not supported on this universe {}", universe.getUniverseUUID());
+      return subTaskGroup;
+    }
+    if (optional.get() == false) {
+      log.info(
+          "Skipping node agent installation for universe {} as it is not enabled",
+          universe.getUniverseUUID());
+      NodeAgentEnabler.markUniverse(universe.getUniverseUUID());
+      return subTaskGroup;
+    }
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes)
         .forEach(
@@ -1978,33 +2002,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return Provider.getOrBadRequest(
                             UUID.fromString(cluster.userIntent.provider));
                       });
-              ProviderDetails providerDetails = provider.getDetails();
-              CloudType cloudType = universe.getNodeDeploymentMode(n);
-              params.sshUser =
-                  StringUtils.isNotBlank(providerDetails.sshUser)
-                      ? providerDetails.sshUser
-                      : cloudType.getSshUser();
-              UniverseDefinitionTaskParams.Cluster cluster =
-                  universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
-              UUID imageBundleUUID =
-                  Util.retreiveImageBundleUUID(
-                      universe.getUniverseDetails().arch,
-                      cluster.userIntent,
-                      provider,
-                      confGetter.getStaticConf().getBoolean("yb.cloud.enabled"));
-              if (imageBundleUUID != null) {
-                ImageBundle.NodeProperties toOverwriteNodeProperties =
-                    imageBundleUtil.getNodePropertiesOrFail(
-                        imageBundleUUID,
-                        n.cloudInfo.region,
-                        cluster.userIntent.providerType.toString());
-                params.sshUser = toOverwriteNodeProperties.getSshUser();
-              } else {
-                // ImageBundleUUID will be null for the case when YBM specifies machineImage
-                // on fly during universe creation.
-                params.sshUser = providerDetails.getSshUser();
-              }
-
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();
@@ -5571,6 +5569,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.keyspacePending = keyspacePending;
 
     SetDrStates task = createTask(SetDrStates.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createUpdateDrConfigParamsTask(
+      UUID drConfigUUID,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      DrConfigCreateForm.PitrParams pitrParams) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDrConfigParams");
+    UpdateDrConfigParams.Params params = new UpdateDrConfigParams.Params();
+    params.drConfigUUID = drConfigUUID;
+    params.setBootstrapParams(bootstrapParams);
+    params.setPitrParams(pitrParams);
+    UpdateDrConfigParams task = createTask(UpdateDrConfigParams.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

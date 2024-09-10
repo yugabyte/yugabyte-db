@@ -36,6 +36,7 @@ def parse_config(ynp_config):
     # Render the template with the configuration data
     output = template.render(ynp=ynp_config['ynp'],
                              yba=ynp_config['yba'],
+                             logging=ynp_config['logging'],
                              ynp_dir=ynp_dir,
                              start_time=start_time)
 

@@ -35,7 +35,7 @@ type VolumeContext struct {
 // NewVolumeFormat for formatting output
 func NewVolumeFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultVolume
 		return formatter.Format(format)
 	default: // custom format or json or pretty

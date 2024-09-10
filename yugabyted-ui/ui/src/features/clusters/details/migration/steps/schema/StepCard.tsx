@@ -49,6 +49,7 @@ interface StepCardProps {
   title: string;
   showTooltip?: boolean;
   showTodo?: boolean;
+  showInProgress?: boolean;
   hideContent?: boolean;
   isDone?: boolean;
   isLoading?: boolean;
@@ -62,6 +63,7 @@ export const StepCard: FC<StepCardProps> = ({
   title,
   showTooltip = false,
   showTodo = false,
+  showInProgress = false,
   hideContent = false,
   isDone = false,
   isLoading = false,
@@ -115,6 +117,12 @@ export const StepCard: FC<StepCardProps> = ({
               variant={BadgeVariant.InProgress}
               text={t("clusterDetail.voyager.todo")}
               iconComponent={TodoIcon}
+            />
+          )}
+          {showInProgress && (
+            <YBBadge
+              variant={BadgeVariant.InProgress}
+              text={t("clusterDetail.voyager.inProgress")}
             />
           )}
         </Box>

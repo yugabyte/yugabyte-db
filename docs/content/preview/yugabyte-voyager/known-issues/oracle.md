@@ -316,11 +316,61 @@ OR
 
 ### %TYPE syntax is unsupported
 
-**GitHub**: [Issue #19169](https://github.com/yugabyte/yugabyte-db/issues/19169)
+**GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
 
-**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
+**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. This syntax is not supported in target YugabyteDB yet and errors out in import schema as follows:
 
-**Workaround**: None. A workaround is currently being explored.
+```output
+ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
+```
+
+**Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
+
+
+**Example**
+
+An example of exported schema from the source database is as follows:
+
+```sql
+CREATE TABLE public.employees (
+    employee_id integer NOT NULL,
+    employee_name text,
+    salary numeric
+);
+
+
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    emp_salary employees.salary%TYPE;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
+Suggested change to CREATE FUNCTION is as follows:
+
+```sql
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    Emp_salary NUMERIC;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
 
 ---
 

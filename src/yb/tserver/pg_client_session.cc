@@ -89,6 +89,8 @@ DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
+DECLARE_uint64(rpc_max_message_size);
+
 namespace yb::tserver {
 namespace {
 
@@ -395,8 +397,16 @@ struct PerformData {
     if (status.ok()) {
       status = ProcessResponse(used_read_time_applier ? &used_read_time : nullptr);
     }
+
+    size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+    if (status.ok() && sidecars.size() > max_size) {
+      status = STATUS_FORMAT(
+          InvalidArgument, "Sending too long RPC message ($0 bytes of data)", sidecars.size());
+    }
+
     if (!status.ok()) {
       StatusToPB(status, resp.mutable_status());
+      sidecars.Reset();
       used_read_time = {};
     }
     if (cache_setter) {
@@ -465,10 +475,27 @@ struct PerformData {
           // Prevent further paging reads from read restart errors.
           // See the ProcessUsedReadTime(...) function for details.
           *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
-        }
-        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
-          // Delete read time from paging state since a read time is not used in serializable
-          // isolation level.
+        } else {
+          // Clear read time for the next page here unless absolutely necessary.
+          //
+          // Otherwise, if we do not clear read time here, a request for the
+          // next page with this read time can be sent back by the pg layer.
+          // Explicit read time in the request clears out existing local limits
+          // since the pg client session incorrectly believes that this passed
+          // read time is new. However, paging read time is simply a copy of
+          // the previous read time.
+          //
+          // Rely on
+          // 1. Either pg client session to set the read time.
+          //   See pg_client_session.cc's SetupSession
+          //     and transaction.cc's SetReadTimeIfNeeded
+          //     and batcher.cc's ExecuteOperations
+          // 2. Or transaction used read time logic in transaction.cc
+          // 3. Or plain session's used read time logic in CheckPlainSessionPendingUsedReadTime
+          //   to set the read time for the next page.
+          //
+          // Catalog sessions are not handled by the above logic, so
+          // we set the paging read time above.
           op_resp.mutable_paging_state()->clear_read_time();
         }
       }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var statusCmd = &cobra.Command{
@@ -27,6 +28,14 @@ var statusCmd = &cobra.Command{
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: []string{"postgres", "prometheus", "yb-platform"},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
+		if state.CurrentStatus != ybactlstate.InstalledStatus {
+			log.Fatal("cannot check service status - need installed state got " +
+				state.CurrentStatus.String())
+		}
 		// Print status for given service.
 		if len(args) == 1 {
 			service, exists := services[args[0]]

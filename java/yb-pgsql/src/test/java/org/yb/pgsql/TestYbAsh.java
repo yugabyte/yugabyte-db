@@ -30,11 +30,11 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLING_INTERVAL = 1000;
 
@@ -337,6 +337,32 @@ public class TestYbAsh extends BasePgSQLTest {
       int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
       int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
           " WHERE pid = " + pid).getLong(0).intValue();
+      assertGreaterThan(res, 0);
+    }
+  }
+
+  /**
+   * Test that we are tracking the correct query ids with prepared statements.
+   */
+  @Test
+  public void testPreparedStatements() throws Exception {
+    setAshConfigAndRestartCluster(10, ASH_SAMPLE_SIZE);
+
+    try (Statement statement = connection.createStatement()) {
+      String table = "test_table";
+      String pstmt = String.format("PREPARE f(INT) AS SELECT * FROM %s WHERE k = $1", table);
+      statement.execute(String.format("CREATE TABLE %s(k INT, v TEXT)", table));
+      statement.execute(pstmt);
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("INSERT INTO %s VALUES(%d, 'v-%d')", table, i, i));
+      }
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("EXECUTE f(%d)", i));
+      }
+      long pstmtQueryId = getSingleRow(statement, String.format("SELECT queryid FROM " +
+          "pg_stat_statements WHERE query = '%s'", pstmt)).getLong(0);
+      int res = getSingleRow(statement, String.format("SELECT COUNT(*) FROM %s WHERE " +
+          "query_id = %d", ASH_VIEW, pstmtQueryId)).getLong(0).intValue();
       assertGreaterThan(res, 0);
     }
   }

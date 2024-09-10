@@ -70,7 +70,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
 		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
-	rootCmd.PersistentFlags().StringP("output", "o", "table",
+	rootCmd.PersistentFlags().StringP("output", "o", formatter.TableFormatKey,
 		"Select the desired output format. Allowed values: table, json, pretty.")
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
 		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
@@ -122,7 +122,7 @@ func Execute(version string) {
 
 func setDefaults() {
 	viper.SetDefault("host", "http://localhost:9000")
-	viper.SetDefault("output", "table")
+	viper.SetDefault("output", formatter.TableFormatKey)
 	viper.SetDefault("logLevel", "info")
 	viper.SetDefault("debug", false)
 	viper.SetDefault("disable-color", false)

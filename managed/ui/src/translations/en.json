@@ -245,9 +245,27 @@
         "toggleLabel": "Enhanced Postgres Compatibility",
         "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
         "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "enableWarningRF1": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart.",
         "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
         "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
-        "disableWarning3": "May impact performance."
+        "disableWarning3": "May impact performance.",
+        "disableWarning1RF1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong> and may impact performance.",
+        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>"
+      },
+      "connectionPooling": {
+        "modalTitle": "Edit Connection Pooling",
+        "toggleLabel": "Built-in Connection Pooling",
+        "subText": "Enable built-in YSQL connection pooling to maximize the number of simultaneous connections to your database.",
+        "portsOverride": "Default Ports Override",
+        "enableWarningRF3": "<strong>Note!</strong> Enabling built-in connection pooling requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "enableWarningRF1": "<strong>Note!</strong>  Enabling built-in connection pooling requires a <strong>restart</strong> of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart.",
+        "disableWarning1RF3": "<strong>Note!</strong> Disabling built-in connection pooling:",
+        "disableWarning2RF3": "Requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning3RF3": "<strong>May reduce the number of simultaneous database connections and impact your application.</strong>",
+        "disableWarning1RF1": "<strong>Note!</strong> Disabling built-in connection pooling requires a <strong>restart</strong> of <strong>{{universeName}}</strong> and reduces the number of simultaneous database connections.",
+        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
+        "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
       }
     },
     "commonErrors": {
@@ -308,10 +326,18 @@
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
         "ysqlServerRpcPort": "YSQL RPC Port",
+        "internalYsqlServerRpcPort": "YSQL Database Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
-        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
+        "enableConnectionPooling": "Enable Connection Pooling",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous connections to your database",
+        "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
+        "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
+        "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
+        "dbRPCPortTooltip": "Port for connecting to your application clients.",
+        "ysqlConPortTooltip": "Port for connecting to the databases when connection pooling is enabled."
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -555,7 +581,7 @@
         "modalDescription": "This operation shows the difference between old and new configuration for primary cluster",
         "modalDescriptionRR": "This operation shows the difference between old and new configuration for read replica cluster",
         "likeToProceed": "Would you like to proceed?",
-        "nodes": "nodes",
+        "pods": "pods",
         "cores": "CPU cores",
         "memory": "Memory(Gib)",
         "volumeSize": "Volume Size(Gib)",
