@@ -1,4 +1,4 @@
-// Copyright (c) YugaByteDB, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -378,9 +378,9 @@ void AshCopyTServerSample(
               tserver_metadata.root_request_id().data(),
               sizeof(cb_metadata->root_request_id));
 
-  std::memcpy(cb_sample->yql_endpoint_tserver_uuid,
-              tserver_metadata.yql_endpoint_tserver_uuid().data(),
-              sizeof(cb_sample->yql_endpoint_tserver_uuid));
+  std::memcpy(cb_sample->top_level_node_id,
+              tserver_metadata.top_level_node_id().data(),
+              sizeof(cb_sample->top_level_node_id));
 
   AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
