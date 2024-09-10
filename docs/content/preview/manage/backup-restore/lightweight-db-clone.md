@@ -12,19 +12,17 @@ menu:
 type: docs
 ---
 
-Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development, and testing. Clones are efficient because they start by using the same data files as the original database. After initial creation, the cloned database serves reads and writes independently, and creates and maintains its own changes as delta files, separate from the original database.
+Instant database cloning in YugabyteDB allows you to quickly create a zero-copy, independent writable clone of your database that can be used for data recovery, development, and testing. Cloning is both fast and efficient because when initially created, it shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely play with the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
 
-Cloning uses [point-in-time restore](../point-in-time-recovery/) (PITR), so you can create a clone of the database from a specific point in time within a configurable retention period.
+You can create clones as of now, or as of any time in the recent past, within a configurable history retention period. This is particularly useful for data recovery due to user or application error scenarios. For instance, if you dropped a table by mistake at 9:01, you can create a clone of the database at 9:00 (before the table drop) and restore the lost data back to the production database.
 
-Note that you can't have more than one clone of a database at the same time.
+![Database clone](/images/manage/backup-restore/db-clone.png)
 
 Cloning has two main use cases:
 
 - Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
 
-- Data recovery. To recover from data loss (for example, accidentally dropping a table) or corruption (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data data from the clone, and import it back to the original database. For example, if you accidentally dropped a table at 9:01, you can create a clone from 9:00 (just before the table drop) to restore the lost data to the production database.
-
-![Database clone](/images/manage/backup-restore/db-clone.png)
+- Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data data from the clone, and import it back to the original database.
 
 ## Enable database cloning
 
@@ -40,7 +38,7 @@ You can set the runtime flags while the yb-master process is running using the y
 
 ```sh
 ./bin/yb-ts-cli --server-address=master_host:7100 set_flag allowed_preview_flags_csv enable_db_clone
-./build/latest/bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
+./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
 ```
 
 ## Clone databases
@@ -49,7 +47,7 @@ You can set the runtime flags while the yb-master process is running using the y
 
 - [Create a snapshot schedule](../../../manage/backup-restore/point-in-time-recovery/#create-a-schedule) for the database you want to clone.
 
-    This keeps the history of updates for the specified retention period. You can create a clone of the database as of any point in time within the specified retention period.
+    For example, creating a snapshot schedule with retention period of 7 days keeps the history of the updates for the entire 7 days. After that you can create a clone of the original database as of any point in time within the specified retention period.
 
 - You have to trust local YSQL connections (that use UNIX domain sockets) in the [host-based authentication](../../../secure/authentication/host-based-authentication/). You have to do this for all YB-TServers in the cluster. You can do this when starting the YB-TServer process by adding the authentication line `local all all trust` to the [ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
 
@@ -115,6 +113,8 @@ To check the status of clone operations performed on a database, use the yb-admi
     }
 ]
 ```
+
+You can find the `source_database_id` or `source_namespace_id` from the [YB-Master leader UI](../../../reference/configuration/default-ports/#servers) under the `/namespaces` end point.
 
 In this example, two clones were made of the source database `00004000000030008000000000000000` that are COMPLETE. The two clones are `testing_clone_db` and `dev_clone_db` and they each have a unique `seq_no` used to identify each clone operation from the same source database.
 
@@ -250,7 +250,7 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 - Higher CPU usage due to the additional tablets
 - Increased memory consumption from the extra tablets
-- Potentially up to twice the disk usage (after major compactions) due to the retention of older data versions
+- Increased space usage only if compaction is performed on clone or original database. This is because both original and post-compaction data files are kept in disk, that is, say compaction is performed on the source database which generates new compacted files. The old data files are kept to serve reads for the clone database.
 
 ## Limitations
 
