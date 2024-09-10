@@ -51,3 +51,23 @@ YB_USE_NINJA=0 ./yb_build.sh
 ```
 
 Subsequent builds can be launched also from CLion.
+
+### Configure as a compilation database project
+
+To improve performance, you can try opening the project as a compilation database project:
+
+1. Run `./yb_build.sh compilecmds` to generate the `compile_commands.json` file in the `build` directory.
+
+1. Move the `compile_commands.json` file to the project root.
+
+1. Close the Clion project.
+
+1. Delete the `.idea` folder in the `yugabyte-db` directory:
+
+    ```sh
+    rm -r .idea
+    ```
+
+1. Re-open the `yugabyte-db` folder in CLion.
+
+1. When prompted to open the folder as a CMake project or as a Compilation Database project, choose **Compilation Database project**.
