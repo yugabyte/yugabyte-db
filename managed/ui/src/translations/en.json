@@ -752,6 +752,12 @@
       "disasterRecovery": {
         "heading": "xCluster Disaster Recovery",
         "actionButton": {
+          "createDrConfig": {
+            "label": "Create Disaster Recovery Config",
+            "tooltip": {
+              "universeUnavailable": "This universe is currently unavailable for setting up further xCluster DR configs."
+            }
+          },
           "abortSwitchover": "Abort Switchover",
           "switchover": "Switchover",
           "repairDr": "Repair DR",
@@ -947,11 +953,13 @@
                 },
                 "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
+                "configName": "DR Configuration Name",
                 "drReplicaSelectionHelpText": "Make sure the DR replica has the right <drReplicaPrerequisiteDocsLink>prerequisites</drReplicaPrerequisiteDocsLink> for disaster recovery.",
                 "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
-                  "targetUniverseRequired": "Required.",
-                  "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+                  "requiredField": "Required.",
+                  "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting.",
+                  "illegalCharactersInConfigName": "The name of the DR configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '\"' NULL])"
                 }
               },
               "selectDatabases": {

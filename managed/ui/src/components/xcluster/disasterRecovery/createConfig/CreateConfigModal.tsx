@@ -21,7 +21,6 @@ import {
   runtimeConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { generateUniqueName } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
@@ -43,6 +42,7 @@ import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos'
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
+  configName: string;
   targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   namespaceUuids: string[];
   tableUuids: string[];
@@ -113,7 +113,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
 
       const createDrConfigRequest: CreateDrConfigRequest = {
-        name: `dr-config-${generateUniqueName()}`,
+        name: formValues.configName,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
         dbs: formValues.namespaceUuids.map(formatUuidForXCluster),

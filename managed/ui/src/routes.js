@@ -45,6 +45,7 @@ import {
   getRbacEnabledVal,
   isRbacEnabled
 } from './redesign/features/rbac/common/RbacUtils';
+import { DrPanel } from './pages/DrPanel';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -262,6 +263,7 @@ export default (store) => {
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
+          <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />

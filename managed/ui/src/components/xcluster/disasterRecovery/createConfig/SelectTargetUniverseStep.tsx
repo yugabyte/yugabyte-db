@@ -1,4 +1,4 @@
-import { makeStyles, Typography } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
@@ -12,50 +12,19 @@ import { DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS } from '../constants';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
-import { YBTooltip } from '../../../../redesign/components';
-import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+import { YBInputField, YBTooltip } from '../../../../redesign/components';
+import { INPUT_FIELD_WIDTH_PX, XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../../constants';
 import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 
+import { useModalStyles } from '../../styles';
+
 interface SelectTargetUniverseStepProps {
   isFormDisabled: boolean;
   sourceUniverse: Universe;
 }
-
-const useStyles = makeStyles((theme) => ({
-  stepContainer: {
-    '& ol': {
-      paddingLeft: theme.spacing(2),
-      listStylePosition: 'outside',
-      '& li::marker': {
-        fontWeight: 'bold'
-      }
-    }
-  },
-  instruction: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-
-    marginBottom: theme.spacing(4)
-  },
-  fieldLabel: {
-    marginBottom: theme.spacing(1)
-  },
-  fieldHelpText: {
-    marginTop: theme.spacing(1),
-
-    color: theme.palette.ybacolors.textGray,
-    fontSize: '12px'
-  },
-  infoIcon: {
-    '&:hover': {
-      cursor: 'pointer'
-    }
-  }
-}));
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.selectTargetUniverse';
@@ -68,7 +37,8 @@ export const SelectTargetUniverseStep = ({
   sourceUniverse
 }: SelectTargetUniverseStepProps) => {
   const { control } = useFormContext<CreateDrConfigFormValues>();
-  const classes = useStyles();
+  const theme = useTheme();
+  const modalClasses = useModalStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
@@ -107,10 +77,10 @@ export const SelectTargetUniverseStep = ({
     });
 
   return (
-    <div className={classes.stepContainer}>
+    <div className={modalClasses.stepContainer}>
       <ol>
         <li>
-          <Typography variant="body1" className={classes.instruction}>
+          <Typography variant="body1" className={modalClasses.instruction}>
             {t('instruction.text')}
             <YBTooltip
               title={
@@ -125,28 +95,54 @@ export const SelectTargetUniverseStep = ({
               <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </Typography>
-          <Typography variant="body2" className={classes.fieldLabel}>
-            {t('drReplica')}
-          </Typography>
-          <YBReactSelectField
-            control={control}
-            name="targetUniverse"
-            options={universeOptions}
-            autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
-            maxWidth="100%"
-            rules={{
-              validate: {
-                required: (targetUniverse) => !!targetUniverse || t('error.targetUniverseRequired'),
-                hasMatchingTLSConfiguration: (targetUniverse: any) =>
-                  getPrimaryCluster(targetUniverse.value.universeDetails.clusters)?.userIntent
-                    ?.enableNodeToNodeEncrypt ===
-                    getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
-                      ?.enableNodeToNodeEncrypt || t('error.mismatchedNodeToNodeEncryption')
-              }
-            }}
-            isDisabled={isFormDisabled}
-          />
-          <Typography variant="body2" className={classes.fieldHelpText}>
+          <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
+            <div>
+              <Typography variant="body2" className={modalClasses.fieldLabel}>
+                {t('configName')}
+              </Typography>
+              <YBInputField
+                className={modalClasses.inputField}
+                control={control}
+                name="configName"
+                disabled={isFormDisabled}
+                rules={{
+                  validate: {
+                    required: (configName) => !!configName || t('error.requiredField'),
+                    noIllegalCharactersInConfigName: (configName: any) => {
+                      return (
+                        !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(configName) ||
+                        t('error.illegalCharactersInConfigName')
+                      );
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <Typography variant="body2" className={modalClasses.fieldLabel}>
+                {t('drReplica')}
+              </Typography>
+              <YBReactSelectField
+                control={control}
+                name="targetUniverse"
+                options={universeOptions}
+                autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
+                maxWidth="100%"
+                rules={{
+                  validate: {
+                    required: (targetUniverse) => !!targetUniverse || t('error.requiredField'),
+                    hasMatchingTLSConfiguration: (targetUniverse: any) =>
+                      getPrimaryCluster(targetUniverse.value.universeDetails.clusters)?.userIntent
+                        ?.enableNodeToNodeEncrypt ===
+                        getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
+                          ?.enableNodeToNodeEncrypt || t('error.mismatchedNodeToNodeEncryption')
+                  }
+                }}
+                isDisabled={isFormDisabled}
+              />
+            </div>
+          </Box>
+          <Typography variant="body2" className={modalClasses.fieldHelpText}>
             <Trans
               i18nKey={`${TRANSLATION_KEY_PREFIX}.drReplicaSelectionHelpText`}
               components={{

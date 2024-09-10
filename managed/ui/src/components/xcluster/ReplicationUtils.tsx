@@ -517,6 +517,14 @@ export const getXClusterConfigUuids = (universe: Universe | undefined) => ({
   targetXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? []
 });
 
+/*
+ * Returns the UUIDs for all xCluster DR configs associated with the provided universe.
+ */
+export const getDrConfigUuids = (universe: Universe | undefined) => ({
+  sourceDrConfigUuids: universe?.drConfigUuidsAsSource ?? [],
+  targetDrConfigUuids: universe?.drConfigUuidsAsTarget ?? []
+});
+
 export const hasLinkedXClusterConfig = (universes: Universe[]) =>
   universes.some((universe) => {
     const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
@@ -647,26 +655,39 @@ export const isTableToggleable = (
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
   xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
 
-export const getIsTransactionalAtomicityEnabled = (
+/**
+ * If targetUniverse is undefined, then we just consider whether the source universe supports
+ * txn atomicity. If both source and target universes are defined, then we will consider both.
+ */
+export const getIsTransactionalAtomicitySupported = (
   sourceUniverse: Universe,
   targetUniverse?: Universe
 ) => {
-  const ybSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
-    .ybSoftwareVersion;
-  const participatingUniverses = targetUniverse
-    ? [sourceUniverse, targetUniverse]
-    : [sourceUniverse];
-  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig(participatingUniverses);
+  const sourceYbSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const targetYbSoftwareVersion = targetUniverse
+    ? getPrimaryCluster(targetUniverse.universeDetails.clusters)?.userIntent.ybSoftwareVersion
+    : '';
+
   return (
-    !!ybSoftwareVersion &&
+    !!sourceYbSoftwareVersion &&
     compareYBSoftwareVersions({
       versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-      versionB: ybSoftwareVersion,
+      versionB: sourceYbSoftwareVersion,
       options: {
         suppressFormatError: true
       }
     }) < 0 &&
-    !participantsHaveLinkedXClusterConfig
+    (!targetUniverse ||
+      (targetUniverse &&
+        !!targetYbSoftwareVersion &&
+        compareYBSoftwareVersions({
+          versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+          versionB: targetYbSoftwareVersion,
+          options: {
+            suppressFormatError: true
+          }
+        }) < 0))
   );
 };
 

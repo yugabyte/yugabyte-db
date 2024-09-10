@@ -19,6 +19,10 @@ export const BROKEN_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = 
   XClusterConfigStatus.DELETION_FAILED
 ];
 
+// In several places we assume that a corresponding task must be present when the
+// xCluster config is in one of these statuses. If we decide later to introduce some
+// transitory state for which the backend does not track task progress, then we must modify any
+// reference that makes this assumption (i.e. transitory = running task exists)
 export const TRANSITORY_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = [
   XClusterConfigStatus.INITIALIZED,
   XClusterConfigStatus.UPDATING
