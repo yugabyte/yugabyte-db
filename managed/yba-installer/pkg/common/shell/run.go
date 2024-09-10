@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -20,6 +21,22 @@ func Run(name string, args ...string) *Output {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = output.stdout
 	cmd.Stderr = output.stderr
+	output.Error = cmd.Run()
+	output.ExitCode = cmd.ProcessState.ExitCode()
+	output.LogDebug()
+	return output
+}
+
+func RunWithEnvVars(name string, envVars map[string]string, args ...string) *Output {
+	output := NewOutput(name, args)
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = output.stdout
+	cmd.Stderr = output.stderr
+	cmd.Env = os.Environ()
+	for key, value := range envVars {
+		env := fmt.Sprintf("%s=%s", key, value)
+		cmd.Env = append(cmd.Env, env)
+	}
 	output.Error = cmd.Run()
 	output.ExitCode = cmd.ProcessState.ExitCode()
 	output.LogDebug()
