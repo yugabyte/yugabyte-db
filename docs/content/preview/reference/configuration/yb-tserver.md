@@ -1733,7 +1733,7 @@ Default: `1GB`
 
 ##### enable_bitmapscan
 
-{{<badge/tp>}} PostgreSQL flag to enable or disable the query planner's use of bitmap-scan plan types.
+{{<badge/tp>}} PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
@@ -1745,7 +1745,7 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<badge/tp>}} Enables or disables the query planner's use of YugabyteDB bitmap scans. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{<badge/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
