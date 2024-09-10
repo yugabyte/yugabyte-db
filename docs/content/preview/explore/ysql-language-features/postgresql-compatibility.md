@@ -52,7 +52,7 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
 | Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.1 | | Yes |
 | Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
-| Bitmap scan | [enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3<br>(Planned) | |
+| Bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan)<br>[enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3<br>(Planned) | |
 | Parallel query | | Planned | |
 
 ### Released
@@ -121,9 +121,9 @@ The following features are planned for EPCM in future releases.
 
 #### Bitmap scan
 
-Configuration parameter: `enable_bitmapscan=true`
+Configuration parameter: `enable_bitmapscan=true` and `yb_enable_bitmapscan=true`
 
-Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. Bitmap scan provides improved performance parity.
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. Bitmap scan provides feature compatibility and improved performance parity.
 
 #### Parallel query
 
