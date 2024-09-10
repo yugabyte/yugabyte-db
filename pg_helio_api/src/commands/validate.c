@@ -19,7 +19,7 @@
 #include <funcapi.h>
 #include <utils/builtins.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "metadata/index.h"
@@ -129,7 +129,7 @@ command_validate(PG_FUNCTION_ARGS)
 
 	if (validateSpec.collectionName == NULL || strlen(validateSpec.collectionName) == 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Invalid namespace specified '%s.'",
 							   validateSpec.databaseName)));
 	}
@@ -137,7 +137,7 @@ command_validate(PG_FUNCTION_ARGS)
 	/* Check that validate->metadata is not specified with validateSpec->full and validateSpec->repair */
 	if (validateSpec.metadata && (validateSpec.full || validateSpec.repair))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"Running the validate command with { metadata: true } is not supported with any other options")));
 	}
@@ -145,7 +145,7 @@ command_validate(PG_FUNCTION_ARGS)
 	if (validateSpec.repair)
 	{
 		ReportFeatureUsage(FEATURE_COMMAND_VALIDATE_REPAIR);
-		ereport(ERROR, (errcode(MongoInvalidOptions), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS), errmsg(
 							"Running the validate command with { repair: true } is not supported yet.")));
 	}
 
@@ -158,7 +158,7 @@ command_validate(PG_FUNCTION_ARGS)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotFound), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND), errmsg(
 							"Collection '%s.%s' does not exist to validate.",
 							validateSpec.databaseName, validateSpec.collectionName)));
 	}

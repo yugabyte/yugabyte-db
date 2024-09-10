@@ -137,23 +137,23 @@ SELECT helio_api.insert_one('db', 'bsontypetests', '{ "_id": 16, "field": [ { "s
 
 /* Test to validate that _id field cannot have regex as it's value */
 select helio_api.insert_one('db', 'bsontypetests', '{"_id": {"$regex": "^A", "$options": ""}}');
-                                                                                                          insert_one                                                                                                           
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type regex" } ] }
+                                                                                                          insert_one                                                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' value cannot be of type regex" } ] }
 (1 row)
 
 /* Test _id cannot have nested paths with $ */
 SELECT helio_api.insert_one('db', 'bsontypetests', '{ "_id": { "a": 2, "$c": 3 } }');
                                                                                                                              insert_one                                                                                                                             
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865908" }, "errmsg" : "_id fields may not contain '$'-prefixed fields: $c is not valid for storage." } ] }
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "385875997" }, "errmsg" : "_id fields may not contain '$'-prefixed fields: $c is not valid for storage." } ] }
 (1 row)
 
 /* Test to validate that _id field cannot have array as it's value */
 select helio_api.insert_one('db', 'bsontypetests', '{"_id": [1]}');
-                                                                                                          insert_one                                                                                                           
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
+                                                                                                          insert_one                                                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
 (1 row)
 
 -- assert object_id matches the '_id' from the content - should be numRows.

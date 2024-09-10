@@ -825,9 +825,9 @@ SELECT helio_api.insert_one('db', 'ci_search3', '{ "a": { "a": "Dog" } } ');
 (1 row)
 
 SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": [ "cat", "CAT "] }');
-                                                                                                          insert_one                                                                                                           
+                                                                                                          insert_one                                                                                                          
 ---------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
 (1 row)
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');

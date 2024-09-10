@@ -16,7 +16,7 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "geospatial/bson_geojson_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 
 static bool ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
@@ -134,8 +134,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 				errcode(GEO_ERROR_CODE(errCtxt)),
 				errmsg("%sPoint must be an array or object",
 					   GEO_ERROR_PREFIX(errCtxt)),
-				errhint("%sPoint must be an array or object",
-						GEO_HINT_PREFIX(errCtxt))));
+				errdetail_log("%sPoint must be an array or object",
+							  GEO_HINT_PREFIX(errCtxt))));
 	}
 
 	if (IsBsonValueEmptyArray(pointValue) || IsBsonValueEmptyDocument(pointValue))
@@ -145,8 +145,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 				errcode(GEO_ERROR_CODE(errCtxt)),
 				errmsg("%sPoint must only contain numeric elements",
 					   GEO_ERROR_PREFIX(errCtxt)),
-				errhint("%sPoint must only contain numeric elements",
-						GEO_HINT_PREFIX(errCtxt))));
+				errdetail_log("%sPoint must only contain numeric elements",
+							  GEO_HINT_PREFIX(errCtxt))));
 	}
 
 	bson_iter_t pointValueIter;
@@ -164,8 +164,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 					errcode(GEO_ERROR_CODE(errCtxt)),
 					errmsg("%sPoint must only contain numeric elements",
 						   GEO_ERROR_PREFIX(errCtxt)),
-					errhint("%sPoint must only contain numeric elements",
-							GEO_HINT_PREFIX(errCtxt))));
+					errdetail_log("%sPoint must only contain numeric elements",
+								  GEO_HINT_PREFIX(errCtxt))));
 		}
 
 		/* Get double degrees in quiet mode and check for finite number */
@@ -178,8 +178,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 					errcode(GEO_ERROR_CODE(errCtxt)),
 					errmsg("%sPoint coordinates must be finite numbers",
 						   GEO_ERROR_PREFIX(errCtxt)),
-					errhint("%sPoint coordinates must be finite numbers",
-							GEO_HINT_PREFIX(errCtxt))));
+					errdetail_log("%sPoint coordinates must be finite numbers",
+								  GEO_HINT_PREFIX(errCtxt))));
 		}
 
 		if (index == 0)
@@ -200,8 +200,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 				errcode(GEO_ERROR_CODE(errCtxt)),
 				errmsg("%sPoint must only contain numeric elements",
 					   GEO_ERROR_PREFIX(errCtxt)),
-				errhint("%sPoint must only contain numeric elements",
-						GEO_HINT_PREFIX(errCtxt))));
+				errdetail_log("%sPoint must only contain numeric elements",
+							  GEO_HINT_PREFIX(errCtxt))));
 	}
 
 	if (checkLongLatBounds)
@@ -215,8 +215,8 @@ ParseBsonValueAsLegacyPointInternal(const bson_value_t *pointValue,
 					errmsg("%slongitude/latitude is out of bounds, lng: %g lat: %g",
 						   GEO_ERROR_PREFIX(errCtxt),
 						   outPoint->x, outPoint->y),
-					errhint("%slongitude/latitude is out of bounds.",
-							GEO_HINT_PREFIX(errCtxt))));
+					errdetail_log("%slongitude/latitude is out of bounds.",
+								  GEO_HINT_PREFIX(errCtxt))));
 		}
 	}
 

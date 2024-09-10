@@ -790,7 +790,7 @@ begin;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":true}]}');
                                                                                                                                                                              update                                                                                                                                                                             
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687876856"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
 (1 row)
 
 rollback;
@@ -799,7 +799,7 @@ begin;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":true}]}');
                                                                                                                                                                              update                                                                                                                                                                             
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687876856"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
 (1 row)
 
 rollback;

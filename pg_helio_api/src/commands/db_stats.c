@@ -19,7 +19,7 @@
 #include <miscadmin.h>
 #include <sys/statvfs.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "metadata/index.h"
@@ -145,7 +145,7 @@ DbStatsCoordinator(Datum databaseName, int32 scale)
 {
 	if (scale < 1)
 	{
-		ereport(ERROR, (errcode(MongoLocation51024), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
 							"scale has to be > 0")));
 	}
 
@@ -395,17 +395,18 @@ MergeWorkerResults(DbStatsResult *result,
 			{
 				ereport(ERROR, (errmsg("unknown field received from dbStats worker %s",
 									   key),
-								errhint("unknown field received from dbStats worker %s",
-										key)));
+								errdetail_log(
+									"unknown field received from dbStats worker %s",
+									key)));
 			}
 		}
 
 		if (errorMessage != NULL)
 		{
-			errorCode = errorCode == 0 ? MongoInternalError : errorCode;
+			errorCode = errorCode == 0 ? ERRCODE_HELIO_INTERNALERROR : errorCode;
 			ereport(ERROR, (errcode(errorCode),
 							errmsg("Error running dbStats %s", errorMessage),
-							errhint("Error running dbStats %s", errorMessage)));
+							errdetail_log("Error running dbStats %s", errorMessage)));
 		}
 
 		totalDocCount += workerDocCount;

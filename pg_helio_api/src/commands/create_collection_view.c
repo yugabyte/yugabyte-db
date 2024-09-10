@@ -22,7 +22,7 @@
 #include "commands/parse_error.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
@@ -222,13 +222,13 @@ ValidateIdIndexDocument(const bson_value_t *idIndexDocument)
 			pgbsonelement idKeyElement;
 			if (!TryGetSinglePgbsonElementFromBsonIterator(&keyIterator, &idKeyElement))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("The _id index cannot be a composite index")));
 			}
 
 			if (strcmp(idKeyElement.path, "_id") != 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("The _id index must be on the _id field")));
 			}
 		}
@@ -248,7 +248,7 @@ ValidateIdIndexDocument(const bson_value_t *idIndexDocument)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("BSON field 'create.idIndex.%s' is "
 								   "invalid for an _id index", key)));
 		}
@@ -280,7 +280,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 
 			if (strlen(spec->name) != (size_t) strLength)
 			{
-				ereport(ERROR, (errcode(MongoInvalidNamespace),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 								errmsg(
 									"namespaces cannot have embedded null characters")));
 			}
@@ -294,12 +294,12 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 				spec->viewOn = pstrdup(bson_iter_utf8(&createIter, &strLength));
 				if (strlen(spec->viewOn) == 0)
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg("'viewOn' cannot be empty")));
 				}
 				else if (strlen(spec->viewOn) != (size_t) strLength)
 				{
-					ereport(ERROR, (errcode(MongoInvalidNamespace),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 									errmsg(
 										"namespaces cannot have embedded null characters")));
 				}
@@ -315,7 +315,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			EnsureTopLevelFieldIsBooleanLike("create.capped", &createIter);
 			if (BsonValueAsBool(bson_iter_value(&createIter)) == true)
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Capped collections not supported yet")));
 			}
 		}
@@ -324,13 +324,13 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			EnsureTopLevelFieldType("create.timeseries", &createIter, BSON_TYPE_DOCUMENT);
 			if (!IsBsonValueEmptyDocument(bson_iter_value(&createIter)))
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("time series collections not supported yet")));
 			}
 		}
 		else if (strcmp(key, "clusteredIndex") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("clusteredIndex not supported yet")));
 		}
 		else if (strcmp(key, "expireAfterSeconds") == 0)
@@ -339,7 +339,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		}
 		else if (strcmp(key, "changeStreamPreAndPostImages") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("changeStreamPreAndPostImages not supported yet")));
 		}
 		else if (strcmp(key, "autoIndexId") == 0)
@@ -347,7 +347,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 			EnsureTopLevelFieldIsBooleanLike("create.autoIndexId", &createIter);
 			if (!bson_iter_as_bool(&createIter))
 			{
-				ereport(ERROR, (errcode(MongoInvalidOptions),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 								errmsg("'autoIndexId' must be true")));
 			}
 		}
@@ -358,7 +358,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 
 			if (IsBsonValueEmptyDocument(&spec->idIndex))
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"Field create.idIndex cannot be an empty document")));
 			}
@@ -398,7 +398,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		}
 		else if (strcmp(key, "encryptedFields") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("encryptedFields not supported yet")));
 		}
 		else if (strcmp(key, "comment") == 0)
@@ -407,7 +407,7 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		}
 		else if (!IsCommonSpecIgnoredField(key))
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'create.%s' is an "
 								   "unknown field", key)));
 		}
@@ -416,20 +416,20 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 	/* Validate */
 	if (spec->name == NULL || strlen(spec->name) == 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Invalid namespace specified '%s.'",
 							   TextDatumGetCString(databaseDatum))));
 	}
 
 	if (spec->viewOn == NULL && spec->pipeline.value_type != BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("'pipeline' requires 'viewOn' to also be specified")));
 	}
 
 	if (spec->viewOn != NULL && spec->idIndex.value_type != BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("'viewOn' and 'idIndex' cannot both be specified")));
 	}
 
@@ -461,7 +461,7 @@ CheckUnsupportedViewPipelineStages(const bson_value_t *pipeline)
 		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIter) ||
 			!bson_iter_recurse(&pipelineIter, &documentIterator))
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(
 								"Each element of the 'pipeline' array must be an object")));
 		}
@@ -477,7 +477,7 @@ CheckUnsupportedViewPipelineStages(const bson_value_t *pipeline)
 			strcmp(stageElement.path, "$merge") == 0 ||
 			strcmp(stageElement.path, "$changeStream") == 0)
 		{
-			ereport(ERROR, (errcode(MongoOptionNotSupportedOnView),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_OPTIONNOTSUPPORTEDONVIEW),
 							errmsg(
 								"The aggregation stage %s of the pipeline cannot be used "
 								"in the view definition because it writes to disk",
@@ -545,7 +545,7 @@ CreateView(Datum databaseDatum, const char *viewName,
 	StringView viewNameView = CreateStringViewFromString(viewName);
 	if (StringViewStartsWithStringView(&viewNameView, &SystemPrefix))
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Cannot create a view called %s", viewName)));
 	}
 
@@ -583,7 +583,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 	if (collection->viewDefinition == NULL && createDefinition->viewOn != NULL)
 	{
 		/* We have a collection, we're trying to create a view - error */
-		ereport(ERROR, (errcode(MongoNamespaceExists),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 						errmsg("ns: %s.%s already exists with different options: {}",
 							   collection->name.databaseName,
 							   collection->name.collectionName)));
@@ -592,7 +592,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 	if (collection->viewDefinition != NULL && createDefinition->viewOn == NULL)
 	{
 		/* We have a view and trying to create a collection - error */
-		ereport(ERROR, (errcode(MongoNamespaceExists),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 						errmsg("ns: %s.%s already exists with different options: %s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -609,7 +609,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		pgbson *viewDefinition = CreateViewDefinition(&definition);
 		if (!PgbsonEquals(collection->viewDefinition, viewDefinition))
 		{
-			ereport(ERROR, (errcode(MongoNamespaceExists),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 							errmsg("ns: %s.%s already exists with different options: %s",
 								   collection->name.databaseName,
 								   collection->name.collectionName,
@@ -640,7 +640,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 			&collection->schemaValidator);
 
 		/* schema validation not match - error */
-		ereport(ERROR, (errcode(MongoNamespaceExists),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 						errmsg("ns: %s.%s already exists with different options: %s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -658,7 +658,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		{
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
-			ereport(ERROR, (errcode(MongoNamespaceExists),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 							errmsg("ns: %s.%s already exists with different options: %s",
 								   collection->name.databaseName,
 								   collection->name.collectionName,
@@ -685,7 +685,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		{
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
-			ereport(ERROR, (errcode(MongoNamespaceExists),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 							errmsg("ns: %s.%s already exists with different options: %s",
 								   collection->name.databaseName,
 								   collection->name.collectionName,
@@ -708,7 +708,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		{
 			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
 				&collection->schemaValidator);
-			ereport(ERROR, (errcode(MongoNamespaceExists),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 							errmsg("ns: %s.%s already exists with different options: %s",
 								   collection->name.databaseName,
 								   collection->name.collectionName,
@@ -802,7 +802,7 @@ WalkPipelineForViewCycles(Datum databaseDatum, const char *viewName,
 		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIter) ||
 			!bson_iter_recurse(&pipelineIter, &documentIterator))
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(
 								"Each element of the 'pipeline' array must be an object")));
 		}
@@ -817,7 +817,7 @@ WalkPipelineForViewCycles(Datum databaseDatum, const char *viewName,
 		if (strcmp(stageElement.path, "$out") == 0 ||
 			strcmp(stageElement.path, "$merge") == 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation51047),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51047),
 							errmsg(
 								"The aggregation stage %s of the pipeline cannot be used "
 								"in a lookup pipeline because it writes to disk",
@@ -901,7 +901,7 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 	if (strcmp(viewName, viewSource) == 0)
 	{
 		const char *databaseStr = TextDatumGetCString(databaseDatum);
-		ereport(ERROR, (errcode(MongoGraphContainsCycle),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_GRAPHCONTAINSCYCLE),
 						errmsg("View cycle detected: %s.%s -> %s.%s",
 							   databaseStr, viewName, databaseStr, viewSource)));
 	}
@@ -918,7 +918,7 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 	{
 		if (list_length(intermediateViews) > MAX_VIEW_DEPTH)
 		{
-			ereport(ERROR, (errcode(MongoViewDepthLimitExceeded),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_VIEWDEPTHLIMITEXCEEDED),
 							errmsg("View depth exceeded limit %d", MAX_VIEW_DEPTH)));
 		}
 
@@ -973,7 +973,7 @@ CheckForViewCyclesAndDepth(Datum databaseDatum, const char *viewName, const
 		}
 
 		appendStringInfo(errorStr, " %s.%s", databaseStr, viewName);
-		ereport(ERROR, (errcode(MongoGraphContainsCycle),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_GRAPHCONTAINSCYCLE),
 						errmsg("View cycle detected: %s", errorStr->data)));
 	}
 }

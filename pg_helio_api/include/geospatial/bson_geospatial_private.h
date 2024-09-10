@@ -11,12 +11,13 @@
 #ifndef BSON_GEOSPATIAL_PRIVATE_H
 #define BSON_GEOSPATIAL_PRIVATE_H
 
-#include "postgres.h"
-#include "utils/builtins.h"
+#include <postgres.h>
+#include <utils/builtins.h>
+#include <lib/stringinfo.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 
 /*
@@ -78,7 +79,8 @@
 
 
 #define EMPTY_GEO_ERROR_PREFIX ""
-#define GEO_ERROR_CODE(errorCtxt) (errorCtxt ? errorCtxt->errCode : MongoBadValue)
+#define GEO_ERROR_CODE(errorCtxt) (errorCtxt ? errorCtxt->errCode : \
+								   ERRCODE_HELIO_BADVALUE)
 #define GEO_ERROR_PREFIX(errorCtxt) (errorCtxt && errorCtxt->errPrefix ? \
 									 errorCtxt->errPrefix(errorCtxt->document) : \
 									 EMPTY_GEO_ERROR_PREFIX)
@@ -171,7 +173,7 @@ typedef struct GeospatialErrorContext
 	const pgbson *document;
 
 	/* The desired error code to be thrown */
-	MongoErrorEreportCode errCode;
+	int64 errCode;
 
 	/* Error prefix to be preppended for the errors, this is a callback and is only called when there is a valid error case.
 	 *

@@ -214,10 +214,10 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 		default:
 		{
 			ereport(ERROR, (
-						errcode(MongoInternalError),
+						errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("%d unexpected WKB type found during traversal.", geoType),
-						errhint("%d unexpected WKB type found during traversal.",
-								geoType)));
+						errdetail_log("%d unexpected WKB type found during traversal.",
+									  geoType)));
 		}
 	}
 

@@ -34,7 +34,7 @@
 #include "commands/cursor_common.h"
 #include "vector/vector_planner.h"
 #include "vector/vector_common.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 
 /* --------------------------------------------------------- */

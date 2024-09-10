@@ -32,7 +32,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 ERROR:  Error in specification { "name" : 1 } :: caused by :: The field 'name' must be an string, but got int
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unique": "1"}]}');
 ERROR:  Error in specification { "unique" : "1" } :: caused by :: The field 'unique' has value unique: "1", which is not convertible to bool
-HINT:  Field in index definition has value of type string, which is not convertible to bool
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}}]}');
 ERROR:  Error in specification { "key" : { "a" : 1 } } :: caused by :: The 'name' field is a required property of an index specification
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}');
@@ -114,7 +113,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true } :: caused by :: Index type 'wildcard' does not support the sparse option
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": "true"}]}',true);
 ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" } :: caused by :: The field 'sparse' has value sparse: "true", which is not convertible to bool
-HINT:  Field in index definition has value of type string, which is not convertible to bool
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.a": 1}, "name": "my_sparse_with_pfe_idx", "sparse": true, "partialFilterExpression": { "rating": { "$gt": 5 } }}]}',true);
 ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } } :: caused by :: cannot mix "partialFilterExpression" and "sparse" options
 -- sparse can create index for same key with different sparse options

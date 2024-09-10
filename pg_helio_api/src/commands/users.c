@@ -9,9 +9,9 @@
  */
 #include "postgres.h"
 #include "fmgr.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/query_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "commands/commands_common.h"
 #include "commands/parse_error.h"
 #include "utils/feature_counter.h"
@@ -72,9 +72,9 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("CreateUser command is not supported"),
-						errhint("CreateUser command is not supported")));
+						errdetail_log("CreateUser command is not supported")));
 	}
 
 	ReportFeatureUsage(FEATURE_USER_CREATE);
@@ -144,7 +144,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 			spec->createUser = bson_iter_utf8(&createIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"createUser cannot be empty")));
 			}
@@ -154,7 +154,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 				strncmp(spec->createUser, "pg", 2) == 0 ||
 				strncmp(spec->createUser, "helio", 5) == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Invalid user name")));
 			}
 
@@ -167,7 +167,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 			spec->pwd = bson_iter_utf8(&createIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"pwd cannot be empty")));
 			}
@@ -180,7 +180,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 
 			if (IsBsonValueEmptyDocument(&spec->roles))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"Field roles cannot be an empty document")));
 			}
@@ -191,7 +191,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 		}
 		else if (!IsCommonSpecIgnoredField(key))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
@@ -201,7 +201,7 @@ ParseCreateUserSpec(pgbson *createSpec)
 		return spec;
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("createUser, pwd and roles are required fields")));
 }
 
@@ -258,10 +258,10 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoRoleNotFound),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_ROLENOTFOUND),
 									errmsg("Invalid value specified for role: %s", role),
-									errhint("Invalid value specified for role: %s",
-											role)));
+									errdetail_log("Invalid value specified for role: %s",
+												  role)));
 				}
 			}
 			else if (strcmp(key, "db") == 0 || strcmp(key, "$db") == 0)
@@ -270,17 +270,18 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 				const char *db = bson_iter_utf8(&roleIterator, &strLength);
 				if (strcmp(db, "admin") != 0)
 				{
-					ereport(ERROR, (errcode(MongoBadValue), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 										"Unsupported value specified for db ")));
 				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Unexpected parameter specified in roles : %s",
 									   key),
-								errhint("Unexpected parameter specified in roles : %s",
-										key)));
+								errdetail_log(
+									"Unexpected parameter specified in roles : %s",
+									key)));
 			}
 		}
 	}
@@ -296,10 +297,10 @@ ValidateAndObtainHelioRole(const bson_value_t *rolesDocument)
 		return "helio_readonly_role";
 	}
 
-	ereport(ERROR, (errcode(MongoRoleNotFound),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_ROLENOTFOUND),
 					errmsg(
 						"Roles specified are invalid. Only [{role: \"readAnyDatabase\", db: \"admin\"}] or [{role: \"clusterAdmin\", db: \"admin\"}, {role: \"readWriteAnyDatabase\", db: \"admin\"}] are allowed"),
-					errhint(
+					errdetail_log(
 						"Roles specified are invalid. Only [{role: \"readAnyDatabase\", db: \"admin\"}] or [{role: \"clusterAdmin\", db: \"admin\"}, {role: \"readWriteAnyDatabase\", db: \"admin\"}] are allowed")));
 }
 
@@ -313,9 +314,9 @@ helio_extension_drop_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("DropUser command is not supported"),
-						errhint("DropUser command is not supported")));
+						errdetail_log("DropUser command is not supported")));
 	}
 
 	ReportFeatureUsage(FEATURE_USER_DROP);
@@ -365,7 +366,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 			dropUser = (char *) bson_iter_utf8(&dropIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"dropUser cannot be empty")));
 			}
@@ -375,7 +376,7 @@ ParseDropUserSpec(pgbson *dropSpec)
 				strncmp(dropUser, "pg", 2) == 0 ||
 				strncmp(dropUser, "helio", 5) == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Invalid user name")));
 			}
 		}
@@ -385,14 +386,14 @@ ParseDropUserSpec(pgbson *dropSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
 
 	if (dropUser == NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("dropUser is a required field")));
 	}
 
@@ -413,9 +414,9 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("UpdateUser command is not supported"),
-						errhint("UpdateUser command is not supported")));
+						errdetail_log("UpdateUser command is not supported")));
 	}
 
 	ReportFeatureUsage(FEATURE_USER_UPDATE);
@@ -469,7 +470,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 			spec->updateUser = bson_iter_utf8(&updateIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"updateUser cannot be empty")));
 			}
@@ -483,7 +484,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 			spec->pwd = bson_iter_utf8(&updateIter, &strLength);
 			if (strLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"pwd cannot be empty")));
 			}
@@ -496,7 +497,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Unsupported field specified : %s", key)));
 		}
 	}
@@ -506,7 +507,7 @@ ParseUpdateUserSpec(pgbson *updateSpec)
 		return spec;
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("updateUser and pwd are required fields")));
 }
 
@@ -520,9 +521,9 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 {
 	if (!EnableUserCrud)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("UsersInfo command is not supported"),
-						errhint("UsersInfo command is not supported")));
+						errdetail_log("UsersInfo command is not supported")));
 	}
 
 	ReportFeatureUsage(FEATURE_USER_GET);
@@ -699,7 +700,7 @@ ParseGetUserSpec(pgbson *getSpec)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg("Unsupported value for usersInfo")));
 				}
 			}
@@ -723,11 +724,11 @@ ParseGetUserSpec(pgbson *getSpec)
 						const char *db = bson_iter_utf8(&iter, &strLength);
 						if (strcmp(db, "admin") != 0)
 						{
-							ereport(ERROR, (errcode(MongoBadValue),
+							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 											errmsg(
 												"Unsupported value specified for db : %s",
 												db),
-											errhint(
+											errdetail_log(
 												"Unsupported value specified for db : %s",
 												db)));
 						}
@@ -742,7 +743,7 @@ ParseGetUserSpec(pgbson *getSpec)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Unusupported value for usersInfo")));
 			}
 		}
@@ -752,13 +753,13 @@ ParseGetUserSpec(pgbson *getSpec)
 			{
 				if (bson_iter_as_bool(&getIter) != true)
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg("Unusupported value for forAllDBs")));
 				}
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Unusupported value for forAllDBs")));
 			}
 
@@ -776,11 +777,11 @@ ParseGetUserSpec(pgbson *getSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Unusupported field")));
 		}
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 						"Please provide usersInfo or forAllDBs")));
 }

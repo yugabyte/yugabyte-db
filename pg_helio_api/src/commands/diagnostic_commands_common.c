@@ -15,7 +15,8 @@
 #include <catalog/namespace.h>
 #include <access/xact.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
+#include "utils/error_utils.h"
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "utils/query_utils.h"
@@ -133,7 +134,7 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 										errmsg(
 											"%s on worker failed with connectivity errors",
 											commandName),
-										errhint(
+										errdetail_log(
 											"%s on worker failed with an unexpected error: %s",
 											commandName, workerError)));
 					}
@@ -144,17 +145,17 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 										errmsg(
 											"%s on worker failed with recovery errors",
 											commandName),
-										errhint(
+										errdetail_log(
 											"%s on worker failed with an recovery error: %s",
 											commandName, workerError)));
 					}
 					else
 					{
-						ereport(ERROR, (errcode(MongoInternalError),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 										errmsg(
 											"%s on worker failed with an unexpected error",
 											commandName),
-										errhint(
+										errdetail_log(
 											"%s on worker failed with an unexpected error: %s",
 											commandName, workerError)));
 					}

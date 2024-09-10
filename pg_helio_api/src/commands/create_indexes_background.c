@@ -42,7 +42,7 @@
 #include "commands/diagnostic_commands_common.h"
 #include "commands/drop_indexes.h"
 #include "commands/lock_tags.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "commands/parse_error.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "metadata/collection.h"
@@ -188,7 +188,8 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 
 				ereport(DEBUG1,
 						(errmsg("Excluded collectionId "UINT64_FORMAT, collectionId),
-						 errhint("Excluded collectionId "UINT64_FORMAT, collectionId)));
+						 errdetail_log("Excluded collectionId "UINT64_FORMAT,
+									   collectionId)));
 			}
 		}
 
@@ -229,7 +230,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 							  "Removing skippable request permanently index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId),
-						  errhint(
+						  errdetail_log(
 							  "Removing skippable request permanently index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId)));
@@ -249,7 +250,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 					  "Found one request for CreateIndex with index_id: %d and collectionId: "
 					  UINT64_FORMAT,
 					  indexCmdRequest->indexId, collectionId),
-				  errhint(
+				  errdetail_log(
 					  "Found one request for CreateIndex with index_id: %d and collectionId: "
 					  UINT64_FORMAT,
 					  indexCmdRequest->indexId, collectionId)));
@@ -279,7 +280,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						  "Try dropping old index entry before CreateIndex for index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId),
-					  errhint(
+					  errdetail_log(
 						  "Try dropping old index entry before CreateIndex for index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId)));
@@ -317,7 +318,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						  "Trying to create index with serial %d for index_id: %d and collectionId: "
 						  UINT64_FORMAT, useSerialExecution,
 						  indexCmdRequest->indexId, collectionId),
-					  errhint(
+					  errdetail_log(
 						  "Trying to create index with serial %d for index_id: %d and collectionId: "
 						  UINT64_FORMAT, useSerialExecution,
 						  indexCmdRequest->indexId, collectionId)));
@@ -382,7 +383,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 							  "Trying to mark invalid index as valid and remove index build request from queue for index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId),
-						  errhint(
+						  errdetail_log(
 							  "Trying to mark invalid index as valid and remove index build request from queue for index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId)));
@@ -410,7 +411,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 								  "Failure happened during marking the index metadata valid for index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId),
-							  errhint(
+							  errdetail_log(
 								  "Failure happened during marking the index metadata valid for index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId)));
@@ -438,7 +439,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						  "Something failed during create-index, drop partial state of index for index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId),
-					  errhint(
+					  errdetail_log(
 						  "Something failed during create-index, drop partial state of index for index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId)));
@@ -450,7 +451,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						  "Marking Index status Failed for index with index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId),
-					  errhint(
+					  errdetail_log(
 						  "Marking Index status Failed for index with index_id: %d and collectionId: "
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId)));
@@ -461,7 +462,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 							  "Removing request permanently index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId),
-						  errhint(
+						  errdetail_log(
 							  "Removing request permanently index_id: %d and collectionId: "
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId)));
@@ -491,7 +492,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 								  "Saving Skippable comment index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId),
-							  errhint(
+							  errdetail_log(
 								  "Saving Skippable comment index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId)));
@@ -512,7 +513,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 								  "Saving comment index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId),
-							  errhint(
+							  errdetail_log(
 								  "Saving comment index_id: %d and collectionId: "
 								  UINT64_FORMAT,
 								  indexCmdRequest->indexId, collectionId)));
@@ -774,7 +775,7 @@ command_check_build_index_status_internal(PG_FUNCTION_ARGS)
 	if (cmdType == 0)
 	{
 		ereport(ERROR, (errmsg("Command must provide valid cmdType."),
-						errhint("Command must provide valid cmdType.")));
+						errdetail_log("Command must provide valid cmdType.")));
 	}
 	BuildIndexesResult *result;
 	if (indexIds != NIL)
@@ -870,7 +871,7 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 		int reportIndexDefIdx = MaxIndexesPerCollection - result.numIndexesBefore;
 		const IndexDef *reportIndexDef = list_nth(createIndexesArg.indexDefList,
 												  reportIndexDefIdx);
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg("add index fails, too many indexes for %s.%s key:%s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -1231,11 +1232,11 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Build Index failed because there are not enough valid indexes in metadata table. Requested %d, found %d",
 								list_length(indexIdList), validIndexCount),
-							errhint(
+							errdetail_log(
 								"Build Index failed. Index builds was empty, but main index table didn't have the index. Requested %d, found %d",
 								list_length(indexIdList), validIndexCount)));
 		}
@@ -1267,7 +1268,8 @@ ParseErrorCommentFromQueue(pgbson *comment, BuildIndexesResult *result)
 		else
 		{
 			ereport(ERROR, (errmsg("unknown field received from comment %s", key),
-							errhint("unknown field received from comment %s", key)));
+							errdetail_log("unknown field received from comment %s",
+										  key)));
 		}
 	}
 }
@@ -1464,10 +1466,10 @@ RunIndexCommandOnMetadataCoordinator(const char *query, int expectedSpiOk)
 												   &isNull);
 		if (isNull)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"No response"),
-							errhint(
+							errdetail_log(
 								"No response")));
 		}
 
@@ -1478,11 +1480,11 @@ RunIndexCommandOnMetadataCoordinator(const char *query, int expectedSpiOk)
 		DistributedRunCommandResult result = RunCommandOnMetadataCoordinator(query);
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Error submitting background index %s",
 								text_to_cstring(result.response)),
-							errhint(
+							errdetail_log(
 								"Error submitting index request %s",
 								text_to_cstring(result.response))));
 		}

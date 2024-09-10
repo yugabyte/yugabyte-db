@@ -15,7 +15,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "utils/list_utils.h"

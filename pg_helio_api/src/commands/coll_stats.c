@@ -15,7 +15,7 @@
 #include <nodes/makefuncs.h>
 #include <catalog/namespace.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
@@ -155,7 +155,7 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 
 		if (strcmp(key, "latencyStats") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("collStats with latencyStats not supported yet")));
 		}
 		else if (strcmp(key, "storageStats") == 0)
@@ -176,7 +176,7 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 					 strcmp(storageStatsElement.path, "scale") != 0 ||
 					 !BsonValueIsNumber(&storageStatsElement.bsonValue))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"storageStats must be an empty document or have a single numeric field 'scale'")));
 			}
@@ -195,15 +195,15 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 		}
 		else if (strcmp(key, "queryExecStats") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("collStats with queryExecStats not supported yet")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field $collStats.%s is an unknown field", key),
-							errhint("BSON field $collStats.%s is an unknown field",
-									key)));
+							errdetail_log("BSON field $collStats.%s is an unknown field",
+										  key)));
 		}
 	}
 
@@ -225,14 +225,14 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 									  AccessShareLock);
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
 						errmsg("Collection [%s] not found.", namespaceString->data)));
 	}
 
 	if (collection->viewDefinition != NULL)
 	{
 		/* storageStats & count not supported on views */
-		ereport(ERROR, (errcode(MongoCommandNotSupportedOnView),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg("Namespace %s is a view, not a collection",
 							   namespaceString->data)));
 	}
@@ -297,7 +297,7 @@ CollStatsCoordinator(Datum databaseName, Datum collectionName, int scale)
 {
 	if (scale < 1)
 	{
-		ereport(ERROR, (errcode(MongoLocation51024), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
 							"BSON field 'scale' value must be >= 1, actual value '%d'",
 							scale)));
 	}
@@ -456,7 +456,7 @@ MergeWorkerResults(CollStatsResult *result, MongoCollection *collection,
 
 		if (errorMessage != NULL)
 		{
-			errorCode = errorCode == 0 ? MongoInternalError : errorCode;
+			errorCode = errorCode == 0 ? ERRCODE_HELIO_INTERNALERROR : errorCode;
 			ereport(ERROR, (errcode(errorCode), errmsg("Error running collstats %s",
 													   errorMessage)));
 		}
@@ -606,7 +606,7 @@ CollStatsWorker(void *fcinfoPointer)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Collection not found")));
 	}
 

@@ -282,7 +282,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 
 			if (deleteDocs != NULL)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("Unexpected additional deletes")));
 			}
 
@@ -865,7 +865,7 @@ CallDeleteWorker(MongoCollection *collection,
 
 	if (isNulls[0])
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("delete_worker should not return null")));
 	}
 	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
@@ -1025,9 +1025,10 @@ command_delete_worker(PG_FUNCTION_ARGS)
 	if (shardOid == InvalidOid)
 	{
 		/* The planner is expected to replace this */
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Explicit shardOid must be set - this is a server bug"),
-						errhint("Explicit shardOid must be set - this is a server bug")));
+						errdetail_log(
+							"Explicit shardOid must be set - this is a server bug")));
 	}
 
 	pgbsonsequence *specDocuments = PG_GETARG_MAYBE_NULL_PGBSON_SEQUENCE(4);
@@ -1073,7 +1074,7 @@ command_delete_worker(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Delete worker only supports deleteOne or deleteUnsharded call")));
 	}

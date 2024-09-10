@@ -569,7 +569,7 @@ ERROR:  wrong type for field (db) int != string
 SELECT helio_api.insert('newdb', '{"insert":"source", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
                                                                                                                                            insert                                                                                                                                            
 ---------------------------------------------------------------------
- ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687876856"" }, ""errmsg"" : ""Duplicate key violation on the requested collection: Index '_id_'"" } ] }",f)
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Duplicate key violation on the requested collection: Index '_id_'"" } ] }",f)
 (1 row)
 
 SELECT helio_api.create_collection_view('newdb', '{ "create": "targetView", "viewOn": "source", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');

@@ -22,7 +22,7 @@
 #include <utils/snapmgr.h>
 #include <common/hashfn.h>
 #include <commands/portalcmds.h>
-#include <utils/mongo_errors.h>
+#include <utils/helio_errors.h>
 #include <commands/cursor_common.h>
 #include <commands/cursor_private.h>
 #include <utils/hashset_utils.h>
@@ -179,7 +179,7 @@ command_get_cursor_page(PG_FUNCTION_ARGS)
 	Portal portal = SPI_cursor_find(cursorName);
 	if (portal == NULL)
 	{
-		ereport(ERROR, (errcode(MongoCursorNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CURSORNOTFOUND),
 						errmsg("Cursor not found in the store.")));
 	}
 
@@ -869,7 +869,7 @@ DrainPersistedCursor(const char *cursorName, int batchSize,
 
 	if (portal == NULL)
 	{
-		ereport(ERROR, (errcode(MongoCursorNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CURSORNOTFOUND),
 						errmsg("Cursor not found in the store.")));
 	}
 
@@ -968,7 +968,7 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 				/* if the new total size is > Max Bson Size */
 				if (datumSize > BSON_MAX_ALLOWED_SIZE)
 				{
-					ereport(ERROR, (errcode(MongoBsonObjectTooLarge),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BSONOBJECTTOOLARGE),
 									errmsg("Size %u is larger than MaxDocumentSize %u",
 										   datumSize, BSON_MAX_ALLOWED_SIZE)));
 				}

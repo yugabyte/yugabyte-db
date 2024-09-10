@@ -41,6 +41,7 @@
 #include "utils/feature_counter.h"
 #include "metadata/metadata_cache.h"
 #include "utils/version_utils.h"
+#include "utils/mongo_errors.h"
 #include "api_hooks.h"
 #include "schema_validation/schema_validation.h"
 #include "operators/bson_expr_eval.h"
@@ -254,9 +255,9 @@ CreateCollectionForInsert(Datum databaseNameDatum, Datum collectionNameDatum)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("failed to create collection"),
-						errhint(
+						errdetail_log(
 							"Could not get collection from cache after creating the collection")));
 	}
 
@@ -301,7 +302,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 			/* if both docs and spec are provided, fail */
 			if (insertDocs != NULL)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("Unexpected additional documents")));
 			}
 
@@ -412,7 +413,7 @@ ValidateAndCheckShouldInsertDocument(const bson_value_t *docValue)
 	uint32_t size = docValue->value.v_doc.data_len;
 	if (size > BSON_MAX_ALLOWED_SIZE)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Size %u is larger than MaxDocumentSize %u",
 							   size, BSON_MAX_ALLOWED_SIZE)));
 	}
@@ -629,7 +630,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 		const char *errorCodeStr = unpack_sql_state(errorCode);
 		if (EreportCodeIsMongoError(errorCode))
 		{
-			errorCode = errorCode - _ERRCODE_MONGO_ERROR_FIRST;
+			errorCode = errorCode - ERRCODE_HELIO_INTERNALERROR;
 			ereport(LOG, (
 						errmsg(
 							"Optimistic Batch Insert failed. Retrying with single insert. mongoErrorCode %d - sqlstate %s",
@@ -641,7 +642,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 						errmsg(
 							"Optimistic Batch Insert failed. Retrying with single insert. SQL Error %s",
 							errorCodeStr),
-						errhint(
+						errdetail_log(
 							"Optimistic Batch Insert failed. Retrying with single insert. SQL Error %s",
 							errorCodeStr)));
 		}
@@ -947,7 +948,7 @@ CallInsertWorkerForInsertOne(MongoCollection *collection, int64 shardKeyHash,
 
 	if (isNulls[0])
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("insert_worker should not return null")));
 	}
 
@@ -1060,9 +1061,10 @@ command_insert_worker(PG_FUNCTION_ARGS)
 	if (shardOid == InvalidOid)
 	{
 		/* The planner is expected to replace this */
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Explicit shardOid must be set - this is a server bug"),
-						errhint("Explicit shardOid must be set - this is a server bug")));
+						errdetail_log(
+							"Explicit shardOid must be set - this is a server bug")));
 	}
 
 	pgbsonelement element = { 0 };
@@ -1071,7 +1073,7 @@ command_insert_worker(PG_FUNCTION_ARGS)
 	if (strcmp(element.path, "insertOne") != 0 ||
 		element.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Only insertOne with a single document on the worker is supported currently")));
 	}

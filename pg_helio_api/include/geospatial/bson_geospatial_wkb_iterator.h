@@ -13,7 +13,7 @@
 #include "postgres.h"
 
 #include "geospatial/bson_geospatial_private.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 typedef struct WKBBufferIterator
 {

@@ -15,9 +15,10 @@
 #include "lib/stringinfo.h"
 #include "access/xact.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
+#include "utils/error_utils.h"
 #include "utils/query_utils.h"
 
 #include "api_hooks.h"
@@ -62,11 +63,11 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Internal error creating collection in metadata coordinator %s",
 								text_to_cstring(result.response)),
-							errhint(
+							errdetail_log(
 								"Internal error creating collection in metadata coordinator %s",
 								text_to_cstring(result.response))));
 		}
@@ -338,10 +339,10 @@ InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum)
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"CollectionId was null on inserted row. This is an unexpected bug"),
-						errhint(
+						errdetail_log(
 							"CollectionId was null on inserted row. This is an unexpected bug")));
 	}
 
@@ -436,7 +437,7 @@ GetOrCreateDatabaseConfigCollection(text *databaseDatum)
 		if (collection == NULL)
 		{
 			/* Weird case, insert failed, but cannot read it? */
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Unable to create metadata database sentinel collection.")));
 		}

@@ -15,7 +15,7 @@
 
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "api_hooks.h"
 #include "metadata/index.h"
@@ -161,8 +161,8 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 	if (collModOptions.collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), (errmsg(
-														  "collMod must be specified"))));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), (errmsg(
+																   "collMod must be specified"))));
 	}
 
 	if (!PG_ARGISNULL(1))
@@ -171,7 +171,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 		if (strcmp(collectionName, collModOptions.collectionName) != 0)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"Collection name specified in the top level must match that in the spec")));
 		}
@@ -185,7 +185,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
 						errmsg("ns does not exist")));
 	}
 
@@ -207,7 +207,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 	}
 	else if (collection->viewDefinition != NULL)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupportedOnView),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg("Namespace %s.%s is a view, not a collection",
 							   collection->name.databaseName,
 							   collection->name.collectionName)));
@@ -225,7 +225,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 		ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_COLOCATION);
 		if (collection->viewDefinition != NULL)
 		{
-			ereport(ERROR, (errcode(MongoInvalidOptions),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 							errmsg("Cannot specify colocation on a view")));
 		}
 
@@ -349,7 +349,7 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'collMod.%s' is an unknown field.", key)));
 		}
 	}
@@ -357,7 +357,7 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 	if (collModOptions->viewDefinition.pipeline.value_type != BSON_TYPE_EOD &&
 		specFlags != HAS_VIEW_OPTION)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("collmod.pipeline requires collmod.viewOn")));
 	}
 
@@ -389,7 +389,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 									BSON_TYPE_DOCUMENT);
 			if (*specFlags & HAS_INDEX_OPTION_NAME)
 			{
-				ereport(ERROR, (errcode(MongoInvalidOptions),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 								errmsg("Cannot specify both key pattern and name.")));
 			}
 			collModIndexOptions->keyPattern = PgbsonInitFromDocumentBsonValue(value);
@@ -400,7 +400,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 			EnsureTopLevelFieldType("collMod.index.name", indexSpecIter, BSON_TYPE_UTF8);
 			if (*specFlags & HAS_INDEX_OPTION_KEYPATTERN)
 			{
-				ereport(ERROR, (errcode(MongoInvalidOptions),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 								errmsg("Cannot specify both key pattern and name.")));
 			}
 			collModIndexOptions->name = palloc(value->value.v_utf8.len + 1);
@@ -416,7 +416,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 		{
 			if (!BsonValueIsNumber(value))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"BSON field 'collMod.index.expireAfterSeconds' is the wrong type '%s', "
 									"expected types '[long, int, decimal, double']",
@@ -426,7 +426,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 			if (expireAfterSeconds < 0)
 			{
 				/* this is interesting mongo db does not fail for this */
-				ereport(ERROR, (errcode(MongoInvalidOptions),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 								errmsg(
 									"BSON field 'collMod.index.expireAfterSeconds' cannot be less than 0.")));
 			}
@@ -435,7 +435,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'collMod.index.%s' is an unknown field.",
 								   key)));
 		}
@@ -445,7 +445,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 		(*specFlags & HAS_INDEX_OPTION_KEYPATTERN) != HAS_INDEX_OPTION_KEYPATTERN)
 	{
 		/* If no name or key pattern then error */
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("Must specify either index name or key pattern.")));
 	}
 
@@ -454,7 +454,7 @@ ParseIndexSpecSetCollModOptions(bson_iter_t *indexSpecIter,
 		(*specFlags & HAS_INDEX_OPTION_HIDDEN) != HAS_INDEX_OPTION_HIDDEN)
 	{
 		/* If hidden or expireAfterSeconds is not provided then error */
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("no expireAfterSeconds or hidden field")));
 	}
 }
@@ -510,7 +510,7 @@ ModifyIndexSpecsInCollection(const MongoCollection *collection,
 	{
 		/* No matching index found with the criteria */
 		ereport(ERROR,
-				(errcode(MongoIndexNotFound),
+				(errcode(ERRCODE_HELIO_INDEXNOTFOUND),
 				 errmsg("cannot find index %s for ns %s.%s",
 						searchWithName ? indexOption->name : PgbsonToJsonForLogging(
 							indexOption->keyPattern),
@@ -534,7 +534,7 @@ ModifyIndexSpecsInCollection(const MongoCollection *collection,
 		if (indexDetails.indexSpec.indexExpireAfterSeconds == NULL)
 		{
 			/* 5.0 doesn't allow non-TTL index to be converted to TTL index */
-			ereport(ERROR, (errcode(MongoInvalidOptions),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 							errmsg("no expireAfterSeconds field to update")));
 		}
 		oldTTL = *(indexDetails.indexSpec.indexExpireAfterSeconds);
@@ -607,7 +607,7 @@ ModifyViewDefinition(Datum databaseDatum,
 {
 	if (collection->viewDefinition == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("ns %s.%s is a collection, not a view",
 							   collection->name.databaseName,
 							   collection->name.collectionName)));
@@ -616,7 +616,7 @@ ModifyViewDefinition(Datum databaseDatum,
 	if (viewDefinition->viewSource != NULL &&
 		viewDefinition->pipeline.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg(
 							"Must specify both 'viewOn' and 'pipeline' when modifying a view and auth is enabled")));
 	}

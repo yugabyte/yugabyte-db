@@ -45,7 +45,7 @@
 #include "commands/diagnostic_commands_common.h"
 #include "commands/drop_indexes.h"
 #include "commands/lock_tags.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "commands/parse_error.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
@@ -601,7 +601,7 @@ command_reindex(const CallStmt *callStmt,
 	 */
 	if (IsInTransactionBlock(isTopLevel))
 	{
-		ereport(ERROR, (errcode(MongoOperationNotSupportedInTransaction),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_OPERATIONNOTSUPPORTEDINTRANSACTION),
 						errmsg("Cannot run 'reIndex' in a multi-document transaction.")));
 	}
 	ReIndexResult result = reindex_concurrently(dbNameDatum, collectionNameDatum);
@@ -699,7 +699,7 @@ create_indexes_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexesArg
 		int reportIndexDefIdx = MaxIndexesPerCollection - result.numIndexesBefore;
 		const IndexDef *reportIndexDef = list_nth(createIndexesArg.indexDefList,
 												  reportIndexDefIdx);
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg("add index fails, too many indexes for %s.%s key:%s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -916,7 +916,7 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 		int reportIndexDefIdx = MaxIndexesPerCollection - result.numIndexesBefore;
 		const IndexDef *reportIndexDef = list_nth(createIndexesArg.indexDefList,
 												  reportIndexDefIdx);
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg("add index fails, too many indexes for %s.%s key:%s",
 							   collection->name.databaseName,
 							   collection->name.collectionName,
@@ -934,7 +934,7 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 		list_length(createIndexesArg.indexDefList) != 0 &&
 		!IsDataTableCreatedWithinCurrentXact(collection))
 	{
-		ereport(ERROR, (errcode(MongoOperationNotSupportedInTransaction),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_OPERATIONNOTSUPPORTEDINTRANSACTION),
 						errmsg("Cannot create new indexes on existing "
 							   "collection %s.%s in a multi-document "
 							   "transaction.",
@@ -1009,7 +1009,7 @@ reindex_concurrently(Datum dbNameDatum, Datum collectionNameDatum)
 									  AccessShareLock);
 	if (!collection)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
 						errmsg("collection does not exist.")));
 	}
 
@@ -1052,7 +1052,7 @@ reindex_concurrently(Datum dbNameDatum, Datum collectionNameDatum)
 	int ignore;
 	if (!SetIndexesAsBuildInProgress(indexIdList, &ignore))
 	{
-		ereport(ERROR, (errcode(MongoBackgroundOperationInProgressForNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BACKGROUNDOPERATIONINPROGRESSFORNAMESPACE),
 						errmsg(
 							"cannot perform operation: an index build is currently running for collection"
 							" '%s.%s'", collection->name.databaseName,
@@ -1208,7 +1208,7 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&argIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(&argIter))));
 			}
@@ -1219,7 +1219,7 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 
 			if (strlen(createIndexesArg.collectionName) != (size_t) strLength)
 			{
-				ereport(ERROR, (errcode(MongoInvalidNamespace),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 								errmsg(
 									"namespaces cannot have embedded null characters")));
 			}
@@ -1275,7 +1275,7 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'createIndexes.%s' is an "
 								   "unknown field", argKey)));
 		}
@@ -1291,7 +1291,7 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 	if (createIndexesArg.collectionName == NULL ||
 		createIndexesArg.collectionName[0] == '\0')
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Invalid namespace specified '%s.'",
 							   TextDatumGetCString(dbNameDatum))));
 	}
@@ -1299,7 +1299,7 @@ ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg)
 	if (list_length(createIndexesArg.indexDefList) == 0)
 	{
 		/* "indexes" field is specified, but to be an empty array */
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Must specify at least one index to create")));
 	}
 
@@ -1384,7 +1384,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg("The field 'wildcardProjection' must be "
 									   "a non-empty object, but got %s",
 									   BsonIterTypeName(&indexDefDocIter))));
@@ -1433,7 +1433,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg("The field 'v' must be a number, but got %s",
 									   BsonIterTypeName(&indexDefDocIter))));
 			}
@@ -1443,14 +1443,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			if (vValAsDouble < INT_MIN || vValAsDouble > INT_MAX ||
 				vValAsInt != vValAsDouble)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Index version must be representable as a "
 									   "32-bit integer, but got %lf",
 									   vValAsDouble)));
 			}
 			else if (!IsSupportedIndexVersion(vValAsInt))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Invalid index specification %s; cannot "
 									   "create an index with v=%d",
 									   indexSpecRepr, vValAsInt)));
@@ -1462,7 +1462,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"TTL index 'expireAfterSeconds' option must be numeric, but received a type of %s.",
 									BsonIterTypeName(&indexDefDocIter))));
@@ -1475,14 +1475,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			if (expireAfterSecondsValAsDouble < INT_MIN ||
 				expireAfterSecondsValAsDouble > INT_MAX)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"TTL index 'expireAfterSeconds' option must be within an acceptable range, try a different number than %lf.",
 									expireAfterSecondsValAsDouble)));
 			}
 			else if (expireAfterSecondsValAsInt < 0)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"TTL index 'expireAfterSeconds' option cannot be less than 0.")));
 			}
@@ -1532,7 +1532,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			const bson_value_t *value = bson_iter_value(&indexDefDocIter);
 			if (!BsonValueIsNumber(value))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"The field 'textIndexVersion' must be a number, but got %s",
 									BsonTypeName(value->value_type))));
@@ -1541,11 +1541,11 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			int version = BsonValueAsInt32(value);
 			if (version != 2)
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg(
 									"Currently only textIndexVersion 2 is supported, not %d",
 									version),
-								errhint(
+								errdetail_log(
 									"Currently only textIndexVersion 2 is supported, not %d",
 									version)));
 			}
@@ -1564,7 +1564,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"The field cosmosSearch must be a document. got '%s'",
 									BsonTypeName(bson_iter_type(&indexDefDocIter)))));
@@ -1580,7 +1580,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_BOOL(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("The field hidden must be a bool. got '%s'",
 									   BsonTypeName(bson_iter_type(&indexDefDocIter)))));
 			}
@@ -1602,7 +1602,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			/* Optional for 2d index */
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"The field 'max' must be a number, but got %s.",
 									BsonIterTypeName(&indexDefDocIter))));
@@ -1618,7 +1618,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			/* Optional for 2d index */
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"The field 'min' must be a number, but got %s.",
 									BsonIterTypeName(&indexDefDocIter))));
@@ -1634,7 +1634,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			/* Optional for 2d index */
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"The field 'bits' must be a number, but got %s.",
 									BsonIterTypeName(&indexDefDocIter))));
@@ -1644,7 +1644,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 			if (bits < 1 || bits > 32)
 			{
-				ereport(ERROR, (errcode(MongoInvalidOptions),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 								errmsg(
 									"bits for hash must be > 0 and <= 32, but %d bits were specified",
 									bits)));
@@ -1656,7 +1656,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&indexDefDocIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg(
 									"The field '2dsphereIndexVersion' must be a number, but got %s.",
 									BsonIterTypeName(&indexDefDocIter))));
@@ -1667,7 +1667,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			{
 				/* Mongo supports [1, 2, 3] version for 2dsphere index, but we only support the latest which is 3*/
 				ereport(ERROR, (
-							errcode(MongoCannotCreateIndex),
+							errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg("unsupported geo index version found, "
 								   "only versions: [3] is supported")));
 			}
@@ -1685,12 +1685,12 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			if (!IsBsonValue32BitInteger(value, checkFixed))
 			{
 				ereport(ERROR, (
-							errcode(MongoInvalidOptions),
+							errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 							errmsg(
 								"Expected field \"finestIndexedLevel\" to have a value exactly representable "
 								"as a 64-bit integer, but found finestIndexedLevel: %s",
 								BsonValueToJsonForLogging(value)),
-							errhint(
+							errdetail_log(
 								"Expected field \"finestIndexedLevel\" to have a value exactly representable "
 								"as a 64-bit integer")));
 			}
@@ -1706,12 +1706,12 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			if (!IsBsonValue32BitInteger(value, checkFixed))
 			{
 				ereport(ERROR, (
-							errcode(MongoInvalidOptions),
+							errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 							errmsg(
 								"Expected field \"coarsestIndexedLevel\" to have a value exactly representable "
 								"as a 64-bit integer, but found coarsestIndexedLevel: %s",
 								BsonValueToJsonForLogging(value)),
-							errhint(
+							errdetail_log(
 								"Expected field \"coarsestIndexedLevel\" to have a value exactly representable "
 								"as a 64-bit integer")));
 			}
@@ -1733,7 +1733,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		}
 		else if (!SkipFailOnCollation && strcmp(indexDefDocKey, "collation") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("createIndex.collation is not implemented yet")));
 		}
 		else if (!ignoreUnknownIndexOptions)
@@ -1743,7 +1743,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			 *       When the key doesn't correspond any of those, then we would
 			 *       error here for the unexpected field.
 			 */
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("The field '%s' is not valid for an index "
 								   "specification. Specification: %s",
 								   indexDefDocKey,
@@ -1763,12 +1763,12 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	{
 		if (list_length(indexDef->key->keyPathList) == 0)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg("Index keys cannot be an empty field")));
 		}
 		else if (indexDef->wildcardProjectionTree)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("The field 'wildcardProjection' is only "
 								   "allowed in an 'wildcard' index")));
 		}
@@ -1783,19 +1783,19 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			 */
 			if (!IntermediateNodeHasChildren(indexDef->wildcardProjectionTree))
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("The 'wildcardProjection' field can't be an "
 									   "empty object")));
 			}
 			else if (list_length(indexDef->key->keyPathList) != 0)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("The field 'wildcardProjection' is only "
 									   "allowed when 'key' is {\"$**\": ±1}")));
 			}
 			else if (indexDef->key->hasTextIndexes)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"The field 'wildcardProjection' is only allowed in an 'wildcard' index")));
 			}
@@ -1818,14 +1818,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	{
 		if (!IndexSupportsTruncation(indexDef))
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"enableLargeIndexKeys is only supported with regular indexes.")));
 		}
 
 		if (indexDef->unique != BoolIndexOption_Undefined)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Cannot specify unique with enableLargeIndexKeys.")));
 		}
@@ -1834,7 +1834,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	if (indexDef->key->hasCosmosIndexes &&
 		indexDef->cosmosSearchOptions == NULL)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"Index type 'CosmosSearch' was requested, but the 'cosmosSearch' options were not provided.")));
 	}
@@ -1851,20 +1851,20 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	if (!indexDef->key->hasTextIndexes &&
 		indexDef->languageOverride != NULL)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"language_override can only be specified for text indexes.")));
 	}
 
 	if (indexDef->unique == BoolIndexOption_True && indexDef->key->isWildcard)
 	{
-		ereport(ERROR, errcode(MongoFailedToParse),
+		ereport(ERROR, errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 				errmsg("Index type 'wildcard' does not support the unique option"));
 	}
 
 	if (indexDef->unique == BoolIndexOption_True && indexDef->key->hasHashedIndexes)
 	{
-		ereport(ERROR, errcode(MongoLocation16764),
+		ereport(ERROR, errcode(ERRCODE_HELIO_LOCATION16764),
 				errmsg(
 					"Currently hashed indexes cannot guarantee uniqueness. Use a regular index"));
 	}
@@ -1888,14 +1888,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	{
 		if (indexDef->unique == BoolIndexOption_True)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Index type 'cosmosSearch' does not support the unique option")));
 		}
 
 		if (indexDef->partialFilterExprDocument != NULL)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Index type 'cosmosSearch' does not support the partial filters")));
 		}
@@ -1908,7 +1908,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			/* TODO: Mongo supports the unique option with 2d index, but we dont know how to support
 			 * unique indexes with GIST
 			 */
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Index type '2d' does not support the unique option")));
 		}
@@ -1926,7 +1926,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 		if (isinf(minBound) || isinf(maxBound) || maxBound <= minBound)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"region for hash must be valid and have positive area, but [%g, %g] was specified",
 								minBound, maxBound)));
@@ -1940,7 +1940,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			/* TODO: Mongo supports the unique option with 2dsphere index, but we dont how to support
 			 * unique indexes with GIST
 			 */
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Index type '2dsphere' does not support the unique option")));
 		}
@@ -1952,21 +1952,21 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		if (coarsest < 0)
 		{
 			ereport(ERROR, (
-						errcode(MongoLocation16747),
+						errcode(ERRCODE_HELIO_LOCATION16747),
 						errmsg("coarsestIndexedLevel must be >= 0")));
 		}
 
 		if (finest > 30)
 		{
 			ereport(ERROR, (
-						errcode(MongoLocation16748),
+						errcode(ERRCODE_HELIO_LOCATION16748),
 						errmsg("finestIndexedLevel must be <= 30")));
 		}
 
 		if (coarsest > finest)
 		{
 			ereport(ERROR, (
-						errcode(MongoLocation16749),
+						errcode(ERRCODE_HELIO_LOCATION16749),
 						errmsg("finestIndexedLevel must be >= coarsestIndexedLevel")));
 		}
 
@@ -1977,14 +1977,14 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 	{
 		if (indexDef->key->isWildcard)
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg(
 								"Index type 'wildcard' does not support the sparse option")));
 		}
 
 		if (indexDef->partialFilterExpr != NULL)
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg(
 								"cannot mix \"partialFilterExpression\" and \"sparse\" options")));
 		}
@@ -1992,7 +1992,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 	if (indexDef->weightsDocument != NULL && !indexDef->key->hasTextIndexes)
 	{
-		ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 						errmsg(
 							"the field 'weights' can only be specified with text indexes")));
 
@@ -2063,21 +2063,21 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		/* "key" : { "_id" : 1, "_id" : 1 }. Native Mongo error sees this spec as a single-field spec on _id. */
 		if (totalIdKeyPath == totalIndexKeyPath)
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg(
 								"The field 'expireAfterSeconds' is not valid for an _id index specification.")));
 		}
 
 		if (totalIndexKeyPath > 1)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"TTL indexes are single-field indexes, compound indexes do not support TTL.")));
 		}
 
 		if (indexDef->key->isWildcard)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Index type 'wildcard' cannot be a TTL index.")));
 		}
@@ -2147,7 +2147,7 @@ EnsureIndexDefDocFieldType(const bson_iter_t *indexDefDocIter,
 	bson_type_t bsonType = bson_iter_type(indexDefDocIter);
 	if (bsonType != expectedType)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("The field '%s' must be an %s, but got %s",
 							   bson_iter_key(indexDefDocIter), BsonTypeName(expectedType),
 							   BsonTypeName(bsonType))));
@@ -2167,11 +2167,11 @@ EnsureIndexDefDocFieldConvertibleToBool(bson_iter_t *indexDefDocIter)
 	{
 		const bson_value_t *value = bson_iter_value(indexDefDocIter);
 		const char *name = bson_iter_key(indexDefDocIter);
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"The field '%s' has value %s: %s, which is not convertible to bool",
 							name, name, BsonValueToJsonForLogging(value)),
-						errhint(
+						errdetail_log(
 							"Field in index definition has value of type %s, which is not convertible to bool",
 							BsonTypeName(value->value_type))));
 	}
@@ -2206,7 +2206,7 @@ IsSupportedIndexVersion(int indexVersion)
 static void
 ThrowIndexDefDocMissingFieldError(const char *fieldName)
 {
-	ereport(ERROR, (errcode(MongoFailedToParse),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 					errmsg("The '%s' field is a required property of "
 						   "an index specification", fieldName)));
 }
@@ -2239,7 +2239,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			 * wildcard key.
 			 * TODO: Support compound wildcard *iff* it's a root text index.
 			 */
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg("wildcard indexes do not allow compounding")));
 		}
 
@@ -2258,7 +2258,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* Case 1: Index key field should not start with '$'. */
 			if (indexDefKeyKey[0] == '$')
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
@@ -2266,21 +2266,21 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* Case 2: Index key field should not start with '.'. */
 			if (indexDefKeyKey[0] == '.')
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Index keys cannot contain an empty field.")));
 			}
 
 			/* Case 3: Index keyPath should not have double dots in the path */
 			if (strstr(indexDefKeyKey, DOUBLE_DOT_IN_INDEX_PATH) != NULL)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Index keys cannot contain an empty field.")));
 			}
 
 			/* Index path key cannot be '_fts' (full text search )*/
 			if (strcmp(indexDefKeyKey, "_fts") == 0)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: '_fts'.")));
 			}
@@ -2296,7 +2296,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 				if (dotWildCardSuffix + strlen(DOT_WILDCARD_INDEX_SUFFIX) <
 					indexDefKeyKey + strlen(indexDefKeyKey))
 				{
-					ereport(ERROR, (errcode(MongoCannotCreateIndex),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 									errmsg("Index key contains an illegal field name")));
 				}
 			}
@@ -2305,7 +2305,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* Case 5: IndexPath should never end with '.'. */
 			if (StringViewEndsWith(&indexPath, '.'))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Index keys cannot contain an empty field.")));
 			}
 
@@ -2318,7 +2318,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 					(strcmp(indexPathSubstring.string, WILDCARD_INDEX_SUFFIX) != 0) &&
 					(strcmp(indexPathSubstring.string, "$id") != 0))
 				{
-					ereport(ERROR, (errcode(MongoCannotCreateIndex),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 									errmsg(
 										"Index key contains an illegal field name: field name starts with '$'.")));
 				}
@@ -2360,7 +2360,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		 */
 		if (!wildcardOnWholeDocument && keyPath == NULL)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg("Index keys cannot be an empty field")));
 		}
 
@@ -2378,7 +2378,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* Spec value can be an empty value or invalid mongo index type */
 			if (keyValue->value.v_utf8.len == 0)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Values in the index key pattern cannot be empty strings")));
 			}
@@ -2402,8 +2402,9 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 							ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 											errmsg("%s mongo index is not supported yet",
 												   keyValue->value.v_utf8.str),
-											errhint("%s mongo index is not supported yet",
-													keyValue->value.v_utf8.str)));
+											errdetail_log(
+												"%s mongo index is not supported yet",
+												keyValue->value.v_utf8.str)));
 						}
 					}
 				}
@@ -2411,7 +2412,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 
 				if (!isValidMongoIndexAndSupported)
 				{
-					ereport(ERROR, (errcode(MongoCannotCreateIndex),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 									errmsg("Unknown index plugin %s",
 										   BsonValueToJsonForLogging(keyValue))));
 				}
@@ -2424,14 +2425,14 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* Index Key Spec value can't be zero */
 			if (doubleValue == (double) 0)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Values in the index key pattern cannot be 0.")));
 			}
 
 			if (isWildcardKeyPath && (doubleValue < 0))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"A numeric value in a $** index key pattern must be positive.")));
 			}
@@ -2439,7 +2440,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		else
 		{
 			/* All other data types can't be specified as key spec value */
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"Values in v:2 index key pattern cannot be of type %s. Only numbers > 0, numbers < 0, and strings are allowed.",
 								BsonTypeName(keyValue->value_type))));
@@ -2455,7 +2456,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 				 * Already parsed a keyPath before, so it's a compound index.
 				 * But compound indexes cannot contain a wildcard key.
 				 */
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("wildcard indexes do not allow compounding")));
 			}
 		}
@@ -2464,7 +2465,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		{
 			if (isWildcardKeyPath)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
@@ -2484,17 +2485,17 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			if (indexDefKey->has2dIndex)
 			{
 				/* Can't have more than one 2d index fields */
-				ereport(ERROR, (errcode(MongoLocation16800),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16800),
 								errmsg("can't have 2 geo fields")));
 			}
 			else if (indexDefKey->keyPathList != NIL)
 			{
-				ereport(ERROR, (errcode(MongoLocation16801),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16801),
 								errmsg("2d has to be first in index")));
 			}
 			else if (isWildcardKeyPath)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
@@ -2508,7 +2509,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			EnsureGeospatialFeatureEnabled();
 			if (isWildcardKeyPath)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
@@ -2524,7 +2525,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 				(lastIndexKind != MongoIndexKind_Text))
 			{
 				/* If a prior column already had textIndexes, it must be adjacent */
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"'text' fields in index must all be adjacent")));
 			}
@@ -2532,7 +2533,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 			/* 'text' indexes don't support wildcards on subpaths - only the root */
 			if (isWildcardKeyPath && !wildcardOnWholeDocument)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"Index key contains an illegal field name: field name starts with '$'.")));
 			}
@@ -2582,7 +2583,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 	/* Check the number of types of indexes excluding the "Regular" index kind */
 	if (pg_popcount32(allindexKinds & ~MongoIndexKind_Regular) > 1)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"Can't use more than one index plugin for a single index.")));
 	}
@@ -2590,14 +2591,14 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 	if ((allindexKinds & MongoIndexKind_2dsphere) == MongoIndexKind_2dsphere &&
 		(allindexKinds & MongoIndexKind_Regular) == MongoIndexKind_Regular)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"Compound Regular & 2dsphere indexes are not supported yet")));
 	}
 
 	if (numHashedIndexes > 1)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"A maximum of one index field is allowed to be hashed but found %d",
 							numHashedIndexes)));
@@ -2606,7 +2607,7 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 	if (indexDefKey->hasCosmosIndexes &&
 		list_length(indexDefKey->keyPathList) != 1)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"A maximum of one index field is allowed for cdb indexes")));
 	}
@@ -2643,7 +2644,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&cosmosSearchIter))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("search index kind must be a string not %s",
 									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
 			}
@@ -2659,7 +2660,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Invalid search index kind %s",
 									   kindStr.string)));
 			}
@@ -2668,7 +2669,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&cosmosSearchIter))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"search index distance metric must be a string not %s",
 									BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
@@ -2697,7 +2698,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("Invalid search index distance kind %s",
 									   str.string)));
 			}
@@ -2706,7 +2707,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("dimensions must be a number not %s",
 									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
 			}
@@ -2718,13 +2719,13 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 	/* Check the common required options */
 	if (cosmosSearchOptions->indexKindStr == NULL)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg("cosmosSearch index kind must be specified")));
 	}
 
 	if (cosmosSearchOptions->commonOptions.numDimensions <= 1)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"vector index must specify dimensions greater than 1")));
 	}
@@ -2732,7 +2733,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 	if (cosmosSearchOptions->commonOptions.distanceMetric ==
 		VectorIndexDistanceMetric_Unknown)
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"vector index must specify similarity metric")));
 	}
@@ -2922,7 +2923,7 @@ CheckWildcardProjectionTreeInternal(const BsonIntermediatePathNode *treeParentNo
 					treeNode);
 				if (!IntermediateNodeHasChildren(intermediateNode))
 				{
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg("An empty sub-projection is not a valid "
 										   "value. Found empty object at path")));
 				}
@@ -2955,7 +2956,7 @@ CheckWildcardProjectionTreeInternal(const BsonIntermediatePathNode *treeParentNo
 				 * here we use exactly the same error message that Mongo
 				 * does.
 				 */
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode")));
 			}
@@ -2980,7 +2981,7 @@ CheckWildcardProjectionTreeInternal(const BsonIntermediatePathNode *treeParentNo
 				{
 					CreateIndexesLeafPathNodeData *leafPathNode =
 						(CreateIndexesLeafPathNodeData *) treeNode;
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg("Cannot do %s on field %s in %s projection",
 										   WPFieldInclusionModeString(nodeInclusionMode),
 										   leafPathNode->relativePath,
@@ -3216,7 +3217,7 @@ CheckPartFilterExprOperatorsWalker(Node *node, void *context)
 			bool isTopLevel = (bool) context;
 			if (!isTopLevel)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("$and only supported in partialFilterExpression "
 									   "at top level")));
 			}
@@ -3305,7 +3306,7 @@ CheckPartFilterExprOperatorsWalker(Node *node, void *context)
 
 			case QUERY_OPERATOR_UNKNOWN:
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"unknown mongo operator")));
 			}
 
@@ -3329,7 +3330,7 @@ CheckPartFilterExprOperatorsWalker(Node *node, void *context)
 static void
 ThrowUnsupportedPartFilterExprError(Node *node)
 {
-	ereport(ERROR, (errcode(MongoCannotCreateIndex),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 					errmsg("unsupported expression in partial index: %s",
 						   GetPartFilterExprNodeRepr(node))));
 }
@@ -3598,7 +3599,7 @@ CheckForConflictsAndPruneExistingIndexes(uint64 collectionId, List *indexDefList
 				 * if the create_indexes() command itself attempts creating
 				 * identical indexes.
 				 */
-				ereport(ERROR, (errcode(MongoIndexAlreadyExists),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXALREADYEXISTS),
 								errmsg("Identical index already exists: %s",
 									   priorIndexSpec.indexName)));
 			}
@@ -3749,7 +3750,7 @@ ThrowIndexNameConflictError(const IndexSpec *existingIndexSpec,
 	const char *existingIndexBsonStr =
 		PgbsonToJsonForLogging(IndexSpecAsBson(existingIndexSpec));
 
-	ereport(ERROR, (errcode(MongoIndexKeySpecsConflict),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXKEYSPECSCONFLICT),
 					errmsg("An existing index has the same name as the "
 						   "requested index. When index names are not "
 						   "specified, they are auto generated and can "
@@ -3767,7 +3768,7 @@ ThrowIndexNameConflictError(const IndexSpec *existingIndexSpec,
 static void
 ThrowIndexOptionsConflictError(const char *existingIndexName)
 {
-	ereport(ERROR, (errcode(MongoIndexOptionsConflict),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXOPTIONSCONFLICT),
 					errmsg("Index already exists with a different name: %s",
 						   existingIndexName)));
 }
@@ -3794,7 +3795,7 @@ ThrowSameIndexNameWithDifferentOptionsError(const IndexSpec *existingIndexSpec,
 	const char *existingIndexBsonStr =
 		PgbsonToJsonForLogging(IndexSpecAsBson(existingIndexSpec));
 
-	ereport(ERROR, (errcode(MongoIndexOptionsConflict),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXOPTIONSCONFLICT),
 					errmsg("An equivalent index already exists with the same "
 						   "name but different options. Requested index: %s, "
 						   "existing index: %s",
@@ -3819,7 +3820,7 @@ ThrowDifferentIndexNameWithDifferentOptionsError(const IndexSpec *existingIndexS
 	const char *existingIndexBsonStr =
 		PgbsonToJsonForLogging(IndexSpecAsBson(existingIndexSpec));
 
-	ereport(ERROR, (errcode(MongoIndexOptionsConflict),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXOPTIONSCONFLICT),
 					errmsg("An equivalent index already exists with a "
 						   "different name and options. Requested index: %s, "
 						   "existing index: %s",
@@ -3837,7 +3838,7 @@ ThrowSingleTextIndexAllowedError(const IndexSpec *existingIndexSpec,
 	const char *existingIndexBsonStr =
 		PgbsonToJsonForLogging(IndexSpecAsBson(existingIndexSpec));
 
-	ereport(ERROR, (errcode(MongoExactlyOneTextIndex),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_EXACTLYONETEXTINDEX),
 					errmsg("Expected exactly one text index. Requested index: %s, "
 						   "existing index: %s",
 						   requestedIndexBsonStr, existingIndexBsonStr)));
@@ -4067,7 +4068,7 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 
 		if (MarkIndexesAsValid(collectionId, indexIdList) != list_length(indexIdList))
 		{
-			ereport(ERROR, (errcode(MongoIndexBuildAborted),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXBUILDABORTED),
 							errmsg(COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG)));
 		}
 
@@ -4375,7 +4376,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 
 		if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"enableLargeIndexKeys with unique indexes is not supported yet")));
 		}
@@ -4547,9 +4548,10 @@ ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid,
 	{
 		if (userOid != InvalidOid)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("Create index failed due to incorrect userid"),
-							errhint("Create index failed due to incorrect userid")));
+							errdetail_log(
+								"Create index failed due to incorrect userid")));
 		}
 
 		bool readOnly = false;
@@ -4884,7 +4886,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		if (unique)
 		{
 			/* This should have been validated but do one more sanity check */
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg("Cannot create wildcard unique indexes")));
 		}
 
@@ -4974,11 +4976,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		if (indexExprStr->len >= MAX_INDEX_OPTIONS_LENGTH)
 		{
 			int lengthDelta = indexExprStr->len - MAX_INDEX_OPTIONS_LENGTH;
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"The index path or expression is too long. Try a shorter path or reducing paths by %d characters.",
 								lengthDelta),
-							errhint(
+							errdetail_log(
 								"The index path or expression is too long. Try a shorter path or reducing paths by %d characters.",
 								lengthDelta)));
 		}
@@ -4987,7 +4989,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 	{
 		if (indexDefWildcardProjTree)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"unexpectedly got wildcardProjection "
 								"specification for a non-wildcard index "
 								"or a non-root wildcard index")));
@@ -5048,7 +5050,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					if (unique)
 					{
 						/* This should have been validated but do one more sanity check */
-						ereport(ERROR, (errcode(MongoCannotCreateIndex),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 										errmsg("Cannot create unique hashed indexes")));
 					}
 
@@ -5066,7 +5068,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					if (unique)
 					{
 						/* This should have been validated but do one more sanity check */
-						ereport(ERROR, (errcode(MongoCannotCreateIndex),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 										errmsg("Cannot create unique text indexes")));
 					}
 
@@ -5098,11 +5100,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 			if (addedLength >= MAX_INDEX_OPTIONS_LENGTH)
 			{
 				int lengthDelta = addedLength - MAX_INDEX_OPTIONS_LENGTH;
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"The index path or expression is too long. Try a shorter path or reducing paths by %d characters.",
 									lengthDelta),
-								errhint(
+								errdetail_log(
 									"The index path or expression is too long. Try a shorter path or reducing paths by %d characters.",
 									lengthDelta)));
 			}
@@ -5604,21 +5606,21 @@ ValidateIndexName(const bson_value_t *indexName)
 {
 	if (indexName->value.v_utf8.len == 0)
 	{
-		ereport(ERROR, errcode(MongoCannotCreateIndex),
+		ereport(ERROR, errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 				errmsg("The index name cannot be empty"));
 	}
 
 	/* index names with embedded nulls not allowed */
 	if (memchr(indexName->value.v_utf8.str, 0, indexName->value.v_utf8.len) != NULL)
 	{
-		ereport(ERROR, errcode(MongoCannotCreateIndex),
+		ereport(ERROR, errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 				errmsg("The index name cannot contain embedded nulls"));
 	}
 
 	/* This makes a jstest happy - but can't find docs on other illegal characters */
 	if (strcmp(indexName->value.v_utf8.str, "*") == 0)
 	{
-		ereport(ERROR, errcode(MongoBadValue),
+		ereport(ERROR, errcode(ERRCODE_HELIO_BADVALUE),
 				errmsg("The index name '*' is not valid"));
 	}
 }

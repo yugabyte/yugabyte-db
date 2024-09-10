@@ -489,8 +489,9 @@ BuildUpdates(BatchUpdateSpec *spec)
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
-						errhint("Write batch sizes must be between 1 and %d. "
-								"Got %d operations.", MaxWriteBatchSize, updateCount)));
+						errdetail_log("Write batch sizes must be between 1 and %d. "
+									  "Got %d operations.", MaxWriteBatchSize,
+									  updateCount)));
 	}
 
 	spec->updates = updates;
@@ -530,7 +531,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 			/* if both docs and spec are provided, fail */
 			if (updateDocs != NULL)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("Unexpected additional updates")));
 			}
 
@@ -671,7 +672,7 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 			if (!BSON_ITER_HOLDS_DOCUMENT(updateIter) &&
 				!BSON_ITER_HOLDS_ARRAY(updateIter))
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 								errmsg("BSON field 'update.updates.u' is the wrong type "
 									   "'%s', expected type 'object' or 'array'",
 									   BsonIterTypeName(updateIter))));
@@ -1484,7 +1485,7 @@ CallUpdateWorker(MongoCollection *collection, pgbson *serializedSpec,
 
 	if (isNulls[0])
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("update_worker should not return null")));
 	}
 
@@ -1592,14 +1593,15 @@ command_update_worker(PG_FUNCTION_ARGS)
 	if (shardOid == InvalidOid)
 	{
 		/* The planner is expected to replace this */
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Explicit shardOid must be set - this is a server bug"),
-						errhint("Explicit shardOid must be set - this is a server bug")));
+						errdetail_log(
+							"Explicit shardOid must be set - this is a server bug")));
 	}
 
 	if (updateSequence == NULL && updateInternalSpec == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"update spec or update documents argument must be not null.")));
 	}
@@ -1685,8 +1687,9 @@ ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bo
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
-						errhint("Write batch sizes must be between 1 and %d. "
-								"Got %d operations.", MaxWriteBatchSize, updateCount)));
+						errdetail_log("Write batch sizes must be between 1 and %d. "
+									  "Got %d operations.", MaxWriteBatchSize,
+									  updateCount)));
 	}
 
 	/* we're unsharded and at the worker so we can force inlining the writes when processing the batch. */
@@ -1791,8 +1794,8 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(&iter))
 			{
-				ereport(ERROR, (errcode(MongoInternalError), (errmsg(
-																  "Update worker expects updateUnsharded.specs to be an array."))));
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
+																		   "Update worker expects updateUnsharded.specs to be an array."))));
 			}
 
 			params->param.updateBatch = *bson_iter_value(&iter);
@@ -1801,20 +1804,20 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 		{
 			if (!BSON_ITER_HOLDS_BOOL(&iter))
 			{
-				ereport(ERROR, (errcode(MongoInternalError), (errmsg(
-																  "Update worker expects updateUnsharded.isOrdered to be a bool."))));
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
+																		   "Update worker expects updateUnsharded.isOrdered to be a bool."))));
 			}
 
 			params->isOrdered = BsonValueAsBool(bson_iter_value(&iter));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoInternalError), (errmsg(
-															  "Unknown field to update worker for updateUnsharded document, '%s'.",
-															  key),
-														  errhint(
-															  "Unknown field to update worker for updateUnsharded document, '%s'.",
-															  key))));
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
+																	   "Unknown field to update worker for updateUnsharded document, '%s'.",
+																	   key),
+																   errdetail_log(
+																	   "Unknown field to update worker for updateUnsharded document, '%s'.",
+																	   key))));
 		}
 	}
 }
@@ -1850,8 +1853,8 @@ DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec,
 	else if (strcmp(singleElement.path, "updateOne") != 0 ||
 			 singleElement.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoInternalError), (errmsg(
-														  "Update worker only supports updateOne or updateUnsharded as a document"))));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
+																   "Update worker only supports updateOne or updateUnsharded as a document"))));
 	}
 
 	params->isUpdateOne = true;

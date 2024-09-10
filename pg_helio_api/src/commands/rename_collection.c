@@ -15,7 +15,7 @@
 #include "lib/stringinfo.h"
 #include "access/xact.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"
@@ -64,7 +64,7 @@ command_rename_collection(PG_FUNCTION_ARGS)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTFOUND),
 						errmsg("collection %s.%s does not exist", TextDatumGetCString(
 								   database_datum), TextDatumGetCString(
 								   collection_datum))));
@@ -88,7 +88,7 @@ command_rename_collection(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoNamespaceExists),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACEEXISTS),
 							errmsg("collection %s.%s already exists",
 								   TextDatumGetCString(database_datum),
 								   TextDatumGetCString(

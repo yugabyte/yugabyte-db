@@ -20,7 +20,7 @@
 #include "geospatial/bson_geospatial_wkb_iterator.h"
 #include "planner/mongo_query_operator.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/query_utils.h"
 #include "utils/fmgr_utils.h"
 
@@ -465,7 +465,7 @@ CompareGeoDatumsForDollarCenter(const ProcessCommonGeospatialState *state,
 			if (type == GeospatialType_Geography)
 			{
 				ereport(ERROR, (
-							errcode(MongoInternalError),
+							errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("Unexpected geographical type encountered in $center")
 							));
 			}
@@ -567,7 +567,7 @@ VisitSingleGeometryForGeoWithin(const WKBGeometryConst *geometryConst, void *sta
 		 * Postgis matching difference for these cases
 		 */
 		ereport(ERROR, (
-					errcode(MongoCommandNotSupported),
+					errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 					errmsg("$geoWithin currently doesn't support polygons with holes")
 					));
 	}

@@ -13,7 +13,7 @@
 #include "math.h"
 #include "utils/builtins.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "geospatial/bson_geojson_utils.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_private.h"
@@ -230,7 +230,7 @@ BsonExtractGeometryStrict(const pgbson *document, const StringView *pathView)
 
 	GeospatialErrorContext errCtxt = {
 		.document = document,
-		.errCode = MongoBadValue,
+		.errCode = ERRCODE_HELIO_BADVALUE,
 		.errPrefix = _2dIndexNoPrefix,
 		.hintPrefix = _2dIndexNoPrefix
 	};
@@ -282,7 +282,7 @@ BsonExtractGeographyStrict(const pgbson *document, const StringView *pathView)
 
 	GeospatialErrorContext errCtxt = {
 		.document = document,
-		.errCode = MongoLocation16755,
+		.errCode = ERRCODE_HELIO_LOCATION16755,
 		.errPrefix = _2dsphereIndexErrorPrefix,
 		.hintPrefix = _2dsphereIndexErrorHintPrefix
 	};
@@ -478,9 +478,9 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 	{
 		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
 			throwError, (
-				errcode(MongoLocation16804),
+				errcode(ERRCODE_HELIO_LOCATION16804),
 				errmsg("location object expected, location array not in correct format"),
-				errhint(
+				errdetail_log(
 					"location object expected, location array not in correct format")));
 	}
 
@@ -550,9 +550,9 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 		/* Strictly validate here */
 		if (index == 1 && validCoordinates[0] == PointProcessType_Valid)
 		{
-			ereport(ERROR, (errcode(MongoLocation13068),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13068),
 							errmsg("geo field only has 1 element"),
-							errhint("geo field only has 1 element")));
+							errdetail_log("geo field only has 1 element")));
 		}
 
 		/* If any point is invalid do further checks */
@@ -565,11 +565,11 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 				 validCoordinates[0] == PointProcessType_Valid))
 			{
 				ereport(ERROR, (
-							errcode(MongoLocation13026),
+							errcode(ERRCODE_HELIO_LOCATION13026),
 							errmsg("geo values must be "
 								   "'legacy coordinate pairs' for 2d indexes"),
-							errhint("geo values must be "
-									"'legacy coordinate pairs' for 2d indexes")));
+							errdetail_log("geo values must be "
+										  "'legacy coordinate pairs' for 2d indexes")));
 			}
 
 			/* For any other single point validation this error if any invalid point.
@@ -581,11 +581,11 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 				 validCoordinates[1] != PointProcessType_Valid))
 			{
 				ereport(ERROR, (
-							errcode(MongoLocation16804),
+							errcode(ERRCODE_HELIO_LOCATION16804),
 							errmsg("location object expected, location array "
 								   "not in correct format"),
-							errhint("location object expected, location array "
-									"not in correct format")));
+							errdetail_log("location object expected, location array "
+										  "not in correct format")));
 			}
 		}
 	}
@@ -690,9 +690,9 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 				errmsg("%sgeo element must be an array or object: %s : %s",
 					   GEO_ERROR_PREFIX(processState->errorCtxt),
 					   element->path, BsonValueToJsonForLogging(value)),
-				errhint("%sgeo element must be an array or object but found: %s",
-						GEO_HINT_PREFIX(processState->errorCtxt),
-						BsonTypeName(value->value_type))));
+				errdetail_log("%sgeo element must be an array or object but found: %s",
+							  GEO_HINT_PREFIX(processState->errorCtxt),
+							  BsonTypeName(value->value_type))));
 	}
 
 	/*
@@ -785,8 +785,8 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 					errcode(GEO_ERROR_CODE(processState->errorCtxt)),
 					errmsg("%scan't index geometry with strict winding order",
 						   GEO_ERROR_PREFIX(processState->errorCtxt)),
-					errhint("%scan't index geometry with strict winding order",
-							GEO_HINT_PREFIX(processState->errorCtxt))));
+					errdetail_log("%scan't index geometry with strict winding order",
+								  GEO_HINT_PREFIX(processState->errorCtxt))));
 		}
 
 
@@ -798,7 +798,7 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 			 * Postgis matching difference for these cases
 			 */
 			ereport(ERROR, (
-						errcode(MongoCommandNotSupported),
+						errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$geoWithin currently doesn't support polygons with holes")
 						));
 		}
