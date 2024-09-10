@@ -26,7 +26,7 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, you set the YB-Master flag `enable_db_clone` to true. Because cloning is in {{<badge/tp>}}, you must also add the `enable_db_clone` flag to the `allowed_preview_flags_csv`list.
+To enable database cloning in a cluster, you set the YB-Master flag `enable_db_clone` to true. Because cloning is in {{<badge/tp>}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
 
 For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
@@ -74,7 +74,7 @@ In this example, `clone_db` is created as a clone of `original_db`, and contains
 To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify the [Unix timestamp](https://www.unixtimestamp.com/) in microseconds using the `AS OF` option as follows:
 
 ```sql
-CREATE DATABASE clone_db TEMPLATE origginal_db AS OF 1723146703674480;
+CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
 ```
 
 ### Clone a YCQL keyspace
