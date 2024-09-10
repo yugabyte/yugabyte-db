@@ -283,14 +283,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Authorised NFS directories for backups",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ybcEnableVervbose =
-      new ConfKeyInfo<>(
-          "yb.ybc_flags.enable_verbose",
-          ScopeType.UNIVERSE,
-          "Enable Verbose Logging",
-          "Enable verbose ybc logging",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxThreads =
       new ConfKeyInfo<>(
           "yb.perf_advisor.max_threads",

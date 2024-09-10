@@ -473,9 +473,6 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(nodeAgentClient.maybeGetNodeAgent(any(), any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.ybcEnableVervbose)))
-        .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
         .thenReturn("/tmp/nfs,/nfs");
     when(mockConfGetter.getConfForScope(
