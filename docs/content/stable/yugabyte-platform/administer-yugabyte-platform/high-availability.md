@@ -35,6 +35,8 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - [Two or more YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
 - The YBA instances can connect to each other over the port where the YBA UI is reachable (443 by default).
 - Communication is open in both directions over port 443 and 9090 on all YBA instances.
+- The YBA instances are both installed using the same installation method, yba-installer, replicated or helm (kubernetes).
+- The YBA instances are both configured to use the same path for the installation root.
 - If you are using custom ports for Prometheus, all YBA instances are using the same custom port. (The default Prometheus port for YugabyteDB Anywhere is 9090.)
 - All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 - The YBA instances have the same login credentials.
