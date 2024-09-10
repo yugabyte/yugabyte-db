@@ -313,7 +313,11 @@ void
 set_metric_names(void)
 {
 	for (int i = 0; i < kMaxStatementType; i++)
+	{
 		ybpgm_table[i].table_name[0] = '\0';
+		ybpgm_table[i].count_help[0] = '\0';
+		ybpgm_table[i].sum_help[0] = '\0';
+	}
 
 	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
 	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
@@ -350,6 +354,86 @@ set_metric_names(void)
 		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
 		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
 				 table_name);
+	}
+
+	strcpy(ybpgm_table[Select].count_help, 
+         "Number of SELECT statements that have been executed");
+	strcpy(ybpgm_table[Select].sum_help, 
+         "Total time spent executing SELECT statements");
+
+	strcpy(ybpgm_table[Insert].count_help, 
+         "Number of INSERT statements that have been executed");
+	strcpy(ybpgm_table[Insert].sum_help, 
+         "Total time spent executing INSERT statements");
+
+	strcpy(ybpgm_table[Delete].count_help, 
+         "Number of DELETE statements that have been executed");
+	strcpy(ybpgm_table[Delete].sum_help, 
+         "Total time spent executing DELETE statements");
+
+	strcpy(ybpgm_table[Update].count_help, 
+         "Number of UPDATE statements that have been executed");
+	strcpy(ybpgm_table[Update].sum_help, 
+         "Total time spent executing UPDATE statements");
+
+	strcpy(ybpgm_table[Begin].count_help, 
+         "Number of BEGIN statements that have been executed");
+	strcpy(ybpgm_table[Begin].sum_help, 
+         "Total time spent executing BEGIN statements");
+
+	strcpy(ybpgm_table[Commit].count_help, 
+         "Number of COMMIT statements that have been executed");
+	strcpy(ybpgm_table[Commit].sum_help, 
+         "Total time spent executing COMMIT statements");
+
+	strcpy(ybpgm_table[Rollback].count_help, 
+         "Number of ROLLBACK statements that have been executed");
+	strcpy(ybpgm_table[Rollback].sum_help, 
+         "Total time spent executing ROLLBACK statements");
+
+	strcpy(ybpgm_table[Other].count_help, 
+         "Number of other statements that have been executed");
+	strcpy(ybpgm_table[Other].sum_help, 
+         "Total time spent executing other statements");
+
+	strcpy(ybpgm_table[Single_Shard_Transaction].count_help, 
+         "Number of single shard transactions that have been executed (deprecated)");
+	strcpy(ybpgm_table[Single_Shard_Transaction].sum_help, 
+         "Total time spent executing single shard transactions (deprecated)");
+
+	strcpy(ybpgm_table[SingleShardTransaction].count_help, 
+         "Number of single shard transactions that have been executed");
+	strcpy(ybpgm_table[SingleShardTransaction].sum_help, 
+         "Total time spent executing single shard transactions");
+
+	strcpy(ybpgm_table[Transaction].count_help, 
+         "Number of transactions that have been executed");
+	strcpy(ybpgm_table[Transaction].sum_help, 
+         "Total time spent executing transactions");
+
+	strcpy(ybpgm_table[AggregatePushdown].count_help, 
+         "Number of aggregate pushdowns");
+	strcpy(ybpgm_table[AggregatePushdown].sum_help, 
+         "Total time spent executing aggregate pushdowns");
+
+	strcpy(ybpgm_table[CatCacheMisses].count_help, 
+         "Total number of catalog cache misses");
+	strcpy(ybpgm_table[CatCacheMisses].sum_help, "Not applicable");
+
+	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
+	{
+		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
+				 "Number of catalog cache misses for index %s",
+				 ybpgm_table[i].table_name);
+		strcpy(ybpgm_table[i].sum_help, "Not applicable");
+	}
+
+	for (int i = CatCacheTableMisses_Start; i <= CatCacheTableMisses_End; ++i)
+	{
+		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
+				 "Number of catalog cache misses for table %s",
+				 ybpgm_table[i].table_name);
+		strcpy(ybpgm_table[i].sum_help, "Not applicable");
 	}
 }
 

@@ -3978,11 +3978,18 @@ struct YsqlMetric {
   std::unordered_map<std::string, std::string> labels;
   int64_t value;
   int64_t time;
+  std::string type;
+  std::string description;
 
   YsqlMetric(
       std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time)
-      : name(std::move(name)), labels(std::move(labels)), value(value), time(time) {}
+      int64_t time, std::string type = "", std::string description = "")
+      : name(std::move(name)),
+        labels(std::move(labels)),
+        value(value),
+        time(time),
+        type(type),
+        description(description) {}
 };
 
 static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
@@ -3994,13 +4001,29 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
   // Splits the list of labels into individual label-value pairs.
   const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
 
+  // Parses the HELP and TYPE lines into the metric name and the description/type.
+  // HELP and TYPE lines are formatted as:
+  // # HELP <metric_name> <description>
+  // # TYPE <metric_name> <type>
+  const std::regex help_regex(R"(# HELP (\S+) (.+))");
+  const std::regex type_regex(R"(# TYPE (\S+) (\w+))");
+
   std::vector<YsqlMetric> parsed_metrics;
   std::istringstream stream(metrics_output);
   std::string line;
+  std::unordered_map<std::string, std::string> descriptions;
+  std::unordered_map<std::string, std::string> types;
 
   while (std::getline(stream, line)) {
+    std::smatch help_match;
+    std::smatch type_match;
     std::smatch metric_match;
-    if (std::regex_search(line, metric_match, metric_regex)) {
+
+    if (std::regex_search(line, help_match, help_regex)) {
+      descriptions[help_match[1].str()] = help_match[2].str();
+    } else if (std::regex_search(line, type_match, type_regex)) {
+      types[type_match[1].str()] = type_match[2].str();
+    } else if (std::regex_search(line, metric_match, metric_regex)) {
       std::unordered_map<std::string, std::string> labels;
       const std::string labels_str = metric_match[2].str();
       auto search_start = labels_str.cbegin();
@@ -4011,9 +4034,11 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
         search_start = label_match.suffix().first;
       }
 
+      std::string metric_name = metric_match[1].str();
+
       parsed_metrics.emplace_back(
-          metric_match[1].str(), std::move(labels), std::stoll(metric_match[3].str()),
-          std::stoll(metric_match[4].str()));
+          metric_name, std::move(labels), std::stoll(metric_match[3].str()),
+          std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
     }
   }
 
@@ -4067,22 +4092,12 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   faststring buf;
 
   auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
   ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
   auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
-  // Filter out metrics ending with "_sum", as they are empty for the catcache metrics and
-  // ignoring them here simplifies the logic below.
-  prometheus_metrics.erase(
-      std::remove_if(
-          prometheus_metrics.begin(), prometheus_metrics.end(),
-          [](const YsqlMetric& metric) {
-            return metric.name.length() >= 4 &&
-                   metric.name.substr(metric.name.length() - 4) == "_sum";
-          }),
-      prometheus_metrics.end());
 
   auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=false", hostport);
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
   ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
   auto json_metrics = ParseJsonMetrics(buf.ToString());
 
