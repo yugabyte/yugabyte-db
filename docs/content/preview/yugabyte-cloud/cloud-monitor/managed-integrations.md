@@ -169,7 +169,7 @@ To create an export configuration, do the following:
     The URL must be in the form
 
     ```sh
-    http://<victoria-metrics-endpoint-host-address>/api/v1/otlp
+    http://<victoria-metrics-endpoint-host-address>/opentelemetry
     ```
 
 1. Click **Create Configuration**.
