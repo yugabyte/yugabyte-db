@@ -229,12 +229,12 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     ;
     DrConfig drConfig = xClusterConfig.getDrConfig();
     if (drConfig != null
-        && drConfig.getPitrRetentionPeriodSec() != 0
-        && drConfig.getPitrSnapshotIntervalSec() != 0) {
-      if (drConfig.getPitrRetentionPeriodSec() != 0) {
+        && drConfig.getPitrRetentionPeriodSec() != null
+        && drConfig.getPitrSnapshotIntervalSec() != null) {
+      if (drConfig.getPitrRetentionPeriodSec() != null) {
         pitrSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
       }
-      if (drConfig.getPitrSnapshotIntervalSec() != 0) {
+      if (drConfig.getPitrSnapshotIntervalSec() != null) {
         pitrRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
       }
     }

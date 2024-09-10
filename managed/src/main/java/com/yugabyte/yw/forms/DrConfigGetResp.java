@@ -123,14 +123,14 @@ public class DrConfigGetResp {
   @ApiModelProperty(
       value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
-  public long getPitrRetentionPeriodSec() {
+  public Long getPitrRetentionPeriodSec() {
     return drConfig.getPitrRetentionPeriodSec();
   }
 
   @ApiModelProperty(
       value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
-  public long getPitrSnapshotIntervalSec() {
+  public Long getPitrSnapshotIntervalSec() {
     return drConfig.getPitrSnapshotIntervalSec();
   }
 
