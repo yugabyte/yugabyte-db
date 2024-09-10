@@ -30,13 +30,6 @@ For more information on the features, assumptions, design, data key management, 
 
 You can enable encryption at rest when creating a universe, and enable and disable encryption at rest on existing universes.
 
-{{< warning title="Using disk encryption software with YugabyteDB Anywhere" >}}
-If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
-
-To avoid this, when enabling or disabling encryption at rest on a universe, first pause YugabyteDB services.
-
-{{< /warning >}}
-
 ### Enable encryption at rest during universe creation
 
 You enable encryption at rest during universe creation as follows:

@@ -17,6 +17,12 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 {{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
 
+### Using disk encryption software with YugabyteDB
+
+If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
+
+In addition, when enabling or disabling the disk encryption service, first pause YugabyteDB services.
+
 ## Download YugabyteDB
 
 YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.

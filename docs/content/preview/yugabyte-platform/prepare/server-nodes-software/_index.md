@@ -19,6 +19,12 @@ The Linux OS and other software components on each database cluster node must me
 
 Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere (YBA) will install it all automatically.
 
+{{< warning title="Using disk encryption software with YugabyteDB" >}}
+If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
+
+In addition, when enabling or disabling the disk encryption service, first pause YugabyteDB services.
+{{< /warning >}}
+
 ##### Linux OS
 
 YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/).
