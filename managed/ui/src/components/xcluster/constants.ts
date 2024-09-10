@@ -65,7 +65,9 @@ export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatu
 
 export const UNCONFIGURED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
   XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
-  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET,
+  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_TARGET
 ];
 
 export const DROPPED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
