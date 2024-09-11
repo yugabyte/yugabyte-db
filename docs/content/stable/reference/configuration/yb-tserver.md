@@ -1715,7 +1715,7 @@ Default: `1GB`
 
 ##### enable_bitmapscan
 
-{{<badge/tp>}} PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
+PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
