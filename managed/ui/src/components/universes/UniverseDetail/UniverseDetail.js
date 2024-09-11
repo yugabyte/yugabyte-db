@@ -354,11 +354,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_NODE_AGENT
       )?.value === 'true';
     runtimeConfigs?.data?.configEntries?.find(
-      (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+      (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
     )?.value === 'true';
     const isPerfAdvisorEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+        (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
     const isDrEnabled =
       runtimeConfigs?.data?.configEntries?.find(

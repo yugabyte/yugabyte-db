@@ -13,6 +13,18 @@
   }
 }
 
+.universe-tables-bannerContainer {
+  display: flex;
+  align-items: center;
+}
+
+.universe-tables-bannerActionButtonContainer {
+  display: flex;
+  gap: 8px;
+
+  margin-left: auto;
+}
+
 .table-search-bar {
   position: relative;
   width: 200px;

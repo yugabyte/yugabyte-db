@@ -19,7 +19,10 @@ import {
   I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS,
   UNCONFIGURED_XCLUSTER_TABLE_STATUSES,
   DROPPED_XCLUSTER_TABLE_STATUSES,
-  BootstrapCategory
+  BootstrapCategory,
+  XClusterSchemaChangeMode,
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -31,7 +34,11 @@ import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
-import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
+import {
+  compareYBSoftwareVersions,
+  compareYBSoftwareVersionsWithReleaseTrack,
+  getPrimaryCluster
+} from '../../utils/universeUtilsTyped';
 
 import {
   Metrics,
@@ -748,6 +755,37 @@ export const getIsXClusterConfigAllBidirectional = (
   ).every(([_, needBootstrapDetails]) =>
     needBootstrapDetails.reasons.includes(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION)
   );
+};
+
+export const getSchemaChangeMode = (xClusterConfig: XClusterConfig) => {
+  switch (xClusterConfig.type) {
+    case XClusterConfigType.BASIC:
+    case XClusterConfigType.TXN:
+      return XClusterSchemaChangeMode.TABLE_LEVEL;
+    case XClusterConfigType.DB_SCOPED:
+      return XClusterSchemaChangeMode.DB_SCOPED;
+  }
+};
+
+export const checkIsDbScopedXClusterSupported = (ybSoftwareVersion: string) =>
+  compareYBSoftwareVersionsWithReleaseTrack({
+    version: ybSoftwareVersion,
+    stableVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
+    previewVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+    options: { suppressFormatError: true }
+  });
+
+export const getLatestSchemaChangeModeSupported = (
+  sourceUniverseVersion: string,
+  targetUniverseVersion: string
+): XClusterSchemaChangeMode => {
+  if (
+    checkIsDbScopedXClusterSupported(sourceUniverseVersion) &&
+    checkIsDbScopedXClusterSupported(targetUniverseVersion)
+  ) {
+    return XClusterSchemaChangeMode.DB_SCOPED;
+  }
+  return XClusterSchemaChangeMode.TABLE_LEVEL;
 };
 
 const updateTableStatusWithReplicationLag = (

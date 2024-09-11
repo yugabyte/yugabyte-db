@@ -133,6 +133,8 @@ export const colors = {
     error: '#E73E36',
     inputBackground: '#E6E6E6',
     labelBackground: '#151730',
+    linkBlue: '#44518B',
+    purple300: '#7879F1',
     pillDangerBackground: '#FDE2E2',
     pillDangerIcon: '#DA1515',
     pillDangerText: '#8F0000',

@@ -44,6 +44,11 @@ export const usePillStyles = makeStyles((theme) => ({
     '&$inactive': {
       color: theme.palette.ybacolors.pillInactiveText,
       backgroundColor: theme.palette.ybacolors.pillInactiveBackground
+    },
+    '&$productOrange': {
+      fontWeight: 500,
+      color: theme.palette.common.white,
+      backgroundColor: theme.palette.orange[500]
     }
   },
   icon: {},
@@ -51,7 +56,8 @@ export const usePillStyles = makeStyles((theme) => ({
   inProgress: {},
   warning: {},
   danger: {},
-  inactive: {}
+  inactive: {},
+  productOrange: {}
 }));
 
 export const useIconStyles = makeStyles(() => ({

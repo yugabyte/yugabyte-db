@@ -2,7 +2,6 @@ import { Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
 
 import { PollingIntervalMs } from '../../constants';
-import { YBLoading } from '../../../common/indicators';
 import { api, drConfigQueryKey } from '../../../../redesign/helpers/api';
 import { formatDuration } from '../../../../utils/Formatters';
 

@@ -215,6 +215,7 @@ export interface CreateDrConfigRequest {
 
   // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks
   dryRun?: boolean;
+  dbScoped?: boolean;
 }
 
 export interface EditDrConfigRequest {

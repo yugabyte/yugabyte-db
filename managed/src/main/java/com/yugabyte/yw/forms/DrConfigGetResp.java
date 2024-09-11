@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
@@ -96,6 +97,11 @@ public class DrConfigGetResp {
       allowableValues = "UNKNOWN, YSQL, YCQL")
   public TableType getTableType() {
     return xClusterConfig.getTableType();
+  }
+
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
+  public ConfigType getType() {
+    return xClusterConfig.getType();
   }
 
   @ApiModelProperty(value = "Whether the underlying xCluster config is paused")

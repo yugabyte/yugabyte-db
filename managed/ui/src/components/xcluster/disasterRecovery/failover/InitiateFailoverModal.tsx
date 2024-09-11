@@ -187,11 +187,11 @@ export const InitiateFailoverModal = ({
     currentSafetimesQuery.isError
   ) {
     const customErrorMessage = !drConfig.primaryUniverseUuid
-      ? t('undefinedDrPrimaryUniveresUuid', {
+      ? t('undefinedDrPrimaryUniverseUuid', {
           keyPrefix: 'clusterDetail.disasterRecovery.error'
         })
       : !drConfig.drReplicaUniverseUuid
-      ? t('undefinedDrReplicaUniveresUuid', {
+      ? t('undefinedDrReplicaUniverseUuid', {
           keyPrefix: 'clusterDetail.disasterRecovery.error'
         })
       : targetUniverseQuery.isError

@@ -94,7 +94,8 @@ export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClu
 
 export const XClusterConfigType = {
   BASIC: 'Basic',
-  TXN: 'Txn'
+  TXN: 'Txn',
+  DB_SCOPED: 'Db'
 } as const;
 export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
 
@@ -102,6 +103,15 @@ export const XClusterConfigTypeLabel = {
   [XClusterConfigType.BASIC]: 'Basic',
   [XClusterConfigType.TXN]: 'Transactional'
 } as const;
+
+/**
+ * These values are mapped to i18n translation keys in src/translations/en.json
+ */
+export const XClusterSchemaChangeMode = {
+  TABLE_LEVEL: 'tableLevel',
+  DB_SCOPED: 'dbScoped'
+} as const;
+export type XClusterSchemaChangeMode = typeof XClusterSchemaChangeMode[keyof typeof XClusterSchemaChangeMode];
 
 export const UniverseXClusterRole = {
   SOURCE: 'source',
@@ -307,10 +317,19 @@ export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;
  */
 export const TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD = '2.17.3.0-b1';
 
+export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE = '2024.1.1.0-b48';
+export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW = '2.23.0.0-b393';
+
 export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';
 export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
+export const XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-tables/';
+export const XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/xcluster-replication/xcluster-replication-ddl/';
 
 export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
 export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';
+export const I18N_KEY_PREFIX_XCLUSTER_SCHEMA_CHANGE_MODE =
+  'clusterDetail.xCluster.schemaChangeMode';

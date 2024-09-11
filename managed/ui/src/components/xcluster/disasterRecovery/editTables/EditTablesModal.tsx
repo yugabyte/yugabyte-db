@@ -22,7 +22,7 @@ import {
 } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '../../constants';
+import { XClusterConfigAction, XClusterTableStatus } from '../../constants';
 import {
   getCategorizedNeedBootstrapPerTableResponse,
   getInConfigTableUuidsToTableDetailsMap,
@@ -454,7 +454,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       tableType: xClusterConfigTableType,
       targetUniverseUuid: targetUniverseUuid,
       xClusterConfigUuid: xClusterConfig.uuid,
-      isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
+      xClusterConfigType: xClusterConfig.type,
       unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
       tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
       tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget
