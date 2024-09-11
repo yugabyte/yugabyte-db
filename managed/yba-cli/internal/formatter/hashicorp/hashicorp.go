@@ -15,7 +15,7 @@ import (
 
 const (
 	// EIT provides header for EIT cert info
-	EIT = "table {{.Engine}}\t{{.MountPath}}\t{{.Role}}\t{{.VaultAddress}}"
+	EIT = "table {{.Engine}}\t{{.MountPath}}\t{{.Role}}\t{{.VaultAddress}}\t{{.Token}}"
 
 	// EAR1 for HcVaultAuthConfigField listing
 	EAR1 = "table {{.Address}}\t{{.Engine}}"

@@ -18331,6 +18331,14 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "certificate params to edit",
+          "in" : "body",
+          "name" : "certificate",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CertificateParams"
+          }
         } ],
         "responses" : {
           "200" : {

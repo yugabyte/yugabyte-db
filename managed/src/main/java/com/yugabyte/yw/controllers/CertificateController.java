@@ -372,6 +372,13 @@ public class CertificateController extends AuthenticatedController {
       value = "Edit TLS certificate config details",
       response = YBPSuccess.class,
       nickname = "editCertificate")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "certificate params to edit",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CertificateParams",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
