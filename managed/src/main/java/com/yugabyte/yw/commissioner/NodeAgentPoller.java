@@ -305,8 +305,7 @@ public class NodeAgentPoller {
         return;
       }
       nodeAgent.refresh();
-      checkState(
-          nodeAgent.getState() != State.REGISTERING, "Invalid state " + nodeAgent.getState());
+      checkState(nodeAgent.isActive(), "Invalid state " + nodeAgent.getState());
       if (nodeAgent.getState() == State.READY) {
         if (checkVersion(nodeAgent)) {
           log.info(
@@ -465,7 +464,7 @@ public class NodeAgentPoller {
       String softwareVersion = nodeAgentManager.getSoftwareVersion();
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll().stream()
-          .filter(n -> n.getState() != State.REGISTERING)
+          .filter(n -> n.isActive())
           .peek(n -> nodeUuids.add(n.getUuid()))
           .map(n -> getOrCreatePollerTask(n.getUuid(), lifetime, softwareVersion))
           .filter(PollerTask::isSchedulable)

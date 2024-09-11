@@ -1905,13 +1905,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
-    if (universe.getUniverseDetails().disableNodeAgent) {
-      log.info(
-          "Skipping node agent installation for universe {} as it is managed by node agent enabler",
-          universe.getUniverseUUID());
-      return Collections.emptySet();
-    }
-    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
@@ -1923,7 +1917,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       Cluster cluster = universe.getCluster(n.placementUuid);
                       Provider provider =
                           Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                      if (!nodeAgentClient.isClientEnabled(provider)) {
+                      if (!nodeAgentClient.isClientEnabled(provider, universe)) {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
@@ -1980,17 +1974,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
-    NodeAgentEnabler nodeAgentEnabler = application.injector().instanceOf(NodeAgentEnabler.class);
-    Optional<Boolean> optional = nodeAgentEnabler.isNodeAgentEnabled(universe);
-    if (!optional.isPresent()) {
-      log.info("Node agent is not supported on this universe {}", universe.getUniverseUUID());
-      return subTaskGroup;
-    }
-    if (optional.get() == false) {
+    if (!getInstanceOf(NodeAgentClient.class).isClientEnabled(universe)) {
       log.info(
-          "Skipping node agent installation for universe {} as it is not enabled",
+          "Skipping node agent installation for universe {} as client is not enabled",
           universe.getUniverseUUID());
-      NodeAgentEnabler.markUniverse(universe.getUniverseUUID());
+      getInstanceOf(NodeAgentEnabler.class).markUniverse(universe.getUniverseUUID());
       return subTaskGroup;
     }
     Customer customer = Customer.get(universe.getCustomerId());
@@ -2030,7 +2018,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void deleteNodeAgent(NodeDetails nodeDetails) {
     if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
-      NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+      NodeAgentManager nodeAgentManager = getInstanceOf(NodeAgentManager.class);
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (provider.getCloudCode() == CloudType.onprem) {
@@ -2047,14 +2035,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(WaitForNodeAgent.class.getSimpleName());
-    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
         continue;
       }
-      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Universe universe = getUniverse();
+      Cluster cluster = universe.getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentClient.isClientEnabled(provider)) {
+      if (nodeAgentClient.isClientEnabled(provider, universe)) {
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;

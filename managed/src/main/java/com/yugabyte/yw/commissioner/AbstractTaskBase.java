@@ -68,7 +68,7 @@ public abstract class AbstractTaskBase implements ITask {
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
 
-  protected final Application application;
+  private final Application application;
   protected final play.Environment environment;
   protected final Config config;
   protected final ConfigHelper configHelper;
@@ -352,5 +352,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected TaskCache getTaskCache() {
     return getRunnableTask().getTaskCache();
+  }
+
+  protected <T> T getInstanceOf(Class<T> clazz) {
+    return application.injector().instanceOf(clazz);
   }
 }
