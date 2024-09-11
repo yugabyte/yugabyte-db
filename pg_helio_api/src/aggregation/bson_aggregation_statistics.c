@@ -33,7 +33,7 @@ typedef struct BsonCovarianceAndVarianceAggState
 	bson_value_t sx;
 	bson_value_t sy;
 	bson_value_t sxy;
-	bson_value_t count;
+	bson_value_t count; /* TODO: change to int64 */
 
 	/* number of decimal values in current window, used to determine if we need to return decimal128 value */
 	int decimalCount;
@@ -133,6 +133,8 @@ static bool IntegralOfTwoPointsByTrapezoidalRule(bson_value_t *xValue,
 static bool DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
 								  BsonIntegralAndDerivativeAggState *currentState,
 								  bson_value_t *timeUnitInMs);
+static void CalculateSqrtForStdDev(const bson_value_t *inputResult,
+								   bson_value_t *outputResult);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -151,6 +153,9 @@ PG_FUNCTION_INFO_V1(bson_exp_moving_avg);
 PG_FUNCTION_INFO_V1(bson_derivative_transition);
 PG_FUNCTION_INFO_V1(bson_integral_transition);
 PG_FUNCTION_INFO_V1(bson_integral_derivative_final);
+PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_winfunc_invtransition);
+PG_FUNCTION_INFO_V1(bson_std_dev_pop_winfunc_final);
+PG_FUNCTION_INFO_V1(bson_std_dev_samp_winfunc_final);
 
 /*
  * Transition function for the BSONCOVARIANCEPOP and BSONCOVARIANCESAMP aggregate.
@@ -700,8 +705,8 @@ bson_std_dev_pop_final(PG_FUNCTION_ARGS)
 									stdDevState->count, result,
 									"Failed while calculating bson_std_dev_pop_final result for these values: ");
 
-			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
-			finalValue.bsonValue.value.v_double = sqrt(BsonValueAsDouble(&result));
+			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
 		}
 	}
 	else
@@ -762,8 +767,8 @@ bson_std_dev_samp_final(PG_FUNCTION_ARGS)
 									countMinus1, result,
 									"Failed while calculating bson_std_dev_samp_final result for these values: ");
 
-			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
-			finalValue.bsonValue.value.v_double = sqrt(BsonValueAsDouble(&result));
+			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
 		}
 	}
 	else
@@ -1086,6 +1091,193 @@ bson_integral_derivative_final(PG_FUNCTION_ARGS)
 		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
 	}
 	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
+/*
+ * Applies the "final calculation" (FINALFUNC) for BSONSTDDEVPOP window aggregate operator.
+ * This takes the final value created and outputs a bson stddev pop
+ * with the appropriate type.
+ */
+Datum
+bson_std_dev_pop_winfunc_final(PG_FUNCTION_ARGS)
+{
+	bytea *stdDevIntermediateState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+	if (stdDevIntermediateState != NULL)
+	{
+		bson_value_t decimalResult = { 0 };
+		decimalResult.value_type = BSON_TYPE_DECIMAL128;
+		BsonCovarianceAndVarianceAggState *stdDevState =
+			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
+
+		if (IsBsonValueNaN(&stdDevState->sxy) ||
+			IsBsonValueInfinity(&stdDevState->sxy) != 0)
+		{
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = NAN;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else if (BsonValueAsInt64(&stdDevState->count) == 0)
+		{
+			/* we return null for empty sets */
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else if (BsonValueAsInt64(&stdDevState->count) == 1)
+		{
+			/* we returns 0 for single numeric value */
+			/* return double even if the value is decimal128 */
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = 0;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else
+		{
+			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
+									stdDevState->count, decimalResult,
+									"Failed while calculating bson_std_dev_pop_winfunc_final decimalResult for these values: ");
+		}
+
+		/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+		CalculateSqrtForStdDev(&decimalResult, &finalValue.bsonValue);
+	}
+	else
+	{
+		/* we return null for empty sets */
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+	}
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
+/*
+ * Applies the "final calculation" (FINALFUNC) for BSONSTDDEVSAMP window function.
+ * This takes the final value created and outputs a bson stddev samp
+ * with the appropriate type.
+ */
+Datum
+bson_std_dev_samp_winfunc_final(PG_FUNCTION_ARGS)
+{
+	bytea *stdDevIntermediateState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+	if (stdDevIntermediateState != NULL)
+	{
+		bson_value_t decimalResult = { 0 };
+		decimalResult.value_type = BSON_TYPE_DECIMAL128;
+		BsonCovarianceAndVarianceAggState *stdDevState =
+			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
+
+		if (IsBsonValueNaN(&stdDevState->sxy) ||
+			IsBsonValueInfinity(&stdDevState->sxy))
+		{
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = NAN;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else if (BsonValueAsInt64(&stdDevState->count) == 0 ||
+				 BsonValueAsInt64(&stdDevState->count) == 1)
+		{
+			/* we returns null for empty sets or single numeric value */
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else
+		{
+			bson_value_t decimalOne;
+			decimalOne.value_type = BSON_TYPE_DECIMAL128;
+			decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+
+			bson_value_t countMinus1;
+			countMinus1.value_type = BSON_TYPE_DECIMAL128;
+			HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, stdDevState->count,
+									decimalOne, countMinus1,
+									"Failed while calculating bson_std_dev_samp_winfunc_final countMinus1 for these values: ");
+
+			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
+									countMinus1, decimalResult,
+									"Failed while calculating bson_std_dev_samp_winfunc_final decimalResult for these values: ");
+		}
+
+		/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+		CalculateSqrtForStdDev(&decimalResult, &finalValue.bsonValue);
+	}
+	else
+	{
+		/* we return null for empty sets */
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+	}
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
+/*
+ * Applies the "inverse transition function" (MINVFUNC) for BSONSTDDEVPOP and BSONSTDDEVSAMP.
+ * takes one aggregate state structures (BsonCovarianceAndVarianceAggState)
+ * and single data point. Remove the single data from BsonCovarianceAndVarianceAggState
+ */
+Datum
+bson_std_dev_pop_samp_winfunc_invtransition(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggregateContext;
+	if (AggCheckCallContext(fcinfo, &aggregateContext) != AGG_CONTEXT_WINDOW)
+	{
+		ereport(ERROR, errmsg(
+					"window aggregate function called in non-window-aggregate context"));
+	}
+
+	bytea *bytes;
+	BsonCovarianceAndVarianceAggState *currentState;
+
+	if (PG_ARGISNULL(0))
+	{
+		PG_RETURN_NULL();
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonCovarianceAndVarianceAggState *) VARDATA_ANY(bytes);
+	}
+
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+
+	if (currentValue == NULL || IsPgbsonEmptyDocument(currentValue))
+	{
+		PG_RETURN_POINTER(bytes);
+	}
+
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+
+	if (!BsonTypeIsNumber(currentValueElement.bsonValue.value_type))
+	{
+		PG_RETURN_POINTER(bytes);
+	}
+
+	/* restart aggregate if NaN or Infinity in current state or current values */
+	/* or count is 0 */
+	if (IsBsonValueNaN(&currentState->sxy) ||
+		IsBsonValueInfinity(&currentState->sxy) ||
+		IsBsonValueNaN(&currentValueElement.bsonValue) ||
+		IsBsonValueInfinity(&currentValueElement.bsonValue) ||
+		BsonValueAsInt64(&currentState->count) == 0)
+	{
+		PG_RETURN_NULL();
+	}
+
+	CalculateInvFuncForCovarianceOrVarianceWithYCAlgr(&currentValueElement.bsonValue,
+													  &currentValueElement.bsonValue,
+													  currentState);
+
+	PG_RETURN_POINTER(bytes);
 }
 
 
@@ -2064,4 +2256,44 @@ DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
 	success &= DivideBsonValueNumbers(yValue, xValue);
 	currentState->result = *yValue;
 	return success;
+}
+
+
+/* This function is used to calculate the square root of input value.
+ * The output result is double.
+ */
+static void
+CalculateSqrtForStdDev(const bson_value_t *inputResult, bson_value_t *outputResult)
+{
+	outputResult->value_type = BSON_TYPE_DOUBLE;
+	double resultForSqrt = 0;
+	if (inputResult->value_type == BSON_TYPE_DECIMAL128)
+	{
+		if (IsDecimal128InDoubleRange(inputResult))
+		{
+			resultForSqrt = BsonValueAsDouble(inputResult);
+			if (resultForSqrt < 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+						errmsg("CalculateSqrtForStdDev: *inputResult = %f",
+							   BsonValueAsDouble(inputResult)),
+						errdetail_log(
+							"CalculateSqrtForStdDev: *inputResult = %f",
+							BsonValueAsDouble(inputResult)));
+			}
+			else
+			{
+				outputResult->value.v_double = sqrt(resultForSqrt);
+			}
+		}
+		else
+		{
+			outputResult->value.v_double = NAN;
+		}
+	}
+	else
+	{
+		resultForSqrt = BsonValueAsDouble(inputResult);
+		outputResult->value.v_double = sqrt(resultForSqrt);
+	}
 }

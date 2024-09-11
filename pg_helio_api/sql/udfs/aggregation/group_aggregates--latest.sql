@@ -255,7 +255,11 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONSTDDEVPOP(__CORE_SCHEMA__.bso
 (
     SFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
     FINALFUNC =  helio_api_internal.bson_std_dev_pop_final,
+    MSFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
+    MFINALFUNC = helio_api_internal.bson_std_dev_pop_winfunc_final,
+    MINVFUNC = helio_api_internal.bson_std_dev_pop_samp_winfunc_invtransition,
     stype = bytea,
+    mstype = bytea,
     COMBINEFUNC = helio_api_internal.bson_std_dev_pop_samp_combine,
     PARALLEL = SAFE
 );
@@ -264,7 +268,11 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONSTDDEVSAMP(__CORE_SCHEMA__.bs
 (
     SFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
     FINALFUNC = helio_api_internal.bson_std_dev_samp_final,
+    MSFUNC = helio_api_internal.bson_std_dev_pop_samp_transition,
+    MFINALFUNC = helio_api_internal.bson_std_dev_samp_winfunc_final,
+    MINVFUNC = helio_api_internal.bson_std_dev_pop_samp_winfunc_invtransition,
     stype = bytea,
+    mstype = bytea,
     COMBINEFUNC = helio_api_internal.bson_std_dev_pop_samp_combine,
     PARALLEL = SAFE
 );

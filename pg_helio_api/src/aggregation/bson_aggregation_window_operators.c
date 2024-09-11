@@ -212,6 +212,10 @@ static WindowFunc * HandleDollarTopWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 static WindowFunc * HandleDollarBottomWindowOperator(const bson_value_t *opValue,
 													 WindowOperatorContext *context);
+static WindowFunc * HandleDollarStdDevPopWindowOperator(const bson_value_t *opValue,
+														WindowOperatorContext *context);
+static WindowFunc * HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
+														 WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -334,11 +338,11 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$stdDevPop",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarStdDevPopWindowOperator
 	},
 	{
 		.operatorName = "$stdDevSamp",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarStdDevSampWindowOperator
 	},
 	{
 		.operatorName = "$sum",
@@ -2470,5 +2474,104 @@ HandleDollarTopBottomOperators(const bson_value_t *opValue,
 		windowFunc->args = list_make3(context->docExpr, sortArrayConst, constValue);
 	}
 
+	return windowFunc;
+}
+
+
+/*
+ *  Parse input for $stdDevPop and $stdDevSamp window operators
+ */
+static List *
+ParseStdDevWindowOperator(const bson_value_t *opValue, WindowOperatorContext *context)
+{
+	Expr *constXValue = NULL;
+
+	/* we treat the input array as null */
+	if (opValue->value_type == BSON_TYPE_ARRAY)
+	{
+		bson_value_t nullDocument = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+		constXValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&nullDocument));
+	}
+	else
+	{
+		constXValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(opValue));
+	}
+
+	/* empty values should be converted to {"": null} values so that they're ignored*/
+	Const *nullOnEmptyConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true),
+										false, true);
+	List *xArgs;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		xArgs = list_make4(context->docExpr, constXValue, nullOnEmptyConst,
+						   context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		xArgs = list_make3(context->docExpr, constXValue, nullOnEmptyConst);
+	}
+
+	FuncExpr *xAccumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), xArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	return list_make1(xAccumFunc);
+}
+
+
+/*
+ * Handle for $stdDevPop window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonstdDevPop`
+ */
+static WindowFunc *
+HandleDollarStdDevPopWindowOperator(const bson_value_t *opValue,
+									WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("Window operator $stdDevPop is not supported yet")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonStdDevPopAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	windowFunc->args = ParseStdDevWindowOperator(opValue, context);
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $stdDevSamp window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonstdDevSamp`
+ */
+static WindowFunc *
+HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
+									 WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("Window operator $stdDevSamp is not supported yet")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonStdDevSampAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	windowFunc->args = ParseStdDevWindowOperator(opValue, context);
 	return windowFunc;
 }

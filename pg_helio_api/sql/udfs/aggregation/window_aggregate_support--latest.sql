@@ -106,3 +106,21 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_integral_derivative_final(byt
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_integral_derivative_final$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_std_dev_pop_samp_winfunc_invtransition(bytea, __CORE_SCHEMA__.bson)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_std_dev_pop_samp_winfunc_invtransition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_std_dev_pop_winfunc_final(bytea)
+ RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_std_dev_pop_winfunc_final$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_std_dev_samp_winfunc_final(bytea)
+ RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_std_dev_samp_winfunc_final$function$;
