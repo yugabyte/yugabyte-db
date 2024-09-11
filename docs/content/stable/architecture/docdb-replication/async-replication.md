@@ -165,7 +165,7 @@ xCluster currently supports active-active single-master and active-active multi-
 
 ### Active-active single-master
 
-Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
+In this setup the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
 Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the target universe stands by to take over if the source universe is lost.
 
@@ -241,7 +241,7 @@ After losing one universe, the other universe may be left with torn transactions
 
 ### Transactional-mode limitations
 
-With transactional mode,
+Transactional mode has the following limitations:
 
 - No writes are allowed in the target universe
 - Active-active multi-master is not supported
