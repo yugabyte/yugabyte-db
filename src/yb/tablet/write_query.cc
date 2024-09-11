@@ -194,7 +194,7 @@ WriteQuery::WriteQuery(
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      start_time_(CoarseMonoClock::Now()),
+      start_time_(MonoTime::Now()),
       execute_mode_(ExecuteMode::kSimple) {
   IncrementActiveWriteQueryObjectsBy(1);
 }
@@ -295,7 +295,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+          make_unsigned(MonoDelta(MonoTime::Now() - start_time_).ToMicroseconds());
+
       metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
