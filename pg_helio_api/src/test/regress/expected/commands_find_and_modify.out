@@ -589,7 +589,6 @@ SELECT document FROM helio_api.collection('fam', 'retryable_update') ORDER BY do
 -- unknown operator expressions in fields argument
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pop": ["bar"]}}}');
 ERROR:  Unknown expression $pop
-HINT:  Unknown expression $pop
 -- test with operator expression in fields argument
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
                                                                                                                                    find_and_modify                                                                                                                                    

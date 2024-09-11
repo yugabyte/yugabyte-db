@@ -164,9 +164,9 @@ select helio_api.update('db', '{"update":"notexists", "updates":[{"q":{},"u":{"$
 
 -- query syntax errors are added the response
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$ltr":5}},"u":{"$set":{"b":0}},"multi":true}]}');
-                                                                                                                                            update                                                                                                                                            
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+                                                                                                                                           update                                                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
 (1 row)
 
 -- when ordered, expect only first update to be executed

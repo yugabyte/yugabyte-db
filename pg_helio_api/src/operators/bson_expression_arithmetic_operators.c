@@ -17,7 +17,7 @@
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
 #include "query/bson_dollar_operators.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /* Type definitions */
@@ -954,7 +954,7 @@ ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *
 	{
 		if (addState->isDateTimeAdd)
 		{
-			ereport(ERROR, (errcode(MongoDollarAddOnlyOneDate), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARADDONLYONEDATE), errmsg(
 								"only one date allowed in an $add expression")));
 		}
 
@@ -1016,7 +1016,7 @@ ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result)
 	{
 		if (CheckForDateOverflow(result))
 		{
-			ereport(ERROR, (errcode(MongoOverflow), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_OVERFLOW), errmsg(
 								"date overflow in $add")));
 		}
 		else if (!addState->foundUndefined &&
@@ -1150,12 +1150,12 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 	{
 		if (dualState->hasFieldExpression)
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 								"$divide only supports numeric types")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 								"$divide only supports numeric types, not %s and %s",
 								BsonTypeName(result->value_type),
 								BsonTypeName(divisorValue.value_type))));
@@ -1185,7 +1185,7 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 
 		if (IsDecimal128Zero(&divisor))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"can't $divide by zero")));
 		}
 
@@ -1200,7 +1200,7 @@ ProcessDollarDivide(void *state, bson_value_t *result)
 
 		if (divisor == 0.0)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"can't $divide by zero")));
 		}
 
@@ -1229,12 +1229,12 @@ ProcessDollarMod(void *state, bson_value_t *result)
 	{
 		if (dualState->hasFieldExpression)
 		{
-			ereport(ERROR, (errcode(MongoDollarModOnlyNumeric), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARMODONLYNUMERIC), errmsg(
 								"$mod only supports numeric types")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoDollarModOnlyNumeric), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARMODONLYNUMERIC), errmsg(
 								"$mod only supports numeric types, not %s and %s",
 								BsonTypeName(dividendValue.value_type),
 								BsonTypeName(divisorValue.value_type))));
@@ -1245,7 +1245,7 @@ ProcessDollarMod(void *state, bson_value_t *result)
 		 IsDecimal128Zero(&divisorValue)) ||
 		(BsonValueAsDouble(&divisorValue) == 0.0))
 	{
-		ereport(ERROR, (errcode(MongoDollarModByZeroProhibited), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARMODBYZEROPROHIBITED), errmsg(
 							"can't $mod by zero")));
 	}
 
@@ -1270,7 +1270,7 @@ ProcessDollarCeil(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$ceil only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1303,7 +1303,7 @@ ProcessDollarFloor(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$floor only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1336,7 +1336,7 @@ ProcessDollarExp(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$exp only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1368,7 +1368,7 @@ ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$sqrt only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1382,7 +1382,7 @@ ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result)
 	int cmp = CompareBsonDecimal128ToZero(&argDecimal, &isComparisonValid);
 	if (isComparisonValid && cmp == -1)
 	{
-		ereport(ERROR, (errcode(MongoDollarSqrtGreaterOrEqualToZero), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSQRTGREATEROREQUALTOZERO), errmsg(
 							"$sqrt's argument must be greater than or equal to 0")));
 	}
 
@@ -1414,7 +1414,7 @@ ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$log10 only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1428,7 +1428,7 @@ ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result)
 	int cmp = CompareBsonDecimal128ToZero(&argDecimal, &isComparisonValid);
 	if (isComparisonValid && cmp != 1)
 	{
-		ereport(ERROR, (errcode(MongoDollarLog10MustBePositiveNumber), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOG10MUSTBEPOSITIVENUMBER), errmsg(
 							"$log10's argument must be a positive number, but is %s",
 							BsonValueToJsonForLogging(currentValue))));
 	}
@@ -1462,7 +1462,7 @@ ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$ln only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1476,7 +1476,7 @@ ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result)
 	int cmp = CompareBsonDecimal128ToZero(&argDecimal, &isComparisonValid);
 	if (isComparisonValid && cmp != 1)
 	{
-		ereport(ERROR, (errcode(MongoDollarLnMustBePositiveNumber), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLNMUSTBEPOSITIVENUMBER), errmsg(
 							"$ln's argument must be a positive number, but is %s",
 							BsonValueToJsonForLogging(currentValue))));
 	}
@@ -1515,14 +1515,14 @@ ProcessDollarLog(void *state, bson_value_t *result)
 
 	if (!BsonValueIsNumber(&numberValue))
 	{
-		ereport(ERROR, (errcode(MongoDollarLogArgumentMustBeNumeric), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGARGUMENTMUSTBENUMERIC), errmsg(
 							"$log's argument must be numeric, not %s",
 							BsonTypeName(numberValue.value_type))));
 	}
 
 	if (!BsonValueIsNumber(&baseValue))
 	{
-		ereport(ERROR, (errcode(MongoDollarLogBaseMustBeNumeric), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGBASEMUSTBENUMERIC), errmsg(
 							"$log's base must be numeric, not %s",
 							BsonTypeName(baseValue.value_type))));
 	}
@@ -1553,7 +1553,7 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		int cmp = CompareBsonDecimal128ToZero(&numberDecimal, &isComparisonValid);
 		if (isComparisonValid && cmp != 1)
 		{
-			ereport(ERROR, (errcode(MongoDollarLogNumberMustBePositive), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGNUMBERMUSTBEPOSITIVE), errmsg(
 								"$log's argument must be a positive number, but is %s",
 								BsonValueToJsonForLogging(&numberValue))));
 		}
@@ -1569,7 +1569,8 @@ ProcessDollarLog(void *state, bson_value_t *result)
 		cmp = CompareBsonDecimal128(&baseDecimal, &oneValue, &isComparisonValid);
 		if (isComparisonValid && cmp != 1)
 		{
-			ereport(ERROR, (errcode(MongoDollarLogBaseMustBeGreaterThanOne), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGBASEMUSTBEGREATERTHANONE),
+							errmsg(
 								"$log's base must be a positive number not equal to 1, but is %s",
 								BsonValueToJsonForLogging(&baseValue))));
 		}
@@ -1590,14 +1591,15 @@ ProcessDollarLog(void *state, bson_value_t *result)
 
 		if (number <= 0.0)
 		{
-			ereport(ERROR, (errcode(MongoDollarLogNumberMustBePositive), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGNUMBERMUSTBEPOSITIVE), errmsg(
 								"$log's argument must be a positive number, but is %s",
 								BsonValueToJsonForLogging(&numberValue))));
 		}
 
 		if (base <= 1.0)
 		{
-			ereport(ERROR, (errcode(MongoDollarLogBaseMustBeGreaterThanOne), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARLOGBASEMUSTBEGREATERTHANONE),
+							errmsg(
 								"$log's base must be a positive number not equal to 1, but is %s",
 								BsonValueToJsonForLogging(&baseValue))));
 		}
@@ -1632,14 +1634,14 @@ ProcessDollarPow(void *state, bson_value_t *result)
 
 	if (!BsonValueIsNumber(&baseValue))
 	{
-		ereport(ERROR, (errcode(MongoDollarPowBaseMustBeNumeric), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPOWBASEMUSTBENUMERIC), errmsg(
 							"$pow's base must be numeric, not %s",
 							BsonTypeName(baseValue.value_type))));
 	}
 
 	if (!BsonValueIsNumber(&exponentValue))
 	{
-		ereport(ERROR, (errcode(MongoDollarPowExponentMustBeNumeric), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPOWEXPONENTMUSTBENUMERIC), errmsg(
 							"$pow's exponent must be numeric, not %s",
 							BsonTypeName(exponentValue.value_type))));
 	}
@@ -1661,7 +1663,8 @@ ProcessDollarPow(void *state, bson_value_t *result)
 
 	if (IsDecimal128Zero(&baseDecimal) && isComparisonValid && cmp == -1)
 	{
-		ereport(ERROR, (errcode(MongoDollarPowExponentInvalidForZeroBase), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPOWEXPONENTINVALIDFORZEROBASE),
+						errmsg(
 							"$pow cannot take a base of 0 and a negative exponent")));
 	}
 
@@ -1749,7 +1752,7 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 
 	if (!BsonValueIsNumber(&number))
 	{
-		ereport(ERROR, (errcode(MongoDollarRoundFirstArgMustBeNumeric), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARROUNDFIRSTARGMUSTBENUMERIC), errmsg(
 							"%s only supports numeric types, not %s",
 							operatorName, BsonTypeName(number.value_type))));
 	}
@@ -1762,14 +1765,14 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 	/* In native mongo, it validates first if the precision value can be converted to long. */
 	if (!IsBsonValueFixedInteger(&precision))
 	{
-		ereport(ERROR, (errcode(MongoDollarRoundPrecisionMustBeIntegral), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARROUNDPRECISIONMUSTBEINTEGRAL), errmsg(
 							"precision argument to  %s must be a integral value",
 							operatorName)));
 	}
 
 	if (precisionAsLong < -20 || precisionAsLong > 100)
 	{
-		ereport(ERROR, (errcode(MongoDollarRoundPrecisionOutOfRange), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARROUNDPRECISIONOUTOFRANGE), errmsg(
 							"cannot apply %s with precision value %ld value must be in [-20, 100]",
 							operatorName, precisionAsLong)));
 	}
@@ -1819,12 +1822,12 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 	{
 		if (!IsDecimal128InInt64Range(&operationResult))
 		{
-			ereport(ERROR, (errcode(MongoDollarRoundOverflowInt64),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARROUNDOVERFLOWINT64),
 							errmsg(
 								"invalid conversion from Decimal128 result in %s resulting from arguments: [%s, %s]",
 								operatorName, BsonValueToJsonForLogging(&number),
 								BsonValueToJsonForLogging(&precision)),
-							errhint(
+							errdetail_log(
 								"invalid conversion from Decimal128 result in %s resulting from argument type: [%s, %s]",
 								operatorName, BsonTypeName(number.value_type),
 								BsonTypeName(precision.value_type))));
@@ -1849,7 +1852,7 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"$abs only supports numeric types, not %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -1868,7 +1871,7 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 		if (currentValue->value_type == BSON_TYPE_INT64 &&
 			currentValue->value.v_int64 == INT64_MIN)
 		{
-			ereport(ERROR, (errcode(MongoDollarAbsCantTakeLongMinValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARABSCANTTAKELONGMINVALUE), errmsg(
 								"can't take $abs of long long min")));
 		}
 
@@ -1924,7 +1927,7 @@ CheckForDateOverflow(bson_value_t *value)
 static void
 ThrowInvalidTypesForDollarSubtract(bson_value_t minuend, bson_value_t subtrahend)
 {
-	ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 						"can't $subtract %s from %s",
 						BsonTypeName(subtrahend.value_type),
 						BsonTypeName(minuend.value_type))));
@@ -1942,14 +1945,14 @@ ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
 		 * or just a constant value. */
 		if (!isFieldPathExpression)
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 								"%s only supports numeric types, not %s",
 								operatorName,
 								BsonTypeName(value->value_type))));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 								"only numbers are allowed in an %s expression",
 								operatorName)));
 		}
@@ -1969,7 +1972,7 @@ ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
 		if (!isFieldPathExpression)
 		{
 			/* TODO: when we move to 6.1 the error code is TypeMismatch */
-			ereport(ERROR, (errcode(MongoDollarAddNumericOrDateTypes), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARADDNUMERICORDATETYPES), errmsg(
 								"%s only supports numeric or date types, not %s",
 								operatorName,
 								BsonTypeName(value->value_type))));
@@ -1977,7 +1980,7 @@ ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
 		else
 		{
 			/* TODO: when we move to 6.1 the error code is TypeMismatch */
-			ereport(ERROR, (errcode(MongoDollarAddNumericOrDateTypes), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARADDNUMERICORDATETYPES), errmsg(
 								"only numbers and dates are allowed in %s expression",
 								operatorName)));
 		}

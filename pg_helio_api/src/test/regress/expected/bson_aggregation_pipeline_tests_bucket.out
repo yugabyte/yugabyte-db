@@ -171,34 +171,25 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 -- required fields
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "boundaries": [2020, 2021,2022,2023] } } ] }');
 ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
-HINT:  The $bucket stage requires 'groupBy' and 'boundaries' to be specified.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year"} } ] }');
 ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
-HINT:  The $bucket stage requires 'groupBy' and 'boundaries' to be specified.
 -- groupBy must be a path with prefix $ or expression
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
 ERROR:  $bucket could not find a bucket for an input value "year", and no default was specified.
-HINT:  The input value must fall into one of the bucket boundaries, or specify a default value.
 -- boundaries is acsending constant array, more than one element, same type.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": 2020 } } ] }');
 ERROR:  The $bucket 'boundaries' field must be an array of values. But found: int
-HINT:  The $bucket 'boundaries' field must be an array of values. But found: int
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020] } } ] }');
 ERROR:  The $bucket 'boundaries' field must have at least 2 values, but found: 1
-HINT:  The $bucket 'boundaries' field must have at least 2 values, but found: 1
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2020, 2022, 2023] } } ] }');
 ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
-HINT:  The $bucket 'boundaries' field must be an array of values in ascending order.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 1999, 2023] } } ] }');
 ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
-HINT:  The $bucket 'boundaries' field must be an array of values in ascending order.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, "a", 2022, 2023] } } ] }');
 ERROR:  The $bucket 'boundaries' field must be an array of values of the same type. Found different types: int and string
-HINT:  The $bucket 'boundaries' field must be an array of values of the same type.
 -- default must be a constant, the default value must be less than the lowest boundaries value, or greater than or equal to the highest boundaries value, if having same type.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "$pricing"  } } ] }');
 ERROR:  The $bucket 'default' field must be a constant. Input value: "$pricing"
-HINT:  The $bucket 'default' field must be a constant.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2020 } } ] }');
 ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2022, 2023], "default": 2021 } } ] }');
@@ -206,16 +197,13 @@ ERROR:  The $bucket 'default' field must be less than the lowest boundary or gre
 -- output must be document
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "output": 1 } } ] }');
 ERROR:  The $bucket 'output' field must be a document. But found: int
-HINT:  The $bucket 'output' field must be a document. But found: int
 -- More validations
 -- unknown argument of $bucket
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "averageQuantity": { "$avg": "$quantity" }}, "unknown": 1 } } ] }');
 ERROR:  Unrecognized option to $bucket: unknown
-HINT:  Unrecognized option to $bucket: unknown
 -- document cannot fall into any bucket with no default being set.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021] } } ] }');
 ERROR:  $bucket could not find a bucket for an input value 2021, and no default was specified.
-HINT:  The input value must fall into one of the bucket boundaries, or specify a default value.
 /* Explain */
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                            

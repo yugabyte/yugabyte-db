@@ -123,7 +123,6 @@ SELECT helio_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 134
 -- any inverseMatch that queries that path should fail
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
 ERROR:  unknown operator: $allValues
-HINT:  unknown operator: $allValues
 -- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
                                                                                                          document                                                                                                          

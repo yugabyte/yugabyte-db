@@ -73,7 +73,7 @@ ThrowInvalidConversionError(bson_type_t sourceType, bson_type_t targetType)
 	const char *targetTypeName = targetType == BSON_TYPE_EOD ?
 								 MISSING_TYPE_NAME : BsonTypeName(targetType);
 
-	ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 						"Unsupported conversion from %s to %s in $convert with no onError value",
 						BsonTypeName(sourceType), targetTypeName)));
 }
@@ -84,11 +84,11 @@ static inline void
 pg_attribute_noreturn()
 ThrowOverflowTargetError(const bson_value_t * value)
 {
-	ereport(ERROR, (errcode(MongoConversionFailure),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
 					errmsg(
 						"Conversion would overflow target type in $convert with no onError value: %s",
 						BsonValueToJsonForLogging(value)),
-					errhint(
+					errdetail_log(
 						"Conversion would overflow target type in $convert with no onError value type: %s",
 						BsonTypeName(value->value_type))));
 }
@@ -98,7 +98,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowFailedToParseNumber(const char * value, const char * reason)
 {
-	ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 						"Failed to parse number '%s' in $convert with no onError value: %s",
 						value, reason)));
 }
@@ -344,7 +344,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 {
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"$convert expects an object of named arguments but found: %s",
 							BsonTypeName(operatorValue->value_type))));
 	}
@@ -378,7 +378,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 								"$convert found an unknown argument: %s",
 								key)));
 		}
@@ -386,13 +386,13 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 
 	if (inputExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"Missing 'input' parameter to $convert")));
 	}
 
 	if (toExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"Missing 'to' parameter to $convert")));
 	}
 
@@ -448,7 +448,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 	{
 		if (!IsBsonValueFixedInteger(&toEvaluatedValue))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 								"In $convert, numeric 'to' argument is not an integer")));
 		}
 
@@ -456,7 +456,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 
 		if (!TryGetTypeFromInt64(typeCode, &toType))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 								"In $convert, numeric value for 'to' does not correspond to a BSON type: %lld",
 								(long long int) typeCode)));
 		}
@@ -466,7 +466,7 @@ HandleDollarConvert(pgbson *doc, const bson_value_t *operatorValue,
 		/* If the 'to' evaluated value is null or undefined, we should return null, not an error.
 		 * however, we can't do it here yet, as if the 'input' expression evaluates to null and onNull is specified,
 		 * we must return that instead. */
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"$convert's 'to' argument must be a string or number, but is %s",
 							BsonTypeName(toEvaluatedValue.value_type))));
 	}
@@ -694,7 +694,7 @@ ProcessDollarToObjectIdElement(bson_value_t *result, const bson_value_t *current
 	uint32_t length = currentElement->value.v_utf8.len;
 	if (length != 24)
 	{
-		ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 							"Failed to parse objectId '%s' in $convert with no onError value: Invalid string length for parsing to OID, expected 24 but found %d",
 							str, length)));
 	}
@@ -705,7 +705,7 @@ ProcessDollarToObjectIdElement(bson_value_t *result, const bson_value_t *current
 	{
 		if (!isxdigit(str[i]))
 		{
-			ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 								"Failed to parse objectId '%s' in $convert with no onError value: Invalid character found in hex string: '%c'",
 								str, str[i])));
 		}
@@ -1239,7 +1239,7 @@ ValidateStringIsNotHexBase(const bson_value_t *value)
 		value->value.v_utf8.str[0] == '0' &&
 		value->value.v_utf8.str[1] == 'x')
 	{
-		ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 							"Illegal hexadecimal input in $convert with no onError value: %s",
 							value->value.v_utf8.str)));
 	}
@@ -1253,7 +1253,7 @@ ValidateValueIsNotNaNOrInfinity(const bson_value_t *value)
 	if (IsBsonValueNaN(value) || IsBsonValueInfinity(value) != 0)
 	{
 		const char *sourceValue = IsBsonValueNaN(value) ? "NaN" : "infinity";
-		ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 							"Attempt to convert %s value to integer type in $convert with no onError value",
 							sourceValue)));
 	}
@@ -1265,7 +1265,7 @@ static void
 ThrowInvalidNumArgsConversionOperator(const char *operatorName, int requiredArgs, int
 									  numArgs)
 {
-	ereport(ERROR, (errcode(MongoLocation50723), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50723), errmsg(
 						"%s requires a single argument, got %d",
 						operatorName, numArgs)));
 }
@@ -1278,7 +1278,7 @@ HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$toHashedIndexkey is not supported yet")));
 	}
 	AggregationExpressionData *toHashArguments = arguments;

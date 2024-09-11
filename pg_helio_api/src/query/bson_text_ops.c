@@ -29,7 +29,7 @@
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"
 

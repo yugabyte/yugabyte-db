@@ -135,10 +135,8 @@ ERROR:  $getField requires 'input' to be specified
 -- field must be a string
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": null, "input": {}}}}}');
 ERROR:  $getField requires 'field' to evaluate to type String, but got null
-HINT:  $getField requires 'field' to evaluate to type String, but got null
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
 ERROR:  $getField requires 'field' to evaluate to type String, but got int
-HINT:  $getField requires 'field' to evaluate to type String, but got int
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
 ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
 -- field is a path
@@ -212,7 +210,6 @@ SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}, "d"
 -- negative cases
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": 1}}}');
 ERROR:  $unsetField only supports an object as its argument
-HINT:  $unsetField only supports an object as its argument
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a"}}}}');
 ERROR:  $unsetField requires 'input' to be specified
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"input": null}}}}');
@@ -225,12 +222,10 @@ SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldVa
 ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": 5, "input": null}}}}');
 ERROR:  $unsetField requires 'field' to evaluate to type String, but got int
-HINT:  $unsetField requires 'field' to evaluate to type String, but got int
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": ["a"], "input": null}}}}');
 ERROR:  $unsetField requires 'field' to evaluate to a constant, but got a non-constant argument
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": null, "input": null}}}}');
 ERROR:  $unsetField requires 'field' to evaluate to type String, but got null
-HINT:  $unsetField requires 'field' to evaluate to type String, but got null
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": 3}}}}');
 ERROR:  $unsetField requires 'input' to evaluate to type Object
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"$add": [2, 3]}}}}}');

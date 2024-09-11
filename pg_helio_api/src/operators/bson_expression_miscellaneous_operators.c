@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/metadata_cache.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "vector/vector_utilities.h"
@@ -37,7 +37,7 @@ HandleDollarRand(pgbson *doc, const bson_value_t *operatorValue,
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT &&
 		operatorValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation10065),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION10065),
 						errmsg("invalid parameter: expected an object ($rand)")));
 	}
 	else if ((operatorValue->value_type == BSON_TYPE_DOCUMENT &&
@@ -45,7 +45,7 @@ HandleDollarRand(pgbson *doc, const bson_value_t *operatorValue,
 			 (operatorValue->value_type == BSON_TYPE_ARRAY &&
 			  !IsBsonValueEmptyArray(operatorValue)))
 	{
-		ereport(ERROR, (errcode(MongoDollarRandNonEmptyArgument),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARRANDNONEMPTYARGUMENT),
 						errmsg("$rand does not currently accept arguments")));
 	}
 
@@ -73,7 +73,7 @@ HandleDollarMeta(pgbson *doc, const bson_value_t *operatorValue,
 {
 	if (operatorValue->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$meta expected value of type text, found %s",
 							   BsonTypeName(operatorValue->value_type))));
 	}
@@ -101,7 +101,7 @@ HandleDollarMeta(pgbson *doc, const bson_value_t *operatorValue,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoLocation17308),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17308),
 						errmsg("Unsupported argument to $meta: %.*s",
 							   valueView.length, valueView.string)));
 	}

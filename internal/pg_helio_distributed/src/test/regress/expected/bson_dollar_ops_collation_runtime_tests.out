@@ -582,11 +582,9 @@ END;
 -- (6.A) $in with nested objects
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [{ "B" : "caT"}, { "c" : "caT"}] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects
-HINT:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects : en-u-ks-level1
 CONTEXT:  while executing command on localhost:58070
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "B" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects
-HINT:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects : en-u-ks-level1
 CONTEXT:  while executing command on localhost:58070
 -- (6.B) $cond needs collationString to be plumbed
 BEGIN;

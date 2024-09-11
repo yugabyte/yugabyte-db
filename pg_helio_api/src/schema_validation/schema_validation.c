@@ -13,7 +13,7 @@
 #include "operators/bson_expr_eval.h"
 #include "schema_validation/schema_validation.h"
 #include "metadata/collection.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 extern bool EnableSchemaValidation;
 
@@ -56,7 +56,7 @@ ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const
 	if (!matched)
 	{
 		/* native mongo return additional information about the cause of the failure */
-		ereport(ERROR, (errcode(MongoDocumentFailedValidation),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
 						errmsg("Document failed validation")));
 	}
 }

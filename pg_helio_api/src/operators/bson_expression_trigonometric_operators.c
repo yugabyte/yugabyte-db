@@ -18,7 +18,7 @@
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
 #include "query/bson_dollar_operators.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /* Type definitions */
@@ -577,7 +577,7 @@ ApplyTrigOperator(bson_value_t *currentValue,
 
 	if (!BsonValueIsNumber(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765), errmsg(
 							"%s only supports numeric types, not %s",
 							operatorName,
 							BsonTypeName(currentValue->value_type))));
@@ -653,7 +653,7 @@ ProcessDollarSin(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $sin to %s, value must be in (-inf,inf)",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -677,7 +677,7 @@ ProcessDollarCos(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $cos to %s, value must be in (-inf,inf)",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -701,7 +701,7 @@ ProcessDollarTan(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $tan to %s, value must be in (-inf,inf)",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -773,7 +773,7 @@ ProcessDollarAsin(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $asin to %s, value must be in [-1,1]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -797,7 +797,7 @@ ProcessDollarAcos(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $acos to %s, value must be in [-1,1]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -847,14 +847,14 @@ ProcessDollarAtan2(const bson_value_t *firstValue, const bson_value_t *secondVal
 	{
 		if (firstValue->value_type == BSON_TYPE_DOUBLE)
 		{
-			ereport(ERROR, (errcode(MongoLocation51045), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51045), errmsg(
 								"$atan2 only supports numeric types, not %s and %s",
 								BsonTypeName(firstValue->value_type), BsonTypeName(
 									secondValue->value_type))));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation51044), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51044), errmsg(
 								"$atan2 only supports numeric types, not %s and %s",
 								BsonTypeName(firstValue->value_type), BsonTypeName(
 									secondValue->value_type))));
@@ -906,7 +906,7 @@ ProcessDollarAcosh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < 1.0)
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $acosh to %s, value must be in [1,inf]",
 							BsonValueToJsonForLogging(currentValue)
 							)));
@@ -930,7 +930,7 @@ ProcessDollarAtanh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
-		ereport(ERROR, (errcode(MongoLocation50989), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50989), errmsg(
 							"cannot apply $atanh to %s, value must be in [-1,1]",
 							BsonValueToJsonForLogging(currentValue)
 							)));

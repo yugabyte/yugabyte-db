@@ -666,14 +666,14 @@ bson_expression_partition_get(PG_FUNCTION_ARGS)
 	pgbsonelement result;
 	if (!TryGetSinglePgbsonElementFromPgbson(returnedBson, &result))
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"PlanExecutor error during aggregation :: cause by :: An expression evaluated in a multi field document")));
 	}
 
 	if (result.bsonValue.value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"PlanExecutor error during aggregation :: caused by :: An expression used to partition "
 							"cannot evaluate to value of type array")));
@@ -1099,7 +1099,7 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 												 document,
 												 &variableValue))
 				{
-					ereport(ERROR, (errcode(MongoLocation17276),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17276),
 									errmsg("Use of undefined variable: %s",
 										   CreateStringFromStringView(&varName))));
 				}
@@ -1456,7 +1456,7 @@ ValidateVariableNameCore(StringView name, bool allowStartWithUpper)
 {
 	if (name.length <= 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"empty variable names are not allowed")));
 	}
 
@@ -1468,14 +1468,14 @@ ValidateVariableNameCore(StringView name, bool allowStartWithUpper)
 			!IsOverridableSystemVariable(&name) &&
 			(!isupper(current) || !allowStartWithUpper))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 								"'%s' starts with an invalid character for a user variable name",
 								name.string)));
 		}
 		else if (isascii(current) && !isdigit(current) && !islower(current) &&
 				 !isupper(current) && current != '_')
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 								"'%s' contains an invalid character for a variable name: '%c'",
 								name.string, current)));
 		}
@@ -1620,7 +1620,7 @@ GetAndEvaluateOperator(pgbson *document,
 
 	if (pItem == NULL)
 	{
-		ereport(ERROR, (errcode(MongoLocation31325), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31325), errmsg(
 							"Unknown expression %s", searchKey.operatorName)));
 	}
 
@@ -1661,7 +1661,7 @@ GetAndEvaluateOperator(pgbson *document,
 
 				default:
 				{
-					ereport(ERROR, (errcode(MongoBadValue), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 										"Unexpected aggregation expression argument kind after evaluating a pre-parse operator.")));
 				}
 			}
@@ -1681,9 +1681,9 @@ GetAndEvaluateOperator(pgbson *document,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Operator %s not implemented yet", operatorName),
-						errhint("Operator %s not implemented yet", operatorName)));
+						errdetail_log("Operator %s not implemented yet", operatorName)));
 	}
 }
 
@@ -2444,7 +2444,7 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				else if (StringViewEndsWith(&expressionView, '.'))
 				{
 					/* We got a $$var. expression which is invalid. */
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg("FieldPath must not end with a '.'.")));
 				}
 
@@ -2536,7 +2536,7 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 				if (strlen(value->value.v_utf8.str) != value->value.v_utf8.len)
 				{
-					ereport(ERROR, (errcode(MongoLocation16411),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16411),
 									errmsg(
 										"FieldPath field names may not contain embedded nulls")));
 				}
@@ -2906,7 +2906,7 @@ EvaluateAggregationExpressionVariable(const AggregationExpressionData *data,
 	bson_value_t variableValue;
 	if (!ExpressionResultGetVariable(varName, expressionResult, document, &variableValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation17276),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17276),
 						errmsg("Use of undefined variable: %s",
 							   CreateStringFromStringView(&varName))));
 	}
@@ -2955,13 +2955,13 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 
 		case AggregationExpressionSystemVariableKind_Now:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$NOW not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_ClusterTime:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$CLUSTER_TIME not supported yet")));
 		}
 
@@ -2988,37 +2988,37 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 
 		case AggregationExpressionSystemVariableKind_Descend:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$DESCEND not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_Prune:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$PRUNE not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_Keep:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$KEEP not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_SearchMeta:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$SEARCH_META not supported yet")));
 		}
 
 		case AggregationExpressionSystemVariableKind_UserRoles:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Variable $$USER_ROLES not supported yet")));
 		}
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Unknown system variable encountered. This is a bug")));
 		}
@@ -3132,9 +3132,10 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (pItem == NULL)
 		{
-			ereport(ERROR, (errcode(MongoLocation31325),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31325),
 							errmsg("Unknown expression %s", searchKey.operatorName),
-							errhint("Unknown expression %s", searchKey.operatorName)));
+							errdetail_log("Unknown expression %s",
+										  searchKey.operatorName)));
 		}
 
 		if (pItem->featureCounterId >= 0 && pItem->featureCounterId < MAX_FEATURE_INDEX)
@@ -3165,11 +3166,11 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Operator %s not implemented yet",
 								   searchKey.operatorName),
-							errhint("Operator %s not implemented yet",
-									searchKey.operatorName)));
+							errdetail_log("Operator %s not implemented yet",
+										  searchKey.operatorName)));
 		}
 
 		return;
@@ -3424,7 +3425,7 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation16874), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16874), errmsg(
 							"$let only supports an object as its argument")));
 	}
 
@@ -3446,28 +3447,28 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation16875), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16875), errmsg(
 								"Unrecognized parameter to $let: %s", key),
-							errhint(
+							errdetail_log(
 								"Unrecognized parameter to $let, unexpected key")));
 		}
 	}
 
 	if (vars.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation16876), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16876), errmsg(
 							"Missing 'vars' parameter to $let")));
 	}
 
 	if (in.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation16876), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16876), errmsg(
 							"Missing 'in' parameter to $let")));
 	}
 
 	if (vars.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation10065), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION10065), errmsg(
 							"invalid parameter: expected an object (vars)")));
 	}
 

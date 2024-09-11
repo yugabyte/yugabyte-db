@@ -1996,30 +1996,22 @@ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE docume
 ERROR:  Expected a positive number in: $bitsAllClear: -1.0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 23.04  } }';
 ERROR:  Expected an integer: $bitsAllClear: 23.04
-HINT:  Expected an integer: $bitsAllClear: double
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \"NegTest"\
-HINT:  Path takes an Array, a number, or a BinData but received: $bitsAllClear: \string\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 99999999999 } }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
-HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAllClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 99999999999 ] } }';
 ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
-HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
-HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "99999999999" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "1.0232" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 1.0232.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "-1" }} }';
 ERROR:  Expected a positive number in: $bitsAllClear: -1.0
-HINT:  Expected a positive number in: $bitsAllClear: -1.0
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2036,30 +2028,22 @@ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE docume
 ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 23.04  } }';
 ERROR:  Expected an integer: $bitsAnyClear: 23.04
-HINT:  Expected an integer: $bitsAnyClear: double
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \"NegTest"\
-HINT:  Path takes an Array, a number, or a BinData but received: $bitsAnyClear: \string\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 99999999999 } }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
-HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAnyClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 99999999999 ] } }';
 ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
-HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
-HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "99999999999" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnyClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "1.0232" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 1.0232.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnyClear
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "-1" }} }';
 ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
-HINT:  Expected a positive number in: $bitsAnyClear: -1.0
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2076,30 +2060,22 @@ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE docume
 ERROR:  Expected a positive number in: $bitsAllSet: -1.0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 23.04  } }';
 ERROR:  Expected an integer: $bitsAllSet: 23.04
-HINT:  Expected an integer: $bitsAllSet: double
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \"NegTest"\
-HINT:  Path takes an Array, a number, or a BinData but received: $bitsAllSet: \string\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 99999999999 } }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
-HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAllSet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 99999999999 ] } }';
 ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
-HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
-HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "99999999999" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "1.0232" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 1.0232.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "-1" }} }';
 ERROR:  Expected a positive number in: $bitsAllSet: -1.0
-HINT:  Expected a positive number in: $bitsAllSet: -1.0
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {
@@ -2116,36 +2092,26 @@ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE docume
 ERROR:  Expected a positive number in: $bitsAnySet: -1.0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 23.04  } }';
 ERROR:  Expected an integer: $bitsAnySet: 23.04
-HINT:  Expected an integer: $bitsAnySet: double
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : "NegTest"  } }';
 ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \"NegTest"\
-HINT:  Path takes an Array, a number, or a BinData but received: $bitsAnySet: \string\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 99999999999 } }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
-HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAnySet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ -1 ] } }';
 ERROR:  bit positions must be >= 0 but got: 0: \-1\
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 99999999999 ] } }';
 ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
-HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ "NegTest" ] } }';
 ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
-HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "99999999999" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "1.0232" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 1.0232.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "-1" }} }';
 ERROR:  Expected a positive number in: $bitsAnySet: -1.0
-HINT:  Expected a positive number in: $bitsAnySet: -1.0
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "NaN" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: NaN.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
 SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "Infinity" }} }';
 ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: Infinity.0
-HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
       "indexes": [
         {

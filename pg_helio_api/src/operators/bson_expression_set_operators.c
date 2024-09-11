@@ -16,7 +16,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "query/helio_bson_compare.h"
 #include "utils/hashset_utils.h"
 
@@ -236,7 +236,7 @@ ParseDollarSetEquals(const bson_value_t *argument,
 
 	if (numArgs < 2)
 	{
-		ereport(ERROR, (errcode(MongoLocation17045), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17045), errmsg(
 							"$setEquals needs at least two arguments had: %d",
 							numArgs)));
 	}
@@ -618,7 +618,7 @@ ProcessDollarSetIntersection(const bson_value_t *currentElement, void *state,
 
 	if (currentElement->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17047), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17047), errmsg(
 							"All operands of $setIntersection must be arrays. One argument is of type: %s",
 							BsonTypeName(currentElement->value_type))));
 	}
@@ -676,7 +676,7 @@ ProcessDollarSetUnion(const bson_value_t *currentValue, void *state, bson_value_
 
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17043), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17043), errmsg(
 							"All operands of $setUnion must be arrays. One argument is of type: %s",
 							BsonTypeName(currentValue->value_type))));
 	}
@@ -726,7 +726,7 @@ ProcessDollarSetEqualsElement(const bson_value_t *currentElement, void *state,
 {
 	if (currentElement->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17044), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17044), errmsg(
 							"All operands of $setEquals must be arrays. One argument is of type: %s",
 							currentElement->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
@@ -794,14 +794,14 @@ ProcessDollarSetDifference(void *state, bson_value_t *result)
 
 	if (context->firstArgument.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17048), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17048), errmsg(
 							"both operands of $setDifference must be arrays. First argument is of type: %s",
 							BsonTypeName(context->firstArgument.value_type))));
 	}
 
 	if (context->secondArgument.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17049), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17049), errmsg(
 							"both operands of $setDifference must be arrays. Second argument is of type: %s",
 							BsonTypeName(context->secondArgument.value_type))));
 	}
@@ -855,13 +855,13 @@ ProcessDollarSetIsSubset(void *state, bson_value_t *result)
 
 	if (context->firstArgument.value_type != BSON_TYPE_ARRAY)
 	{
-		int errorCode = MongoLocation17310;
+		int errorCode = ERRCODE_HELIO_LOCATION17310;
 		char *typeName = MISSING_TYPE_NAME;
 
 		if (context->firstArgument.value_type != BSON_TYPE_EOD)
 		{
 			typeName = BsonTypeName(context->firstArgument.value_type);
-			errorCode = MongoLocation17046;
+			errorCode = ERRCODE_HELIO_LOCATION17046;
 		}
 
 		ereport(ERROR, (errcode(errorCode), errmsg(
@@ -871,7 +871,7 @@ ProcessDollarSetIsSubset(void *state, bson_value_t *result)
 
 	if (context->secondArgument.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation17042), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17042), errmsg(
 							"both operands of $setIsSubset must be arrays. Second argument is of type: %s",
 							context->secondArgument.value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
@@ -970,8 +970,8 @@ ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue, void *state,
 
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(IsAllElementsTrueOp ? MongoLocation17040 :
-								MongoLocation17041),
+		ereport(ERROR, (errcode(IsAllElementsTrueOp ? ERRCODE_HELIO_LOCATION17040 :
+								ERRCODE_HELIO_LOCATION17041),
 						errmsg("%s's argument must be an array, but is %s",
 							   IsAllElementsTrueOp ? "$allElementsTrue" :
 							   "$anyElementTrue",

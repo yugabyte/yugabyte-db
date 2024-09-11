@@ -279,20 +279,20 @@ ProcessDollarBit(pgbson *doc, bson_value_t *result, void *arguments,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch)), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH)), errmsg(
 							"%s only supports int and long, not: %s.", operatorName,
 							BsonTypeName(currentElem.value_type)),
-						errhint(
+						errdetail_log(
 							"%s only supports int and long, not: %s.", operatorName,
 							BsonTypeName(currentElem.value_type)));
 			}
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation28765)), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28765)), errmsg(
 						"%s only supports numeric types, not %s", operatorName,
 						BsonTypeName(currentElem.value_type)),
-					errhint(
+					errdetail_log(
 						"%s only supports numeric types, not %s", operatorName,
 						BsonTypeName(currentElem.value_type)));
 		}
@@ -346,9 +346,9 @@ ProcessDollarBit(pgbson *doc, bson_value_t *result, void *arguments,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoTypeMismatch)), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH)), errmsg(
 							"%s only supports int and long operands.", operatorName),
-						errhint(
+						errdetail_log(
 							"%s only supports int and long operands.", operatorName));
 			}
 

@@ -157,10 +157,10 @@ SetResultValueForDollarBinarySize(bson_value_t *inputArgument, bson_value_t *res
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoLocation51276), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51276), errmsg(
 							"$binarySize requires a string or BinData argument, found: %s",
 							BsonTypeName(inputArgument->value_type)),
-						errhint(
+						errdetail_log(
 							"$binarySize requires a string or BinData argument, found: %s",
 							BsonTypeName(inputArgument->value_type))));
 	}
@@ -181,11 +181,11 @@ SetResultValueForDollarBsonSize(bson_value_t *inputArgument, bson_value_t *resul
 
 	if (inputArgument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation31393), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31393), errmsg(
 							"$bsonSize requires a document input, found: %s",
 							BsonTypeName(inputArgument->value_type)),
-						errhint("$bsonSize requires a document input, found: %s",
-								BsonTypeName(inputArgument->value_type))));
+						errdetail_log("$bsonSize requires a document input, found: %s",
+									  BsonTypeName(inputArgument->value_type))));
 	}
 
 	/* Result type is int32 as the max document we can store is for 16MB and that size in bytes is less than INT32_MAX. */

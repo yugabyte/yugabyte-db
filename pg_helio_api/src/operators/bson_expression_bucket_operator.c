@@ -14,7 +14,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "operators/bson_expression_bucket_operator.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "query/helio_bson_compare.h"
 
 /* --------------------------------------------------------- */
@@ -56,12 +56,12 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 {
 	if (bucketSpec->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40201),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40201),
 						errmsg(
 							"Argument to $bucket stage must be an object, but found type: %s",
 							BsonTypeName(
 								bucketSpec->value_type)),
-						errhint(
+						errdetail_log(
 							"Argument to $bucket stage must be an object, but found type: %s",
 							BsonTypeName(
 								bucketSpec->value_type))));
@@ -97,31 +97,31 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation40197),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40197),
 							errmsg("Unrecognized option to $bucket: %s", key),
-							errhint("Unrecognized option to $bucket: %s", key)));
+							errdetail_log("Unrecognized option to $bucket: %s", key)));
 		}
 	}
 
 	/* Check required field of groupBy and boundaries */
 	if (groupBy.value_type == BSON_TYPE_EOD || boundaries.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation40198),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40198),
 						errmsg(
 							"$bucket requires 'groupBy' and 'boundaries' to be specified."),
-						errhint(
+						errdetail_log(
 							"The $bucket stage requires 'groupBy' and 'boundaries' to be specified.")));
 	}
 
 	/* Validate 'groupBy' value type */
 	if (groupBy.value_type != BSON_TYPE_UTF8 && groupBy.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40202),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40202),
 						errmsg(
 							"The $bucket 'groupBy' field must be defined as a $-prefixed path or an expression. But found: %s",
 							BsonTypeName(
 								groupBy.value_type)),
-						errhint(
+						errdetail_log(
 							"The $bucket 'groupBy' field must be an operator expression.But found: %s",
 							BsonTypeName(
 								groupBy.value_type))));
@@ -130,12 +130,12 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* Validate 'boundaries' type */
 	if (boundaries.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation40200),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40200),
 						errmsg(
 							"The $bucket 'boundaries' field must be an array of values. But found: %s",
 							BsonTypeName(
 								boundaries.value_type)),
-						errhint(
+						errdetail_log(
 							"The $bucket 'boundaries' field must be an array of values. But found: %s",
 							BsonTypeName(
 								boundaries.value_type))));
@@ -150,11 +150,11 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 									   &parseContext);
 		if (parsedDefaultValue.kind != AggregationExpressionKind_Constant)
 		{
-			ereport(ERROR, (errcode(MongoLocation40195),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40195),
 							errmsg(
 								"The $bucket 'default' field must be a constant. Input value: %s",
 								BsonValueToJsonForLogging(&defaultBucket)),
-							errhint(
+							errdetail_log(
 								"The $bucket 'default' field must be a constant.")));
 		}
 	}
@@ -162,12 +162,12 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	/* validate 'output' value type is document */
 	if (output.value_type != BSON_TYPE_EOD && output.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40196),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40196),
 						errmsg(
 							"The $bucket 'output' field must be a document. But found: %s",
 							BsonTypeName(
 								output.value_type)),
-						errhint(
+						errdetail_log(
 							"The $bucket 'output' field must be a document. But found: %s",
 							BsonTypeName(
 								output.value_type))));
@@ -289,10 +289,10 @@ HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
 	{
 		if (parsedData->defaultBucket.kind == AggregationExpressionKind_Invalid)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"$bucket could not find a bucket for an input value %s, and no default was specified.",
 								BsonValueToJsonForLogging(&evaluatedGroupByField)),
-							errhint(
+							errdetail_log(
 								"The input value must fall into one of the bucket boundaries, or specify a default value.")));
 		}
 		result = &parsedData->defaultBucket.value;
@@ -368,22 +368,22 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 		ParseAggregationExpressionData(&parsedValue, value, &parseContext);
 		if (parsedValue.kind != AggregationExpressionKind_Constant)
 		{
-			ereport(ERROR, (errcode(MongoLocation40191),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40191),
 							errmsg(
 								"The $bucket 'boundaries' field must be an array of constant values."),
-							errhint(
+							errdetail_log(
 								"The $bucket 'boundaries' field must be an array of constant values.")));
 		}
 
 		if (boundaryType != BSON_TYPE_EOD && CompareSortOrderType(boundaryType,
 																  value->value_type) != 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation40193),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40193),
 							errmsg(
 								"The $bucket 'boundaries' field must be an array of values of the same type. Found different types: %s and %s",
 								BsonTypeName(
 									boundaryType), BsonTypeName(value->value_type)),
-							errhint(
+							errdetail_log(
 								"The $bucket 'boundaries' field must be an array of values of the same type.")));
 		}
 
@@ -393,10 +393,10 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 			if (CompareBsonValueAndType(value, llast(arguments->boundaries),
 										&isComparisonValid) <= 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation40194),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40194),
 								errmsg(
 									"The $bucket 'boundaries' field must be an array of values in ascending order."),
-								errhint(
+								errdetail_log(
 									"The $bucket 'boundaries' field must be an array of values in ascending order.")));
 			}
 		}
@@ -408,11 +408,11 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 
 	if (list_length(arguments->boundaries) < 2)
 	{
-		ereport(ERROR, (errcode(MongoLocation40192),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40192),
 						errmsg(
 							"The $bucket 'boundaries' field must have at least 2 values, but found: %d",
 							list_length(arguments->boundaries)),
-						errhint(
+						errdetail_log(
 							"The $bucket 'boundaries' field must have at least 2 values, but found: %d",
 							list_length(arguments->boundaries))));
 	}
@@ -428,7 +428,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 				CompareBsonValueAndType(defaultBucket, llast(arguments->boundaries),
 										&isComparisonValid) < 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation40199),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40199),
 								errmsg(
 									"The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.")));
 			}

@@ -155,9 +155,9 @@ select helio_api.delete('db', '{"delete":"notexists", "deletes":[{"q":{},"limit"
 
 -- query syntax errors are added the response
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$ltr":5}},"limit":0}]}');
-                                                                                                                      delete                                                                                                                      
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+                                                                                                                     delete                                                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
 (1 row)
 
 -- when ordered, expect only first delete to be executed

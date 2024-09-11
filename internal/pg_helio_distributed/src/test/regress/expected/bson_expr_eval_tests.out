@@ -200,16 +200,12 @@ SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": "a.
 -- negative test to validate options
 SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": "a.*b", "$options": "g" }', '{ "": 4 }');
 ERROR:  invalid flag in regex options g
-HINT:  invalid flag in regex options g
 SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": "a.*b", "$options": "hw" }', '{ "": 4 }');
 ERROR:  invalid flag in regex options h
-HINT:  invalid flag in regex options h
 SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": {"$regex": "\\d[3]", "$options": "s"} }', '{ "": 4 }');
 ERROR:  invalid flag in regex options s
-HINT:  invalid flag in regex options s
 SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": {"$regex": "\\d[3]", "$options": "x"} }', '{ "": 4 }');
 ERROR:  invalid flag in regex options x
-HINT:  invalid flag in regex options x
 SELECT helio_distributed_test_helpers.evaluate_query_expression('{ "$regex": "a.*b", "$options": "" }', '{ "": [ "asomethingb" ] }');
  evaluate_query_expression 
 ---------------------------------------------------------------------

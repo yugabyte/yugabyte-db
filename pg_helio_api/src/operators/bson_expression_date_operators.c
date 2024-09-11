@@ -20,7 +20,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "utils/date_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/fmgrprotos.h"
 #include "metadata/metadata_cache.h"
 
@@ -582,7 +582,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowInvalidTimezoneIdentifier(const char * identifier)
 {
-	ereport(ERROR, (errcode(MongoLocation40485), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40485), errmsg(
 						"unrecognized time zone identifier: \"%s\"", identifier)));
 }
 
@@ -591,11 +591,11 @@ static inline void
 pg_attribute_noreturn()
 ThrowLocation40517Error(bson_type_t foundType)
 {
-	ereport(ERROR, (errcode(MongoLocation40517), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40517), errmsg(
 						"timezone must evaluate to a string, found %s",
 						BsonTypeName(foundType)),
-					errhint("timezone must evaluate to a string, found %s",
-							BsonTypeName(foundType))));
+					errdetail_log("timezone must evaluate to a string, found %s",
+								  BsonTypeName(foundType))));
 }
 
 
@@ -605,11 +605,11 @@ ThrowLocation40517Error(bson_type_t foundType)
 static inline void
 pg_attribute_noreturn() ThrowLocation5439013Error(bson_type_t foundType, char * opName)
 {
-	ereport(ERROR, (errcode(MongoLocation5439013), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439013), errmsg(
 						"%s requires 'unit' to be a string, but got %s",
 						opName, BsonTypeName(foundType)),
-					errhint("%s requires 'unit' to be a string, but got %s",
-							opName, BsonTypeName(foundType))));
+					errdetail_log("%s requires 'unit' to be a string, but got %s",
+								  opName, BsonTypeName(foundType))));
 }
 
 /*
@@ -618,11 +618,11 @@ pg_attribute_noreturn() ThrowLocation5439013Error(bson_type_t foundType, char * 
 static inline void
 pg_attribute_noreturn() ThrowLocation5439015Error(bson_type_t foundType, char * opName)
 {
-	ereport(ERROR, (errcode(MongoLocation5439015), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439015), errmsg(
 						"%s requires 'startOfWeek' to be a string, but got %s",
 						opName, BsonTypeName(foundType)),
-					errhint("%s requires 'startOfWeek' to be a string, but got %s",
-							opName, BsonTypeName(foundType))));
+					errdetail_log("%s requires 'startOfWeek' to be a string, but got %s",
+								  opName, BsonTypeName(foundType))));
 }
 
 /* Helper method that throws common ConversionFailure when a timezone string is not parseable by format. */
@@ -632,10 +632,10 @@ pg_attribute_noreturn() ThrowMongoConversionErrorForTimezoneIdentifier(
 	int sizeOfDateString,
 	int * indexOfDateStringIter)
 {
-	ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 						"Error parsing date string '%s'; %d: passing a time zone identifier as part of the string is not allowed '%c'",
 						dateString, sizeOfDateString, dateString[*indexOfDateStringIter]),
-					errhint(
+					errdetail_log(
 						"Error parsing date string. passing a time zone identifier as part of the string is not allowed '%c'",
 						dateString[*indexOfDateStringIter])));
 }
@@ -646,10 +646,10 @@ ValidateDateValueIsInRange(uint32_t value)
 {
 	if (value > 9999)
 	{
-		ereport(ERROR, (errcode(MongoLocation18537), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18537), errmsg(
 							"Could not convert date to string: date component was outside the supported range of 0-9999: %d",
 							value),
-						errhint(
+						errdetail_log(
 							"Could not convert date to string: date component was outside the supported range of 0-9999: %d",
 							value)));
 	}
@@ -869,7 +869,7 @@ HandleDollarDateToParts(pgbson *doc, const bson_value_t *operatorValue,
 {
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40524), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40524), errmsg(
 							"$dateToParts only supports an object as its argument")));
 	}
 
@@ -898,16 +898,16 @@ HandleDollarDateToParts(pgbson *doc, const bson_value_t *operatorValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation40520), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40520), errmsg(
 								"Unrecognized argument to $dateToParts: %s", key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateToParts, Unexpected key found in input")));
 		}
 	}
 
 	if (dateExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation40522), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40522), errmsg(
 							"Missing 'date' parameter to $dateToParts")));
 	}
 
@@ -969,11 +969,11 @@ HandleDollarDateToParts(pgbson *doc, const bson_value_t *operatorValue,
 
 		if (evaluatedIsoArg.value_type != BSON_TYPE_BOOL)
 		{
-			ereport(ERROR, (errcode(MongoLocation40521), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40521), errmsg(
 								"iso8601 must evaluate to a bool, found %s",
 								BsonTypeName(evaluatedIsoArg.value_type)),
-							errhint("iso8601 must evaluate to a bool, found %s",
-									BsonTypeName(evaluatedIsoArg.value_type))));
+							errdetail_log("iso8601 must evaluate to a bool, found %s",
+										  BsonTypeName(evaluatedIsoArg.value_type))));
 		}
 
 		isIsoRequested = evaluatedIsoArg.value.v_bool;
@@ -1050,7 +1050,7 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 {
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation18629), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18629), errmsg(
 							"$dateToString only supports an object as its argument")));
 	}
 
@@ -1082,16 +1082,16 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation18534), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18534), errmsg(
 								"Unrecognized argument to $dateToString: %s", key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateToString, Unexpected key found while parsing")));
 		}
 	}
 
 	if (dateExpression.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation18628), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18628), errmsg(
 							"Missing 'date' parameter to $dateToString")));
 	}
 
@@ -1124,11 +1124,11 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 
 		if (evaluatedFormat.value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation18533), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18533), errmsg(
 								"$dateToString requires that 'format' be a string, found: %s with value %s",
 								BsonTypeName(evaluatedFormat.value_type),
 								BsonValueToJsonForLogging(&evaluatedFormat)),
-							errhint(
+							errdetail_log(
 								"$dateToString requires that 'format' be a string, found: %s",
 								BsonTypeName(evaluatedFormat.value_type))));
 		}
@@ -1280,11 +1280,11 @@ HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
 
 		if (evaluatedTimezone.value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation40533), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40533), errmsg(
 								"%s requires a string for the timezone argument, but was given a %s (%s)",
 								operatorName, BsonTypeName(evaluatedTimezone.value_type),
 								BsonValueToJsonForLogging(&evaluatedTimezone)),
-							errhint(
+							errdetail_log(
 								"'%s' requires a string for the timezone argument, but was given a %s",
 								operatorName, BsonTypeName(
 									evaluatedTimezone.value_type))));
@@ -1346,10 +1346,10 @@ ParseDatePartOperatorArgument(const bson_value_t *operatorValue, const char *ope
 		if (!valid)
 		{
 			int numArgs = BsonDocumentValueCountKeys(operatorValue);
-			ereport(ERROR, (errcode(MongoLocation40536), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40536), errmsg(
 								"%s accepts exactly one argument if given an array, but was given %d",
 								operatorName, numArgs),
-							errhint(
+							errdetail_log(
 								"%s accepts exactly one argument if given an array, but was given %d",
 								operatorName, numArgs)));
 		}
@@ -1388,10 +1388,10 @@ ParseDatePartOperatorArgument(const bson_value_t *operatorValue, const char *ope
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoLocation40535), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40535), errmsg(
 										"unrecognized option to %s: \"%s\"",
 										operatorName, key),
-									errhint(
+									errdetail_log(
 										"unrecognized option to operator %s, Unexpected key in input",
 										operatorName)));
 				}
@@ -1400,12 +1400,12 @@ ParseDatePartOperatorArgument(const bson_value_t *operatorValue, const char *ope
 
 		if (!isDateSpecified)
 		{
-			ereport(ERROR, (errcode(MongoLocation40539),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40539),
 							errmsg(
 								"missing 'date' argument to %s, provided: %s: %s",
 								operatorName, operatorName, BsonValueToJsonForLogging(
 									operatorValue)),
-							errhint(
+							errdetail_log(
 								"missing 'date' argument to %s, provided argument of type: %s",
 								operatorName, BsonTypeName(operatorValue->value_type))));
 		}
@@ -1477,7 +1477,7 @@ GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone, StringView
 
 		if (i + 1 >= format.length)
 		{
-			ereport(ERROR, (errcode(MongoLocation18535), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18535), errmsg(
 								"Unmatched '%%' at end of format string")));
 		}
 
@@ -1620,10 +1620,10 @@ GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone, StringView
 
 			default:
 			{
-				ereport(ERROR, (errcode(MongoLocation18536), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18536), errmsg(
 									"Invalid format character '%%%c' in format string",
 									*formatPtr),
-								errhint(
+								errdetail_log(
 									"Invalid format character '%%%c' in format string",
 									*formatPtr)));
 			}
@@ -1810,7 +1810,7 @@ WritePaddedUInt32AndAdvanceBuffer(char **buffer, const char *end, int padding,
 	{
 		ereport(ERROR, (errmsg("Value: %d has more digits than the requested padding: %d",
 							   value, padding),
-						errhint(
+						errdetail_log(
 							"Value: %d has more digits than the requested padding: %d",
 							value, padding)));
 	}
@@ -2146,9 +2146,9 @@ GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart)
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Invalid date part unit %d", datePart),
-							errhint("Invalid date part unit %d", datePart)));
+							errdetail_log("Invalid date part unit %d", datePart)));
 		}
 	}
 
@@ -2311,7 +2311,7 @@ ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40519), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40519), errmsg(
 							"$dateFromParts only supports an object as its argument")));
 	}
 
@@ -2568,9 +2568,9 @@ ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation40518), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40518), errmsg(
 								"Unrecognized argument to $dateFromParts: %s", key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateFromParts, unexpected key")));
 		}
 	}
@@ -2578,7 +2578,7 @@ ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
 	/* Both the isodate part and normal date part present */
 	if (*isIsoWeekDate && year->value_type != BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation40489), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40489), errmsg(
 							"$dateFromParts does not allow mixing natural dates with ISO dates")));
 	}
 
@@ -2586,7 +2586,7 @@ ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
 	if (*isIsoWeekDate && (month->value_type != BSON_TYPE_EOD || day->value_type !=
 						   BSON_TYPE_EOD))
 	{
-		ereport(ERROR, (errcode(MongoLocation40525), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40525), errmsg(
 							"$dateFromParts does not allow mixing natural dates with ISO dates")));
 	}
 
@@ -2594,7 +2594,7 @@ ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
 	if ((!(*isIsoWeekDate) && year->value_type == BSON_TYPE_EOD) ||
 		(*isIsoWeekDate && isoWeekYear->value_type == BSON_TYPE_EOD))
 	{
-		ereport(ERROR, (errcode(MongoLocation40516), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40516), errmsg(
 							"$dateFromParts requires either 'year' or 'isoWeekYear' to be present")));
 	}
 
@@ -2665,10 +2665,10 @@ ValidateInputForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue, 
 
 	if (dateFromPartsValue->timezone.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation40517), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40517), errmsg(
 							"timezone must evaluate to a string, found %s", BsonTypeName(
 								dateFromPartsValue->timezone.value_type)),
-						errhint(
+						errdetail_log(
 							"timezone must evaluate to a string, found %s", BsonTypeName(
 								dateFromPartsValue->timezone.value_type)
 							)));
@@ -2686,11 +2686,11 @@ ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey)
 		(datePart == DatePart_Millisecond && !IsBsonValue64BitInteger(inputValue,
 																	  checkFixedInteger)))
 	{
-		ereport(ERROR, (errcode(MongoLocation40515), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40515), errmsg(
 							"'%s' must evaluate to an integer, found %s with value :%s",
 							inputKey, BsonTypeName(inputValue->value_type),
 							BsonValueToJsonForLogging(inputValue)),
-						errhint(
+						errdetail_log(
 							"'%s' must evaluate to an integer, found %s", inputKey,
 							BsonTypeName(inputValue->value_type))));
 	}
@@ -2704,11 +2704,12 @@ ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey)
 		{
 			if (datePartValue < 1 || datePartValue > 9999)
 			{
-				ereport(ERROR, (errcode(datePart == DatePart_Year ? MongoLocation40523 :
-										MongoLocation31095), errmsg(
+				ereport(ERROR, (errcode(datePart == DatePart_Year ?
+										ERRCODE_HELIO_LOCATION40523 :
+										ERRCODE_HELIO_LOCATION31095), errmsg(
 									"'%s' must evaluate to an integer in the range 1 to 9999, found %s",
 									inputKey, BsonValueToJsonForLogging(inputValue)),
-								errhint(
+								errdetail_log(
 									"'%s' must evaluate to an integer in the range 1 to 9999, found %ld",
 									inputKey, datePartValue)));
 			}
@@ -2725,10 +2726,10 @@ ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey)
 		{
 			if (datePartValue < -32768 || datePartValue > 32767)
 			{
-				ereport(ERROR, (errcode(MongoLocation31034), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31034), errmsg(
 									"'%s' must evaluate to a value in the range [-32768, 32767]; value %s is not in range",
 									inputKey, BsonValueToJsonForLogging(inputValue)),
-								errhint(
+								errdetail_log(
 									"'%s' must evaluate to a value in the range [-32768, 32767]; value %ld is not in range",
 									inputKey, datePartValue)));
 			}
@@ -2741,7 +2742,7 @@ ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey)
 			/* as per the tests we should throw error for bit values >= 2^54 */
 			if (datePartValue >= 18014398509481984 || datePartValue <= -18014398509481984)
 			{
-				ereport(ERROR, (errcode(MongoDurationOverflow), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_DURATIONOVERFLOW), errmsg(
 									"Overflow casting from a lower-precision duration to a higher-precision duration"
 									)));
 			}
@@ -2967,7 +2968,7 @@ ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *da
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439007), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439007), errmsg(
 							"$dateTrunc only supports an object as its argument")));
 	}
 
@@ -3127,7 +3128,7 @@ GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit)
 		}
 
 		default:
-			ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439014), errmsg(
 								"Invalid unit specified. Cannot make interval")));
 	}
 
@@ -3217,10 +3218,10 @@ ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation5439008), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439008), errmsg(
 								"Unrecognized argument to $dateTrunc: %s. Expected arguments are date, unit, and optionally, binSize, timezone, startOfWeek",
 								key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateTrunc: %s. Expected arguments are date, unit, and optionally, binSize, timezone, startOfWeek",
 								key)));
 		}
@@ -3229,13 +3230,13 @@ ParseInputDocumentForDateTrunc(const bson_value_t *inputArgument,
 	/*	Validation to check date and unit are required. */
 	if (date->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439009), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439009), errmsg(
 							"Missing 'date' parameter to $dateTrunc")));
 	}
 
 	if (unit->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439010), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439010), errmsg(
 							"Missing 'unit' parameter to $dateTrunc")));
 	}
 
@@ -3355,21 +3356,23 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 		  (date->value_type == BSON_TYPE_TIMESTAMP) ||
 		  (date->value_type == BSON_TYPE_OID)))
 	{
-		ereport(ERROR, (errcode(MongoLocation5439012), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439012), errmsg(
 							"$dateTrunc requires 'date' to be a date, but got %s",
 							BsonTypeName(date->value_type)),
-						errhint("$dateTrunc requires 'date' to be a date, but got %s",
-								BsonTypeName(date->value_type))));
+						errdetail_log(
+							"$dateTrunc requires 'date' to be a date, but got %s",
+							BsonTypeName(date->value_type))));
 	}
 
 	/* validate unit type */
 	if (unit->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439013), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439013), errmsg(
 							"$dateTrunc requires 'unit' to be a string, but got %s",
 							BsonTypeName(unit->value_type)),
-						errhint("$dateTrunc requires 'unit' to be a string, but got %s",
-								BsonTypeName(unit->value_type))));
+						errdetail_log(
+							"$dateTrunc requires 'unit' to be a string, but got %s",
+							BsonTypeName(unit->value_type))));
 	}
 
 	int dateTruncUnitListSize = sizeof(unitSizeForDateTrunc) /
@@ -3386,10 +3389,10 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 
 	if (*dateTruncUnitEnum == DateTruncUnit_Invalid)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439014), errmsg(
 							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit: %s",
 							unit->value.v_utf8.str),
-						errhint(
+						errdetail_log(
 							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit")));
 	}
 
@@ -3415,10 +3418,10 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 		}
 		if (*weekDay == WeekDay_Invalid)
 		{
-			ereport(ERROR, (errcode(MongoLocation5439016), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439016), errmsg(
 								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
 								startOfWeek->value.v_utf8.str),
-							errhint(
+							errdetail_log(
 								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week")));
 		}
 	}
@@ -3426,11 +3429,11 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 	/* check binSize value type */
 	if (!IsBsonValueFixedInteger(binSize))
 	{
-		ereport(ERROR, (errcode(MongoLocation5439017), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439017), errmsg(
 							"$dateTrunc requires 'binSize' to be a 64-bit integer, but got value '%s' of type %s",
 							BsonValueToJsonForLogging(binSize), BsonTypeName(
 								binSize->value_type)),
-						errhint(
+						errdetail_log(
 							"$dateTrunc requires 'binSize' to be a 64-bit integer, but got value of type %s",
 							BsonTypeName(binSize->value_type))));
 	}
@@ -3439,10 +3442,10 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 	int64_t binSizeVal = BsonValueAsInt64(binSize);
 	if (binSizeVal <= 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439018), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439018), errmsg(
 							"$dateTrunc requires 'binSize' to be greater than 0, but got value %ld",
 							binSizeVal),
-						errhint(
+						errdetail_log(
 							"$dateTrunc requires 'binSize' to be greater than 0, but got value %ld",
 							binSizeVal)));
 	}
@@ -4083,10 +4086,10 @@ ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
 {
 	if (inputArgument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166400), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166400), errmsg(
 							"%s expects an object as its argument.found input type:%s",
 							opName, BsonValueToJsonForLogging(inputArgument)),
-						errhint(
+						errdetail_log(
 							"%s expects an object as its argument.found input type:%s",
 							opName, BsonTypeName(inputArgument->value_type))));
 	}
@@ -4115,10 +4118,10 @@ ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation5166401), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166401), errmsg(
 								"Unrecognized argument to %s: %s. Expected arguments are startDate, unit, amount, and optionally timezone",
 								opName, key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to %s: Expected arguments are startDate, unit, amount, and optionally timezone",
 								opName)));
 		}
@@ -4127,11 +4130,12 @@ ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
 	if (startDate->value_type == BSON_TYPE_EOD || unit->value_type == BSON_TYPE_EOD ||
 		amount == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166402), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166402), errmsg(
 							"%s requires startDate, unit, and amount to be present",
 							opName),
-						errhint("%s requires startDate, unit, and amount to be present",
-								opName)));
+						errdetail_log(
+							"%s requires startDate, unit, and amount to be present",
+							opName)));
 	}
 }
 
@@ -4161,9 +4165,9 @@ SetResultForDollarDateAddSubtract(bson_value_t *startDate, DateUnit unitEnum,
 
 	if (isResultOverflow)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166406), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166406), errmsg(
 							"%s overflowed", opName),
-						errhint("%s overflowed", opName)));
+						errdetail_log("%s overflowed", opName)));
 	}
 
 	int diffHour = GetAdjustHourWithTimezoneForDateAddSubtract(startDateTimestamp,
@@ -4206,9 +4210,9 @@ SetResultForDollarDateSubtract(bson_value_t *startDate, DateUnit unitEnum,
 
 	if (isResultOverflow)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166406), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166406), errmsg(
 							"$dateSubtract overflowed"),
-						errhint("$dateSubtract overflowed")));
+						errdetail_log("$dateSubtract overflowed")));
 	}
 
 	Datum resultTimestampWithUTC = GetPgTimestampAdjustedToTimezone(resultTimestamp,
@@ -4230,66 +4234,69 @@ ValidateInputForDollarDateAddSubtract(char *opName, bool isDateAdd,
 {
 	if (!IsBsonValueDateTime(startDate->value_type))
 	{
-		ereport(ERROR, (errcode(MongoLocation5166403), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166403), errmsg(
 							"%s requires startDate to be convertible to a date",
 							opName),
-						errhint("%s requires startDate to be convertible to a date",
-								opName)));
+						errdetail_log("%s requires startDate to be convertible to a date",
+									  opName)));
 	}
 
 	if (unit->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166404), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166404), errmsg(
 							"%s expects string defining the time unit",
 							opName),
-						errhint("%s expects string defining the time unit",
-								opName)));
+						errdetail_log("%s expects string defining the time unit",
+									  opName)));
 	}
 	char *unitStrValue = unit->value.v_utf8.str;
 	DateUnit unitEnum = GetDateUnitFromString(unitStrValue);
 
 	if (unitEnum == DateUnit_Invalid)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"unknown time unit value: %s", unitStrValue),
-						errhint("unknown time unit value")));
+						errdetail_log("unknown time unit value")));
 	}
 
 	if (!IsBsonValueFixedInteger(amount))
 	{
-		ereport(ERROR, (errcode(MongoLocation5166405), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166405), errmsg(
 							"%s expects integer amount of time units", opName),
-						errhint("%s expects integer amount of time units", opName)));
+						errdetail_log("%s expects integer amount of time units",
+									  opName)));
 	}
 
 	int64 amountVal = BsonValueAsInt64(amount);
 
 	if (!isDateAdd && amountVal == INT64_MIN)
 	{
-		ereport(ERROR, (errcode(MongoLocation6045000), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6045000), errmsg(
 							"invalid %s 'amount' parameter value: %s %s", opName,
 							BsonValueToJsonForLogging(amount), unitStrValue),
-						errhint("invalid %s 'amount' parameter value: %s %s", opName,
-								BsonValueToJsonForLogging(amount), unitStrValue)));
+						errdetail_log("invalid %s 'amount' parameter value: %s %s",
+									  opName,
+									  BsonValueToJsonForLogging(amount), unitStrValue)));
 	}
 
 	if (!IsAmountRangeValidForDateUnit(amountVal, unitEnum))
 	{
-		ereport(ERROR, (errcode(MongoLocation5976500), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5976500), errmsg(
 							"invalid %s 'amount' parameter value: %s %s", opName,
 							BsonValueToJsonForLogging(amount), unitStrValue),
-						errhint("invalid %s 'amount' parameter value: %s %s", opName,
-								BsonValueToJsonForLogging(amount), unitStrValue)));
+						errdetail_log("invalid %s 'amount' parameter value: %s %s",
+									  opName,
+									  BsonValueToJsonForLogging(amount), unitStrValue)));
 	}
 
 	/* Since no , default value is set hence, need to check if not eod then it should be UTF8 */
 	if (timezone->value_type != BSON_TYPE_EOD && timezone->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation40517), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40517), errmsg(
 							"timezone must evaluate to a string, found %s", BsonTypeName(
 								timezone->value_type)),
-						errhint("timezone must evaluate to a string, found %s",
-								BsonTypeName(timezone->value_type))));
+						errdetail_log("timezone must evaluate to a string, found %s",
+									  BsonTypeName(timezone->value_type))));
 	}
 }
 
@@ -4423,7 +4430,7 @@ ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *dat
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166301), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166301), errmsg(
 							"$dateDiff only supports an object as its argument")));
 	}
 
@@ -4637,10 +4644,10 @@ ParseInputDocumentForDateDiff(const bson_value_t *inputArgument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation5166302), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166302), errmsg(
 								"Unrecognized argument to $dateDiff: %s",
 								key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateDiff: %s",
 								key)));
 		}
@@ -4649,23 +4656,23 @@ ParseInputDocumentForDateDiff(const bson_value_t *inputArgument,
 	/*	Validation to check start and end date */
 	if (startDate->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166303), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166303), errmsg(
 							"Missing 'startDate' parameter to $dateDiff"),
-						errhint("Missing 'startDate' parameter to $dateDiff")));
+						errdetail_log("Missing 'startDate' parameter to $dateDiff")));
 	}
 
 	if (endDate->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166304), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166304), errmsg(
 							"Missing 'endDate' parameter to $dateDiff"),
-						errhint("Missing 'endDate' parameter to $dateDiff")));
+						errdetail_log("Missing 'endDate' parameter to $dateDiff")));
 	}
 
 	if (unit->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166305), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166305), errmsg(
 							"Missing 'unit' parameter to $dateDiff"),
-						errhint("Missing 'unit' parameter to $dateDiff")));
+						errdetail_log("Missing 'unit' parameter to $dateDiff")));
 	}
 
 	if (startOfWeek->value_type == BSON_TYPE_EOD)
@@ -4964,15 +4971,16 @@ ValidateInputArgumentForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
 	bool isEndDateValid = IsBsonValueDateTimeFormat(endDate->value_type);
 	if (!isStartDateValid || !isEndDateValid)
 	{
-		ereport(ERROR, (errcode(MongoLocation5166307), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5166307), errmsg(
 							"$dateDiff requires '%s' to be a date, but got %s",
 							(isStartDateValid ? "endDate" : "startDate"),
 							BsonTypeName(isStartDateValid ? endDate->value_type :
 										 startDate->value_type)),
-						errhint("$dateDiff requires '%s' to be a date, but got %s",
-								(isStartDateValid ? "endDate" : "startDate"),
-								BsonTypeName(isStartDateValid ? endDate->value_type :
-											 startDate->value_type))));
+						errdetail_log("$dateDiff requires '%s' to be a date, but got %s",
+									  (isStartDateValid ? "endDate" : "startDate"),
+									  BsonTypeName(isStartDateValid ?
+												   endDate->value_type :
+												   startDate->value_type))));
 	}
 
 	/* validate unit type */
@@ -4985,10 +4993,10 @@ ValidateInputArgumentForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
 	*dateUnitEnum = GetDateUnitFromString(unit->value.v_utf8.str);
 	if (*dateUnitEnum == DateUnit_Invalid)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439014), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439014), errmsg(
 							"$dateDiff parameter 'unit' value cannot be recognized as a time unit: %s",
 							unit->value.v_utf8.str),
-						errhint(
+						errdetail_log(
 							"$dateDiff parameter 'unit' value cannot be recognized as a time unit")));
 	}
 
@@ -5014,10 +5022,10 @@ ValidateInputArgumentForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
 		}
 		if (*weekDayEnum == WeekDay_Invalid)
 		{
-			ereport(ERROR, (errcode(MongoLocation5439016), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5439016), errmsg(
 								"$dateDiff parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
 								startOfWeek->value.v_utf8.str),
-							errhint(
+							errdetail_log(
 								"$dateDiff parameter 'startOfWeek' value cannot be recognized as a day of a week")));
 		}
 	}
@@ -5137,10 +5145,10 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40540), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40540), errmsg(
 							"$dateFromString only supports an object as an argument, found: %s",
 							BsonTypeName(argument->value_type)),
-						errhint(
+						errdetail_log(
 							"$dateFromString only supports an object as an argument, found: %s",
 							BsonTypeName(argument->value_type))));
 	}
@@ -5343,7 +5351,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 																  errmsg(
 																	  "Error parsing date string '%s';The parsed date was invalid",
 																	  dateString),
-																  errhint(
+																  errdetail_log(
 																	  "Error parsing date string ;The parsed date was invalid"))));
 			*isInputValid = false;
 			return;
@@ -5359,7 +5367,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 																  errmsg(
 																	  "Error Parsing date string %s;A 'day of year' can only come after a year has been found",
 																	  dateString),
-																  errhint(
+																  errdetail_log(
 																	  "Error Parsing date string;A 'day of year' can only come after a year has been found; No Year found  day of year is %d",
 																	  dateFromParts->
 																	  dayOfYear.value.
@@ -5380,7 +5388,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 																  errmsg(
 																	  "an incomplete date/time string has been found, with elements missing: '%s'",
 																	  dateString),
-																  errhint(
+																  errdetail_log(
 																	  "an incomplete date/time string has been found, with elements missing"))));
 			*isInputValid = false;
 			return;
@@ -5457,10 +5465,10 @@ ParseInputForDateFromString(const bson_value_t *inputArgument, bson_value_t *dat
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation40541), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40541), errmsg(
 								"Unrecognized argument to $dateFromString: %s",
 								key),
-							errhint(
+							errdetail_log(
 								"Unrecognized argument to $dateFromString: %s",
 								key)));
 		}
@@ -5469,9 +5477,10 @@ ParseInputForDateFromString(const bson_value_t *inputArgument, bson_value_t *dat
 	/*	Validation to check date and unit are required. */
 	if (dateString->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation40542), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40542), errmsg(
 							"Missing 'dateString' parameter to $dateFromString"),
-						errhint("Missing 'dateString' parameter to $dateFromString")));
+						errdetail_log(
+							"Missing 'dateString' parameter to $dateFromString")));
 	}
 
 	if (onNull->value_type == BSON_TYPE_EOD)
@@ -5555,10 +5564,10 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 			/* Format specifier is not found in the list of supported format specifiers. */
 			if (fmtSpecifierIndex == -1)
 			{
-				ereport(ERROR, (errcode(MongoLocation18536), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18536), errmsg(
 									"Invalid format character '%s' in format string",
 									elementAtIndex),
-								errhint(
+								errdetail_log(
 									"Invalid format character in format string")));
 			}
 
@@ -5585,7 +5594,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 																		  "Error parsing date string '%s'; %d: Mixing of ISO dates with natural dates is not allowed",
 																		  dateString,
 																		  sizeOfDateString),
-																	  errhint(
+																	  errdetail_log(
 																		  "Error parsing date string; Mixing of ISO dates with natural dates is not allowed"))));
 				*isInputValid = false;
 				return;
@@ -5614,7 +5623,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 																		  dateString[
 																			  indexOfDateStringIter
 																		  ]),
-																	  errhint(
+																	  errdetail_log(
 																		  "Error parsing date string. Mismatch in element at index %d ",
 																		  indexOfDateStringIter))));
 				*isInputValid = false;
@@ -5640,7 +5649,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 																  dateString[
 																	  indexOfDateStringIter
 																  ]),
-															  errhint(
+															  errdetail_log(
 																  "Error parsing date string %s'; %d: Trailing data '%c'",
 																  dateString,
 																  indexOfDateStringIter,
@@ -5661,7 +5670,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 																  "Error parsing date string %s'; %d: Not enough data available to satisfy format ''",
 																  dateString,
 																  sizeOfDateString),
-															  errhint(
+															  errdetail_log(
 																  "Error parsing date string. Not enough data available to satisfy format"))));
 		*isInputValid = false;
 		return;
@@ -5879,7 +5888,7 @@ SplitFormatString(StringView formatStrview, char **elements, int *numElements)
 			else
 			{
 				DeepFreeFormatArray(elements, count);
-				ereport(ERROR, (errcode(MongoLocation18535), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18535), errmsg(
 									"Unmatched '%%' at end of format string")));
 			}
 		}
@@ -5912,12 +5921,12 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 	if (dateString->value_type != BSON_TYPE_UTF8)
 	{
 		CONDITIONAL_EREPORT(isOnErrorPresent,
-							ereport(ERROR, (errcode(MongoConversionFailure),
+							ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
 											errmsg(
 												"$dateFromString requires that 'dateString' be a string, found: %s with value %s",
 												BsonTypeName(dateString->value_type),
 												BsonValueToJsonForLogging(dateString)),
-											errhint(
+											errdetail_log(
 												"$dateFromString requires that 'dateString' be a string, found: %s",
 												BsonTypeName(dateString->value_type)))));
 		*isInputValid = false;
@@ -5926,11 +5935,11 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 
 	if (format->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation40684), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40684), errmsg(
 							"$dateFromString requires that 'format' be a string, found: %s with value %s",
 							BsonTypeName(format->value_type), BsonValueToJsonForLogging(
 								format)),
-						errhint(
+						errdetail_log(
 							"$dateFromString requires that 'format' be a string, found: %s",
 							BsonTypeName(format->value_type))));
 	}
@@ -6026,7 +6035,7 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 																	  *
 																	  indexOfDateStringIter,
 																	  dateElementValue),
-																  errhint(
+																  errdetail_log(
 																	  "Error parsing date string. Value %d is out of range",
 																	  dateElementValue))));
 			*isInputValid = false;
@@ -6129,7 +6138,7 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 																		  dateString,
 																		  *
 																		  indexOfDateStringIter),
-																	  errhint(
+																	  errdetail_log(
 																		  "Error parsing date string. Textual month cannot be found for input month"))));
 				*isInputValid = false;
 				return;
@@ -6193,13 +6202,13 @@ ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateSt
 		(dateString[*indexOfDateStringIter] != '-'))
 	{
 		CONDITIONAL_EREPORT(isOnErrorPresent,
-							ereport(ERROR, (errcode(MongoConversionFailure),
+							ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE),
 											errmsg(
 												"Error parsing date string '%s'; %d: Invalid timezone offset in minutes '%c'",
 												dateString,
 												sizeOfDateString,
 												dateString[*indexOfDateStringIter]),
-											errhint(
+											errdetail_log(
 												"Error parsing date string. Invalid timezone offset in minutes '%c'",
 												dateString[*indexOfDateStringIter]))));
 		*isInputValid = false;
@@ -6238,14 +6247,14 @@ ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateSt
 
 	if (*endptr != '\0')
 	{
-		ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 							"Out of range Utc minutes offset provided for $dateFromString")));
 	}
 
 	/* Since we now support only hh:mm format for utc offset parsing so converting to this format and max mins are 99 hours and 99 mins in this format. */
 	if (totalMins > MaxMinsRepresentedByUTCOffset)
 	{
-		ereport(ERROR, (errcode(MongoConversionFailure), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CONVERSIONFAILURE), errmsg(
 							"UTC Minutes Offset provided cannot be parsed into UTC offset form for $dateFromString")));
 	}
 	int hours = totalMins / 60;
@@ -6358,7 +6367,7 @@ ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
 																	  errmsg(
 																		  "you cannot pass in a date/time string with time zone information ('%s') together with a timezone argument",
 																		  timezoneOffset),
-																	  errhint(
+																	  errdetail_log(
 																		  "you cannot pass in a date/time string with time zone information together with a timezone argument"))));
 			}
 

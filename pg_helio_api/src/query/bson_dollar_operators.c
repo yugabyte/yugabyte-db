@@ -20,7 +20,7 @@
 #include "query/helio_bson_compare.h"
 #include "operators/bson_expression.h"
 #include "query/bson_dollar_operators.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "operators/bson_expr_eval.h"
 #include "utils/fmgr_utils.h"
 #include "utils/hashset_utils.h"
@@ -1166,9 +1166,9 @@ bson_dollar_range(PG_FUNCTION_ARGS)
 		{
 			/* TODO (workitem=3423305): Index pushdwon on $range operator with collation (see method description for more details) */
 			/* This code path is not expected to be excercised until $range with collation is pushed down to the index. */
-			ereport(ERROR, (errcode(MongoInternalError), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), errmsg(
 								"operator $range or operators that can be optimized to $range is not supported with collation"),
-							errhint(
+							errdetail_log(
 								"operator $range or operators that can be optimized to $range is not supported with collation : %s",
 								collationString)));
 		}
@@ -1403,10 +1403,10 @@ bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 			PG_RETURN_BOOL(false);
 		}
 
-		ereport(ERROR, (errcode(MongoLocation51132),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errhint(
+						errdetail_log(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
 	}
 
@@ -1417,19 +1417,19 @@ bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 
 	if (filterElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation51185),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51185),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errhint(
+						errdetail_log(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
 	}
 	else if (filterElement.bsonValue.value_type == BSON_TYPE_NULL ||
 			 filterElement.bsonValue.value_type == BSON_TYPE_UNDEFINED)
 	{
-		ereport(ERROR, (errcode(MongoLocation51132),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errhint(
+						errdetail_log(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
 	}
 
@@ -1683,7 +1683,7 @@ bson_dollar_expr(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_text(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR, (errcode(MongoIndexNotFound),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXNOTFOUND),
 					errmsg("text index required for $text query")));
 	PG_RETURN_BOOL(false);
 }
@@ -1749,7 +1749,7 @@ bson_orderby_partition(PG_FUNCTION_ARGS)
 Datum
 bson_vector_orderby(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg(
 						"Similarity index was not found for a vector similarity search query.")));
 }
@@ -2237,19 +2237,19 @@ GetRemainderFromModBsonValues(const bson_value_t *dividendValue,
 	{
 		if (!BsonValueIsNumber(dividendValue) || !BsonValueIsNumber(divisorValue))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"dividend and divisor must be numeric types")));
 		}
 
 		if (IsBsonValueInfinity(divisorValue))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"divisor cannot be infinite")));
 		}
 
 		if (IsBsonValueNaN(divisorValue))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"divisor cannot be NaN")));
 		}
 
@@ -2257,7 +2257,7 @@ GetRemainderFromModBsonValues(const bson_value_t *dividendValue,
 				 divisorValue)) ||
 			(BsonValueAsDouble(divisorValue) == 0.0))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"divisor cannot be Zero")));
 		}
 	}
@@ -2408,7 +2408,7 @@ BsonOrderbyCore(pgbson *document, pgbson *filter, bool validateSort,
 
 	if (!BsonValueIsNumber(&filterElement.bsonValue) && validateSort)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Invalid sort direction %s",
 							   BsonValueToJsonForLogging(
 								   &filterElement.bsonValue))));
@@ -3074,7 +3074,7 @@ PopulateRegexFromQuery(RegexData *regexState, pgbsonelement *filterElement)
 	if (filterElement->bsonValue.value_type != BSON_TYPE_UTF8 &&
 		filterElement->bsonValue.value_type != BSON_TYPE_REGEX)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$regex has to be a string")));
 	}
 
@@ -3241,7 +3241,7 @@ PopulateDollarAllStateFromQuery(BsonDollarAllQueryState *dollarAllState,
 
 	if (filterElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$all needs an array")));
 	}
 
@@ -3253,7 +3253,7 @@ PopulateDollarAllStateFromQuery(BsonDollarAllQueryState *dollarAllState,
 			filterElement.bsonValue.value.v_doc.data,
 			filterElement.bsonValue.value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Could not read array for $all")));
 	}
 
@@ -3492,9 +3492,9 @@ PopulateDollarInStateFromQuery(BsonDollarInQueryState *dollarInState,
 					 *
 					 *  ex1: {"$in" : [[{ "b" : "cat"}]]}   ex2: {"$in" : [{ "b" : "cat"}] }
 					 */
-					ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
 										"operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects"),
-									errhint(
+									errdetail_log(
 										"operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects : %s",
 										collationString)));
 				}
@@ -3544,7 +3544,7 @@ IsQueryFilterNullForArray(const TraverseValidateState *state)
 	TraverseInValidateState *elementState = (TraverseInValidateState *) state;
 	if (elementState->filter->bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Expecting an array input for filter but found type %s",
 							BsonTypeName(
 								elementState->filter->
@@ -3826,13 +3826,13 @@ OrderByVisitTopLevelField(pgbsonelement *element, const
 	{
 		if (element->bsonValue.value_type != BSON_TYPE_DATE_TIME)
 		{
-			ereport(ERROR, (errcode(MongoLocation5429513),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513),
 							errmsg(
 								"PlanExecutor error during aggregation :: caused by :: "
 								"Invalid range: Expected the sortBy field to be a Date, "
 								"but it was %s", BsonTypeName(
 									element->bsonValue.value_type)),
-							errhint(
+							errdetail_log(
 								"PlanExecutor error during aggregation :: caused by :: "
 								"Invalid range: Expected the sortBy field to be a Date, "
 								"but it was %s", BsonTypeName(
@@ -3845,13 +3845,13 @@ OrderByVisitTopLevelField(pgbsonelement *element, const
 	{
 		if (!BsonTypeIsNumber(element->bsonValue.value_type))
 		{
-			ereport(ERROR, (errcode(MongoLocation5429414),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429414),
 							errmsg(
 								"PlanExecutor error during aggregation :: caused by :: "
 								"Invalid range: Expected the sortBy field to be a number, "
 								"but it was %s", BsonTypeName(
 									element->bsonValue.value_type)),
-							errhint(
+							errdetail_log(
 								"PlanExecutor error during aggregation :: caused by :: "
 								"Invalid range: Expected the sortBy field to be a number, "
 								"but it was %s", BsonTypeName(

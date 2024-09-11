@@ -15,7 +15,7 @@
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "query/helio_bson_compare.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/string_view.h"
 #include "utils/hashset_utils.h"
 #include "types/pcre_regex.h"
@@ -507,7 +507,7 @@ ProcessDollarConcatElement(bson_value_t *result, const
 
 	if (currentElement->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation16702), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16702), errmsg(
 							"$concat only supports strings, not %s",
 							BsonTypeName(currentElement->value_type))));
 	}
@@ -607,21 +607,21 @@ ProcessDollarSplitResult(bson_value_t *result, void *state)
 
 	if (context->firstArgument.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation40085), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40085), errmsg(
 							"$split requires an expression that evaluates to a string as a first argument, found: %s",
 							BsonTypeName(context->firstArgument.value_type))));
 	}
 
 	if (context->secondArgument.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation40086), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40086), errmsg(
 							"$split requires an expression that evaluates to a string as a second argument, found: %s",
 							BsonTypeName(context->secondArgument.value_type))));
 	}
 
 	if (context->secondArgument.value.v_utf8.len == 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation40087), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40087), errmsg(
 							"$split requires a non-empty separator")));
 	}
 
@@ -668,7 +668,7 @@ ProcessDollarStrLenBytesElement(bson_value_t *result, const
 {
 	if (currentElement->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation34473), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34473), errmsg(
 							"$strLenBytes requires a string argument, found: %s",
 							currentElement->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
@@ -689,7 +689,7 @@ ProcessDollarStrLenCPElement(bson_value_t *result, const
 {
 	if (currentElement->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation34471), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34471), errmsg(
 							"$strLenCP requires a string argument, found: %s",
 							currentElement->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
@@ -823,7 +823,7 @@ ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoLocation16007), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16007), errmsg(
 								"can't convert from BSON type %s to String",
 								BsonTypeName(currentElement->value_type))));
 		}
@@ -844,7 +844,7 @@ ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument, bson_value_
 {
 	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation50696), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50696), errmsg(
 							"%s only supports an object as an argument, found %s",
 							opName, BsonTypeName(inputDocument->value_type))));
 	}
@@ -865,14 +865,14 @@ ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument, bson_value_
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation50694), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50694), errmsg(
 								"%s found an unknown argument: %s", opName, key)));
 		}
 	}
 
 	if (input->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation50695), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50695), errmsg(
 							"%s requires an 'input' field", opName)));
 	}
 
@@ -886,12 +886,12 @@ ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument, bson_value_
 
 	if (input->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation50699),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50699),
 						errmsg(
 							"%s requires its input to be a string, got %s (of type %s) instead.",
 							opName, BsonValueToJsonForLogging(input), BsonTypeName(
 								input->value_type)),
-						errhint(
+						errdetail_log(
 							"%s requires its input to be a string, got of type %s instead.",
 							opName, BsonTypeName(input->value_type))));
 	}
@@ -911,10 +911,10 @@ ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument, bson_value_
 
 	if (chars->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation50700), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50700), errmsg(
 							" %s requires 'chars' to be a string, got %s (of type %s) instead.",
 							opName, BsonValueToJsonForLogging(chars), BsonTypeName(
-								chars->value_type)), errhint(
+								chars->value_type)), errdetail_log(
 							" %s requires 'chars' to be a string, got of type %s instead.",
 							opName, BsonTypeName(chars->value_type))));
 	}
@@ -1071,7 +1071,8 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 
 	if (input->firstArgument.value_type != BSON_TYPE_UTF8)
 	{
-		int errorCode = isIndexOfBytesOp ? MongoLocation40091 : MongoLocation40093;
+		int errorCode = isIndexOfBytesOp ? ERRCODE_HELIO_LOCATION40091 :
+						ERRCODE_HELIO_LOCATION40093;
 		ereport(ERROR, (errcode(errorCode), errmsg(
 							"%s requires a string as the first argument, found: %s",
 							opName,
@@ -1080,7 +1081,8 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 
 	if (input->secondArgument.value_type != BSON_TYPE_UTF8)
 	{
-		int errorCode = isIndexOfBytesOp ? MongoLocation40092 : MongoLocation40094;
+		int errorCode = isIndexOfBytesOp ? ERRCODE_HELIO_LOCATION40092 :
+						ERRCODE_HELIO_LOCATION40094;
 		ereport(ERROR, (errcode(errorCode), errmsg(
 							"%s requires a string as the second argument, found: %s",
 							opName,
@@ -1093,7 +1095,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 	{
 		if (!IsBsonValueFixedInteger(&input->thirdArgument))
 		{
-			ereport(ERROR, (errcode(MongoLocation40096), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40096), errmsg(
 								"%s requires an integral starting index, found a value of type: %s, with value: %s",
 								opName,
 								input->thirdArgument.value_type == BSON_TYPE_EOD ?
@@ -1102,7 +1104,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 								input->thirdArgument.value_type == BSON_TYPE_EOD ?
 								MISSING_VALUE_NAME :
 								BsonValueToJsonForLogging(&input->thirdArgument)),
-							errhint(
+							errdetail_log(
 								"%s requires an integral starting index, found a value of type: %s",
 								opName,
 								input->thirdArgument.value_type == BSON_TYPE_EOD ?
@@ -1113,7 +1115,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 		*startIndex = BsonValueAsInt32(&input->thirdArgument);
 		if (*startIndex < 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation40097), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40097), errmsg(
 								"%s requires a nonnegative start index, found: %d",
 								opName,
 								*startIndex)));
@@ -1124,7 +1126,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 	{
 		if (!IsBsonValueFixedInteger(&input->fourthArgument))
 		{
-			ereport(ERROR, (errcode(MongoLocation40096), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40096), errmsg(
 								"%s requires an integral ending index, found a value of type: %s, with value: %s",
 								opName,
 								input->fourthArgument.value_type == BSON_TYPE_EOD ?
@@ -1133,7 +1135,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 								input->fourthArgument.value_type == BSON_TYPE_EOD ?
 								MISSING_VALUE_NAME :
 								BsonValueToJsonForLogging(&input->fourthArgument)),
-							errhint(
+							errdetail_log(
 								"%s requires an integral ending index, found a value of type: %s",
 								opName,
 								input->fourthArgument.value_type == BSON_TYPE_EOD ?
@@ -1145,7 +1147,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 
 		if (*endIndex < 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation40097), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40097), errmsg(
 								"%s requires a nonnegative ending index, found: %d",
 								opName,
 								*endIndex)));
@@ -1249,7 +1251,7 @@ ProcessCoersionForStrCaseCmp(bson_value_t *element)
 			}
 			if (element->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoLocation16007), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16007), errmsg(
 									"can't convert from BSON type %s to String",
 									BsonTypeName(element->value_type))));
 			}
@@ -1942,13 +1944,13 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 {
 	if (!BsonValueIsNumber(secondValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation16034), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16034), errmsg(
 							"$substrBytes: starting index must be a numeric type (is BSON type %s)",
 							BsonTypeName(secondValue->value_type))));
 	}
 	else if (!BsonValueIsNumber(thirdValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation16035), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16035), errmsg(
 							"$substrBytes: length must be a numeric type (is BSON type %s)",
 							BsonTypeName(thirdValue->value_type))));
 	}
@@ -1968,7 +1970,7 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 
 	if (offset < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation50752), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50752), errmsg(
 							"$substrBytes: starting index must be non-negative (got: %ld)",
 							offset
 							)));
@@ -1986,7 +1988,7 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 	char *offsetString = result->value.v_utf8.str + offset;
 	if (IsUtf8ContinuationByte(offsetString))
 	{
-		ereport(ERROR, (errcode(MongoLocation28656), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28656), errmsg(
 							"$substrBytes:  Invalid range, starting index is a UTF-8 continuation byte."
 							)));
 	}
@@ -2006,7 +2008,7 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 	char *offsetStringWithLength = offsetString + substringLength;
 	if (IsUtf8ContinuationByte(offsetStringWithLength))
 	{
-		ereport(ERROR, (errcode(MongoLocation28657), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28657), errmsg(
 							"$substrBytes: Invalid range, ending index is in the middle of a UTF-8 character."
 							)));
 	}
@@ -2026,24 +2028,24 @@ ProcessDollarSubstrCP(bson_value_t *firstValue,
 	bool checkFixedInteger = true;
 	if (!BsonValueIsNumber(secondValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation34450), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34450), errmsg(
 							"$substrCP: starting index must be a numeric type (is BSON type %s)",
 							BsonTypeName(secondValue->value_type))));
 	}
 	else if (!IsBsonValue32BitInteger(secondValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(MongoLocation34451), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34451), errmsg(
 							"$substrCP: starting index cannot be represented as a 32-bit integral value")));
 	}
 	else if (!BsonValueIsNumber(thirdValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation34452), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34452), errmsg(
 							"$substrCP: length must be a numeric type (is BSON type %s)",
 							BsonTypeName(thirdValue->value_type))));
 	}
 	else if (!IsBsonValue32BitInteger(thirdValue, checkFixedInteger))
 	{
-		ereport(ERROR, (errcode(MongoLocation34453), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34453), errmsg(
 							"$substrCP: length cannot be represented as a 32-bit integral value")));
 	}
 	else if (IsExpressionResultNullOrUndefined(firstValue))
@@ -2063,13 +2065,13 @@ ProcessDollarSubstrCP(bson_value_t *firstValue,
 
 	if (length < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation34454), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34454), errmsg(
 							"$substrCP: length must be a nonnegative integer."
 							)));
 	}
 	else if (offset < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation34455), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34455), errmsg(
 							"$substrCP: the starting index must be nonnegative integer."
 							)));
 	}
@@ -2150,7 +2152,7 @@ ParseDollarRegexInput(const bson_value_t *operatorValue,
 
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation51103), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51103), errmsg(
 							"%s expects an object of named arguments but found: %s",
 							opName, BsonTypeName(operatorValue->value_type))));
 	}
@@ -2174,20 +2176,20 @@ ParseDollarRegexInput(const bson_value_t *operatorValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation31024), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31024), errmsg(
 								"%s found an unknown argument: %s", opName, key)));
 		}
 	}
 
 	if (input->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation31022), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31022), errmsg(
 							"%s requires 'input' parameter", opName)));
 	}
 
 	if (regex.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation31023), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31023), errmsg(
 							"%s requires 'regex' parameter", opName)));
 	}
 
@@ -2299,7 +2301,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 		}
 		else if (input->value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation51104), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51104), errmsg(
 								"%s needs 'input' to be of type string", opName)));
 		}
 		return true;
@@ -2312,14 +2314,14 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 		{
 			if (BsonValueStringHasNullCharcter(options))
 			{
-				ereport(ERROR, (errcode(MongoLocation51110), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51110), errmsg(
 									"%s:  regular expression options cannot contain an embedded null byte",
 									opName)));
 			}
 
 			if (!IsValidRegexOptions(options->value.v_utf8.str))
 			{
-				ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
 									"%s invalid flag in regex options: %s", opName,
 									options->value.v_utf8.str)));
 			}
@@ -2337,27 +2339,27 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 			if (!IsExpressionResultNullOrUndefined(options) && options->value_type !=
 				BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoLocation51106), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51106), errmsg(
 									"%s needs 'options' to be of type string", opName)));
 			}
 
 			if (typeRegexOptionLength > 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation51107), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51107), errmsg(
 									"%s found regex option(s) specified in both 'regex' and 'option' fields",
 									opName)));
 			}
 
 			if (BsonValueStringHasNullCharcter(options))
 			{
-				ereport(ERROR, (errcode(MongoLocation51110), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51110), errmsg(
 									"%s:  regular expression options cannot contain an embedded null byte",
 									opName)));
 			}
 
 			if (!IsValidRegexOptions(options->value.v_utf8.str))
 			{
-				ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
 									"%s invalid flag in regex options: %s", opName,
 									options->value.v_utf8.str)));
 			}
@@ -2367,7 +2369,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 		else if (typeRegexOptionLength > 0 && !IsValidRegexOptions(
 					 regex->value.v_regex.options))
 		{
-			ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
 								"%s invalid flag in regex options: %s", opName,
 								regex->value.v_regex.options)));
 		}
@@ -2376,7 +2378,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 	{
 		if (BsonValueStringHasNullCharcter(regex))
 		{
-			ereport(ERROR, (errcode(MongoLocation51109), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51109), errmsg(
 								"%s: regular expression cannot contain an embedded null byte",
 								opName)));
 		}
@@ -2385,13 +2387,13 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 		{
 			if (options->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoLocation51106), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51106), errmsg(
 									"%s needs 'options' to be of type string", opName)));
 			}
 
 			if (BsonValueStringHasNullCharcter(options))
 			{
-				ereport(ERROR, (errcode(MongoLocation51110), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51110), errmsg(
 									"%s:  regular expression options cannot contain an embedded null byte",
 									opName)));
 			}
@@ -2399,7 +2401,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 
 		if (!IsValidRegexOptions(options->value.v_utf8.str))
 		{
-			ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
 								"%s invalid flag in regex options: %s", opName,
 								options->value.v_utf8.str)));
 		}
@@ -2409,7 +2411,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoLocation51105), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51105), errmsg(
 							"%s needs 'regex' to be of type string or regex", opName)));
 	}
 
@@ -2419,7 +2421,7 @@ ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
 	}
 	else if (input->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation51104), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51104), errmsg(
 							"%s needs 'input' to be of type string", opName)));
 	}
 
@@ -2567,7 +2569,7 @@ WriteOutputOfDollarRegexFindAll(bson_value_t *input, RegexData *regexData,
 
 		if (PgbsonArrayWriterGetSize(&arrayWriter) > MAX_REGEX_OUTPUT_BUFFER_SIZE)
 		{
-			ereport(ERROR, (errcode(MongoLocation51151), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51151), errmsg(
 								"$regexFindAll: the size of buffer to store output exceeded the 64MB limit")));
 		}
 	}
@@ -2588,7 +2590,7 @@ ParseDollarReplaceHelper(const bson_value_t *argument,
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation51751), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51751), errmsg(
 							"%s requires an object as an argument, found: %s",
 							opName,
 							BsonTypeName(argument->value_type))));
@@ -2620,24 +2622,24 @@ ParseDollarReplaceHelper(const bson_value_t *argument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation51750), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51750), errmsg(
 								"%s found an unknown argument: %s", opName, key)));
 		}
 	}
 
 	if (input.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation51749), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51749), errmsg(
 							"%s requires 'input' to be specified", opName)));
 	}
 	else if (find.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation51748), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51748), errmsg(
 							"%s requires 'find' to be specified", opName)));
 	}
 	else if (replacement.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation51747), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51747), errmsg(
 							"%s requires 'replacement' to be specified", opName)));
 	}
 
@@ -2782,10 +2784,10 @@ ValidateParsedInputForDollarReplace(bson_value_t *input,
 	if (input->value_type != BSON_TYPE_UTF8 &&
 		!IsExpressionResultNullOrUndefined(input))
 	{
-		ereport(ERROR, (errcode(MongoLocation51746), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51746), errmsg(
 							"%s requires that 'input' be a string, found: %s",
 							opName,
-							(char *) BsonValueToJsonForLogging(input)), errhint(
+							(char *) BsonValueToJsonForLogging(input)), errdetail_log(
 							"%s requires that 'input' be a string, found of type %s",
 							opName,
 							BsonTypeName(input->value_type))));
@@ -2793,10 +2795,10 @@ ValidateParsedInputForDollarReplace(bson_value_t *input,
 	else if (find->value_type != BSON_TYPE_UTF8 &&
 			 !IsExpressionResultNullOrUndefined(find))
 	{
-		ereport(ERROR, (errcode(MongoLocation51745), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51745), errmsg(
 							"%s requires that 'find' be a string, found: %s",
 							opName,
-							(char *) BsonValueToJsonForLogging(find)), errhint(
+							(char *) BsonValueToJsonForLogging(find)), errdetail_log(
 							"%s requires that 'find' be a string, found of type %s",
 							opName,
 							BsonTypeName(find->value_type))));
@@ -2804,10 +2806,11 @@ ValidateParsedInputForDollarReplace(bson_value_t *input,
 	else if (replacement->value_type != BSON_TYPE_UTF8 &&
 			 !IsExpressionResultNullOrUndefined(replacement))
 	{
-		ereport(ERROR, (errcode(MongoLocation51744), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51744), errmsg(
 							"%s requires that 'replacement' be a string, found: %s",
 							opName,
-							(char *) BsonValueToJsonForLogging(replacement)), errhint(
+							(char *) BsonValueToJsonForLogging(replacement)),
+						errdetail_log(
 							"%s requires that 'replacement' be a string, found of type %s",
 							opName,
 							BsonTypeName(replacement->value_type))));
