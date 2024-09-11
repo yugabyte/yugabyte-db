@@ -43,6 +43,11 @@ extern ForeignScan *make_foreignscan(List *qptlist, List *qpqual,
 									 Index scanrelid, List *fdw_exprs, List *fdw_private,
 									 List *fdw_scan_tlist, List *fdw_recheck_quals,
 									 Plan *outer_plan);
+extern Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
+								   List *tlist, List *scan_clauses,
+								   bool indexonly, bool bitmapindex);
+extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
+									   List *scan_clauses);
 extern Plan *change_plan_targetlist(Plan *subplan, List *tlist,
 									bool tlist_parallel_safe);
 extern Plan *materialize_finished_plan(Plan *subplan);
