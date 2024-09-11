@@ -21,6 +21,7 @@
 #define AG_AGE_GRAPHID_DS_H
 
 #include "utils/graphid.h"
+#include "utils/agtype.h"
 
 #define IS_GRAPHID_STACK_EMPTY(stack) \
             get_stack_size(stack) == 0

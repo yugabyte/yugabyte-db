@@ -1686,7 +1686,7 @@ static List *cast_agtype_input_to_other_type(cypher_parsestate *cpstate,
             }
 
             /* free the old args and replace them with the new ones */
-            pfree(targs);
+            pfree_if_not_null(targs);
             targs = new_targs;
             break;
         }
@@ -1741,7 +1741,7 @@ static void check_for_extension_functions(char *extension, FuncCall *fn)
             if (procform->pronamespace == oid &&
                 isTempNamespace(procform->pronamespace) == false)
             {
-                pfree(asp);
+                pfree_if_not_null(asp);
                 found = true;
                 break;
             }
@@ -1752,7 +1752,7 @@ static void check_for_extension_functions(char *extension, FuncCall *fn)
             break;
         }
 
-        pfree(asp);
+        pfree_if_not_null(asp);
     }
 
     /* if we didn't find it, it isn't in the search path */

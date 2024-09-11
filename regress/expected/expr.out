@@ -8789,6 +8789,21 @@ ERROR:  extension fuzzystrmatch is not installed for function difference
 LINE 1: SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("...
                                                ^
 --
+-- Issue 2093: Server crashes when executing SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+--
+SELECT agtype_access_operator(agtype_in('[null, null]'));
+ agtype_access_operator 
+------------------------
+ 
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+      -505290721
+(1 row)
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('fuzzystrmatch', true);

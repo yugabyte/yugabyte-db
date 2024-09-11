@@ -3546,6 +3546,12 @@ SELECT * FROM cypher('fuzzystrmatch', $$ RETURN soundex("hello world!") $$) AS (
 SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("hello world!", "hello world!") $$) AS (result agtype);
 
 --
+-- Issue 2093: Server crashes when executing SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+--
+SELECT agtype_access_operator(agtype_in('[null, null]'));
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('fuzzystrmatch', true);

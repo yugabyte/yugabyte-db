@@ -31,6 +31,7 @@
 #include "parser/cypher_parse_agg.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/agtype.h"
 
 typedef struct
 {
@@ -807,7 +808,7 @@ static List * expand_grouping_sets(List *groupingSets, int limit)
         result = lappend(result, list_union_int(NIL, (List *) lfirst(lc)));
     }
 
-    for_each_cell(lc, expanded_groups, 
+    for_each_cell(lc, expanded_groups,
                   lnext(expanded_groups, list_head(expanded_groups)))
     {
         List *p = lfirst(lc);
@@ -847,7 +848,7 @@ static List * expand_grouping_sets(List *groupingSets, int limit)
         while (result_len-- > 0)
             result = lappend(result, *ptr++);
 
-        pfree(buf);
+        pfree_if_not_null(buf);
     }
 
     return result;

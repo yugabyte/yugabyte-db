@@ -131,7 +131,7 @@ Datum age_is_valid_label_name(PG_FUNCTION_ARGS)
                           agtv_value->val.string.len);
 
     is_valid = is_valid_label_name(label_name, 0);
-    pfree(label_name);
+    pfree_if_not_null(label_name);
 
     if (is_valid)
     {

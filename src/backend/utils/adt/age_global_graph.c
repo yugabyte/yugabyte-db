@@ -182,7 +182,7 @@ static void create_GRAPH_global_hashtables(GRAPH_global_context *ggctx)
     ggctx->vertex_hashtable = hash_create(vhn, VERTEX_HTAB_INITIAL_SIZE,
                                           &vertex_ctl,
                                           HASH_ELEM | HASH_FUNCTION);
-    pfree(vhn);
+    pfree_if_not_null(vhn);
 
     /* initialize the edge hashtable */
     MemSet(&edge_ctl, 0, sizeof(edge_ctl));
@@ -191,7 +191,7 @@ static void create_GRAPH_global_hashtables(GRAPH_global_context *ggctx)
     edge_ctl.hash = tag_hash;
     ggctx->edge_hashtable = hash_create(ehn, EDGE_HTAB_INITIAL_SIZE, &edge_ctl,
                                         HASH_ELEM | HASH_FUNCTION);
-    pfree(ehn);
+    pfree_if_not_null(ehn);
 }
 
 /* helper function to get a List of all label names for the specified graph */
@@ -709,7 +709,7 @@ static bool free_specific_GRAPH_global_context(GRAPH_global_context *ggctx)
     }
 
     /* free the graph name */
-    pfree(ggctx->graph_name);
+    pfree_if_not_null(ggctx->graph_name);
     ggctx->graph_name = NULL;
 
     ggctx->graph_oid = InvalidOid;
@@ -741,7 +741,7 @@ static bool free_specific_GRAPH_global_context(GRAPH_global_context *ggctx)
         }
 
         /* free the vertex's datumCopy properties */
-        pfree(DatumGetPointer(value->vertex_properties));
+        pfree_if_not_null(DatumGetPointer(value->vertex_properties));
         value->vertex_properties = 0;
 
         /* free the edge list associated with this vertex */
@@ -783,7 +783,7 @@ static bool free_specific_GRAPH_global_context(GRAPH_global_context *ggctx)
         }
 
         /* free the edge's datumCopy properties */
-        pfree(DatumGetPointer(value->edge_properties));
+        pfree_if_not_null(DatumGetPointer(value->edge_properties));
         value->edge_properties = 0;
 
         /* move to the next edge */
@@ -806,7 +806,7 @@ static bool free_specific_GRAPH_global_context(GRAPH_global_context *ggctx)
     ggctx->edge_hashtable = NULL;
 
     /* free the context */
-    pfree(ggctx);
+    pfree_if_not_null(ggctx);
     ggctx = NULL;
 
     return true;
@@ -1309,7 +1309,7 @@ Datum age_vertex_stats(PG_FUNCTION_ARGS)
     ggctx = manage_GRAPH_global_contexts(graph_name, graph_oid);
 
     /* free the graph name */
-    pfree(graph_name);
+    pfree_if_not_null(graph_name);
 
     /* get the id */
     agtv_temp = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_vertex, "id");
@@ -1415,7 +1415,7 @@ Datum age_graph_stats(PG_FUNCTION_ARGS)
     ggctx = manage_GRAPH_global_contexts(graph_name, graph_oid);
 
     /* free the graph name */
-    pfree(graph_name);
+    pfree_if_not_null(graph_name);
 
     /* zero the state */
     memset(&result, 0, sizeof(agtype_in_state));

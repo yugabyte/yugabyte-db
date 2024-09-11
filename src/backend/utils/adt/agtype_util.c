@@ -433,14 +433,14 @@ int compare_agtype_containers_orderability(agtype_container *a,
     {
         agtype_iterator *i = ita->parent;
 
-        pfree(ita);
+        pfree_if_not_null(ita);
         ita = i;
     }
     while (itb != NULL)
     {
         agtype_iterator *i = itb->parent;
 
-        pfree(itb);
+        pfree_if_not_null(itb);
         itb = i;
     }
 
@@ -557,7 +557,7 @@ agtype_value *find_agtype_value_from_container(agtype_container *container,
     }
 
     /* Not found */
-    pfree(result);
+    pfree_if_not_null(result);
     return NULL;
 }
 
@@ -1217,7 +1217,7 @@ static agtype_iterator *free_and_get_parent(agtype_iterator *it)
 {
     agtype_iterator *v = it->parent;
 
-    pfree(it);
+    pfree_if_not_null(it);
     return v;
 }
 
@@ -1469,9 +1469,9 @@ bool agtype_deep_contains(agtype_iterator **val,
                     contains = agtype_deep_contains(&nestval, &nest_contained, false);
 
                     if (nestval)
-                        pfree(nestval);
+                        pfree_if_not_null(nestval);
                     if (nest_contained)
-                        pfree(nest_contained);
+                        pfree_if_not_null(nest_contained);
                     if (contains)
                         break;
                 }
@@ -2438,7 +2438,7 @@ char *agtype_value_type_to_string(enum agtype_value_type type)
 void pfree_agtype_value(agtype_value* value)
 {
     pfree_agtype_value_content(value);
-    pfree(value);
+    pfree_if_not_null(value);
 }
 
 /*
@@ -2456,7 +2456,7 @@ void pfree_agtype_value_content(agtype_value* value)
     switch (value->type)
     {
         case AGTV_NUMERIC:
-            pfree(value->val.numeric);
+            pfree_if_not_null(value->val.numeric);
             break;
 
         case AGTV_STRING:
@@ -2464,7 +2464,7 @@ void pfree_agtype_value_content(agtype_value* value)
              * The char pointer (val.string.val) is not free'd because
              * it is not allocated by an agtype helper function.
              */
-            pfree(value->val.string.val);
+            pfree_if_not_null(value->val.string.val);
             break;
 
         case AGTV_ARRAY:
@@ -2473,7 +2473,7 @@ void pfree_agtype_value_content(agtype_value* value)
             {
                 pfree_agtype_value_content(&value->val.array.elems[i]);
             }
-            pfree(value->val.array.elems);
+            pfree_if_not_null(value->val.array.elems);
             break;
 
         case AGTV_OBJECT:
@@ -2484,11 +2484,11 @@ void pfree_agtype_value_content(agtype_value* value)
                 pfree_agtype_value_content(&value->val.object.pairs[i].key);
                 pfree_agtype_value_content(&value->val.object.pairs[i].value);
             }
-            pfree(value->val.object.pairs);
+            pfree_if_not_null(value->val.object.pairs);
             break;
 
         case AGTV_BINARY:
-            pfree(value->val.binary.data);
+            pfree_if_not_null(value->val.binary.data);
             break;
 
         case AGTV_NULL:

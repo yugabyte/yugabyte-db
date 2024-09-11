@@ -307,8 +307,8 @@ void finish_edge_batch_insert(batch_insert_state **batch_state,
     }
 
     // Clean up batch state
-    pfree((*batch_state)->slots);
-    pfree(*batch_state);
+    pfree_if_not_null((*batch_state)->slots);
+    pfree_if_not_null(*batch_state);
     *batch_state = NULL;
 
     table_close(relation, AccessShareLock);

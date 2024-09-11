@@ -556,6 +556,7 @@ agtype_iterator *get_next_list_element(agtype_iterator *it,
 void pfree_agtype_value(agtype_value* value);
 void pfree_agtype_value_content(agtype_value* value);
 void pfree_agtype_in_state(agtype_in_state* value);
+void pfree_if_not_null(void *ptr);
 agtype_value *agtype_value_from_cstring(char *str, int len);
 /* Oid accessors for AGTYPE */
 Oid get_AGTYPEOID(void);

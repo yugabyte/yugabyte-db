@@ -125,12 +125,12 @@ void reset_session_info(void)
     {
         if (session_info_graph_name != NULL)
         {
-            pfree(session_info_graph_name);
+            pfree_if_not_null(session_info_graph_name);
         }
 
         if (session_info_cypher_statement != NULL)
         {
-            pfree(session_info_cypher_statement);
+            pfree_if_not_null(session_info_cypher_statement);
         }
     }
 

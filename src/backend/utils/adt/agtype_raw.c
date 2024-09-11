@@ -172,8 +172,8 @@ void pfree_agtype_build_state(agtype_build_state *bstate)
      * bstate->buffer->data is not pfree'd because this pointer
      * is returned by the `build_agtype` function.
      */
-    pfree(bstate->buffer);
-    pfree(bstate);
+    pfree_if_not_null(bstate->buffer);
+    pfree_if_not_null(bstate);
 }
 
 void write_string(agtype_build_state *bstate, char *str)

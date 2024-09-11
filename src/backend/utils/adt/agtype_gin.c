@@ -552,7 +552,7 @@ static Datum make_scalar_key(const agtype_value *scalarVal, bool is_key)
          */
         cstr = numeric_normalize(scalarVal->val.numeric);
         item = make_text_key(AGT_GIN_FLAG_NUM, cstr, strlen(cstr));
-        pfree(cstr);
+        pfree_if_not_null(cstr);
         break;
     case AGTV_STRING:
         item = make_text_key(is_key ? AGT_GIN_FLAG_KEY : AGT_GIN_FLAG_STR,

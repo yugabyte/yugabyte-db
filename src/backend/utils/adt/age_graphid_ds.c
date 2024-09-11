@@ -144,14 +144,14 @@ void free_ListGraphId(ListGraphId *container)
     {
         next_node = curr_node->next;
         /* we can do this because this is just a list of ints */
-        pfree(curr_node);
+        pfree_if_not_null(curr_node);
         container->size--;
         curr_node = next_node;
     }
 
     Assert(container->size == 0);
     /* free the container */
-    pfree(container);
+    pfree_if_not_null(container);
 }
 
 /* helper function to create a new, empty, graphid stack */
@@ -188,7 +188,7 @@ void free_graphid_stack(ListGraphId *stack)
         GraphIdNode *next = stack->head->next;
 
         /* free the head element */
-        pfree(stack->head);
+        pfree_if_not_null(stack->head);
         /* move the head to the next */
         stack->head = next;
     }
@@ -253,7 +253,7 @@ graphid pop_graphid_stack(ListGraphId *stack)
     stack->head = stack->head->next;
     stack->size--;
     /* free the element */
-    pfree(node);
+    pfree_if_not_null(node);
 
     /* return the id */
     return id;

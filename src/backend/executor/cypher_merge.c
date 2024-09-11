@@ -346,7 +346,7 @@ static void free_path_entry_array(path_entry **path_array, int length)
 
     for (index = 0; index < length; index++)
     {
-        pfree(path_array[index]);
+        pfree_if_not_null(path_array[index]);
     }
 }
 
@@ -892,10 +892,10 @@ static void end_cypher_merge(CustomScanState *node)
         free_path_entry_array(entry, path_length);
 
         /* free up the array container */
-        pfree(entry);
+        pfree_if_not_null(entry);
 
         /* free up the created_path container */
-        pfree(css->created_paths_list);
+        pfree_if_not_null(css->created_paths_list);
 
         css->created_paths_list = next;
     }

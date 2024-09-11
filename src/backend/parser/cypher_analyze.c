@@ -113,7 +113,7 @@ static void post_parse_analyze(ParseState *pstate, Query *query, JumbleState *js
         }
 
         /* reset extra_node */
-        pfree(extra_node);
+        pfree_if_not_null(extra_node);
         extra_node = NULL;
     }
 }
@@ -303,7 +303,7 @@ static void build_explain_query(Query *query, Node *explain_node)
     ((ExplainStmt *)explain_node)->options = NULL;
 
     /* we need to free query_node as it is no longer needed */
-    pfree(query_node);
+    pfree_if_not_null(query_node);
 }
 
 static bool is_rte_cypher(RangeTblEntry *rte)

@@ -319,7 +319,7 @@ static void create_VLE_local_state_hashtable(VLE_local_context *vlelctx)
                                                 EDGE_STATE_HTAB_INITIAL_SIZE,
                                                 &edge_state_ctl,
                                                 HASH_ELEM | HASH_FUNCTION);
-    pfree(eshn);
+    pfree_if_not_null(eshn);
 }
 
 /*
@@ -433,14 +433,14 @@ static void free_VLE_local_context(VLE_local_context *vlelctx)
     /* free the stored graph name */
     if (vlelctx->graph_name != NULL)
     {
-        pfree(vlelctx->graph_name);
+        pfree_if_not_null(vlelctx->graph_name);
         vlelctx->graph_name = NULL;
     }
 
     /* free the stored edge label name */
     if (vlelctx->edge_label_name != NULL)
     {
-        pfree(vlelctx->edge_label_name);
+        pfree_if_not_null(vlelctx->edge_label_name);
         vlelctx->edge_label_name = NULL;
     }
 
@@ -462,15 +462,15 @@ static void free_VLE_local_context(VLE_local_context *vlelctx)
     }
 
     /* free the containers */
-    pfree(vlelctx->dfs_vertex_stack);
-    pfree(vlelctx->dfs_edge_stack);
-    pfree(vlelctx->dfs_path_stack);
+    pfree_if_not_null(vlelctx->dfs_vertex_stack);
+    pfree_if_not_null(vlelctx->dfs_edge_stack);
+    pfree_if_not_null(vlelctx->dfs_path_stack);
     vlelctx->dfs_vertex_stack = NULL;
     vlelctx->dfs_edge_stack = NULL;
     vlelctx->dfs_path_stack = NULL;
 
     /* and finally the context itself */
-    pfree(vlelctx);
+    pfree_if_not_null(vlelctx);
     vlelctx = NULL;
 }
 

@@ -26,6 +26,7 @@
 #include "parser/cypher_gram.h"
 #include "parser/cypher_parse_node.h"
 #include "parser/scansup.h"
+#include "utils/agtype.h"
 
 /* override the default action for locations */
 #define YYLLOC_DEFAULT(current, rhs, n) \
@@ -2940,7 +2941,7 @@ static char *create_unique_name(char *prefix_name)
     /* if we created the prefix, we need to free it */
     if (prefix_name == NULL || strlen(prefix_name) <= 0)
     {
-        pfree(prefix);
+        pfree_if_not_null(prefix);
     }
 
     return name;

@@ -20,6 +20,8 @@
 #ifndef AGE_SESSION_INFO_H
 #define AGE_SESSION_INFO_H
 
+#include "utils/agtype.h"
+
 bool is_session_info_prepared(void);
 char *get_session_info_graph_name(void);
 char *get_session_info_cypher_statement(void);
