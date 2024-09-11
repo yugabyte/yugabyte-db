@@ -23,7 +23,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |YCQL currenttimestamp() precision
 | {{<product "ycql">}}
 | {{<release "All">}}
-| {{<nobreak "01 Januaury 2024">}}
+| {{<nobreak "27 August 2024">}}
 |
 | {{<ta 22935>}}
 |Potential issues with server-side sequence caching in multi-database clusters
