@@ -7,9 +7,9 @@
       "display": "v2.23 (Preview)",
       "version": "2.23.0.0",
       "versionShort": "2.23.0",
-      "appVersion": "2.23.0.0-b710",
+      "appVersion": "2.23.0.0-b711",
       "isStable": false,
-      "initialRelease": "2024-09-09"
+      "initialRelease": "2024-09-11"
     },
     {
       "series": "v2024.1",
