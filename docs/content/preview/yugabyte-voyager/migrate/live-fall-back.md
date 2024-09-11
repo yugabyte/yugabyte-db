@@ -245,6 +245,16 @@ Create a new database user, and assign the necessary user permissions.
    GRANT <SCHEMA_NAME>_writer_role TO c##ybvoyager;
    ```
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+{{< note title="Connecting to Oracle instances" >}}
+You can use only one of the following arguments to connect to your Oracle instance:
+
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+{{< /note >}}
+
   {{% /tab %}}
 
   {{% tab header="RDS Oracle" %}}
@@ -478,6 +488,16 @@ Create a new database user, and assign the necessary user permissions.
    GRANT <SCHEMA_NAME>_writer_role TO ybvoyager;
    ```
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+{{< note title="Connecting to Oracle instances" >}}
+You can use only one of the following arguments to connect to your Oracle instance:
+
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+{{< /note >}}
+
   {{% /tab %}}
 
 {{< /tabpane >}}
@@ -601,6 +621,8 @@ Create a new database user, and assign the necessary user permissions.
     --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
   {{% /tab %}}
 
   {{% tab header="RDS PostgreSQL" %}}
@@ -720,21 +742,13 @@ Create a new database user, and assign the necessary user permissions.
     --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
   {{% /tab %}}
 
 {{< /tabpane >}}
 
 </div>
-
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance:
-
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
-{{< /note >}}
 
 ## Prepare the target database
 
@@ -1223,9 +1237,9 @@ Perform the following steps as part of the cutover process:
 
 1. Re-enable triggers and foreign-key constraints on the source database using the following PL/SQL commands on the source schema as a privileged user:
 
-{{< tabpane text=true >}}
+    {{< tabpane text=true >}}
 
-  {{% tab header="Oracle" %}}
+      {{% tab header="Oracle" %}}
 
   ```sql
   --enable triggers
@@ -1250,9 +1264,9 @@ Perform the following steps as part of the cutover process:
     /
   ```
 
-  {{% /tab %}}
+      {{% /tab %}}
 
-  {{% tab header="PostgreSQL" %}}
+    {{% tab header="PostgreSQL" %}}
 
   Use the following PL/SQL to enable the triggers and create foreign key constraints back before using the source again.
 
@@ -1277,9 +1291,9 @@ Perform the following steps as part of the cutover process:
   --you can use schema dump from source which is use to import schema on target YugabyteDB (with the modifications if made in schema migration phase), one copy of the pure form of that dump is stored in `$EXPORT_DIR/temp/schema.sql`.
   ```
 
-  {{% /tab %}}
+      {{% /tab %}}
 
-{{< /tabpane >}}
+    {{< /tabpane >}}
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
