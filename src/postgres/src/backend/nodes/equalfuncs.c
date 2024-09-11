@@ -3053,6 +3053,27 @@ _equalYbExprColrefDesc(const YbExprColrefDesc *a, const YbExprColrefDesc *b)
 	return true;
 }
 
+static bool
+_equalYbSkippableEntities(const YbSkippableEntities *a, const YbSkippableEntities *b)
+{
+	COMPARE_NODE_FIELD(index_list);
+	COMPARE_NODE_FIELD(referencing_fkey_list);
+	COMPARE_NODE_FIELD(referenced_fkey_list);
+	return true;
+}
+
+static bool
+_equalYbUpdateAffectedEntities(const YbUpdateAffectedEntities *a,
+							   const YbUpdateAffectedEntities *b)
+{
+	COMPARE_SCALAR_FIELD(matrix.nrows);
+	COMPARE_SCALAR_FIELD(matrix.ncols);
+	COMPARE_POINTER_FIELD(entity_list, a->matrix.ncols * sizeof(struct YbUpdateEntity));
+	COMPARE_POINTER_FIELD(col_info_list, a->matrix.nrows * sizeof(struct YbUpdateColInfo));
+	COMPARE_BITMAPSET_FIELD(matrix.data);
+	return true;
+}
+
 /*
  * equal
  *	  returns whether two nodes are equal
@@ -3804,6 +3825,14 @@ equal(const void *a, const void *b)
 
 		case T_YbExprColrefDesc:
 			retval = _equalYbExprColrefDesc(a, b);
+			break;
+
+		case T_YbSkippableEntities:
+			retval = _equalYbSkippableEntities(a, b);
+			break;
+
+		case T_YbUpdateAffectedEntities:
+			retval = _equalYbUpdateAffectedEntities(a, b);
 			break;
 
 		default:
