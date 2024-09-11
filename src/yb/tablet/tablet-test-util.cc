@@ -72,7 +72,7 @@ void YBTabletTest::SetUpTestTablet(const std::string& root_dir) {
 void YBTabletTest::AlterSchema(const Schema& schema) {
   ThreadSafeArena arena;
   LWChangeMetadataRequestPB req(&arena);
-  req.set_schema_version(tablet()->metadata()->schema_version() + 1);
+  req.set_schema_version(tablet()->metadata()->primary_table_schema_version() + 1);
 
   ChangeMetadataOperation operation(nullptr, nullptr, &req);
   ASSERT_OK(tablet()->CreatePreparedChangeMetadata(

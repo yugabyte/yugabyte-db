@@ -853,7 +853,7 @@ class TabletBootstrap {
         metadata.wal_dir(),
         metadata.fs_manager()->uuid(),
         *tablet_->schema(),
-        metadata.schema_version(),
+        metadata.primary_table_schema_version(),
         tablet_->GetTableMetricsEntity(),
         tablet_->GetTabletMetricsEntity(),
         append_pool_,
