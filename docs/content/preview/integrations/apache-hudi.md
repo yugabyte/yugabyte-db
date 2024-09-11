@@ -14,7 +14,7 @@ type: docs
 
 The following tutorial describes steps to integrate YugabyteDB with Apache Hudi, enabling a robust data lakehouse architecture leveraging both SQL capabilities and big data processing power.
 
-## Prerequisite
+## Prerequisites
 
 To use Apache Hudi, ensure that you have the following:
 
