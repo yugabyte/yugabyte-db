@@ -5,8 +5,6 @@ linkTitle: Manage
 description: Manging YugabyteDB deployments
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent: Manage your YugabyteDB deployment
-aliases:
-  - /preview/manage/
 menu:
   preview:
     identifier: manage

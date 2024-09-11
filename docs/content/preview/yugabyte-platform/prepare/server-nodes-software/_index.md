@@ -22,7 +22,7 @@ Depending on the [provider type](../../yba-overview/#provider-configurations) an
 {{< warning title="Using disk encryption software with YugabyteDB" >}}
 If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
 
-In addition, when enabling or disabling the disk encryption service, first pause YugabyteDB services.
+To avoid problems, pause the universe _before_ enabling or disabling the disk encryption service on universe nodes.
 {{< /warning >}}
 
 ##### Linux OS
