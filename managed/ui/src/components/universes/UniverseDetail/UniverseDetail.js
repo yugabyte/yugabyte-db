@@ -1227,6 +1227,7 @@ class UniverseDetail extends Component {
                     </RbacValidator>
                   )}
                   {!universePaused &&
+                    !isItKubernetesUniverse &&
                     isConnectionPoolEnabled &&
                     isConfigureYSQLEnabled &&
                     isYSQLEnabledInUniverse &&
