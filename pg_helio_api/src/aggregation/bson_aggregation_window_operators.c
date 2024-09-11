@@ -1580,16 +1580,14 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	if (bson_iter_next(&iterSortSpec))
 	{
 		const char *key = bson_iter_key(&iterSortSpec);
-		char *result;
-		result = (char *) palloc(strlen(key) + 1);
-		result[0] = '$';
-		strcpy(result + 1, key);
+		StringInfo result = makeStringInfo();
+		appendStringInfo(result, "$%s", key);
 		bson_value_t resultBsonValue;
 		resultBsonValue.value_type = BSON_TYPE_UTF8;
-		resultBsonValue.value.v_utf8.len = strlen(result);
-		resultBsonValue.value.v_utf8.str = result;
+		resultBsonValue.value.v_utf8.len = result->len;
+		resultBsonValue.value.v_utf8.str = result->data;
 		*xExpr = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&resultBsonValue)); /* Dereference to modify the pointer */
-		pfree(result);
+		pfree(result->data);
 	}
 	else
 	{
