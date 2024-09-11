@@ -40,90 +40,15 @@ The following table describes operating systems and architectures that are no lo
 | Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20<br> Removed support in v2.21. |
 | Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20<br> Removed support in v2.21. |
 
-## CIS Hardened
+## Using CIS hardened operating systems
 
-YugabyteDB supports RHEL CIS hardened OSs based on the following images:
+YugabyteDB supports RHEL CIS hardened operating systems based on the following images:
 
 - [CIS Red Hat Enterprise Linux 8 Benchmark-Level 1](https://aws.amazon.com/marketplace/pp/prodview-kg7ijztdpvfaw?sr=0-7&?ref=_ptnr_cis_website)
 
 - [CIS Red Hat Enterprise Linux 9 Benchmark-Level 1](https://aws.amazon.com/marketplace/server/procurement?productId=fa2dc596-6685-4c0b-b258-3c415342c908)
 
-These images have been customized for YugabyteDB and YugabyteDB Anywhere, as described in the following sections.
+To use these images for YugabyteDB or YugabyteDB Anywhere, you need to make changes to ports:
 
-### Port changes required for YugabyteDB
-
-Firewall rules were changed to add the [default ports](default-ports/) required by YugabyteDB:
-
-```sh
-#!/bin/bash
-
-sudo dnf repolist
-sudo dnf config-manager --set-enabled extras
-sudo dnf install -y firewalld
-sudo systemctl start firewalld
-
-
-ports=(5433 9042 7100 9100 18018 9070 7000 9000 15433)
-
-for port in "${ports[@]}"; do
-   sudo firewall-cmd --zone=public --add-port=${port}/tcp --permanent
-done
-
-sudo firewall-cmd --reload
-```
-
-### Firewall changes required for YugabyteDB Anywhere
-
-Firewall rules were changed to allow [YBA Installer](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/) to install YugabyteDB Anywhere on CIS hardened Linux.
-
-```sh
-#!/bin/bash
-
-sudo dnf repolist
-sudo dnf config-manager --set-enabled extras
-sudo dnf install -y firewalld
-sudo systemctl start firewalld
-
-ports=(9090 9300 443 80 22)
-
-for port in "${ports[@]}"; do
-   sudo firewall-cmd --zone=public --add-port=${port}/tcp --permanent
-done
-
-sudo firewall-cmd --reload
-```
-
-For more information on networking requirements for YuigabyteDB Anywhere, refer to [Networking](../../../yugabyte-platform/prepare/networking/)
-
-### Custom /tmp directory for on-premises providers
-
-If you use the default `/tmp` directory, prechecks fail when deploying universe with an access denied error.
-
-To resolve this, do the following:
-
-1. Create a custom `tmp` directory called `/new_tmp` on the database nodes:
-
-    ```sh
-    sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
-    ```
-
-1. Set a remote `tmp` directory runtime configuration:
-
-    ```sh
-    yb.filepaths.remoteTmpDirectory: /new_tmp
-    ```
-
-1. Set YB-Master and YB-TServer flags of the universe with the custom `tmp` dir:
-
-    "Tmp_dir": /new_tmp
-
-#### Add yugabyte user to sshd_config
-
-When provisioning nodes, YugabyteDB Anywhere adds the `yugabyte` user. If you are using a CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
-
-```sh
-add_cmd = (
-           f"sudo sed -i '/^AllowUsers / s/$/ yugabyte/' /etc/ssh/sshd_config && "
-           "sudo systemctl restart sshd"
-       )
-```
+- [Firewall rules for YugabyteDB](../default-ports/#port-changes-for-cis-hardened-images)
+- [Firewall rules for YugabyteDB Anywhere](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-rhel-8-and-9)

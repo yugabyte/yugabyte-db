@@ -29,6 +29,27 @@ The following ports need to be open.
 | Operator | YBA&nbsp;node | Open the following ports on the YugabyteDB Anywhere node so that administrators can access the YBA UI and monitor the system and node metrics. These ports are also used by standby YBA instances in [high availability](../../administer-yugabyte-platform/high-availability/) setups.<ul><li>443 - HTTPS</li><li>9090 - Served by Prometheus, for metrics</li></ul>Port 5432 serves a local PostgreSQL instance, and is not exposed outside of localhost. |
 | DB nodes<br>YBA node | Storage | Database clusters must be allowed to contact backup storage (such as AWS S3, GCP GCS, Azure blob).<ul><li>443 - HTTPS</li></ul> |
 
+### Firewall changes for CIS hardened RHEL 8 and 9
+
+If you are installing YugabyteDB Anywhere on CIS hardened RHEL 8 or 9, you need to make the following firewall changes to allow [YBA Installer](../../install-yugabyte-platform/install-software/installer/) to install YugabyteDB Anywhere.
+
+```sh
+#!/bin/bash
+
+sudo dnf repolist
+sudo dnf config-manager --set-enabled extras
+sudo dnf install -y firewalld
+sudo systemctl start firewalld
+
+ports=(9090 9300 443 80 22)
+
+for port in "${ports[@]}"; do
+   sudo firewall-cmd --zone=public --add-port=${port}/tcp --permanent
+done
+
+sudo firewall-cmd --reload
+```
+
 ### Networking for xCluster
 
 When two database clusters are connected via [xCluster replication](../../manage-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.

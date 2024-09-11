@@ -142,6 +142,15 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
+    If you are using a CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
+
+    ```sh
+    add_cmd = (
+            f"sudo sed -i '/^AllowUsers / s/$/ yugabyte/' /etc/ssh/sshd_config && "
+            "sudo systemctl restart sshd"
+        )
+    ```
+
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
 
     ```bash
@@ -237,6 +246,20 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
       sudo chown yugabyte:yugabyte /data
       sudo chmod 755 /data
       ```
+
+### Custom tmp directory for CIS hardened RHEL 8 or 9
+
+For CIS hardened RHEL 8 or 9, if you use the default `/tmp` directory, prechecks fail when deploying universes with an access denied error.
+
+To resolve this, create a custom `tmp` directory called `/new_tmp` on the database nodes:
+
+```sh
+sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
+```
+
+In addition, after you create the [on-premises provider](../../../configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to `/new_tmp`.
+
+Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../manage-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
 
 ## Install Prometheus Node Exporter
 
