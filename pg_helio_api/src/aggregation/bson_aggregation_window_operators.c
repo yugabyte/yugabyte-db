@@ -846,7 +846,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 	}
 	*allFrameOptions |= frameOptions;
 
-	/* In the window frameOptions strip vCore specific options */
+	/* In the window frameOptions strip helio specific options */
 	windowClause->frameOptions = frameOptions & (~FRAMEOPTION_MONGO_ONLY);
 
 	/* entry should not remain NULL at this point */
@@ -1955,9 +1955,9 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
-							"$expMovingAvg is only supported on vCore 1.21.0 and above")));
+							"$expMovingAvg is not supported yet.")));
 	}
 
 	if (list_length(context->sortOptions) == 0)
@@ -2042,19 +2042,19 @@ HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
 	{
 		ereport(ERROR, (errcode(MongoLocation605001),
 						errmsg(
-							" $linearFill is only supported on vCore 1.21.0 and above")));
+							"$linearFill is not supported yet.")));
 	}
 	if (list_length(context->sortOptions) != 1)
 	{
 		ereport(ERROR, (errcode(MongoLocation605001),
 						errmsg(
-							" $linearFill must be specified with a top level sortBy expression with exactly one element")));
+							"$linearFill must be specified with a top level sortBy expression with exactly one element")));
 	}
 	if (context->isWindowPresent)
 	{
 		ereport(ERROR, (errcode(MongoFailedToParse),
 						errmsg(
-							" 'window' field is not allowed in $linearFill")));
+							"'window' field is not allowed in $linearFill")));
 	}
 
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -2107,15 +2107,15 @@ HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(MongoLocation605001),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
-							" $locf is only supported on vCore 1.21.0 and above")));
+							"$locf is not supported yet.")));
 	}
 	if (context->isWindowPresent)
 	{
 		ereport(ERROR, (errcode(MongoFailedToParse),
 						errmsg(
-							" 'window' field is not allowed in $locf")));
+							"'window' field is not allowed in $locf")));
 	}
 
 	WindowFunc *windowFunc = makeNode(WindowFunc);
