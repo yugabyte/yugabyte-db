@@ -12,6 +12,8 @@ menu:
 type: docs
 ---
 
+Configure a project in the [CLion](https://www.jetbrains.com/clion/) C/C++ IDE.
+
 There are two options for build systems that you can use with YugabyteDB, [`ninja`](https://ninja-build.org/) and [`make`](https://en.wikipedia.org/wiki/Make_(software)).
 
 Note that the [CMake](https://cmake.org/) meta build system is used in both cases, and it generates build files consumed by the underlying Ninja and Make build systems.
@@ -19,7 +21,7 @@ Note that the [CMake](https://cmake.org/) meta build system is used in both case
 * `ninja` is faster than `make`, especially for rebuilding mostly-built projects, but CLion has limited support for `ninja` (for example, it doesn't allow you to [rebuild individual files](https://youtrack.jetbrains.com/issue/CPP-17622)).
 * `make` is well-supported by CLion, but slower, particularly for rebuilding mostly-built projects, compared to `ninja`.
 
-### Configure a CLion compilation database project
+## Configure a CLion compilation database project
 
 For best performance, configure the project as a compilation database project:
 
