@@ -20,7 +20,7 @@
 #include "utils/guc_utils.h"
 #include "utils/version_utils.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 #include "metadata/collection.h"
 #include "api_hooks_def.h"

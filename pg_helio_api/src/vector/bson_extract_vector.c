@@ -26,7 +26,7 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "vector/bson_extract_vector.h"

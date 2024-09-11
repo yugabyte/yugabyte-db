@@ -18,7 +18,7 @@
 #include "io/helio_bson_core.h"
 #include "api_hooks.h"
 #include "commands/create_indexes.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "sharding/sharding.h"
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"

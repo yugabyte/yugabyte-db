@@ -24,7 +24,7 @@
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/feature_counter.h"
 #include "vector/vector_common.h"
 #include "vector/vector_spec.h"

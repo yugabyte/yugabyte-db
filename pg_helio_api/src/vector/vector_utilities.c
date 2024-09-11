@@ -18,7 +18,7 @@
 #include <commands/defrem.h>
 
 #include "io/helio_bson_core.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/metadata_cache.h"
 #include "vector/bson_extract_vector.h"
 #include "vector/vector_common.h"

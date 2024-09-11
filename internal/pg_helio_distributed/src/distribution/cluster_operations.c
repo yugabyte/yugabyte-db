@@ -15,7 +15,7 @@
 #include "lib/stringinfo.h"
 #include "access/xact.h"
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/guc_utils.h"
