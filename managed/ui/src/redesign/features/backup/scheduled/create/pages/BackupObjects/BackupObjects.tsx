@@ -14,7 +14,7 @@ import {
   ScheduledBackupContext,
   ScheduledBackupContextMethods
 } from '../../models/ScheduledBackupContext';
-import { useForm } from 'react-hook-form';
+import { Control, FieldValues, useForm } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -60,12 +60,12 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
 
   const Default_Keyspace_database_options = [
     {
-      keySpace: t('allDatabase'),
+      keySpace: t('allDatabase', { keyPrefix: 'backup' }),
       tableType: BACKUP_API_TYPES.YSQL,
       isDefaultOption: true
     },
     {
-      keySpace: t('allKeyspaces'),
+      keySpace: t('allKeyspaces', { keyPrefix: 'backup' }),
       tableType: BACKUP_API_TYPES.YCQL,
       isDefaultOption: true
     }
@@ -108,7 +108,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
     []
   );
 
-  const reactSelecctComp = ReactSelectComponents(!!errors.keyspace?.message);
+  const reactSelectComp = ReactSelectComponents(!!errors.keyspace?.message);
 
   if (isTableListLoading || !tablesInUniverse)
     return (
@@ -179,7 +179,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
                 </>
               );
             },
-            ...reactSelecctComp
+            ...reactSelectComp
           }}
         />
       </div>
@@ -188,7 +188,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
       )}
       {selectedKeyspace?.tableType === BACKUP_API_TYPES.YCQL && (
         <SelectTables
-          control={control}
+          control={control as unknown as Control<FieldValues>}
           tablesInSelectedKeyspace={
             selectedKeyspace?.isDefaultOption
               ? []

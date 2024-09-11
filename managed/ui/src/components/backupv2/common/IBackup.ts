@@ -43,7 +43,11 @@ export interface Keyspace_Table {
   storageLocation?: string;
   defaultLocation?: string;
   tableNameList?: string[];
-  tableUUIDList?: string[]
+  tableUUIDList?: string[];
+  backupPointInTimeRestoreWindow?: {
+    timestampRetentionWindowStartMillis?: number;
+    timestampRetentionWindowEndMillis?: number;
+  }
 }
 
 export interface ICommonBackupInfo {

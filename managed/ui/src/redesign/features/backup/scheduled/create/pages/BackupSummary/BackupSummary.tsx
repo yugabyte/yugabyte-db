@@ -89,6 +89,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
+  
   const [scheduledBackupContext, { setPage, setIsSubmitting }, { hideModal }] = (useContext(
     ScheduledBackupContext
   ) as unknown) as ScheduledBackupContextMethods;
@@ -105,7 +106,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
     {
       onSuccess: () => {
         toast.success(
-          <span className={classes.successMsg}>
+          <span className={classes.successMsg} style={{ display: 'flex' }}>
             <CheckIcon />
             {t('successMsg')}
           </span>
@@ -147,8 +148,8 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
   const fullBackup = backupFrequency.useCronExpression
     ? cronstrue.toString(backupFrequency.cronExpression)
     : `${t('every', {
-        keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
-      })} ${backupFrequency.frequency} ${backupFrequency.frequencyTimeUnit}`;
+      keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
+    })} ${backupFrequency.frequency} ${backupFrequency.frequencyTimeUnit}`;
 
   let tablesList: JSX.Element | string = t('allTables');
 
@@ -191,7 +192,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
       {
         name: t(dbType),
         value: backupObjects.keyspace?.isDefaultOption
-          ? t(apiType === 'Ysql' ? 'allDatabases' : 'allKeyspaces')
+          ? t(apiType === 'Ysql' ? 'allDatabases' : 'allKeyspaces', { keyPrefix: 'backup' })
           : backupObjects.keyspace?.label
       },
       {
@@ -212,10 +213,9 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
         name: t('incrementalBackup'),
         value: backupFrequency.useIncrementalBackup
           ? `${t('every', {
-              keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
-            })} ${backupFrequency.incrementalBackupFrequency} ${
-              backupFrequency.incrementalBackupFrequencyTimeUnit
-            }`
+            keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
+          })} ${backupFrequency.incrementalBackupFrequency} ${backupFrequency.incrementalBackupFrequencyTimeUnit
+          }`
           : '-'
       },
       {

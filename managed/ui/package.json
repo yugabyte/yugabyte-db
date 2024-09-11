@@ -105,6 +105,7 @@
     "prismjs": "1.29.0",
     "progressbar.js": "1.1.0",
     "prop-types": "15.7.2",
+    "rc-time-picker": "3.7.3",
     "react": "17.0.2",
     "react-ace": "9.4.4",
     "react-beautiful-dnd": "13.1.1",

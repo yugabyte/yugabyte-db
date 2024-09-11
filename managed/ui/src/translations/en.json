@@ -2494,6 +2494,15 @@
     "backup": {
       "Ysql": "YSQL",
       "Ycql": "YCQL",
+      "allDatabase": "All Databases",
+      "allKeyspaces": "All Keyspaces",
+      "buttonLabels": {
+        "restore": "Restore",
+        "next": "Next",
+        "verifying": "Verifying",
+        "waitingMsg": "This can take a few seconds",
+        "rename": "Rename"
+      },
       "scheduled": {
         "empty": {
           "createSchduledPolicy": "Create Scheduled Backup Policy",
@@ -2521,8 +2530,6 @@
             "parallelThreads": "Parallel Threads (Optional)"
           },
           "backupObjects": {
-            "allDatabase": "All Databases",
-            "allKeyspaces": "All Keyspaces",
             "advancedConfig": "Advanced Configuration",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
@@ -2581,8 +2588,6 @@
             "apiType": "API Type",
             "database": "Database",
             "keyspace": "Keyspace",
-            "allKeyspaces": "All Keyspaces",
-            "allDatabases": "All Databases",
             "tables": "Tables",
             "allTables": "All Tables",
             "backupStrategy": "Backup Strategy",
@@ -2607,6 +2612,64 @@
             "unableToFetchTables": "Unable to fetch tables",
             "parallelThreads": "Parallel threads should be between 1 and 100"
           }
+        }
+      },
+      "restore": {
+        "title": "Restore Backup",
+        "preparingRestore": "Preparing Restore...",
+        "restoreStarted": "Restore started. <0>View Details</0>",
+        "pages": {
+          "selectKeyspaceConfigs": "Source",
+          "selectUniverse": "Target",
+          "renameKeyspaces": "Rename Keyspaces"
+        },
+
+        "backupSummary": {
+          "SOURCE": "Source",
+          "TARGET": "Target",
+          "keyspaces": "Keyspaces",
+          "tables": "Tables",
+          "allTables": "All Tables",
+          "restoreTo": "Restore to",
+          "restoreSize": "Restore Size",
+          "targetUniverse": "Target Universe",
+          "kmsConfig": "KMS Config",
+          "tablesSelected": "{{count}} table(s) selected"
+        },
+        "source": {
+          "selectKeyspace": "Select the keyspace(s) you want to restore",
+          "selectTime": "Select time to restore to",
+          "mostRecentIncremental": "Most recent incremental backup",
+          "backupTime": "Backup time",
+          "earlierPointInTime": "An earlier point in time ",
+          "restoreBetweenMsg": "You may restore to any time between <b><from/></b> and <b><to/></b>",
+          "date": "Date",
+          "time": "Time",
+          "secs": "Second",
+          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and {{to}}. <a>Learn more</a>"
+        },
+        "target": {
+          "selectUniverse": "Select a universe to restore to",
+          "targetUniverse": "Target Universe",
+          "backupSource": "Backup source",
+          "renameKeyspaces": "Rename keyspace/s before restoring  {{Optional}}",
+          "optional": "(Optional)",
+          "forceRenameHelpText": "<b>Note!</b> Renaming is required since the selected target universe contains keyspaces with identical names. You will be able to rename in step 3.",
+          "restoreTablespaces": "Restore tablespaces and data to their respective regions",
+          "restoreTablespacesHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+          "selectKMS": "Select KMS Configuration",
+          "kmsConfig": "KMS Configurations",
+          "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
+          "activeKMS": "Active",
+          "usedDuringBackup": "Used during backup",
+          "parallelThreads": "Parallel threads (Optional)"
+        },
+        "validationErrMsg": {
+          "keyspacesAlreadyExists":"Keyspace already exists in the target Universe",
+          "pitrMillisOptions.secs": "Secs must be between 0 to 59",
+          "kmsConfigRequired": "KMS Config is required",
+          "invalidKeyspaceName":"Invalid keyspace name",
+          "duplicateKeyspaceName":"Duplicate keyspace name given"
         }
       }
     },
