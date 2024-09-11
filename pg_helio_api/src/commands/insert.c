@@ -41,10 +41,11 @@
 #include "utils/feature_counter.h"
 #include "metadata/metadata_cache.h"
 #include "utils/version_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "api_hooks.h"
 #include "schema_validation/schema_validation.h"
 #include "operators/bson_expr_eval.h"
+#include "utils/mongo_errors.h"
 
 /*
  * BatchInsertionSpec describes a batch of insert operations.

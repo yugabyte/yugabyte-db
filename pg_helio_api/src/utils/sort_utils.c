@@ -11,7 +11,7 @@
 #include <postgres.h>
 
 #include "utils/sort_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "query/helio_bson_compare.h"
 
 /**

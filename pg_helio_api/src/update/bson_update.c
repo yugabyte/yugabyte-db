@@ -20,7 +20,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_project.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "update/bson_update_common.h"
 #include "update/bson_update.h"
 #include "utils/fmgr_utils.h"
