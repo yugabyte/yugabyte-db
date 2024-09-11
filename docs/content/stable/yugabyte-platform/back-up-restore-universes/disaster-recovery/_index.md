@@ -74,6 +74,8 @@ Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](h
 
 - Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
+
 ## Upgrading universes in DR
 
 When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
