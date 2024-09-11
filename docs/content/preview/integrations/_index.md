@@ -128,7 +128,7 @@ Version refers to the latest tested version of the integration.
 | Tool         | Version | Support | Tutorial |
 | :----------- | :------ | :------ | :------- |
 | Apache Atlas | 2.3.0   | Partial | [Apache Atlas](atlas-ycql/) |
-| Apache Hudi  | 0.14.1  | Full    | [Apache Hudi](https://www.yugabyte.com/blog/apache-hudi-data-lakehouse-integration/) |
+| Apache Hudi  | 0.14.1  | Full    | [Apache Hudi](apache-hudi/) |
 | Apache Spark | 3.3.0   | Full    | [Apache Spark](apache-spark/) |
 | Jaeger       | 1.43.0  | Full    | [Jaeger](jaeger/) |
 | JanusGraph   | 0.6.2   | Full    | [JanusGraph](janusgraph/) |
