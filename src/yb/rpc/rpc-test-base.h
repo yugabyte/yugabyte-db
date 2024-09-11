@@ -64,6 +64,7 @@ class CalculatorServiceMethods {
   static const constexpr auto kAddMethodName = "Add";
   static const constexpr auto kDisconnectMethodName = "Disconnect";
   static const constexpr auto kEchoMethodName = "Echo";
+  static const constexpr auto kRepeatedEchoMethodName = "RepeatedEcho";
   static const constexpr auto kSendStringsMethodName = "SendStrings";
   static const constexpr auto kSleepMethodName = "Sleep";
 
@@ -82,6 +83,12 @@ class CalculatorServiceMethods {
   static RemoteMethod* EchoMethod() {
     static RemoteMethod method(
         rpc_test::CalculatorServiceIf::static_service_name(), kEchoMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* RepeatedEchoMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kRepeatedEchoMethodName);
     return &method;
   }
 
@@ -124,6 +131,7 @@ class GenericCalculatorService : public ServiceIf {
   void DoSendStrings(InboundCall* incoming);
   void DoSleep(InboundCall *incoming);
   void DoEcho(InboundCall *incoming);
+  void DoRepeatedEcho(InboundCall *incoming);
   void AddMethodToMap(
       const RpcServicePtr& service, RpcEndpointMap* map, const char* method_name, Method method);
 

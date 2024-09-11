@@ -420,6 +420,10 @@ void YBInboundCall::RespondSuccess(AnyMessageConstPtr response) {
 void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
                                    const Status& status) {
   TRACE_EVENT0("rpc", "InboundCall::RespondFailure");
+
+  // Release memory early and prevent building an oversized error response.
+  sidecars_.Reset();
+
   ErrorStatusPB err;
   err.set_message(status.ToString());
   err.set_code(error_code);
