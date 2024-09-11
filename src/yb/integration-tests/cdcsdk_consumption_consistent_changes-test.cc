@@ -3500,5 +3500,62 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
   ASSERT_TRUE(received_gc_error);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocationWithIndexes) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // This array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int expected_count[] = {0, 501, 0, 0, 0, 0, 2, 2};
+
+  // Create a table.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(key int primary key, value_1 int)", kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+
+  // Create an index.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+
+  // Create a consistent snapshot stream.
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Perform 1 multi-shard txn and 1 single shard txn.
+  ASSERT_OK(WriteRowsHelperWithConn(0, 500, &test_cluster_, true, &conn));
+  ASSERT_OK(WriteRowsWithConn(500, 501, &test_cluster_, &conn));
+
+  auto checkpoint_before = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+
+  // We should receive DMLs corresponding to the above txns only. No records corresponding to the
+  // index table should be seen. Since we have reduced the batch size, GetChanges will be called
+  // multiple times.
+  auto gcc_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 501, true /* init_virtual_wal */));
+
+  ASSERT_EQ(gcc_resp.records.size(), 505);
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], gcc_resp.record_count[i]);
+  }
+
+  // Assert that the checkpoint has moved forward.
+  auto checkpoint_after = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  ASSERT_EQ(checkpoint_before.size(), 1);
+  ASSERT_EQ(checkpoint_after.size(), 1);
+  ASSERT_GT(checkpoint_after[0].index, checkpoint_before[0].index);
+
+  // This GetConsistentChanges call will fetch an empty batch. The response will only contain
+  // safepoint records.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    ASSERT_EQ(record.row_message().op(), RowMessage_Op_SAFEPOINT);
+  }
+}
+
 }  // namespace cdc
 }  // namespace yb
