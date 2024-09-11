@@ -1,12 +1,12 @@
 ---
-title: Database clone
-headerTitle: Database clone
-linkTitle: Database clone
+title: Instant database cloning
+headerTitle: Instant database cloning
+linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
 badges: tp
 menu:
   preview:
-    identifier: lightweight-db-clone
+    identifier: instant-db-clone
     parent: backup-restore
     weight: 706
 type: docs
