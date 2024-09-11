@@ -32,6 +32,15 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (agtype AS text)
     WITH FUNCTION ag_catalog.agtype_to_text(agtype);
 
+-- text -> agtype
+CREATE FUNCTION ag_catalog.text_to_agtype(text)
+    RETURNS agtype
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 -- agtype -> boolean (implicit)
 CREATE FUNCTION ag_catalog.agtype_to_bool(agtype)
     RETURNS boolean
@@ -69,7 +78,7 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (float8 AS agtype)
     WITH FUNCTION ag_catalog.float8_to_agtype(float8);
 
--- agtype -> float8 (implicit)
+-- agtype -> float8 (exmplicit)
 CREATE FUNCTION ag_catalog.agtype_to_float8(agtype)
     RETURNS float8
     LANGUAGE c
@@ -105,6 +114,18 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (agtype AS bigint)
     WITH FUNCTION ag_catalog.agtype_to_int8(variadic "any")
 AS ASSIGNMENT;
+
+-- int4 -> agtype (explicit)
+CREATE FUNCTION ag_catalog.int4_to_agtype(int4)
+    RETURNS agtype
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (int4 AS agtype)
+    WITH FUNCTION ag_catalog.int4_to_agtype(int4);
 
 -- agtype -> int4
 CREATE FUNCTION ag_catalog.agtype_to_int4(variadic "any")

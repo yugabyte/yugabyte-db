@@ -8770,8 +8770,37 @@ SELECT * FROM cypher('issue_1988', $$
 (4 rows)
 
 --
+-- Test external extension function logic for fuzzystrmatch
+--
+SELECT * FROM create_graph('fuzzystrmatch');
+NOTICE:  graph "fuzzystrmatch" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- These should fail with extension not installed
+SELECT * FROM cypher('fuzzystrmatch', $$ RETURN soundex("hello world!") $$) AS (result agtype);
+ERROR:  extension fuzzystrmatch is not installed for function soundex
+LINE 1: SELECT * FROM cypher('fuzzystrmatch', $$ RETURN soundex("hel...
+                                               ^
+SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("hello world!", "hello world!") $$) AS (result agtype);
+ERROR:  extension fuzzystrmatch is not installed for function difference
+LINE 1: SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("...
+                                               ^
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('fuzzystrmatch', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table fuzzystrmatch._ag_label_vertex
+drop cascades to table fuzzystrmatch._ag_label_edge
+NOTICE:  graph "fuzzystrmatch" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('issue_1988', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table issue_1988._ag_label_vertex

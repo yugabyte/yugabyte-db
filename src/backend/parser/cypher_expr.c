@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_proc.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -34,6 +35,7 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/float.h"
 #include "utils/lsyscache.h"
 
@@ -52,6 +54,7 @@
 #define FUNC_AGTYPE_TYPECAST_PG_FLOAT8 "agtype_to_float8"
 #define FUNC_AGTYPE_TYPECAST_PG_BIGINT "agtype_to_int8"
 #define FUNC_AGTYPE_TYPECAST_BOOL "agtype_typecast_bool"
+#define FUNC_AGTYPE_TYPECAST_PG_TEXT "agtype_to_text"
 
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);
@@ -94,6 +97,14 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
                                                   ColumnRef *cr);
 static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
                                                  cypher_unwind *expr);
+static bool is_fuzzystrmatch_function(FuncCall *fn);
+static void check_for_extension_functions(char *extension, FuncCall *fn);
+static List *cast_agtype_input_to_other_type(cypher_parsestate *cpstate,
+                                             FuncCall *fn, List *targs);
+static Node *cast_input_to_output_type(cypher_parsestate *cpstate, Node *expr,
+                                       Oid source_oid, Oid target_oid);
+static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
+                                        FuncExpr *fexpr);
 
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
@@ -1579,11 +1590,16 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     {
         fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_BIGINT));
     }
-    else if ((pg_strcasecmp(ctypecast->typecast, "bool") == 0 || 
+    else if ((pg_strcasecmp(ctypecast->typecast, "bool") == 0 ||
              pg_strcasecmp(ctypecast->typecast, "boolean") == 0))
     {
         fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_BOOL));
     }
+    else if (pg_strcasecmp(ctypecast->typecast, "pg_text") == 0)
+    {
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_TEXT));
+    }
+
     /* if none was found, error out */
     else
     {
@@ -1600,6 +1616,221 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     return transform_FuncCall(cpstate, fnode);
 }
 
+/* is the function part of the fuzzystrmatch extension */
+static bool is_fuzzystrmatch_function(FuncCall *fn)
+{
+    char *funcname = (((String*)linitial(fn->funcname))->sval);
+
+    if (pg_strcasecmp(funcname, "soundex") == 0 ||
+        pg_strcasecmp(funcname, "difference") == 0 ||
+        pg_strcasecmp(funcname, "daitch_mokotoff") == 0 ||
+        pg_strcasecmp(funcname, "soundex_tsvector") == 0 ||
+        pg_strcasecmp(funcname, "levenshtein") == 0 ||
+        pg_strcasecmp(funcname, "levenshtein_less_equal") == 0 ||
+        pg_strcasecmp(funcname, "metaphone") == 0 ||
+        pg_strcasecmp(funcname, "dmetaphone") == 0)
+    {
+        return true;
+    }
+    return false;
+}
+
+/*
+ * Cast a function's input parameter list from agtype to that function's input
+ * type. This is used for functions that don't take agtype as input and where
+ * there isn't an implicit cast to do this for us.
+ */
+static List *cast_agtype_input_to_other_type(cypher_parsestate *cpstate,
+                                             FuncCall *fn, List *targs)
+{
+    char *funcname = (((String*)linitial(fn->funcname))->sval);
+    int nargs = fn->args->length;
+    CatCList *catlist = NULL;
+    List *new_targs = NIL;
+    ListCell *lc = NULL;
+    int i = 0;
+
+    /* get a list of matching functions from the sys cache */
+    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
+
+    /* iterate through the list of functions for ones that match */
+    for (i = 0; i < catlist->n_members; i++)
+    {
+        HeapTuple proctup = &catlist->members[i]->tuple;
+        Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+        /* check that the names, number of args, and variadic match */
+        if (pg_strcasecmp(funcname, procform->proname.data) == 0 &&
+            nargs == procform->pronargs &&
+            fn->func_variadic == procform->provariadic)
+        {
+            Oid *proargtypes = procform->proargtypes.values;
+            int j = 0;
+
+            /*
+             * Rebuild targs with castings to the function's input types from
+             * targ's output type.
+             */
+            foreach(lc, targs)
+            {
+                Oid poid = proargtypes[j];
+                Node *targ = lfirst(lc);
+                Oid toid = exprType(targ);
+
+                /* cast the arg. this will error out if it can't be done. */
+                targ = cast_input_to_output_type(cpstate, targ, toid, poid);
+
+                /* add it to the new argument list */
+                new_targs = lappend(new_targs, targ);
+                j++;
+            }
+
+            /* free the old args and replace them with the new ones */
+            pfree(targs);
+            targs = new_targs;
+            break;
+        }
+    }
+    /* we need to release the cache list */
+    ReleaseSysCacheList(catlist);
+    return targs;
+}
+
+/*
+ * Verify that a called function, that is mapped to a specific
+ * function in some other extension, is loaded. Otherwise, bail
+ * out with an error, stating the issue.
+ *
+ * Note: some code borrowed from FuncnameGetCandidates
+ */
+static void check_for_extension_functions(char *extension, FuncCall *fn)
+{
+    char *funcname = (((String*)linitial(fn->funcname))->sval);
+    CatCList *catlist = NULL;
+    bool found = false;
+    int i = 0;
+
+    /* get a list of matching functions */
+    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
+
+    /* if the catalog list is empty, the extension isn't loaded */
+    if (catlist->n_members == 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("extension %s is not installed for function %s",
+                        extension, funcname)));
+    }
+
+    /* iterate through them and verify that they are in the search path */
+    for (i = 0; i < catlist->n_members; i++)
+    {
+        HeapTuple proctup = &catlist->members[i]->tuple;
+        Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+        List *asp = fetch_search_path(false);
+        ListCell *nsp;
+
+        /*
+         * Consider only procs that are in the search path and are not in
+         * the temp namespace.
+         */
+        foreach(nsp, asp)
+        {
+            Oid oid = lfirst_oid(nsp);
+
+            if (procform->pronamespace == oid &&
+                isTempNamespace(procform->pronamespace) == false)
+            {
+                pfree(asp);
+                found = true;
+                break;
+            }
+        }
+
+        if (found)
+        {
+            break;
+        }
+
+        pfree(asp);
+    }
+
+    /* if we didn't find it, it isn't in the search path */
+    if (!found)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("extension %s is not in search path for function %s",
+                        extension, funcname)));
+    }
+
+    /* release the system cache list */
+    ReleaseSysCacheList(catlist);
+}
+
+/*
+ * Cast an input type to an output type, error out if not possible.
+ * Thanks to Taha for this idea.
+ */
+static Node *cast_input_to_output_type(cypher_parsestate *cpstate, Node *expr,
+                                       Oid source_oid, Oid target_oid)
+{
+    ParseState *pstate = &cpstate->pstate;
+
+    /* can we cast from source to target oid? */
+    if (can_coerce_type(1, &source_oid, &target_oid, COERCION_EXPLICIT))
+    {
+        /* coerce the source to the target */
+        expr = coerce_type(pstate, expr, source_oid, target_oid, -1,
+                           COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
+    }
+    /* error out if we can't cast */
+    else
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_FUNCTION),
+                 errmsg("cannot cast type %s to %s", format_type_be(source_oid),
+                 format_type_be(target_oid))));
+    }
+
+    /* return the casted expression */
+    return expr;
+}
+
+/*
+ * Due to issues with creating a cast from text to agtype, we need to wrap a
+ * function that outputs text with text_to_agtype.
+ */
+static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
+                                        FuncExpr *fexpr)
+{
+    ParseState *pstate = &cpstate->pstate;
+    Node *last_srf = pstate->p_last_srf;
+    Node *retval = NULL;
+    List *fname = NIL;
+    FuncCall *fnode = NULL;
+
+    if (fexpr->funcresulttype != TEXTOID)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("can only wrap text to agtype")));
+    }
+
+    /* make a function call node to cast text to agtype */
+    fname = list_make2(makeString("ag_catalog"), makeString("text_to_agtype"));
+
+    /* the input function is the arg to the new function (wrapper) */
+    fnode = makeFuncCall(fname, list_make1(fexpr), COERCE_SQL_SYNTAX, -1);
+
+    /* ... and hand off to ParseFuncOrColumn to create it */
+    retval = ParseFuncOrColumn(pstate, fname, list_make1(fexpr), last_srf,
+                               fnode, false, -1);
+
+    /* return the wrapped function */
+    return retval;
+}
+
 /*
  * Code borrowed from PG's transformFuncCall and updated for AGE
  */
@@ -1611,6 +1842,7 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     List *fname = NIL;
     ListCell *arg;
     Node *retval = NULL;
+    bool found = false;
 
     /* Transform the list of arguments ... */
     foreach(arg, fn->args)
@@ -1625,8 +1857,67 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     Assert(!fn->agg_within_group);
 
     /*
-     * If the function name is not qualified, then it is one of ours. We need to
-     * construct its name, and qualify it, so that PG can find it.
+     * Check for cypher functions that map to the fuzzystrmatch extension and
+     * verify that the external functions exist.
+     */
+    if (is_fuzzystrmatch_function(fn))
+    {
+        /* abort if the extension isn't loaded or in the path */
+        check_for_extension_functions("fuzzystrmatch", fn);
+
+        /* everything looks good so mark found as true */
+        found = true;
+    }
+
+    /*
+     * If we found a function that is part of an extension, which is in the
+     * search_path, then cast the agtype inputs to that function's type inputs.
+     */
+    if (found)
+    {
+        FuncExpr *fexpr = NULL;
+
+        /*
+         * Coerce agtype inputs to function's inputs. this will error out if
+         * this is not possible to do.
+         */
+        targs = cast_agtype_input_to_other_type(cpstate, fn, targs);
+
+        /* now get the function node for the external function */
+        fexpr = (FuncExpr *)ParseFuncOrColumn(pstate, fn->funcname, targs,
+                                              last_srf, fn, false,
+                                              fn->location);
+
+        /*
+         * This will cast TEXT outputs to AGTYPE. It will error out if this is
+         * not possible to do. For TEXT to AGTYPE we need to wrap the output
+         * due to issues with creating a cast from TEXT to AGTYPE.
+         */
+        if (fexpr->funcresulttype == TEXTOID)
+        {
+            retval = wrap_text_output_to_agtype(cpstate, fexpr);
+        }
+        else
+        {
+            retval = (Node *)fexpr;
+        }
+
+        /* additional casts or wraps can be done here for other types */
+
+        /* flag that an aggregate was found during a transform */
+        if (retval != NULL && retval->type == T_Aggref)
+        {
+            cpstate->exprHasAgg = true;
+        }
+
+        /* we can just return it here */
+        return retval;
+    }
+
+    /*
+     * If the function name is not qualified and not from an extension, then it
+     * is one of ours. We need to construct its name, and qualify it, so that PG
+     * can find it.
      */
     if (list_length(fn->funcname) == 1)
     {
@@ -1644,7 +1935,9 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
          * in lower case.
          */
         for (i = 0; i < pnlen; i++)
+        {
             ag_name[i + 4] = tolower(name[i]);
+        }
 
         /* terminate it with 0 */
         ag_name[i + 4] = 0;
@@ -1660,9 +1953,9 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
          */
         if ((list_length(targs) != 0) &&
             (strcmp("startNode", name) == 0 ||
-              strcmp("endNode", name) == 0 ||
-              strcmp("vle", name) == 0 ||
-              strcmp("vertex_stats", name) == 0))
+             strcmp("endNode", name) == 0 ||
+             strcmp("vle", name) == 0 ||
+             strcmp("vertex_stats", name) == 0))
         {
             char *graph_name = cpstate->graph_name;
             Datum d = string_to_agtype(graph_name);

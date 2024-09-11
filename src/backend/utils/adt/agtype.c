@@ -3199,6 +3199,49 @@ Datum agtype_to_text(PG_FUNCTION_ARGS)
     PG_RETURN_TEXT_P(text_value);
 }
 
+PG_FUNCTION_INFO_V1(text_to_agtype);
+
+/*
+ * Cast text to agtype.
+ */
+Datum text_to_agtype(PG_FUNCTION_ARGS)
+{
+    agtype *result = NULL;
+    agtype_value agtv;
+    text *text_value = NULL;
+    char *string = NULL;
+    int len = 0;
+
+    if (PG_ARGISNULL(0))
+    {
+        PG_RETURN_NULL();
+    }
+
+    /* get the text value */
+    text_value = PG_GETARG_TEXT_PP(0);
+    /* convert it to a string */
+    string = text_to_cstring(text_value);
+    /* get the length */
+    len = strlen(string);
+
+    /* create a temporary agtype string */
+    agtv.type = AGTV_STRING;
+    agtv.val.string.len = len;
+    agtv.val.string.val = pstrdup(string);
+
+    /* free the string */
+    pfree(string);
+
+    /* convert to agtype */
+    result = agtype_value_to_agtype(&agtv);
+
+    /* free the input arg if necessary */
+    PG_FREE_IF_COPY(text_value, 0);
+
+    /* return our result */
+    PG_RETURN_POINTER(result);
+}
+
 PG_FUNCTION_INFO_V1(agtype_to_json);
 
 /*
@@ -3263,11 +3306,20 @@ Datum float8_to_agtype(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(int8_to_agtype);
 
 /*
- * Cast float8 to agtype.
+ * Cast int8 to agtype.
  */
 Datum int8_to_agtype(PG_FUNCTION_ARGS)
 {
     return integer_to_agtype(PG_GETARG_INT64(0));
+}
+
+PG_FUNCTION_INFO_V1(int4_to_agtype);
+/*
+ * Cast int to agtype.
+ */
+Datum int4_to_agtype(PG_FUNCTION_ARGS)
+{
+    return integer_to_agtype((int64)PG_GETARG_INT32(0));
 }
 
 PG_FUNCTION_INFO_V1(agtype_to_int4_array);

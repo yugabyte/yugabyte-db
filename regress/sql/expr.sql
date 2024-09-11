@@ -3538,8 +3538,17 @@ SELECT * FROM cypher('issue_1988', $$
     MATCH (p) RETURN p $$) as (p agtype);
 
 --
+-- Test external extension function logic for fuzzystrmatch
+--
+SELECT * FROM create_graph('fuzzystrmatch');
+-- These should fail with extension not installed
+SELECT * FROM cypher('fuzzystrmatch', $$ RETURN soundex("hello world!") $$) AS (result agtype);
+SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("hello world!", "hello world!") $$) AS (result agtype);
+
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('fuzzystrmatch', true);
 SELECT * FROM drop_graph('issue_1988', true);
 SELECT * FROM drop_graph('issue_1953', true);
 SELECT * FROM drop_graph('expanded_map', true);
