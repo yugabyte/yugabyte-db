@@ -19,7 +19,7 @@ Note that the [CMake](https://cmake.org/) meta build system is used in both case
 * `ninja` is faster than `make`, especially for rebuilding mostly-built projects, but CLion has limited support for `ninja` (for example, it doesn't allow you to [rebuild individual files](https://youtrack.jetbrains.com/issue/CPP-17622)).
 * `make` is well-supported by CLion, but slower, particularly for rebuilding mostly-built projects, compared to `ninja`.
 
-### Configure as a compilation database project
+### Configure a CLion compilation database project
 
 For best performance, configure the project as a compilation database project:
 
