@@ -146,9 +146,15 @@ Note that the cluster doesn't allow you to perform two clone operations concurre
 
 ### Example
 
-{{% explore-setup-single-local %}}
-
 The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database clone to recover from an accidental table deletion.
+
+1. Create a local cluster using [yugabyted](../../../reference/configuration/yugabyted/) with the following configuration flags:
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=127.0.0.1 \
+        --master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true" \
+        --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
+    ```
 
 1. Start ysqlsh and create the database as follows:
 
@@ -163,10 +169,11 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
     ./bin/yb-admin --master_addresses ip1:7100,ip2:7100,ip3:7100 create_snapshot_schedule 1440 4320 ysql.production_db
     ```
 
-1. Create a table `t1` and add some data as follows:
+1. Create a two tables `t1` and `t2`, and add some data as follows:
 
     ```sql
-    \c production_db;
+    ./bin/ysqlsh
+    yugabyte=# \c production_db;
     production_db=# CREATE TABLE t1 (k INT, v INT);
     production_db=# INSERT INTO t1 (k,v) SELECT i,i%2 FROM generate_series(1,5) AS i;
     production_db=# SELECT * FROM t1 ORDER BY k;
@@ -181,6 +188,23 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
     4 | 0
     5 | 1
    (5 rows)
+    ```
+
+    ```sql
+    production_db=# CREATE TABLE t2 (key INT, c1 TEXT);
+    production_db=# INSERT INTO t2 (key,c1) SELECT i,md5(random()::text) FROM generate_series(1,5) AS i;
+    production_db=# SELECT * FROM t2 ORDER BY key;
+    ```
+
+    ```output
+     key |                c1
+    -----+----------------------------------
+       1 | 450e6c49f86c76d944375e29e48f2dee
+       2 | b934a3bdf7438458a85b0858c41f731c
+       3 | 08697ed89ec387e714c6587e522d7a7e
+       4 | a879ff99872b3c3433803d3c3229f0cf
+       5 | 4d46a53780a7a348179e1af9b692e95e
+    (5 rows)
     ```
 
 1. Determine the exact time when your database is in the correct state. This timestamp will be used to create a clone of the production database from the point when it was in the desired state. Execute the following SQL query to retrieve the current time in UNIX timestamp format:
@@ -206,6 +230,14 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
     DROP TABLE
     ```
 
+1. Meanwhile, as table `t2` is still accepting reads/writes, you can insert 2 more rows as follows:
+
+    ```sh
+    INSERT INTO t2 (key,c1) SELECT i,md5(random()::text) FROM generate_series(6,7) AS i;
+    ```
+
+1. Now, if you try to query table `t1`, notice that the table is dropped and there is no way you can query it.
+
     ```sql
     production_db=# SELECT * FROM t1 ORDER BY k;
     ```
@@ -215,9 +247,7 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
     LINE 1: SELECT * FROM t1 ORDER BY k;
     ```
 
-   The table is dropped and there is no way you can query it.
-
-1. Create a database `clone_db` using `production_db` as the template and using the timestamp generated in step 4.
+1. To get back lost data, create a database `clone_db` using `production_db` as the template and using the timestamp generated in step 4.
 
     ```sql
     production_db=# CREATE DATABASE clone_db TEMPLATE production_DB AS OF 1723243720285350;
@@ -246,7 +276,7 @@ The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database
     (5 rows)
     ```
 
-    `clone_db` contains all the data from `production_db` at the specified timestamp, which means you can read table `t1` that was dropped accidentally. You now have two isolated databases that can serve reads and writes independently. You can copy the data back to `production_db` or switch the workload to `clone_db`.
+    `clone_db` contains all the data from `production_db` at the specified timestamp, which means you can read table `t1` that was dropped accidentally. You can copy the lost data from table `t1` back to `production_db` by exporting the data from the clone and importing it into `production_db`. Alternatively, you can switch the workload to `clone_db`. You now have two isolated databases that can serve reads and writes independently.
 
 ## Best practices
 
@@ -258,5 +288,5 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 ## Limitations
 
-- Cloning is not supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
-- Cloning to a time before dropping Materialized views is not supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
+- Cloning is not currently supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
+- Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
