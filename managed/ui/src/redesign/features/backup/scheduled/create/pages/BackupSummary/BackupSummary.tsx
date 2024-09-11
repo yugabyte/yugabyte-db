@@ -9,7 +9,7 @@
 
 import { forwardRef, Fragment, useContext, useImperativeHandle } from 'react';
 import cronstrue from 'cronstrue';
-import { useMutation } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { values } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
@@ -28,7 +28,7 @@ import { BACKUP_API_TYPES } from '../../../../../../../components/backupv2';
 
 import { GetUniverseUUID, prepareScheduledBackupPayload } from '../../../ScheduledBackupUtils';
 
-import { createScheduledBackup } from '../../../api/api';
+import { createScheduledBackupPolicy } from '../../../api/api';
 
 import { ReactComponent as CheckIcon } from '../../../../../../assets/check-white.svg';
 import BulbIcon from '../../../../../../assets/bulb.svg';
@@ -100,9 +100,10 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
 
   const classes = useStyles();
   const universeUUID = GetUniverseUUID();
+  const queryClient = useQueryClient();
 
   const doCreateScheduledBackup = useMutation(
-    (payload: ExtendedBackupScheduleProps) => createScheduledBackup(payload),
+    (payload: ExtendedBackupScheduleProps) => createScheduledBackupPolicy(payload),
     {
       onSuccess: () => {
         toast.success(
@@ -112,6 +113,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
           </span>
         );
         hideModal();
+        queryClient.invalidateQueries('scheduled_backup_list');
       },
       onError: (error: any) => {
         toast.error(error?.response?.data?.error || t('errorMsg'));
@@ -192,7 +194,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
       {
         name: t(dbType),
         value: backupObjects.keyspace?.isDefaultOption
-          ? t(apiType === 'Ysql' ? 'allDatabases' : 'allKeyspaces', { keyPrefix: 'backup' })
+          ? t(apiType === 'Ysql' ? 'allDatabase' : 'allKeyspaces', { keyPrefix: 'backup' })
           : backupObjects.keyspace?.label
       },
       {

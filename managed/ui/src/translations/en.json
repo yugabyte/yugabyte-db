@@ -2612,6 +2612,42 @@
             "unableToFetchTables": "Unable to fetch tables",
             "parallelThreads": "Parallel threads should be between 1 and 100"
           }
+        },
+        "list": {
+          "createPolicy": "Create Scheduled Backup Policy",
+          "noMoreSchedules": "No more schedules to display",
+          "scope": "Scope",
+          "keyspace": "Keyspace",
+          "tables": "Tables",
+          "lastBackup": "Last Backup",
+          "nextBackup": "Next Backup",
+          "fullBackup": "Full Backup",
+          "tableBackup": "Table Backup",
+          "backupIntervals": "Backup Intervals",
+          "incrementalBackup": "Incremental Backup",
+          "details": "<a>Details</a>",
+          "pitr": "Point-in-time Restore",
+          "retentionPeriod": "Retention Period",
+          "storageConfig": "Storage Config",
+          "editPolicy": "Edit Policy",
+          "deletePolicy": "Delete Policy",
+          "enabled": "Enabled",
+          "disabled": "Disabled",
+          "deleteMsg": "scheduled backup policy is being deleted",
+          "editModal": {
+            "title": "Edit Scheduled Backup Policy",
+            "backupStrategy":"Backup Strategy",
+            "success": "Scheduled backup policy is being updated"
+          },
+          "deleteModal": {
+            "deleteMsg":"Are you sure you want to delete this schedule policy?"
+          },
+          "showIntervalModal": {
+            "title": "Backup Intervals",
+            "fullBackup":"Full Backup",
+            "incrementalBackup":"Incremental Backup"
+          },
+          "backupTables": "Backup Tables"
         }
       },
       "restore": {

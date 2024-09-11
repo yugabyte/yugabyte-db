@@ -21,6 +21,7 @@ import { BackupFrequencyModel, TimeUnit } from '../../models/IBackupFrequency';
 
 type BackupFrequencyFieldProps = {
   control: Control<BackupFrequencyModel>;
+  isEditMode?: boolean;
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -74,7 +75,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const BackupFrequencyField: FC<BackupFrequencyFieldProps> = ({ control }) => {
+const BackupFrequencyField: FC<BackupFrequencyFieldProps> = ({ control, isEditMode = false }) => {
   const classes = useStyles();
 
   const { t } = useTranslation('translation', {
@@ -139,6 +140,7 @@ const BackupFrequencyField: FC<BackupFrequencyFieldProps> = ({ control }) => {
           control={control}
           name="useIncrementalBackup"
           data-testid="useIncrementalBackup"
+          disabled={isEditMode}
         />
         {useIncrementalBackupVal && (
           <div className={classes.incBackupFields}>
