@@ -647,10 +647,11 @@ GenerateTypeDependencies(HeapTuple typeTuple,
 	ObjectAddressSet(myself, TypeRelationId, typeObjectId);
 
 	/*
-	 * For non-view system relations during YSQL upgrade, we do not need to do
-	 * anything.
+	 * For non-view/non-implicit-arrays during YSQL upgrade, we do not need to
+	 * do anything.
 	 */
-	if (IsYsqlUpgrade && ybRelationIsSystem && relationKind != RELKIND_VIEW)
+	if (IsYsqlUpgrade && ybRelationIsSystem && relationKind != RELKIND_VIEW &&
+		!isImplicitArray)
 	{
 		if (rebuild)
 			elog(ERROR, "cannot rebuild dependencies for a system relation rowtype");
