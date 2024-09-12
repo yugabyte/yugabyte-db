@@ -528,14 +528,6 @@ create_new_objects(void)
 		DbInfo	   *old_db = &old_cluster.dbarr.dbs[dbnum];
 		const char *create_opts;
 
-		/*
-		 * YB_TODO: Remove this when dumping all databases, currently only
-		 * dumping yugabyte. Do not remove the skip template1, that's from
-		 * upstream postgres.
-		 */
-		if (strcmp(old_db->db_name, "yugabyte") != 0)
-			continue;
-
 		/* Skip template1 in this pass */
 		if (strcmp(old_db->db_name, "template1") == 0)
 			continue;
@@ -552,6 +544,8 @@ create_new_objects(void)
 		if (strcmp(old_db->db_name, "postgres") == 0)
 			create_opts = "--clean --create";
 		else if (strcmp(old_db->db_name, "yugabyte") == 0)
+			create_opts = "--clean --create";
+		else if (strcmp(old_db->db_name, "system_platform") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";

@@ -40,9 +40,6 @@ generate_old_dump(void)
 		PQExpBufferData connstr,
 					escaped_connstr;
 
-		/* YB_TODO: Dump all databases */
-		if (strcmp(old_db->db_name, "yugabyte") != 0)
-			continue;
 		initPQExpBuffer(&connstr);
 		appendPQExpBufferStr(&connstr, "dbname=");
 		appendConnStrVal(&connstr, old_db->db_name);
