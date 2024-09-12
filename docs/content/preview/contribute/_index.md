@@ -6,6 +6,8 @@ description: Contribute to the YugabyteDB code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: indexpage
+cascade:
+  unversioned: true
 showRightNav: true
 ---
 
