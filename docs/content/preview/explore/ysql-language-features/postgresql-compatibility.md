@@ -199,6 +199,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
 | Some ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
 | UNLOGGED table | [1129](https://github.com/yugabyte/yugabyte-db/issues/1129) |
-| Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, etc..| [9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [23829](https://github.com/yugabyte/yugabyte-db/issues/23829),[17017](https://github.com/yugabyte/yugabyte-db/issues/17017) |
+| Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| [9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [17017](https://github.com/yugabyte/yugabyte-db/issues/17017) |
 | %TYPE syntax in Functions/Procedures/Triggers|[23619](https://github.com/yugabyte/yugabyte-db/issues/23619)|
 | Storage parameters on indexes or constraints|[23467](https://github.com/yugabyte/yugabyte-db/issues/23467)|
