@@ -113,7 +113,7 @@ export const getXClusterConfig = (drConfig: DrConfig): XClusterConfig => ({
   tableType: 'YSQL',
   tables: drConfig.tables,
   targetActive: drConfig.drReplicaUniverseActive,
-  type: XClusterConfigType.TXN,
+  type: drConfig.type,
   usedForDr: true,
   uuid: drConfig.xclusterConfigUuid,
   sourceUniverseState: drConfig.primaryUniverseState,

@@ -214,7 +214,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Whether the config is txn xCluster")
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
   private ConfigType type;
 
   @ApiModelProperty(value = "Whether the source is active in txn xCluster")

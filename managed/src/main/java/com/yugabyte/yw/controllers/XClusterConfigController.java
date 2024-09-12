@@ -365,7 +365,7 @@ public class XClusterConfigController extends AuthenticatedController {
       metricParams.put("filters", Json.stringify(filterJson));
       lagMetricData =
           metricQueryHelper.query(
-              Collections.singletonList(metric), metricParams, Collections.emptyMap());
+              customer, Collections.singletonList(metric), metricParams, Collections.emptyMap());
     } catch (Exception e) {
       String errorMsg =
           String.format(

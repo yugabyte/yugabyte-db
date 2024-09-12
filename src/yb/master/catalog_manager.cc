@@ -298,10 +298,7 @@ DEFINE_test_flag(bool, fail_table_creation_at_preparing_state, false,
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
                  "Inside StartElectionIfReady, pause before sending request for hinted election");
 
-// This flag is only used on the first master leader setup, after which we serialize the
-// cluster_uuid to disk. So changing this at runtime is meaningless.
-DEFINE_NON_RUNTIME_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
-TAG_FLAG(cluster_uuid, hidden);
+DECLARE_string(cluster_uuid);
 
 DEFINE_RUNTIME_int32(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."

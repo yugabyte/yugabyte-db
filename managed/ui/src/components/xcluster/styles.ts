@@ -1,4 +1,5 @@
 import { makeStyles } from '@material-ui/core';
+import { INPUT_FIELD_WIDTH_PX } from './constants';
 
 export const useModalStyles = makeStyles((theme) => ({
   stepContainer: {
@@ -19,6 +20,9 @@ export const useModalStyles = makeStyles((theme) => ({
   },
   formSectionDescription: {
     marginBottom: theme.spacing(3)
+  },
+  inputField: {
+    width: INPUT_FIELD_WIDTH_PX
   },
   fieldLabel: {
     display: 'flex',

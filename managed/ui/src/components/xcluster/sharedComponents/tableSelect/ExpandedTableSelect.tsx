@@ -8,7 +8,7 @@ import {
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { XClusterConfigAction } from '../../constants';
+import { XClusterConfigAction, XClusterConfigType } from '../../constants';
 import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { IndexTableList } from './IndexTableList';
@@ -33,9 +33,9 @@ interface ExpandedTableSelectProps {
   selectedTableUUIDs: string[];
   // `isSelectable` determines if the rows in this expanded table select are selectable.
   isSelectable: boolean;
-  isTransactionalConfig: boolean;
   tableType: XClusterTableType;
   xClusterConfigAction: XClusterConfigAction;
+  xClusterConfigType: XClusterConfigType;
   handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
   handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
 }
@@ -44,8 +44,8 @@ export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs: selectedTableUuids,
   isSelectable,
-  isTransactionalConfig,
   tableType,
+  xClusterConfigType,
   xClusterConfigAction,
   handleTableSelect,
   handleTableGroupSelect
@@ -84,8 +84,8 @@ export const ExpandedTableSelect = ({
           <IndexTableList
             mainTableReplicationCandidate={mainTableReplicationCandidate}
             xClusterConfigAction={xClusterConfigAction}
+            xClusterConfigType={xClusterConfigType}
             isMainTableSelectable={isSelectable}
-            isTransactionalConfig={isTransactionalConfig}
             selectedTableUuids={selectedTableUuids}
             handleTableSelect={handleTableSelect}
             handleTableGroupSelect={handleTableGroupSelect}

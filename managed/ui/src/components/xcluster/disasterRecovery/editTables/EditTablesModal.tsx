@@ -22,7 +22,7 @@ import {
 } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '../../constants';
+import { XClusterConfigAction, XClusterTableStatus } from '../../constants';
 import {
   getCategorizedNeedBootstrapPerTableResponse,
   getInConfigTableUuidsToTableDetailsMap,
@@ -454,7 +454,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       tableType: xClusterConfigTableType,
       targetUniverseUuid: targetUniverseUuid,
       xClusterConfigUuid: xClusterConfig.uuid,
-      isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
+      xClusterConfigType: xClusterConfig.type,
       unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
       tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
       tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget
@@ -539,6 +539,9 @@ export const classifyTablesAndNamespaces = (
         tableUuidsDroppedOnSource.add(tableUuid);
         return;
       case XClusterTableStatus.DROPPED_FROM_TARGET:
+        // We treat tables which are dropped on the target as unconfigured but preselected.
+        // This means there is no action needed from the user. We will be checking the bootstrapping requirement
+        // and just adding the table to the config (unless the user deselects the table of course).
         if (sourceTableInfo) {
           selectedTableUuids.add(getTableUuid(sourceTableInfo));
           selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);

@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -50,7 +51,6 @@ import play.libs.ws.WSClient;
 public class MetricQueryHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryHelper.class);
-  public static final Integer STEP_SIZE = 100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
   public static final String METRICS_QUERY_PATH = "query";
@@ -128,18 +128,19 @@ public class MetricQueryHelper {
    *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
    * @return MetricQueryResponse Object
    */
-  public JsonNode query(List<String> metricKeys, Map<String, String> params) {
+  public JsonNode query(Customer customer, List<String> metricKeys, Map<String, String> params) {
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
     List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
-    return query(metricSettings, params, filterOverrides, false);
+    return query(customer, metricSettings, params, filterOverrides, false);
   }
 
   public JsonNode query(
+      Customer customer,
       List<String> metricKeys,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
     List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
-    return query(metricSettings, params, filterOverrides, false);
+    return query(customer, metricSettings, params, filterOverrides, false);
   }
 
   public JsonNode query(Customer customer, MetricQueryParams metricQueryParams) {
@@ -170,6 +171,7 @@ public class MetricQueryHelper {
     // node/universe level filters.
     if (isExclusivelyPlatformLevelMetrics(metricQueryParams)) {
       return query(
+          customer,
           new ArrayList<>(metricSettingsMap.values()),
           params,
           filterOverrides,
@@ -359,6 +361,7 @@ public class MetricQueryHelper {
     }
     params.put("filters", Json.stringify(filterJson));
     return query(
+        customer,
         new ArrayList<>(metricSettingsMap.values()),
         params,
         filterOverrides,
@@ -373,6 +376,7 @@ public class MetricQueryHelper {
    * @return MetricQueryResponse Object
    */
   public JsonNode query(
+      Customer customer,
       List<MetricSettings> metricsWithSettings,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides,
@@ -401,7 +405,9 @@ public class MetricQueryHelper {
       if (timeDifference <= 0) {
         throw new PlatformServiceException(BAD_REQUEST, "Queried time interval should be positive");
       }
-      long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / STEP_SIZE));
+      int defaultPoints =
+          confGetter.getConfForScope(customer, CustomerConfKeys.MetricsDefaultPoints);
+      long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / defaultPoints));
       params.put("step", String.valueOf(resolution));
     } else {
       try {

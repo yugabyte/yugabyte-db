@@ -16,29 +16,18 @@ By default, YugabyteDB provides synchronous replication and strong consistency a
 
 For information on xCluster deployment architecture, replication scenarios, and limitations, refer to [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="async-deployment/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Deploy xCluster</div>
-      </div>
-      <div class="body">
-        Set up unidirectional or bidirectional replication.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="async-replication-transactional">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Deploy transactional xCluster</div>
-      </div>
-      <div class="body">
-        Set up transactional unidirectional replication.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Deploy xCluster"
+    body="Set up unidirectional or bidirectional replication."
+    href="async-deployment/"
+    icon="fa-light fa-copy">}}
 
-</div>
+  {{<index/item
+    title="Deploy transactional xCluster"
+    body="Set up transactional unidirectional replication."
+    href="async-replication-transactional/"
+    icon="fa-light fa-money-from-bracket">}}
+
+{{</index/block>}}
