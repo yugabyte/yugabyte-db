@@ -71,7 +71,7 @@ To use a CIS hardened image for on-premises universe nodes:
 1. Install the image on the nodes.
 1. [Change the firewall rules for YugabyteDB Anywhere](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-images).
 1. Create a custom `tmp` directory during [provisioning](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#custom-tmp-directory-for-cis-hardened-rhel-8-or-9).
-1. After you create the [on-premises provider](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to the new tmp directory.
+1. After you create the [on-premises provider](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to the custom tmp directory.
 1. When creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../yugabyte-platform/manage-deployments/edit-config-flags/) `tmp_dir` to the custom tmp directory.
 
 To use a CIS hardened image for universes on cloud providers:
