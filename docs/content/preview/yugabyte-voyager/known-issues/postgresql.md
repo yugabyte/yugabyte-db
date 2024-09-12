@@ -884,13 +884,13 @@ CREATE TRIGGER trigger_modify_employee_12000
 
 **GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
 
-**Description**: If there are UNLOGGED objects in the source schema will error out in import schema with  below error as it is not supported in target YugabyteDB. 
+**Description**: If there are UNLOGGED tables in the source schema will error out in import schema with  below error as it is not supported in target YugabyteDB. 
 
 ```output
 ERROR:  UNLOGGED database object not supported yet
 ```
 
-**Workaround**: Make it a LOGGED object and it should work
+**Workaround**: Make it a LOGGED table and it should work
 
 **Example**
 
