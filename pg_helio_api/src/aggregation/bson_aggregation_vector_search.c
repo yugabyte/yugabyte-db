@@ -206,7 +206,7 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 		query->limitCount != NULL || context->stageNum != 0)
 	{
 		/* This is incompatible.vector search needs the base relation. */
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$search must be the first stage in the pipeline")));
 	}
 
@@ -247,7 +247,7 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 		else
 		{
 			/* What are these options today? */
-			ereport(ERROR, (errcode(MongoUnrecognizedCommand),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNRECOGNIZEDCOMMAND),
 							errmsg(
 								"Unrecognized $search option: %s, should be one of: cosmosSearch, knnBeta.",
 								key)));
@@ -256,7 +256,7 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 
 	if (searchSpecType == VectorSearchSpecType_Unknown)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"Invalid search spec provided with one or more unsupported options, should be one of: cosmosSearch, knnBeta.")));
 	}
@@ -283,7 +283,7 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"Invalid search spec provided with one or more unsupported options, should be one of: cosmosSearch, knnBeta.")));
 	}
@@ -308,7 +308,7 @@ HandleMongoNativeVectorSearch(const bson_value_t *existingValue, Query *query,
 		query->limitCount != NULL || context->stageNum != 0)
 	{
 		/* This is incompatible.vector search needs the base relation. */
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$vectorSearch must be the first stage in the pipeline")));
 	}
 	ReportFeatureUsage(FEATURE_STAGE_VECTOR_SEARCH_MONGO);
@@ -639,7 +639,7 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"unsupported vector search operator type")));
 	}
@@ -892,21 +892,21 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 			if (!BsonValueHoldsNumberArray(value,
 										   &vectorSearchOptions->queryVectorLength))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.queryVector must be an array of numbers.")));
 			}
 
 			if (vectorSearchOptions->queryVectorLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.queryVector cannot be an empty array.")));
 			}
 
 			if (vectorSearchOptions->queryVectorLength > VECTOR_MAX_DIMENSIONS)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"Length of the query vector cannot exceed %d",
 									VECTOR_MAX_DIMENSIONS)));
@@ -919,22 +919,22 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 			EnsureTopLevelFieldValueType("numCandidates", value, BSON_TYPE_INT32);
 			if (value->value.v_int32 < HNSW_MIN_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.numCandidates must be greater than or equal to %d.",
 									HNSW_MIN_EF_SEARCH),
-								errhint(
+								errdetail_log(
 									"$vectorSearch.numCandidates must be greater than or equal to %d.",
 									HNSW_MIN_EF_SEARCH)));
 			}
 
 			if (value->value.v_int32 > HNSW_MAX_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.numCandidates must be less than or equal to %d.",
 									HNSW_MAX_EF_SEARCH),
-								errhint(
+								errdetail_log(
 									"$vectorSearch.numCandidates must be less than or equal to %d.",
 									HNSW_MAX_EF_SEARCH)));
 			}
@@ -949,7 +949,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 
 			if (vectorSearchOptions->searchPath == NULL)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.path cannot be empty.")));
 			}
@@ -961,7 +961,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 			EnsureTopLevelFieldValueType("limit", value, BSON_TYPE_INT32);
 			if (value->value.v_int32 < 1)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vectorSearch.limit must be a positive integer.")));
 			}
@@ -981,7 +981,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 				/* Safe guard against the enableVectorPreFilter GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("$filter is not supported for vector search yet."),
-								errhint(
+								errdetail_log(
 									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
 			}
 			EnsureTopLevelFieldValueType("filter", value, BSON_TYPE_DOCUMENT);
@@ -990,7 +990,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg(
 								"BSON field '$vectorSearch.%s' is an unknown field",
 								key)));
@@ -999,7 +999,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 	if (vectorSearchOptions->searchPath == NULL || vectorValue == NULL ||
 		vectorSearchOptions->resultCount < 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$path, $queryVector, and $limit are all required fields for using a vector index.")));
 	}
@@ -1046,14 +1046,14 @@ CheckVectorIndexAndGenerateSortExpr(Query *query,
 
 	if (processedSortExpr == NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Similarity index was not found for a vector similarity search query.")));
 	}
 
 	if (vectorSearchOptions->vectorAccessMethodOid == InvalidOid)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Similarity index was not found for a vector similarity search query.")));
 	}
@@ -1072,7 +1072,7 @@ ParseAndValidateIndexSpecificOptions(VectorSearchOptions *vectorSearchOptions)
 		vectorSearchOptions->vectorAccessMethodOid);
 	if (definition == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Unsupported vector index type")));
 	}
 
@@ -1121,7 +1121,7 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 		if (context->mongoCollection != NULL &&
 			context->mongoCollection->shardKey != NULL)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Filter is not supported for vector search on sharded collection.")));
 		}
@@ -1171,7 +1171,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 			const bson_value_t *pathValue = value;
 			if (pathValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$path must be a text value")));
 			}
@@ -1180,7 +1180,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 
 			if (queryVectorPath == NULL)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$path cannot be empty.")));
 			}
@@ -1190,21 +1190,21 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 			vectorValue = value;
 			if (!BsonValueHoldsNumberArray(vectorValue, queryVectorLength))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vector must be an array of numbers.")));
 			}
 
 			if (*queryVectorLength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vector cannot be an empty array.")));
 			}
 
 			if (*queryVectorLength > VECTOR_MAX_DIMENSIONS)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"Length of the query vector cannot exceed %d",
 									VECTOR_MAX_DIMENSIONS)));
@@ -1214,7 +1214,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$k must be an integer value.")));
 			}
@@ -1223,7 +1223,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 
 			if (*resultCount < 1)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$k must be a positive integer.")));
 			}
@@ -1235,13 +1235,13 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 				/* Safe guard against the enableVectorPreFilter GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("$filter is not supported for vector search yet."),
-								errhint(
+								errdetail_log(
 									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
 			}
 
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$filter must be a document value.")));
 			}
@@ -1252,7 +1252,7 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$score must be a document value.")));
 			}
@@ -1263,21 +1263,21 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 
 	if (*queryVectorPath == NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$path is required field for using a vector index.")));
 	}
 
 	if (vectorValue == NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$vector is required field for using a vector index.")));
 	}
 
 	if (*resultCount < 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$k is required field for using a vector index.")));
 	}
@@ -1359,14 +1359,14 @@ ParseAndValidateKnnBetaQuerySpec(const pgbson *vectorSearchSpecPgbson,
 
 	if (filterBson.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&filterBson))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$filter is not supported for knnBeta queries.")));
 	}
 
 	if (scoreBson.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&scoreBson))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$score is not supported for knnBeta queries.")));
 	}

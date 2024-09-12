@@ -30,7 +30,7 @@
 #include "types/decimal128.h"
 #include "utils/date_utils.h"
 #include "utils/feature_counter.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /* Data types */
@@ -375,7 +375,7 @@ EnsureValidWindowSpec(int frameOptions)
 	{
 		/* Only unknwon fields are provided */
 		ereport(ERROR, (
-					errcode(MongoFailedToParse),
+					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 					errmsg(
 						"'window' field can only contain 'documents' as the only argument "
 						"or 'range' with an optional 'unit' field")));
@@ -408,7 +408,7 @@ EnsureValidWindowSpec(int frameOptions)
 	{
 		/* Units without range */
 		ereport(ERROR, (
-					errcode(MongoFailedToParse),
+					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 					errmsg(
 						"Window bounds can only specify 'unit' with range-based bounds.")));
 	}
@@ -440,7 +440,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 		/* Must be supplied for a range window */
 		if (sortByLength != 1)
 		{
-			ereport(ERROR, (errcode(MongoLocation5339902),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5339902),
 							errmsg("Range-based bounds require sortBy a single field")));
 		}
 
@@ -452,7 +452,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 			 * Fix later to extend the error code range to accomodate this, for now throwing
 			 * generic failed to parse
 			 */
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Range-based bounds require an ascending sortBy")));
 		}
 	}
@@ -464,7 +464,7 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 		if (!isUnbounded)
 		{
 			/* Must be supplied for a bounded document window */
-			ereport(ERROR, (errcode(MongoLocation5339901),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5339901),
 							errmsg("Document-based bounds require a sortBy")));
 		}
 	}
@@ -518,18 +518,18 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 
 	if (!EnableSetWindowFields || !IsClusterVersionAtleastThis(1, 19, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$setWindowFields is not supported yet.")));
 	}
 
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"the $setWindowFields stage specification must be an object, "
 							"found %s", BsonTypeName(existingValue->value_type)),
-						errhint(
+						errdetail_log(
 							"the $setWindowFields stage specification must be an object, "
 							"found %s", BsonTypeName(existingValue->value_type))));
 	}
@@ -563,7 +563,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 			if (value->value_type == BSON_TYPE_ARRAY)
 			{
 				ereport(ERROR, (
-							errcode(MongoTypeMismatch),
+							errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(
 								"An expression used to partition cannot evaluate to value of type array")));
 			}
@@ -645,11 +645,11 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg(
 								"BSON field '$setWindowFields.%s' is an unknown field.",
 								key),
-							errhint(
+							errdetail_log(
 								"BSON field '$setWindowFields.%s' is an unknown field.",
 								key)));
 		}
@@ -683,22 +683,23 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 
 		if (output.pathLength == 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation40352),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40352),
 							errmsg("FieldPath cannot be constructed with empty string")));
 		}
 
 		if (output.path[0] == '$')
 		{
-			ereport(ERROR, (errcode(MongoLocation16410),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
 							errmsg(
 								"FieldPath field names may not start with '$'. Consider using $getField or $setField.")));
 		}
 
 		if (output.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("The field '%s' must be an object", output.path),
-							errhint("$setWindowField output field must be an object")));
+							errdetail_log(
+								"$setWindowField output field must be an object")));
 		}
 
 		winRef++;
@@ -812,15 +813,15 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Window function found an unknown argument: %s", key),
-							errhint("Window function found an unknown argument")));
+							errdetail_log("Window function found an unknown argument")));
 		}
 	}
 
 	if (operatorValue.bsonValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Expected a $-prefixed window function, window")));
 	}
 
@@ -832,7 +833,7 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 		/* The window value object should be a document.*/
 		if (windowValue.bsonValue.value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("'window' field must be an object")));
 		}
 
@@ -964,7 +965,7 @@ EnsureValidUnitOffsetAndGetInterval(const bson_value_t *value, DateUnit dateUnit
 
 	if (!IsBsonValueFixedInteger(value))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("With 'unit', range-based bounds must be an integer")));
 	}
 
@@ -1007,13 +1008,13 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 			if (isDocumentFrame)
 			{
 				ereport(ERROR, (
-							errcode(MongoFailedToParse),
+							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Numeric document-based bounds must be an integer")));
 			}
 			else
 			{
 				ereport(ERROR, (
-							errcode(MongoFailedToParse),
+							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Range-based bounds expression must be a number")));
 			}
 		}
@@ -1040,7 +1041,7 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 			else
 			{
 				ereport(ERROR, (
-							errcode(MongoFailedToParse),
+							errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"Window bounds must be 'unbounded', 'current', or a number.")));
 			}
@@ -1057,7 +1058,7 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 				if (!IsBsonValue64BitInteger(frameValue, checkFixedInteger))
 				{
 					ereport(ERROR, (
-								errcode(MongoFailedToParse),
+								errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"Numeric document-based bounds must be an integer")));
 				}
@@ -1134,10 +1135,10 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 								&isComparisionValid) > 0)
 	{
 		ereport(ERROR, (
-					errcode(MongoLocation5339900),
+					errcode(ERRCODE_HELIO_LOCATION5339900),
 					errmsg("Lower bound must not exceed upper bound: %s",
 						   BsonValueToJsonForLogging(value)),
-					errhint("Lower bound must not exceed upper bound.")));
+					errdetail_log("Lower bound must not exceed upper bound.")));
 	}
 
 	*frameOptions |= FRAMEOPTION_BETWEEN;
@@ -1191,7 +1192,7 @@ pg_attribute_noreturn()
 ThrowInvalidFrameOptions()
 {
 	ereport(ERROR, (
-				errcode(MongoFailedToParse),
+				errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 				errmsg(
 					"Window bounds can specify either 'documents' or 'unit', not both.")));
 }
@@ -1203,11 +1204,12 @@ pg_attribute_noreturn()
 ThrowExtraInvalidFrameOptions(const char * str1, const char * str2)
 {
 	ereport(ERROR, (
-				errcode(MongoFailedToParse),
+				errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 				errmsg("'window' field that specifies %s cannot have other fields %s",
 					   str1, str2),
-				errhint("'window' field that specifies %s cannot have other fields %s",
-						str1, str2)));
+				errdetail_log(
+					"'window' field that specifies %s cannot have other fields %s",
+					str1, str2)));
 }
 
 
@@ -1215,13 +1217,13 @@ static void
 pg_attribute_noreturn()
 ThrowInvalidWindowValue(const char * windowType, const bson_value_t * value)
 {
-	ereport(ERROR, (errcode(MongoFailedToParse),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 					errmsg("Window bounds must be a 2-element array: %s: %s",
 						   windowType,
 						   BsonValueToJsonForLogging(value)),
-					errhint("Window bounds must be a 2-element array: %s: %s",
-							windowType,
-							BsonTypeName(value->value_type))));
+					errdetail_log("Window bounds must be a 2-element array: %s: %s",
+								  windowType,
+								  BsonTypeName(value->value_type))));
 }
 
 
@@ -1268,14 +1270,14 @@ UpdateWindowOptions(const pgbsonelement *element, WindowClause *windowClause,
 			*frameOptions |= FRAMEOPTION_MONGO_RANGE_UNITS;
 			if (windowValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("'unit' must be a string")));
 			}
 			dateUnit = GetDateUnitFromString(windowValue->value.v_utf8.str);
 
 			if (dateUnit == DateUnit_Invalid)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("unknown time unit value: %s",
 									   windowValue->value.v_utf8.str)));
 			}
@@ -1324,11 +1326,11 @@ UpdateWindowAggregationOperator(const pgbsonelement *element,
 			if (definition->windowOperatorFunc == NULL)
 			{
 				ereport(ERROR, (
-							errcode(MongoCommandNotSupported),
+							errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("Window operator %s is not supported yet",
 								   element->path),
-							errhint("Window operator %s is not supported yet",
-									element->path)));
+							errdetail_log("Window operator %s is not supported yet",
+										  element->path)));
 			}
 
 			knownOperator = true;
@@ -1345,9 +1347,10 @@ UpdateWindowAggregationOperator(const pgbsonelement *element,
 
 	if (!knownOperator)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Unrecognized window function, %s", element->path),
-						errhint("Unrecognized window function, %s", element->path)));
+						errdetail_log("Unrecognized window function, %s",
+									  element->path)));
 	}
 }
 
@@ -1406,7 +1409,7 @@ HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$integral is only supported on vCore 1.22.0 and above")));
 	}
@@ -1424,7 +1427,7 @@ HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$derivative is only supported on vCore 1.22.0 and above")));
 	}
@@ -1442,7 +1445,7 @@ GetIntegralDerivativeWindowFunc(const bson_value_t *opValue,
 {
 	if (!(context->isWindowPresent || isIntegral))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("$derivative requires explicit window bounds")));
 	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1506,12 +1509,12 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	SetWindowFieldSortOption *sortField;
 	if (!list_length(context->sortOptions))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("%s requires a sortBy", operatorName)));
 	}
 	else if (list_length(context->sortOptions) > 1)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("%s requires a non-compound sortBy", operatorName)));
 	}
 	else
@@ -1543,11 +1546,11 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 				DateUnit unit = GetDateUnitFromString(value->value.v_utf8.str);
 				if (unit == DateUnit_Invalid)
 				{
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg("unknown time unit value: %s",
 										   value->value.v_utf8.str),
-									errhint("unknown time unit value: %s",
-											value->value.v_utf8.str)));
+									errdetail_log("unknown time unit value: %s",
+												  value->value.v_utf8.str)));
 				}
 				else if (unit < DateUnit_Week)
 				{
@@ -1564,7 +1567,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("%s got unexpected argument: %s", operatorName,
 									   key)));
 			}
@@ -1573,7 +1576,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	if (!(*yExpr))
 	{
 		ereport(ERROR, (
-					errcode(MongoFailedToParse),
+					errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 					errmsg(
 						"%s requires an 'input' expression", operatorName)));
 	}
@@ -1591,7 +1594,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("%s requires a non-compound sortBy", operatorName)));
 	}
 }
@@ -1633,7 +1636,7 @@ HandleDollarCountWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsBsonValueEmptyDocument(opValue))
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$count only accepts an empty object as input")));
 	}
 
@@ -1792,7 +1795,7 @@ HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covariancePop is not supported yet")));
 	}
 
@@ -1818,7 +1821,7 @@ HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Window operator $covarianceSamp is not supported yet")));
 	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1843,7 +1846,7 @@ HandleDollarRankWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$rank is not supported yet")));
 	}
 	char *opName = "$rank";
@@ -1869,7 +1872,7 @@ HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 21, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$denseRank is not supported yet")));
 	}
 	char *opName = "$denseRank";
@@ -1895,7 +1898,7 @@ HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
 {
 	if (!IsClusterVersionAtleastThis(1, 22, 0))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$documentNumber is not supported yet")));
 	}
 	char *opName = "$documentNumber";
@@ -1917,19 +1920,19 @@ ValidateInputForRankFunctions(const bson_value_t *opValue,
 {
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(MongoLocation5371601),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371601),
 						errmsg("Rank style window functions take no other arguments")));
 	}
 
 	if (!IsBsonValueEmptyDocument(opValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation5371603),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371603),
 						errmsg("(None) must be specified with '{}' as the value")));
 	}
 
 	if (list_length(context->sortOptions) != 1)
 	{
-		ereport(ERROR, (errcode(MongoLocation5371602),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5371602),
 						errmsg(
 							"%s must be specified with a top level sortBy expression with exactly one element",
 							opName)));
@@ -1962,7 +1965,7 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 
 	if (list_length(context->sortOptions) == 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg requires an explicit 'sortBy'")));
 	}
@@ -1970,7 +1973,7 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 	/* $expMovingAvg is not support window parameter*/
 	if (context->isWindowPresent == true || opValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg must have exactly one argument that is an object")));
 	}
@@ -2040,19 +2043,19 @@ HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
 {
 	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 	{
-		ereport(ERROR, (errcode(MongoLocation605001),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION605001),
 						errmsg(
 							"$linearFill is not supported yet.")));
 	}
 	if (list_length(context->sortOptions) != 1)
 	{
-		ereport(ERROR, (errcode(MongoLocation605001),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION605001),
 						errmsg(
 							"$linearFill must be specified with a top level sortBy expression with exactly one element")));
 	}
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"'window' field is not allowed in $linearFill")));
 	}
@@ -2113,7 +2116,7 @@ HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 	}
 	if (context->isWindowPresent)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"'window' field is not allowed in $locf")));
 	}

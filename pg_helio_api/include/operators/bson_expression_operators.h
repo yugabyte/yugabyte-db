@@ -9,6 +9,7 @@
  */
 
 #include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "operators/bson_expression.h"
 
 #ifndef BSON_EXPRESSION_OPERATORS_H

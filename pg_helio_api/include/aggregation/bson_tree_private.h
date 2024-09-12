@@ -17,7 +17,9 @@
 
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_common.h"
+#include "utils/error_utils.h"
 #include "utils/string_view.h"
+
 
 BsonPathNode * GetOrAddChildNode(BsonIntermediatePathNode *tree,
 								 const char *relativePath,

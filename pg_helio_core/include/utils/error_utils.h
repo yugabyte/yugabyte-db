@@ -10,6 +10,8 @@
  */
 
 #include <postgres.h>
+#include <lib/stringinfo.h>
+
 
 /* Helper method that gets the error data from the current
  * memory context and flushes the error state. */

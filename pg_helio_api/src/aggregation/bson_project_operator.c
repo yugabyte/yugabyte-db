@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 #include "aggregation/bson_project_operator.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "types/decimal128.h"
 
 
@@ -309,7 +309,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowPositionalNotMatchedError()
 {
-	ereport(ERROR, (errcode(MongoLocation51246),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51246),
 					errmsg(
 						"Executor error during find command :: caused by :: positional operator "
 						"'.$' couldn't find a matching element in the array")));
@@ -320,7 +320,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowPositionalMismatchedMatchedError()
 {
-	ereport(ERROR, (errcode(MongoLocation51247),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51247),
 					errmsg(
 						"Executor error during find command :: caused by :: positional operator "
 						"'.$' element mismatch")));
@@ -628,31 +628,31 @@ ValidateFindProjectionSpecAndSetNodeContext(BsonLeafPathNode *child,
 		/* Positional operator */
 		if (IsPositionalIncluded(treeState->operatorExistenceFlag))
 		{
-			ereport(ERROR, (errcode(MongoLocation31276),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31276),
 							errmsg(
 								"Cannot specify more than one positional projection per query.")));
 		}
 		if (pathSpecValue->value_type == BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(MongoLocation31271),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31271),
 							errmsg("positional projection cannot be used with "
 								   "an expression or sub object")));
 		}
 		if (!BsonValueIsNumberOrBool(pathSpecValue))
 		{
-			ereport(ERROR, (errcode(MongoLocation31308),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31308),
 							errmsg(
 								"positional projection cannot be used with a literal")));
 		}
 		else if (BsonValueAsDouble(pathSpecValue) == 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation31395),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31395),
 							errmsg(
 								"positional projection cannot be used with exclusion")));
 		}
 		else if (IsElemMatchIncluded(treeState->operatorExistenceFlag))
 		{
-			ereport(ERROR, (errcode(MongoLocation31256),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31256),
 							errmsg(
 								"Cannot specify positional operator and $elemMatch.")));
 		}
@@ -684,20 +684,20 @@ ValidateFindProjectionSpecAndSetNodeContext(BsonLeafPathNode *child,
 			if (child->baseNode.parent != NULL &&
 				child->baseNode.parent->baseNode.parent != NULL)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"Cannot use $elemMatch projection on a nested field.")));
 			}
 			else if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"elemMatch: Invalid argument, object required, but got %s",
 									BsonTypeName(operatorValue->value_type))));
 			}
 			else if (IsPositionalIncluded(treeState->operatorExistenceFlag))
 			{
-				ereport(ERROR, (errcode(MongoLocation31256),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31256),
 								errmsg(
 									"Cannot specify positional operator and $elemMatch.")));
 			}
@@ -710,7 +710,7 @@ ValidateFindProjectionSpecAndSetNodeContext(BsonLeafPathNode *child,
 				/*
 				 * $jsonSchema can't be given in a $elemMatch projection operation context
 				 */
-				ereport(ERROR, (errcode(MongoQueryFeatureNotAllowed),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
 								errmsg(
 									"$jsonSchema is not allowed in this context")));
 			}
@@ -904,7 +904,7 @@ ValidatePositionalCollisions(BsonPathNode *positionalLeaf,
 	if (isPositional)
 	{
 		/* If the current postional leaf node already exists, error */
-		ereport(ERROR, (errcode(MongoLocation31250),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31250),
 						errmsg("Path collision at %.*s", relativePath->length,
 							   relativePath->string)));
 	}
@@ -921,7 +921,7 @@ ValidatePositionalCollisions(BsonPathNode *positionalLeaf,
 		}
 
 		/* Exisiting leaf node is replaced: error */
-		ereport(ERROR, (errcode(MongoLocation31250),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31250),
 						errmsg("Path collision at %.*s", relativePath->length,
 							   relativePath->string)));
 	}
@@ -1067,7 +1067,7 @@ HandleSliceInputData(const bson_value_t *sliceOperatorValue,
 
 		if (sliceArrayLength != 2)
 		{
-			ereport(ERROR, (errcode(MongoRangeArgumentExpressionArgsOutOfRange),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_RANGEARGUMENTEXPRESSIONARGSOUTOFRANGE),
 							errmsg("$slice takes 2 arguments, but %d were passed in.",
 								   sliceArrayLength)));
 		}
@@ -1086,7 +1086,7 @@ HandleSliceInputData(const bson_value_t *sliceOperatorValue,
 
 			if (!BsonValueIsNumber(numToSkipBsonVal))
 			{
-				ereport(ERROR, (errcode(MongoDollarSliceInvalidInput), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
 									"First argument to $slice must be an number, but is of type: %s",
 									BsonTypeName(numToSkipBsonVal->value_type))));
 			}
@@ -1124,7 +1124,7 @@ HandleSliceInputData(const bson_value_t *sliceOperatorValue,
 			if (!BsonValueIsNumber(numToReturnBsonVal) || IsBsonValueNaN(
 					numToReturnBsonVal) || bsonValPosOrNegInfinity == -1)
 			{
-				ereport(ERROR, (errcode(MongoDollarSliceInvalidInput), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
 									"Second argument to $slice must be a positive number, but is of type: %s",
 									BsonTypeName(numToReturnBsonVal->value_type))));
 			}
@@ -1141,14 +1141,15 @@ HandleSliceInputData(const bson_value_t *sliceOperatorValue,
 
 			if (*numToReturn <= 0)
 			{
-				ereport(ERROR, (errcode(MongoDollarSliceInvalidInput), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
 									"Second argument to $slice must be a positive number")));
 			}
 		}
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoRangeArgumentExpressionArgsOutOfRange), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_RANGEARGUMENTEXPRESSIONARGSOUTOFRANGE),
+						errmsg(
 							"First argument to $slice must be an number, but is of type: %s",
 							BsonTypeName(sliceOperatorValue->value_type))));
 	}

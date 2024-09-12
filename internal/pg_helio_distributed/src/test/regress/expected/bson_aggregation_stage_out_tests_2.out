@@ -580,7 +580,6 @@ SELECT helio_api.create_collection_view('newdb', '{ "create": "targetView", "vie
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" :  "targetView" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  Namespace newdb.targetView is a view, not a collection
-HINT:  Namespace newdb.targetView is a view, not a collection
 SELECT helio_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------

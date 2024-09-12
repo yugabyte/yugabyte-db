@@ -50,6 +50,7 @@
 #include "metadata/index.h"
 #include "planner/mongo_query_operator.h"
 #include "query/query_operator.h"
+#include "utils/mongo_errors.h"
 #include "utils/guc_utils.h"
 #include "utils/list_utils.h"
 #include "utils/query_utils.h"
@@ -1002,7 +1003,7 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 	if (targetErrorCode != -1)
 	{
 		if (EreportCodeIsMongoError(targetErrorCode) &&
-			targetErrorCode != MongoInternalError &&
+			targetErrorCode != ERRCODE_HELIO_INTERNALERROR &&
 			targetErrorCode != ERRCODE_HELIO_INTERNALERROR)
 		{
 			/* Mongo errors that are not internal errors are skippable */
@@ -1191,7 +1192,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 			else
 			{
 				result->errmsg = "Index creation attempt failed";
-				result->errcode = MongoInternalError;
+				result->errcode = ERRCODE_HELIO_INTERNALERROR;
 			}
 			isAnyIndexFailed = true;
 		}
@@ -1215,7 +1216,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 		{
 			/* index failed but empty comment in queue. */
 			result->errmsg = "Index Creation failed";
-			result->errcode = MongoInternalError;
+			result->errcode = ERRCODE_HELIO_INTERNALERROR;
 		}
 
 		return result;
@@ -1349,7 +1350,7 @@ MakeBuildIndexesMsg(BuildIndexesResult *result)
 		}
 		else if (result->errcode == ERRCODE_UNDEFINED_TABLE)
 		{
-			result->errcode = MongoIndexBuildAborted;
+			result->errcode = ERRCODE_HELIO_INDEXBUILDABORTED;
 			result->errmsg = COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG;
 		}
 

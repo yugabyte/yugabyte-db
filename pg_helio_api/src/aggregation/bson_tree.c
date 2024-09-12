@@ -404,12 +404,12 @@ EnsureValidFieldPathString(const StringView *fieldPath)
 {
 	if (fieldPath->length == 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("FieldPath cannot be constructed with empty string.")));
 	}
 	else if (StringViewEndsWith(fieldPath, '.'))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("FieldPath must not end with a '.'.")));
 	}
 
@@ -433,13 +433,13 @@ EnsureValidFieldPathString(const StringView *fieldPath)
 
 		if (currentFieldPath.length == 0)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("FieldPath field names may not be empty strings.")));
 		}
 		else if (StringViewStartsWith(&currentFieldPath, '$') &&
 				 !StringViewContainsDbRefsField(&currentFieldPath))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("FieldPath field names may not start with '$'. "
 								   "Consider using $getField or $setField")));
 		}
@@ -547,7 +547,7 @@ ValidateAndSetLeafNodeData(BsonPathNode *childNode, const bson_value_t *value,
 {
 	if (childNode->nodeType == NodeType_Intermediate)
 	{
-		ereport(ERROR, (errcode(MongoLocation31250),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31250),
 						errmsg("Path collision at %.*s", relativePath->length,
 							   relativePath->string)));
 	}
@@ -932,7 +932,7 @@ ResetNodeWithValueOrField(const BsonLeafPathNode *baseLeafNode, const char *rela
 
 	if (!found)
 	{
-		ereport(ERROR, (errcode(MongoInternalError), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), errmsg(
 							"Unable to find base node in projection tree's children")));
 	}
 

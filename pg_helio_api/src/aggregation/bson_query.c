@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "aggregation/bson_query.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 
 typedef struct
@@ -95,7 +95,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &andIterator))
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"Could not iterate through query document $and.")));
 			}
 
@@ -105,7 +105,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errcode(MongoBadValue), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 										"Could not iterate through elements within $and query.")));
 				}
 
@@ -120,7 +120,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &orIterator))
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"Could not iterate through query document $or.")));
 			}
 
@@ -143,7 +143,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 					 BsonIterSearchKeyRecursive(&orIterator, "$expr"))
 			{
 				/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
-				ereport(ERROR, (errcode(MongoQueryFeatureNotAllowed),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
 								errmsg(
 									"$expr is not allowed in the query predicate for an upsert")));
 			}
@@ -151,7 +151,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 		else if (isUpsert && strcmp(key, "$expr") == 0)
 		{
 			/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
-			ereport(ERROR, (errcode(MongoQueryFeatureNotAllowed),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
 							errmsg(
 								"$expr is not allowed in the query predicate for an upsert")));
 		}
@@ -183,7 +183,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 					{
 						if (opValue->value_type != BSON_TYPE_ARRAY)
 						{
-							ereport(ERROR, (errcode(MongoBadValue),
+							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 											errmsg("$all needs an array")));
 						}
 
@@ -200,7 +200,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 						bson_iter_t inIterator;
 						if (opValue->value_type != BSON_TYPE_ARRAY)
 						{
-							ereport(ERROR, (errcode(MongoBadValue),
+							ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 											errmsg("$in needs an array")));
 						}
 

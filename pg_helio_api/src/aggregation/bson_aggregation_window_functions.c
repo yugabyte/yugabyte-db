@@ -14,7 +14,7 @@
 
 #include "io/helio_bson_core.h"
 #include "types/decimal128.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "windowapi.h"
 
 typedef struct BsonLocfFillState
@@ -131,19 +131,20 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	}
 	if (stateData->sortKeyIsDate && stateData->sortKeyIsNumeric)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(
 							"The sortBy field must be either numeric or a date, but not both"),
-						errhint(
+						errdetail_log(
 							"The sortBy field must be either numeric or a date, but not both")));
 	}
 
 	/* Check if there are repeated values in the sortBy field in a single partition */
 	if (current_pos != 0 && WinRowsArePeers(winobj, current_pos - 1, current_pos))
 	{
-		ereport(ERROR, (errcode(MongoLocation6050106),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6050106),
 						errmsg("There can be no repeated values in the sort field"),
-						errhint("There can be no repeated values in the sort field")));
+						errdetail_log(
+							"There can be no repeated values in the sort field")));
 	}
 
 	/* Move forward winobj's mark position to release unnecessary tuples in TupleStore */
@@ -157,9 +158,10 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 		/* As Mongo does, the filled value should be numeric or nullish. */
 		if (!BsonValueIsNumber(&currentValueElement.bsonValue))
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(" Value to be filled must be numeric or nullish"),
-							errhint("Value to be filled must be numeric or nullish")));
+							errdetail_log(
+								"Value to be filled must be numeric or nullish")));
 		}
 		stateData->hasPre = true;
 
@@ -235,9 +237,9 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	 */
 	if (!BsonValueIsNumber(&stateData->nextValue))
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg(" Value to be filled must be numeric or nullish"),
-						errhint("Value to be filled must be numeric or nullish")));
+						errdetail_log("Value to be filled must be numeric or nullish")));
 	}
 
 	/**
@@ -380,19 +382,21 @@ CheckSortKeyBsonValue(bool isnull, pgbsonelement *sortKeyElement)
 {
 	if (isnull || sortKeyElement->bsonValue.value_type == BSON_TYPE_NULL)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("sortBy value must be numeric or a date, but found null"),
-						errhint(
+						errdetail_log(
 							"sortBy value must be numeric or a date, but found null")));
 	}
 	if (!BsonValueIsNumber(&sortKeyElement->bsonValue) &&
 		sortKeyElement->bsonValue.value_type != BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("sortBy value must be numeric or a date, but found %s",
 							   BsonTypeName(sortKeyElement->bsonValue.value_type)),
-						errhint("sortBy value must be numeric or a date, but found %s",
-								BsonTypeName(sortKeyElement->bsonValue.value_type))));
+						errdetail_log(
+							"sortBy value must be numeric or a date, but found %s",
+							BsonTypeName(
+								sortKeyElement->bsonValue.value_type))));
 	}
 }
 
@@ -406,10 +410,10 @@ CheckDecimal128Result(Decimal128Result result)
 {
 	if (result == Decimal128Result_Unknown)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							" Unknown error when processing Decimal128 numbers in $linearFill"),
-						errhint(
+						errdetail_log(
 							" Unknown error when processing Decimal128 numbers in $linearFill")));
 	}
 }

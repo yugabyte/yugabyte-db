@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 #include "aggregation/bson_tree_common.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "operators/bson_expression.h"
 
 #ifndef BSON_TREE_H

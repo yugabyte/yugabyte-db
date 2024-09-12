@@ -144,7 +144,6 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj.a" } } } ] }');
 ERROR:  $mergeObjects requires object inputs, but input 2 is of type int
-HINT:  $mergeObjects requires object inputs, but input is of type int
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": { "result": "$obj.b" } } } } ] }');
                                            document                                           
 ----------------------------------------------------------------------------------------------
@@ -262,7 +261,6 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "shouldFail": { "$mergeObjects": "$item" } } } ] }');
 ERROR:  $mergeObjects requires object inputs, but input "A" is of type string
-HINT:  $mergeObjects requires object inputs, but input is of type string
 select helio_api.drop_collection('db','objColl1');
  drop_collection 
 -----------------

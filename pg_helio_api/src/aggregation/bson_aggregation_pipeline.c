@@ -1024,7 +1024,7 @@ SetBatchSize(const char *fieldName, const bson_value_t *value, QueryData *queryD
 
 	if (queryData->batchSize < 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("BatchSize value must be non-negative, but received: %d",
 							   queryData->batchSize)));
 	}
@@ -1098,7 +1098,7 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIterator) ||
 			!bson_iter_recurse(&pipelineIterator, &documentIterator))
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 							errmsg(
 								"Each element of the 'pipeline' array must be an object")));
 		}
@@ -1106,7 +1106,7 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		pgbsonelement stageElement;
 		if (!TryGetSinglePgbsonElementFromBsonIterator(&documentIterator, &stageElement))
 		{
-			ereport(ERROR, (errcode(MongoLocation40323),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40323),
 							errmsg(
 								"A pipeline stage specification object must contain exactly one field.")));
 		}
@@ -1115,11 +1115,12 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		 * Since the output stage was expected to be last, encountering it earlier leads to failure. */
 		if (lastEncounteredOutputStage != NULL)
 		{
-			ereport(ERROR, (errcode(MongoLocation40601),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40601),
 							errmsg("%s can only be the final stage in the pipeline",
 								   lastEncounteredOutputStage),
-							errhint("%s can only be the final stage in the pipeline",
-									lastEncounteredOutputStage)));
+							errdetail_log(
+								"%s can only be the final stage in the pipeline",
+								lastEncounteredOutputStage)));
 		}
 
 		/* Now handle each stage */
@@ -1131,11 +1132,11 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			CompareStageByStageName);
 		if (definition == NULL)
 		{
-			ereport(ERROR, (errcode(MongoUnrecognizedCommand),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNRECOGNIZEDCOMMAND),
 							errmsg("Unrecognized pipeline stage name: %s",
 								   stageElement.path),
-							errhint("Unrecognized pipeline stage name: %s",
-									stageElement.path)));
+							errdetail_log("Unrecognized pipeline stage name: %s",
+										  stageElement.path)));
 		}
 		if (definition->pipelineCheckFunc != NULL)
 		{
@@ -1144,12 +1145,13 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 
 		if (definition->mutateFunc == NULL)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Stage %s is not supported yet in native pipeline",
 								definition->stage),
-							errhint("Stage %s is not supported yet in native pipeline",
-									definition->stage)));
+							errdetail_log(
+								"Stage %s is not supported yet in native pipeline",
+								definition->stage)));
 		}
 
 		if (definition->isOutputStage)
@@ -1161,11 +1163,11 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		 * ensure that the stage handles agnostic-ness in the query */
 		if (query->jointree->fromlist == NIL && !definition->canHandleAgnosticQueries)
 		{
-			ereport(ERROR, (errcode(MongoInvalidNamespace),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 							errmsg(
 								"{aggregate: 1} is not valid for '%s'; a collection is required.",
 								stageElement.path),
-							errhint(
+							errdetail_log(
 								"{aggregate: 1} is not valid for '%s'; a collection is required.",
 								stageElement.path)));
 		}
@@ -1190,7 +1192,7 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			{
 				if (context->requiresTailableCursor)
 				{
-					ereport(ERROR, (errcode(MongoCommandNotSupported),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 									errmsg(
 										"Cannot use tailable cursor with stage %s",
 										stageElement.path)));
@@ -1305,7 +1307,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 			if (value->value.v_binary.subtype != BSON_SUBTYPE_UUID ||
 				value->value.v_binary.data_len != 16)
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"field collectionUUID must be of UUID type")));
 			}
 
@@ -1321,7 +1323,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("%*s is an unknown field",
 								   keyView.length, keyView.string)));
 		}
@@ -1329,13 +1331,13 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	if (pipelineValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Required variable pipeline must be valid")));
 	}
 
 	if (collectionName.length == 0 && !isCollectionAgnosticQuery)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Required variables aggregate must be valid")));
 	}
 
@@ -1348,7 +1350,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		}
 		else if (!IgnoreLetOnQuerySupport)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("let in find is not supported yet")));
 		}
 	}
@@ -1397,7 +1399,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	/* This is validated *after* the pipeline parsing happens */
 	if (!hasCursor && !explain && addCursorParams)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"The 'cursor' option is required, except for aggregate with the explain argument")));
 	}
@@ -1473,7 +1475,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 			/* In case ntoreturn is present and has been parsed already we throw this error */
 			if (!isNtoReturnSupported && hasNtoreturn)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
 			}
@@ -1515,7 +1517,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 			/* In case ntoreturn is present and has been parsed already we throw this error */
 			if (!isNtoReturnSupported && hasNtoreturn)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
 			}
@@ -1533,7 +1535,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 			/* In case ntoreturn is the last option in the find command we first check if batchSize or limit is present */
 			if (limit.value_type != BSON_TYPE_EOD || hasBatchSize)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
 			}
@@ -1558,37 +1560,37 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 				 BsonValueAsBool(value))
 		{
 			/* fail if returnKey or showRecordId are present and with boolean value true, else ignore */
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("key %.*s is not supported yet",
 								   keyView.length, keyView.string),
-							errhint("key %.*s is not supported yet",
-									keyView.length, keyView.string)));
+							errdetail_log("key %.*s is not supported yet",
+										  keyView.length, keyView.string)));
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("%.*s is an unknown field",
 								   keyView.length, keyView.string),
-							errhint("%.*s is an unknown field",
-									keyView.length, keyView.string)));
+							errdetail_log("%.*s is an unknown field",
+										  keyView.length, keyView.string)));
 		}
 	}
 
 	if (!hasFind)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Required element \"find\" missing.")));
 	}
 	else if (collectionName.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Collection name can't be empty.")));
 	}
 
 	/* In case only ntoreturn is present we give a different error.*/
 	if (!isNtoReturnSupported && hasNtoreturn)
 	{
-		ereport(ERROR, (errcode(MongoLocation5746102),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5746102),
 						errmsg("Command is not supported for mongo version >= 5.1")));
 	}
 
@@ -1616,7 +1618,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 		else if (!IgnoreLetOnQuerySupport)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("let in aggregate is not supported yet")));
 		}
 	}
@@ -1759,7 +1761,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("%.*s is an unknown field",
 								   keyView.length, keyView.string)));
 		}
@@ -1767,7 +1769,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 
 	if (collectionName.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Collection name can't be empty.")));
 	}
 
@@ -1816,11 +1818,11 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 			{
 				if (!BsonValueIsNumber(&skip))
 				{
-					ereport(ERROR, (errcode(MongoTypeMismatch)),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH)),
 							errmsg(
 								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
 								BsonTypeName(skip.value_type)),
-							errhint(
+							errdetail_log(
 								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
 								BsonTypeName(skip.value_type)));
 				}
@@ -1828,11 +1830,11 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 				int64_t skipValue = BsonValueAsInt64(&skip);
 				if (skipValue < 0)
 				{
-					ereport(ERROR, (errcode(MongoLocation51024)),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024)),
 							errmsg(
 								"BSON field 'skip' value must be >=0, actual value '%ld'",
 								skipValue),
-							errhint(
+							errdetail_log(
 								"BSON field 'skip' value must be >=0, actual value '%ld'",
 								skipValue));
 				}
@@ -1934,7 +1936,7 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("%.*s is an unknown field",
 								   keyView.length, keyView.string)));
 		}
@@ -1942,24 +1944,24 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
 
 	if (!hasDistinct)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Required element \"distinct\" missing.")));
 	}
 	else if (collectionName.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidNamespace),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 						errmsg("Collection name can't be empty.")));
 	}
 
 	if (distinctKey.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("distinct key can't be empty.")));
 	}
 
 	if (strlen(distinctKey.string) != distinctKey.length)
 	{
-		ereport(ERROR, (errcode(MongoKeyCannotContainNullByte),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_KEYCANNOTCONTAINNULLBYTE),
 						errmsg("Distinct key cannot have embedded nulls")));
 	}
 
@@ -2017,7 +2019,7 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData)
 		}
 		else if (!IsCommonSpecIgnoredField(pathKey))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("%s is an unknown field",
 								   pathKey)));
 		}
@@ -2025,13 +2027,13 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData)
 
 	if (queryData->namespaceName == NULL)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Required element \"collection\" missing.")));
 	}
 
 	if (cursorId == 0)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Required element \"getMore\" missing.")));
 	}
 
@@ -2152,7 +2154,7 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation40272),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40272),
 						errmsg("%s specification stage must be an object", stageName)));
 	}
 
@@ -2318,7 +2320,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_SKIP);
 	if (!BsonValueIsNumber(existingValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation15972),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15972),
 						errmsg("Argument to $skip must be a number")));
 	}
 
@@ -2326,7 +2328,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	if (!IsBsonValueUnquantized64BitInteger(existingValue, checkFixedInteger))
 	{
 		double doubleValue = BsonValueAsDouble(existingValue);
-		ereport(ERROR, (errcode(MongoLocation5107200),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5107200),
 						errmsg(
 							"invalid argument to $skip stage: Cannot represent as a 64-bit integer $skip: %f",
 							doubleValue)));
@@ -2335,7 +2337,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	int64_t skipValue = BsonValueAsInt64(existingValue);
 	if (skipValue < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation5107200),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5107200),
 						errmsg(
 							"invalid argument to $skip stage: Expected a non-negative number in $skip: %ld",
 							skipValue)));
@@ -2388,7 +2390,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_LIMIT);
 	if (!BsonValueIsNumber(existingValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation15957),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15957),
 						errmsg("the limit must be specified as a number")));
 	}
 
@@ -2396,7 +2398,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 	if (!IsBsonValue64BitInteger(existingValue, checkFixedInteger))
 	{
 		double doubleValue = BsonValueAsDouble(existingValue);
-		ereport(ERROR, (errcode(MongoLocation5107201),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5107201),
 						errmsg(
 							"invalid argument to $limit stage: Cannot represent as a 64-bit integer: $limit: %f",
 							doubleValue)));
@@ -2405,7 +2407,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 	int64_t limitValue = BsonValueAsInt64(existingValue);
 	if (limitValue < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation5107201),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5107201),
 						errmsg(
 							"invalid argument to $skip stage: Expected a non - negative number in: $limit: %ld",
 							limitValue)));
@@ -2413,7 +2415,7 @@ HandleLimit(const bson_value_t *existingValue, Query *query,
 
 	if (limitValue == 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation15958),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15958),
 						errmsg("the limit must be positive")));
 	}
 
@@ -2456,7 +2458,7 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_MATCH);
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation15959),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15959),
 						errmsg("the match filter must be an expression in an object")));
 	}
 
@@ -2638,7 +2640,7 @@ PreCheckChangeStreamPipelineStages(const bson_value_t *pipelineValue,
 									  COMPATIBLE_CHANGE_STREAM_STAGES_COUNT,
 									  stageName))
 		{
-			ereport(ERROR, (errcode(MongoIllegalOperation),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_ILLEGALOPERATION),
 							errmsg(
 								"Stage %s is not permitted in a $changeStream pipeline",
 								stageName)));
@@ -2664,10 +2666,10 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 	if (!IsClusterVersionAtleastThis(1, 20, 0) ||
 		!IsChangeStreamFeatureAvailableAndCompatible())
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"Stage $changeStream is not supported yet in native pipeline"),
-						errhint(
+						errdetail_log(
 							"Stage $changeStream is not supported yet in native pipeline")));
 	}
 
@@ -2678,7 +2680,7 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 								 context->mongoCollection->name.collectionName))
 	{
 		/* This is a view */
-		ereport(ERROR, (errcode(MongoCommandNotSupportedOnView),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTEDONVIEW),
 						errmsg(
 							"$changeStream is not supported on views.")));
 	}
@@ -2686,7 +2688,7 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 	/*Check the first stage and make sure it is $changestream. */
 	if (context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation40602),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40602),
 						errmsg(
 							"$changeStream is only valid as the first stage in the pipeline.")));
 	}
@@ -2786,7 +2788,7 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 	if (existingValue->value_type != BSON_TYPE_UTF8 &&
 		existingValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoLocation31002),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31002),
 						errmsg("$unset specification must be a string or an array")));
 	}
 
@@ -2797,13 +2799,13 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 	{
 		if (existingValue->value.v_utf8.len == 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation40352),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40352),
 							errmsg("FieldPath cannot be constructed with empty string")));
 		}
 
 		if (existingValue->value.v_utf8.str[0] == '$')
 		{
-			ereport(ERROR, (errcode(MongoLocation16410),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
 							errmsg("FieldPath field names may not start with '$'")));
 		}
 
@@ -2821,21 +2823,21 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 			const bson_value_t *arrayValue = bson_iter_value(&valueIterator);
 			if (arrayValue->value_type != BSON_TYPE_UTF8)
 			{
-				ereport(ERROR, (errcode(MongoLocation31120),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31120),
 								errmsg(
 									"$unset specification must be a string or an array containing only string values")));
 			}
 
 			if (arrayValue->value.v_utf8.len == 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation40352),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40352),
 								errmsg(
 									"FieldPath cannot be constructed with empty string")));
 			}
 
 			if (arrayValue->value.v_utf8.str[0] == '$')
 			{
-				ereport(ERROR, (errcode(MongoLocation16410),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
 								errmsg("FieldPath field names may not start with '$'")));
 			}
 
@@ -2849,7 +2851,7 @@ HandleUnset(const bson_value_t *existingValue, Query *query,
 
 	if (IsPgbsonEmptyDocument(excludeBson))
 	{
-		ereport(ERROR, (errcode(MongoLocation31119),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31119),
 						errmsg(
 							"$unset specification must be a string or an array with at least one field")));
 	}
@@ -2906,7 +2908,7 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 				{
 					if (value->value_type != BSON_TYPE_UTF8)
 					{
-						ereport(ERROR, (errcode(MongoLocation28810),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28810),
 										errmsg(
 											"expected a non-empty string for the includeArrayIndex option to $unwind stage")));
 					}
@@ -2918,14 +2920,14 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 
 					if (includeArrayIndexView.length == 0)
 					{
-						ereport(ERROR, (errcode(MongoLocation28810),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28810),
 										errmsg(
 											"expected a non-empty string for the includeArrayIndex option to $unwind stage")));
 					}
 
 					if (StringViewStartsWith(&includeArrayIndexView, '$'))
 					{
-						ereport(ERROR, (errcode(MongoLocation28822),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28822),
 										errmsg(
 											"includeArrayIndex option to $unwind stage should not be prefixed with a '$': %s",
 											includeArrayIndexView.string)));
@@ -2935,14 +2937,14 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 				{
 					if (value->value_type != BSON_TYPE_BOOL)
 					{
-						ereport(ERROR, (errcode(MongoLocation28809),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28809),
 										errmsg(
 											"expected a boolean for the preserveNullAndEmptyArrays option to $unwind stage")));
 					}
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoLocation28811),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28811),
 									errmsg("unrecognized option to $unwind stage")));
 				}
 			}
@@ -2952,7 +2954,7 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoLocation15981),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15981),
 							errmsg(
 								"expected either a string or an object as specification for $unwind stage, got %s",
 								BsonTypeName(existingValue->value_type))));
@@ -2961,12 +2963,12 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 
 	if (pathValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation28812),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28812),
 						errmsg("No path specified to $unwind stage")));
 	}
 	if (pathValue.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoLocation28808),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28808),
 						errmsg("Expected a string as the path for $unwind stage, got %s",
 							   BsonTypeName(pathValue.value_type))));
 	}
@@ -2977,13 +2979,13 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 	};
 	if (pathView.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation28812),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28812),
 						errmsg("No path specified to $unwind stage")));
 	}
 
 	if (!StringViewStartsWith(&pathView, '$') || pathView.length == 1)
 	{
-		ereport(ERROR, (errcode(MongoLocation28818),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28818),
 						errmsg(
 							"path option to $unwind stage should be prefixed with a '$': %.*s",
 							pathView.length, pathView.string)));
@@ -2991,7 +2993,7 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 
 	if (pathView.string[1] == '$')
 	{
-		ereport(ERROR, (errcode(MongoLocation16410),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16410),
 						errmsg("FieldPath field names may not start with '$'.")));
 	}
 
@@ -3131,14 +3133,14 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 
 	if (!IsClusterVersionAtleastThis(1, 17, 2))
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"$geoNear is not supported yet.")));
 	}
 
 	if (context->stageNum != 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation40603),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40603),
 						errmsg(
 							"$geoNear was not the first stage in the pipeline.")));
 	}
@@ -3148,10 +3150,11 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	if (rte->rtekind != RTE_RELATION)
 	{
 		ereport(ERROR, (
-					errcode(MongoBadValue),
+					errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("$geoNear is only supported on collections."),
-					errhint("$geoNear is only supported on collections. RTE KIND: %d",
-							rte->rtekind)));
+					errdetail_log(
+						"$geoNear is only supported on collections. RTE KIND: %d",
+						rte->rtekind)));
 	}
 
 	const pgbson *geoNearQueryDoc = PgbsonInitFromDocumentBsonValue(existingValue);
@@ -3192,7 +3195,7 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 
 		if (TargetListContainsGeonearOp(query->targetList))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Too many geoNear expressions")));
 		}
 	}
@@ -3283,19 +3286,19 @@ HandleCount(const bson_value_t *existingValue, Query *query,
 
 	if (countField.length == 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation40156),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40156),
 						errmsg("the count field must be a non-empty string")));
 	}
 
 	if (StringViewStartsWith(&countField, '$'))
 	{
-		ereport(ERROR, (errcode(MongoLocation40158),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40158),
 						errmsg("the count field cannot be a $-prefixed path")));
 	}
 
 	if (StringViewContains(&countField, '.'))
 	{
-		ereport(ERROR, (errcode(MongoLocation40160),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40160),
 						errmsg("the count field cannot contain '.'")));
 	}
 
@@ -3369,7 +3372,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_SORT);
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Expected document for sort specification")));
 	}
 
@@ -3427,7 +3430,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Invalid sort direction %s",
 									   BsonValueToJsonForLogging(
 										   &element.bsonValue))));
@@ -3467,7 +3470,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 
 	if (sortlist == NIL)
 	{
-		ereport(ERROR, (errcode(MongoLocation15976),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15976),
 						errmsg("$sort stage must have at least one sort key")));
 	}
 
@@ -3510,7 +3513,7 @@ HandleSortByCount(const bson_value_t *existingValue, Query *query,
 
 	if (isInvalidSpec)
 	{
-		ereport(ERROR, (errcode(MongoLocation40147),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40147),
 						errmsg(
 							"the sortByCount field must be defined as a $-prefixed path or an expression inside an object")));
 	}
@@ -3596,19 +3599,19 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 	{
 		if (strcmp(opName, "$maxN") == 0 || strcmp(opName, "$minN") == 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation5787900), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900), errmsg(
 								"specification must be an object; found %s: %s",
 								opName, BsonValueToJsonForLogging(inputDocument)),
-							errhint(
+							errdetail_log(
 								"specification must be an object; opname: %s type found: %s",
 								opName, BsonTypeName(inputDocument->value_type))));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation5787801), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787801), errmsg(
 								"specification must be an object; found %s :%s",
 								opName, BsonValueToJsonForLogging(inputDocument)),
-							errhint(
+							errdetail_log(
 								"specification must be an object; opname: %s type found :%s",
 								opName, BsonTypeName(inputDocument->value_type))));
 		}
@@ -3629,9 +3632,9 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation5787901), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
 								"%s found an unknown argument: %s", opName, key),
-							errhint(
+							errdetail_log(
 								"%s found an unknown argument", opName)));
 		}
 	}
@@ -3641,17 +3644,17 @@ ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 	 */
 	if (input->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5787907), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
 							"%s requires an 'input' field", opName),
-						errhint(
+						errdetail_log(
 							"%s requires an 'input' field", opName)));
 	}
 
 	if (elementsToFetch->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation5787906), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
 							"%s requires an 'n' field", opName),
-						errhint(
+						errdetail_log(
 							"%s requires an 'n' field", opName)));
 	}
 }
@@ -3974,7 +3977,7 @@ AddMergeObjectsGroupAccumulator(Query *query, const bson_value_t *accumulatorVal
 	 */
 	if (variableSpec != NULL)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("let with $mergeObjects is not supported yet")));
 	}
 
@@ -4267,7 +4270,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	/* Part 1, let's do the group */
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation15947),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15947),
 						errmsg("a group's fields must be specified in an object")));
 	}
 
@@ -4297,7 +4300,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 
 	if (idValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation15955),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15955),
 						errmsg("a group specification must include an _id")));
 	}
 
@@ -4362,7 +4365,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		if (StringViewContains(&keyView, '.'))
 		{
 			/* Paths here cannot be dotted paths */
-			ereport(ERROR, (errcode(MongoLocation40235),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40235),
 							errmsg("The field name %.*s cannot contain '.'",
 								   keyView.length, keyView.string)));
 		}
@@ -4373,7 +4376,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		if (!BSON_ITER_HOLDS_DOCUMENT(&groupIter) ||
 			!bson_iter_recurse(&groupIter, &accumulatorIterator))
 		{
-			ereport(ERROR, (errcode(MongoLocation40234),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40234),
 							errmsg("The field '%.*s' must be an accumulator object",
 								   keyView.length, keyView.string)));
 		}
@@ -4382,7 +4385,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		if (!TryGetSinglePgbsonElementFromBsonIterator(&accumulatorIterator,
 													   &accumulatorElement))
 		{
-			ereport(ERROR, (errcode(MongoLocation40238),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40238),
 							errmsg("The field '%.*s' must specify one accumulator",
 								   keyView.length, keyView.string)));
 		}
@@ -4569,9 +4572,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		{
 			if (!IsClusterVersionAtleastThis(1, 22, 0))
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $maxN is not implemented yet"),
-								errhint(
+								errdetail_log(
 									"Accumulator $maxN is not implemented yet")));
 			}
 
@@ -4589,9 +4592,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		{
 			if (!(IsClusterVersionAtleastThis(1, 22, 0)))
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $minN is not implemented yet"),
-								errhint(
+								errdetail_log(
 									"Accumulator $minN is not implemented yet")));
 			}
 
@@ -4647,7 +4650,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $mergeObjects not implemented yet")));
 			}
 		}
@@ -4670,19 +4673,19 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		{
 			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $stdDevSamp is not implemented yet"),
-								errhint(
+								errdetail_log(
 									"Accumulator $stdDevSamp is not implemented yet")));
 			}
 
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
-				ereport(ERROR, (errcode(MongoLocation40237), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40237), errmsg(
 									"The %s accumulator is a unary operator",
 									accumulatorName.string)),
-						errhint("The %s accumulator is a unary operator",
-								accumulatorName.string));
+						errdetail_log("The %s accumulator is a unary operator",
+									  accumulatorName.string));
 			}
 
 			repathArgs = AddSimpleGroupAccumulator(query,
@@ -4698,20 +4701,20 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		{
 			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 								errmsg("Accumulator $stdDevPop is not implemented yet"),
-								errhint(
+								errdetail_log(
 									"Accumulator $stdDevPop is not implemented yet")));
 			}
 
 
 			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 			{
-				ereport(ERROR, (errcode(MongoLocation40237), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40237), errmsg(
 									"The %s accumulator is a unary operator",
 									accumulatorName.string)),
-						errhint("The %s accumulator is a unary operator",
-								accumulatorName.string));
+						errdetail_log("The %s accumulator is a unary operator",
+									  accumulatorName.string));
 			}
 
 			repathArgs = AddSimpleGroupAccumulator(query,
@@ -4811,11 +4814,11 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation15952),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15952),
 							errmsg("Unknown group operator %s",
 								   accumulatorElement.path),
-							errhint("Unknown group operator %s",
-									accumulatorElement.path)));
+							errdetail_log("Unknown group operator %s",
+										  accumulatorElement.path)));
 		}
 	}
 
@@ -5014,7 +5017,7 @@ ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
 
 		if (viewDepth > MAX_VIEW_DEPTH)
 		{
-			ereport(ERROR, (errcode(MongoViewDepthLimitExceeded),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_VIEWDEPTHLIMITEXCEEDED),
 							errmsg("View depth exceeded limit %d", MAX_VIEW_DEPTH)));
 		}
 
@@ -5078,7 +5081,7 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	{
 		if (collection == NULL)
 		{
-			ereport(ERROR, (errcode(MongoCollectionUUIDMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COLLECTIONUUIDMISMATCH),
 							errmsg(
 								"Namespace %s has a mismatch on collectionUUID: Collection does not exist",
 								context->namespaceName)));
@@ -5086,7 +5089,7 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 
 		if (memcmp(collectionUuid->data, collection->collectionUUID.data, 16) != 0)
 		{
-			ereport(ERROR, (errcode(MongoCollectionUUIDMismatch),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COLLECTIONUUIDMISMATCH),
 							errmsg("Namespace %s has a mismatch on collectionUUID",
 								   context->namespaceName)));
 		}
@@ -5339,7 +5342,7 @@ AddQualifierForTailableQuery(Query *query, Query *baseQuery,
 	TargetEntry *entry = llast(query->targetList);
 	if (entry->resname == NULL || strcmp(entry->resname, "continuation") != 0)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg(
 							"The last target entry in the query must be the document")));
 	}
@@ -5393,7 +5396,7 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_SAMPLE);
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation28745),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28745),
 						errmsg("The $sample stage specification must be an object.")));
 	}
 
@@ -5409,20 +5412,20 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation28748),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28748),
 							errmsg("unrecognized option to $sample")));
 		}
 	}
 
 	if (sizeValue.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation28749),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28749),
 						errmsg("$sample stage must specify a size")));
 	}
 
 	if (!BsonValueIsNumber(&sizeValue))
 	{
-		ereport(ERROR, (errcode(MongoLocation28746),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28746),
 						errmsg("size argument to $sample must be a number")));
 	}
 
@@ -5430,7 +5433,7 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 
 	if (sizeDouble < 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation28747),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28747),
 						errmsg("size argument to $sample must be a number")));
 	}
 
@@ -5498,7 +5501,7 @@ HandleSample(const bson_value_t *existingValue, Query *query,
 	pfree(parseState);
 	if (sortlist == NIL)
 	{
-		ereport(ERROR, (errcode(MongoLocation15976),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION15976),
 						errmsg("$sort stage must have at least one sort key")));
 	}
 
@@ -5778,7 +5781,7 @@ ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Unrecognized field: %s",
 								   path)));
 		}
@@ -5800,7 +5803,7 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 {
 	if (list_length(simplifyRequest->root->parse->rtable) != 1)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Query pipeline function must be the only entry in the FROM clause")));
 	}
@@ -5808,7 +5811,7 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 	RangeTblEntry *rte = (RangeTblEntry *) linitial(simplifyRequest->root->parse->rtable);
 	if (rte->rtekind != RTE_FUNCTION || list_length(rte->functions) != 1)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Query pipeline FROM clause must have exactly 1 function")));
 	}
@@ -5817,7 +5820,7 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 	FuncExpr *funcExpr = (FuncExpr *) rangeTableFunc->funcexpr;
 	if (!equal(funcExpr, simplifyRequest->fcall))
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Query pipeline function must be in the FROM clause")));
 	}
 
@@ -5837,7 +5840,7 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 	Const *aggregationConst = (Const *) secondArg;
 	if (databaseConst->constisnull || aggregationConst->constisnull)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Query pipeline arguments should not be null.")));
 	}
@@ -5929,7 +5932,7 @@ ValidateQueryTreeForMatchStage(const Query *query)
 		{
 			if (isGeoNear)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("Too many geoNear expressions")));
 			}
 			isGeoNear = true;
@@ -6016,7 +6019,7 @@ DisallowExpressionsForTopLevelLet(AggregationExpressionData *parsedExpression)
 		  parsedExpression->systemVariable.kind ==
 		  AggregationExpressionSystemVariableKind_Root)))
 	{
-		ereport(ERROR, errcode(MongoLocation4890500), errmsg(
+		ereport(ERROR, errcode(ERRCODE_HELIO_LOCATION4890500), errmsg(
 					"Command let Expression tried to access a field,"
 					" but this is not allowed because command let expressions"
 					" run before the query examines any documents."));

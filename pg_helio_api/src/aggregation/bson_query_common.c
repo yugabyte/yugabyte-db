@@ -46,7 +46,7 @@ ParseQueryDollarRange(pgbson *rangeFilter)
 		}
 		else
 		{
-			ereport(ERROR, (errmsg("Unsupported range predicate: %s", key), errhint(
+			ereport(ERROR, (errmsg("Unsupported range predicate: %s", key), errdetail_log(
 								"Unsupported range predicate: %s", key)));
 		}
 	}

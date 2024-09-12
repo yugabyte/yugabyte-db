@@ -106,13 +106,10 @@ SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airp
 ERROR:  Missing 'path' parameter to $inverseMatch
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": ["flight_type", "private"] }}]}');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
-HINT:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [{"flight_type": "private"}, ""] }}]}');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
-HINT:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": [{"path": "rule", "input": [{"flight_type": "private"}, ""] }, {"path": "rule2", "input": {}}]}]}');
 ERROR:  $inverseMatch requires a document as an input instead got: array
-HINT:  $inverseMatch requires a document as an input instead got: array
 -- insert a document with an invalid query
 SELECT helio_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
                               insert_one                              
@@ -331,10 +328,8 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 ERROR:  Missing 'path' parameter to $inverseMatch
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [true]}} ], "cursor": {} }');
 ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: bool
-HINT:  $inverseMatch requires that if 'input' is an array its contents be documents, found: bool
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": true}} ], "cursor": {} }');
 ERROR:  $inverseMatch requires that 'input' be a document or an array of documents, found: bool
-HINT:  $inverseMatch requires that 'input' be a document or an array of documents, found: bool
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}, "from": "collection"}} ], "cursor": {} }');
 ERROR:  'input' and 'from' can't be used together in an $inverseMatch stage.
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "collection"}} ], "cursor": {} }');

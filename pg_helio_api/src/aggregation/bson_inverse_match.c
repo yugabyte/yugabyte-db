@@ -16,7 +16,7 @@
 #include "io/helio_bson_core.h"
 #include "io/bson_traversal.h"
 #include "operators/bson_expression.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/fmgr_utils.h"
 
 /* --------------------------------------------------------- */
@@ -132,11 +132,11 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 	{
 		if (args->defaultResult.value_type == BSON_TYPE_EOD)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"$inverseMatch failed to find a value for path: '%s' in one of the documents, if this is expected, please provide a default result value in the stage spec.'",
 								queryPath),
-							errhint(
+							errdetail_log(
 								"$inverseMatch failed to find a value for the specified path in one of the documents.")));
 		}
 
@@ -146,12 +146,12 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 	bson_value_t queryValue = traverseState.bsonValue;
 	if (queryValue.value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$inverseMatch expects the value in the path specified to be a document, got: '%s', for path: '%s'",
 							BsonTypeName(queryValue.value_type),
 							queryPath),
-						errhint(
+						errdetail_log(
 							"$inverseMatch expects the value in the path specified to be a document, got: '%s'",
 							BsonTypeName(queryValue.value_type))));
 	}
@@ -206,7 +206,7 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 	else
 	{
 		FreeExprEvalState(exprEvalState, memoryContext);
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"inverse match expects query input element to be document or an array of documents got: %s",
 							BsonTypeName(inputType))));
 	}
@@ -263,7 +263,7 @@ PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter)
 	if (expressionKind != AggregationExpressionKind_Constant &&
 		expressionKind != AggregationExpressionKind_Path)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$inverseMatch expects 'input' to be a constant value or a string path expression.")));
 	}
 
@@ -287,11 +287,11 @@ ValidateQueryInput(const bson_value_t *value)
 	if (queryInputType != BSON_TYPE_DOCUMENT &&
 		queryInputType != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$inverseMatch requires that 'input' be a document or an array of documents, found: %s",
 							BsonTypeName(queryInputType)),
-						errhint(
+						errdetail_log(
 							"$inverseMatch requires that 'input' be a document or an array of documents, found: %s",
 							BsonTypeName(queryInputType))));
 	}
@@ -304,11 +304,11 @@ ValidateQueryInput(const bson_value_t *value)
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$inverseMatch requires that if 'input' is an array its contents be documents, found: %s",
 									BsonIterTypeName(&arrayIter)),
-								errhint(
+								errdetail_log(
 									"$inverseMatch requires that if 'input' is an array its contents be documents, found: %s",
 									BsonIterTypeName(&arrayIter))));
 			}
@@ -337,7 +337,7 @@ static bool
 InverseMatchContinueProcessIntermediateArray(void *state, const
 											 bson_value_t *value)
 {
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg(
 						"$inverseMatch requires that the query value in path points to a document field but instead an array field was found.")));
 }

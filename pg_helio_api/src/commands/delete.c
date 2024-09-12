@@ -30,6 +30,7 @@
 #include "sharding/sharding.h"
 #include "commands/retryable_writes.h"
 #include "io/pgbsonsequence.h"
+#include "utils/mongo_errors.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "utils/query_utils.h"

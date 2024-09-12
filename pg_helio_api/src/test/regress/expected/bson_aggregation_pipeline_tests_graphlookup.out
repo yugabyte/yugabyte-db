@@ -294,8 +294,6 @@ SELECT helio_api.shard_collection('db', 'graph_lookup_employees', '{ "_id": "has
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
 ERROR:  $graphLookup with 'from' on a sharded collection is not supported
-HINT:  $graphLookup with 'from' on a sharded collection is not supported
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
 ERROR:  $graphLookup with 'from' on a sharded collection is not supported
-HINT:  $graphLookup with 'from' on a sharded collection is not supported

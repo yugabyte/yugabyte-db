@@ -18,7 +18,7 @@
 #include <math.h>
 #include <nodes/pg_list.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "types/decimal128.h"
 
 
@@ -84,7 +84,7 @@ typedef struct BsonIntegralAndDerivativeAggState
 															   &(Result)); \
 		if (decimalOpResult != Decimal128Result_Success && decimalOpResult != \
 			Decimal128Result_Inexact) { \
-			ereport(ERROR, (errcode(MongoInternalError)), \
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)), \
 					errmsg(GENERATE_ERROR_MSG(ErrorMessage, Element1, Element2))); \
 		} \
 	} while (0)
@@ -846,14 +846,14 @@ bson_exp_moving_avg(PG_FUNCTION_ARGS)
 									   &stateData->weight,
 									   stateData->isAlpha, &bsonResultValue))
 			{
-				ereport(ERROR, (errcode(MongoInternalError)),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
 						errmsg(
 							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
 							BsonValueToJsonForLogging(
 								&bsonCurrentValue),
 							BsonValueToJsonForLogging(&bsonPerValue),
 							BsonValueToJsonForLogging(&stateData->weight)),
-						errhint(
+						errdetail_log(
 							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
 							BsonValueToJsonForLogging(
 								&bsonCurrentValue),
@@ -1826,7 +1826,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 			if (BsonValueAsDouble(weightExpression) <= 0 || BsonValueAsDouble(
 					weightExpression) >= 1)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"'alpha' must be between 0 and 1 (exclusive), found alpha: %lf",
 									BsonValueAsDouble(weightExpression))));
@@ -1849,14 +1849,14 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 				if (!IsBsonValue64BitInteger(weightExpression, checkFixedInteger) &&
 					!IsBsonValueNegativeNumber(weightExpression))
 				{
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg(
 										"'N' field must be an integer, but found  N: %lf. To use a non-integer, use the 'alpha' argument instead",
 										BsonValueAsDouble(weightExpression))));
 				}
 				else if (IsBsonValueNegativeNumber(weightExpression))
 				{
-					ereport(ERROR, (errcode(MongoFailedToParse),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg(
 										"'N' must be greater than zero. Got %d",
 										BsonValueAsInt32(weightExpression))));
@@ -1864,7 +1864,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg(
 									"'N' field must be an integer, but found type %s",
 									BsonTypeName(weightExpression->value_type))));
@@ -1879,7 +1879,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 		else
 		{
 			/*incorrect parameter,like "alpah" */
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"Got unrecognized field in $expMovingAvg, $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
 		}
@@ -1889,7 +1889,7 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 																InputValidFlags_N |
 																InputValidFlags_Alpha))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg(
 							"$expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
 	}
@@ -2104,7 +2104,7 @@ HandleIntegralDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
 	if (!success)
 	{
 		char *opName = isIntegralOperator ? "$integral" : "$derivative";
-		ereport(ERROR, errcode(MongoInternalError),
+		ereport(ERROR, errcode(ERRCODE_HELIO_INTERNALERROR),
 				errmsg(
 					"Handling %s: yValue = %f, xValue = %f, currentState->anchorX = %f, currentState->anchorY = %f, currentState->result = %f",
 					opName, BsonValueAsDouble(&yValue), BsonValueAsDouble(&xValue),
@@ -2162,7 +2162,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	/* if unit is specifed but x is not a date, throw an error */
 	if (timeUnitInt64 && xBsonValue->value_type != BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(MongoLocation5429513), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513), errmsg(
 							"Expected the sortBy field to be a Date, but it was %s",
 							BsonTypeName(
 								xBsonValue->value_type))));
@@ -2170,7 +2170,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	/* if unit is not specified and x is a date, throw an error */
 	else if (!timeUnitInt64 && xBsonValue->value_type == BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(MongoLocation5429513), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513), errmsg(
 							"For windows that involve date or time ranges, a unit must be provided.")));
 	}
 

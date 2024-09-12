@@ -583,7 +583,5 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 /* nagetive tests */
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "tests", "pipeline": [ { "$group": { "_id": "$group", "stdDev": { "$stdDevPop": ["$num"] } } } ] }');
 ERROR:  The $stdDevPop accumulator is a unary operator
-HINT:  The $stdDevPop accumulator is a unary operator
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "tests", "pipeline": [ { "$group": { "_id": "$group", "stdDev": { "$stdDevSamp": ["$num"] } } } ] }');
 ERROR:  The $stdDevSamp accumulator is a unary operator
-HINT:  The $stdDevSamp accumulator is a unary operator

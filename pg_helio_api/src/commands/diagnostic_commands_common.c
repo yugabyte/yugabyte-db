@@ -16,7 +16,7 @@
 #include <access/xact.h>
 
 #include "utils/helio_errors.h"
-#include "utils/error_utils.h"
+#include "utils/mongo_errors.h"
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "utils/query_utils.h"

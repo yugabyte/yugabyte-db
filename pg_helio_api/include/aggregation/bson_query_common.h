@@ -13,7 +13,7 @@
 #define BSON_QUERY_COMMON_H
 
 #include "io/helio_bson_core.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /*
  * This struct defines the parameters for a range query.

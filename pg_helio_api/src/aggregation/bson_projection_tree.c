@@ -339,8 +339,8 @@ EnsureValidInclusionExclusion(const BuildBsonPathTreeContext *context,
 	if (!context->allowInclusionExclusion && context->hasExclusion &&
 		context->hasInclusion)
 	{
-		MongoErrorEreportCode code = context->hasInclusion ? MongoLocation31254 :
-									 MongoLocation31253;
+		int64 code = context->hasInclusion ? ERRCODE_HELIO_LOCATION31254 :
+					 ERRCODE_HELIO_LOCATION31253;
 		const char *from = context->hasInclusion ? Inclusion_String :
 						   Exclusion_String;
 		const char *to = context->hasInclusion ? Exclusion_String :

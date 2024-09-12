@@ -45,7 +45,6 @@
 #include "commands/diagnostic_commands_common.h"
 #include "commands/drop_indexes.h"
 #include "commands/lock_tags.h"
-#include "utils/helio_errors.h"
 #include "commands/parse_error.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
@@ -54,7 +53,9 @@
 #include "planner/mongo_query_operator.h"
 #include "query/query_operator.h"
 #include "utils/guc_utils.h"
+#include "utils/mongo_errors.h"
 #include "utils/list_utils.h"
+#include "utils/helio_errors.h"
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/index_utils.h"
@@ -5348,7 +5349,7 @@ MakeCreateIndexesMsg(CreateIndexesResult *result)
 		}
 		else if (result->errcode == ERRCODE_UNDEFINED_TABLE)
 		{
-			result->errcode = MongoIndexBuildAborted;
+			result->errcode = ERRCODE_HELIO_INDEXBUILDABORTED;
 			result->errmsg = COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG;
 		}
 
@@ -5456,7 +5457,7 @@ MakeReIndexMsg(ReIndexResult *result)
 		}
 		else if (result->errcode == ERRCODE_UNDEFINED_TABLE)
 		{
-			result->errcode = MongoIndexBuildAborted;
+			result->errcode = ERRCODE_HELIO_INDEXBUILDABORTED;
 			result->errmsg = COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG;
 		}
 

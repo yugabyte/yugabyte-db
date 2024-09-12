@@ -23,6 +23,7 @@
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/helio_errors.h"
+#include "utils/mongo_errors.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"

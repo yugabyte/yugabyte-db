@@ -13,7 +13,7 @@
 
 #include <nodes/params.h>
 
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /*
  * Tracks the overall query spec data
