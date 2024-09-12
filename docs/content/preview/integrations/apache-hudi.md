@@ -124,7 +124,7 @@ To configure Hudi to use YugabyteDB, do the following:
     spark-submit --class example.HudiYugabyteDBIntegration --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0 path_to_your_scala_file.jar
     ```
 
-## Verify
+## Query the HUDI table
 
 To verify the integration, connect to YugabyteDB using [ysqlsh](../../admin/ysqlsh/) and execute YSQL queries as follows:
 
