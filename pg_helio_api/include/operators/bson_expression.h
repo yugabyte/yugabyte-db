@@ -110,6 +110,9 @@ typedef enum AggregationExpressionArgumentsKind
 
 	/* List * that must be freed with list_free_deep PG method. */
 	AggregationExpressionArgumentsKind_List = 2,
+
+	/* Empty argument kind. */
+	AggregationExpressionArgumentsKind_Empty = 3
 } AggregationExpressionArgumentsKind;
 
 
