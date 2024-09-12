@@ -192,7 +192,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
           className={classes.selectStrategy}
           disabled
         >
-          {...backupTypeOptions}
+          {backupTypeOptions}
         </YBSelectField>
         <BackupFrequencyField
           control={(control as unknown) as Control<BackupFrequencyModel>}
