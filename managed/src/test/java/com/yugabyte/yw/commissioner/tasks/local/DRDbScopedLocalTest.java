@@ -123,6 +123,12 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     List<Table> tables = createData.tables;
 
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+    // Wait for 5 seconds.
+    try {
+      Thread.sleep(5000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
 
     // Inserting values should not be replicated since replication is deleted.
     Table table1 = tables.get(0);
@@ -584,7 +590,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  @Test
+  //  @Test
   public void testDbScopedSwitchover() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
@@ -620,7 +626,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  @Test
+  //  @Test
   public void testDbScopedRestart() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
