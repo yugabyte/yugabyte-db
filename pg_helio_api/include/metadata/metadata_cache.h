@@ -332,6 +332,8 @@ Oid ApiChangeStreamAggregationFunctionOid(void);
 Oid ApiCollStatsAggregationFunctionOid(void);
 Oid ApiIndexStatsAggregationFunctionOid(void);
 Oid BsonCurrentOpAggregationFunctionId(void);
+Oid BsonMaxNAggregateFunctionOid(void);
+Oid BsonMinNAggregateFunctionOid(void);
 
 /* Window functions*/
 Oid BsonLinearFillFunctionOid(void);

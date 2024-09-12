@@ -11,6 +11,7 @@
 #ifndef BSON_AGGREGATION_PIPELINE_H
 #define BSON_AGGREGATION_PIPELINE_H
 
+#include <nodes/params.h>
 
 #include "utils/mongo_errors.h"
 

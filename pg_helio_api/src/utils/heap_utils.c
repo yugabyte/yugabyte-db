@@ -43,7 +43,7 @@ AllocateHeap(int64_t capacity, HeapComparator comparator)
 void
 PushToHeap(BinaryHeap *heap, const bson_value_t *value)
 {
-	Assert(heap->heapSize <= heap->heapSpace);
+	Assert(heap->heapSize < heap->heapSpace);
 
 	int64_t index = heap->heapSize++;
 	heap->heapNodes[index] = *value;

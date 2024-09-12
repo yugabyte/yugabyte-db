@@ -324,3 +324,21 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTN(__CORE_SCHEMA__.bson, b
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_lastn_combine,
     PARALLEL = SAFE
 );
+
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONMAXN(__CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_maxn_transition,
+    FINALFUNC = helio_api_internal.bson_maxminn_final,
+    stype = bytea,
+    COMBINEFUNC = helio_api_internal.bson_maxminn_combine,
+    PARALLEL = SAFE
+);
+
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONMINN(__CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_minn_transition,
+    FINALFUNC = helio_api_internal.bson_maxminn_final,
+    stype = bytea,
+    COMBINEFUNC = helio_api_internal.bson_maxminn_combine,
+    PARALLEL = SAFE
+);

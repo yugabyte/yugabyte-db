@@ -752,6 +752,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONSTDDEVPOP aggregate function */
 	Oid ApiCatalogBsonStdDevPopAggregateFunctionOid;
 
+	/* OID of the BSONMAXN aggregate function */
+	Oid ApiCatalogBsonMaxNAggregateFunctionOid;
+
+	/* OID of the BSONMINN aggregate function */
+	Oid ApiCatalogBsonMinNAggregateFunctionOid;
+
 	/* OID of the BSONSTDDEVSAMP aggregate function */
 	Oid ApiCatalogBsonStdDevSampAggregateFunctionOid;
 
@@ -3780,6 +3786,24 @@ BsonLastNOnSortedAggregateFunctionOid(void)
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonLastNOnSortedAggregateFunctionOid,
 		ApiCatalogSchemaName, "bsonlastnonsorted");
+}
+
+
+Oid
+BsonMaxNAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonMaxNAggregateFunctionOid,
+		"helio_api_internal", "bsonmaxn");
+}
+
+
+Oid
+BsonMinNAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonMinNAggregateFunctionOid,
+		"helio_api_internal", "bsonminn");
 }
 
 

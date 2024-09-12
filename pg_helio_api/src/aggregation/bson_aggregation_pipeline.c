@@ -58,6 +58,8 @@
 #include "api_hooks.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
+#include "operators/bson_expression.h"
+#include "operators/bson_expression_operators.h"
 #include "operators/bson_expression_bucket_operator.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
@@ -3586,17 +3588,30 @@ AddGroupExpression(Expr *expression, ParseState *parseState, char *identifiers,
  * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
  */
 static void
-ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument, bson_value_t *input,
-								   bson_value_t *elementsToFetch, const char *opName)
+ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
+								bson_value_t *input,
+								bson_value_t *elementsToFetch, const char *opName)
 {
 	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoLocation5787801), errmsg(
-							"specification must be an object; found %s :%s",
-							opName, BsonValueToJsonForLogging(inputDocument)),
-						errhint(
-							"specification must be an object; opname: %s type found :%s",
-							opName, BsonTypeName(inputDocument->value_type))));
+		if (strcmp(opName, "$maxN") == 0 || strcmp(opName, "$minN") == 0)
+		{
+			ereport(ERROR, (errcode(MongoLocation5787900), errmsg(
+								"specification must be an object; found %s: %s",
+								opName, BsonValueToJsonForLogging(inputDocument)),
+							errhint(
+								"specification must be an object; opname: %s type found: %s",
+								opName, BsonTypeName(inputDocument->value_type))));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation5787801), errmsg(
+								"specification must be an object; found %s :%s",
+								opName, BsonValueToJsonForLogging(inputDocument)),
+							errhint(
+								"specification must be an object; opname: %s type found :%s",
+								opName, BsonTypeName(inputDocument->value_type))));
+		}
 	}
 	bson_iter_t docIter;
 	BsonValueInitIterator(inputDocument, &docIter);
@@ -4206,6 +4221,30 @@ AddSortedNGroupAccumulator(Query *query, const bson_value_t *input,
 
 
 /*
+ * Function used to support maxN/minN accumulator.
+ */
+inline static List *
+AddMaxMinNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+						   List *repathArgs, Const *accumulatorText,
+						   ParseState *parseState, char *identifiers,
+						   Expr *documentExpr, Oid aggregateFunctionOid,
+						   StringView *accumulatorName,
+						   Expr *variableSpec)
+{
+	bson_value_t input = { 0 };
+	bson_value_t elementsToFetch = { 0 };
+
+	/*check the syntax of maxN/minN */
+	ParseInputForNGroupAccumulators(accumulatorValue, &input, &elementsToFetch,
+									accumulatorName->string);
+
+	return AddSimpleGroupAccumulator(query, accumulatorValue, repathArgs, accumulatorText,
+									 parseState, identifiers, documentExpr,
+									 aggregateFunctionOid, variableSpec);
+}
+
+
+/*
  * Handles the $group stage.
  * Creates a subquery.
  * Then creates a grouping specified by the _id expression.
@@ -4461,8 +4500,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN);
 			bson_value_t input = { 0 };
 			bson_value_t elementsToFetch = { 0 };
-			ParseInputDocumentForFirstAndLastN(&accumulatorElement.bsonValue, &input,
-											   &elementsToFetch, accumulatorName.string);
+			ParseInputForNGroupAccumulators(&accumulatorElement.bsonValue, &input,
+											&elementsToFetch, accumulatorName.string);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleNGroupAccumulator(query,
@@ -4496,8 +4535,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN);
 			bson_value_t input = { 0 };
 			bson_value_t elementsToFetch = { 0 };
-			ParseInputDocumentForFirstAndLastN(&accumulatorElement.bsonValue, &input,
-											   &elementsToFetch, accumulatorName.string);
+			ParseInputForNGroupAccumulators(&accumulatorElement.bsonValue, &input,
+											&elementsToFetch, accumulatorName.string);
 			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
 				repathArgs = AddSimpleNGroupAccumulator(query,
@@ -4525,6 +4564,46 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 														&accumulatorName,
 														context->variableSpec);
 			}
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$maxN"))
+		{
+			if (!IsClusterVersionAtleastThis(1, 22, 0))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $maxN is not implemented yet"),
+								errhint(
+									"Accumulator $maxN is not implemented yet")));
+			}
+
+			repathArgs = AddMaxMinNGroupAccumulator(query,
+													&accumulatorElement.bsonValue,
+													repathArgs,
+													accumulatorText, parseState,
+													identifiers,
+													origEntry->expr,
+													BsonMaxNAggregateFunctionOid(),
+													&accumulatorName,
+													context->variableSpec);
+		}
+		else if (StringViewEqualsCString(&accumulatorName, "$minN"))
+		{
+			if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $minN is not implemented yet"),
+								errhint(
+									"Accumulator $minN is not implemented yet")));
+			}
+
+			repathArgs = AddMaxMinNGroupAccumulator(query,
+													&accumulatorElement.bsonValue,
+													repathArgs,
+													accumulatorText, parseState,
+													identifiers,
+													origEntry->expr,
+													BsonMinNAggregateFunctionOid(),
+													&accumulatorName,
+													context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$addToSet"))
 		{

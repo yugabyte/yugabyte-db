@@ -277,3 +277,27 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_lastn_transition(bytea, __COR
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_lastn_transition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_maxn_transition(bytea, __CORE_SCHEMA__.bson)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_maxn_transition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_minn_transition(bytea, __CORE_SCHEMA__.bson)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_minn_transition$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_maxminn_final(bytea)
+ RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_maxminn_final$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_maxminn_combine(bytea, bytea)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_maxminn_combine$function$;

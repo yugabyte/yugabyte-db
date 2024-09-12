@@ -16,15 +16,17 @@
 #include "query/helio_bson_compare.h"
 #include <utils/array.h>
 #include <utils/builtins.h>
+#include <utils/heap_utils.h>
 #include "utils/mongo_errors.h"
 #include "metadata/collection.h"
 #include "commands/insert.h"
 #include "sharding/sharding.h"
 #include "utils/hashset_utils.h"
+#include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
 #include "aggregation/bson_sorted_accumulator.h"
-
+#include "operators/bson_expression_operators.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -110,6 +112,13 @@ typedef struct BsonOutAggregateState
 	bool hasFailure;
 } BsonOutAggregateState;
 
+/* state used for maxN and minN both */
+typedef struct BinaryHeapState
+{
+	BinaryHeap *heap;
+	bool isMaxN;
+} BinaryHeapState;
+
 const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
 
 
@@ -124,6 +133,11 @@ static void CreateObjectAggTreeNodes(BsonObjectAggState *currentState,
 									 pgbson *currentValue);
 static void ValidateMergeObjectsInput(pgbson *input);
 static Datum ParseAndReturnMergeObjectsTree(BsonObjectAggState *state);
+static Datum bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN);
+
+void DeserializeBinaryHeapState(bytea *byteArray, BinaryHeapState *state);
+bytea * SerializeBinaryHeapState(MemoryContext aggregateContext, BinaryHeapState *state,
+								 bytea *byteArray);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -154,6 +168,10 @@ PG_FUNCTION_INFO_V1(bson_add_to_set_final);
 PG_FUNCTION_INFO_V1(bson_merge_objects_transition_on_sorted);
 PG_FUNCTION_INFO_V1(bson_merge_objects_transition);
 PG_FUNCTION_INFO_V1(bson_merge_objects_final);
+PG_FUNCTION_INFO_V1(bson_maxn_transition);
+PG_FUNCTION_INFO_V1(bson_maxminn_final);
+PG_FUNCTION_INFO_V1(bson_minn_transition);
+PG_FUNCTION_INFO_V1(bson_maxminn_combine);
 
 Datum
 bson_out_transition(PG_FUNCTION_ARGS)
@@ -1754,4 +1772,403 @@ ParseAndReturnMergeObjectsTree(BsonObjectAggState *state)
 	{
 		PG_RETURN_POINTER(PgbsonInitEmpty());
 	}
+}
+
+
+/*
+ * Comparator function for heap utils. For MaxN, we need to build min-heap
+ */
+static bool
+HeapSortComparatorMaxN(const void *first, const void *second)
+{
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) < 0;
+}
+
+
+/*
+ * Comparator function for heap utils. For MinN, we need to build max-heap
+ */
+static bool
+HeapSortComparatorMinN(const void *first, const void *second)
+{
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) > 0;
+}
+
+
+/*
+ * Applies the "state transition" (SFUNC) for maxN/minN accumulators.
+ * The args in PG_FUNCTION_ARGS:
+ *		Evaluated expression: input and N.
+ *
+ * For maxN:
+ * we need to maintain a small root heap and compare the current value with the top of the heap (minimum value).
+ * If the current value is greater than the top of the heap (minimum value), then we will pop the top of the heap and insert the current value.
+ *
+ * For minN:
+ * we need to maintain a big root heap and compare the current value with the top of the heap (minimum value).
+ * If the current value is less than the top of the heap (minimum value), then we will pop the top of the heap and insert the current value.
+ */
+Datum
+bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN)
+{
+	bytea *bytes = NULL;
+	MemoryContext aggregateContext;
+	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	{
+		ereport(ERROR, errmsg(
+					"aggregate function %s transition called in non-aggregate context",
+					isMaxN ? "maxN" : "minN"));
+	}
+
+	/* Create the aggregate state in the aggregate context. */
+	/* MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext); */
+
+	pgbson *copiedPgbson = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	pgbson *currentValue = CopyPgbsonIntoMemoryContext(copiedPgbson, aggregateContext);
+
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+	bson_value_t currentBsonValue = currentValueElement.bsonValue;
+
+	/*input and N are both expression, so we evaluate them togather.*/
+	bson_iter_t docIter;
+	BsonValueInitIterator(&currentBsonValue, &docIter);
+	bson_value_t inputBsonValue = { 0 };
+	bson_value_t elementBsonValue = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			inputBsonValue = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			elementBsonValue = *bson_iter_value(&docIter);
+		}
+	}
+
+	/* Verify that N is an integer. */
+	ValidateElementForNGroupAccumulators(&elementBsonValue, isMaxN == true ? "maxN" :
+										 "minN");
+	int element = BsonValueAsInt32(&elementBsonValue);
+
+	BinaryHeapState *currentState = (BinaryHeapState *) palloc0(sizeof(BinaryHeapState));
+
+	/* If the intermediate state has never been initialized, create it */
+	if (PG_ARGISNULL(0))
+	{
+		currentState->isMaxN = isMaxN;
+
+		/*
+		 * For maxN, we need to maintain a small root heap.
+		 * When currentValue is greater than the top of the heap, we need to remove the top of the heap and insert currentValue.
+		 *
+		 * For minN, we need to maintain a large root heap.
+		 * When currentValue is less than the top of the heap, we need to remove the top of the heap and insert currentValue.
+		 */
+		currentState->heap = AllocateHeap(element, isMaxN == true ?
+										  HeapSortComparatorMaxN :
+										  HeapSortComparatorMinN);
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		DeserializeBinaryHeapState(bytes, currentState);
+	}
+
+	/*if the input is null or an undefined path, ignore it */
+	if (!IsExpressionResultNullOrUndefined(&inputBsonValue))
+	{
+		if (currentState->heap->heapSize < element)
+		{
+			/* Heap is not full, insert value. */
+			PushToHeap(currentState->heap, &inputBsonValue);
+		}
+		else
+		{
+			/* Heap is full, replace the top if the new value should be included instead */
+			bson_value_t topHeap = TopHeap(currentState->heap);
+
+			if (!currentState->heap->heapComparator(&inputBsonValue, &topHeap))
+			{
+				PopFromHeap(currentState->heap);
+				PushToHeap(currentState->heap, &inputBsonValue);
+			}
+		}
+	}
+
+	bytes = SerializeBinaryHeapState(aggregateContext, currentState, PG_ARGISNULL(0) ?
+									 NULL : bytes);
+
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/*
+ * Converts a BinaryHeapState into a serialized form to allow the internal type to be bytea
+ * Resulting bytes look like:
+ * | Varlena Header | isMaxN | heapSize | heapSpace | heapNode * heapSpace |
+ */
+bytea *
+SerializeBinaryHeapState(MemoryContext aggregateContext,
+						 BinaryHeapState *state,
+						 bytea *byteArray)
+{
+	int heapNodesSize = 0;
+	pgbson **heapNodeList = NULL;
+
+	if (state->heap->heapSize > 0)
+	{
+		heapNodeList = (pgbson **) palloc(sizeof(pgbson *) * state->heap->heapSize);
+		for (int i = 0; i < state->heap->heapSize; i++)
+		{
+			heapNodeList[i] = BsonValueToDocumentPgbson(&state->heap->heapNodes[i]);
+
+			pgbsonelement element;
+			PgbsonToSinglePgbsonElement(heapNodeList[i], &element);
+
+			heapNodesSize += VARSIZE(heapNodeList[i]);
+		}
+	}
+
+	int requiredByteSize = VARHDRSZ +
+						   sizeof(bool) +
+						   sizeof(int64) +
+						   sizeof(int64) +
+						   heapNodesSize;
+
+	char *bytes;
+	int existingByteSize = (byteArray == NULL) ? 0 : VARSIZE(byteArray);
+
+	if (existingByteSize >= requiredByteSize)
+	{
+		/* Reuse existing bytes */
+		bytes = (char *) byteArray;
+	}
+	else
+	{
+		bytes = (char *) MemoryContextAlloc(aggregateContext, requiredByteSize);
+		SET_VARSIZE(bytes, requiredByteSize);
+	}
+
+	/* Copy in the currentValue */
+	char *byteAllocationPointer = (char *) VARDATA(bytes);
+
+	*((bool *) (byteAllocationPointer)) = state->isMaxN;
+	byteAllocationPointer += sizeof(bool);
+
+	*((int64 *) (byteAllocationPointer)) = state->heap->heapSize;
+	byteAllocationPointer += sizeof(int64);
+
+	*((int64 *) (byteAllocationPointer)) = state->heap->heapSpace;
+	byteAllocationPointer += sizeof(int64);
+
+	if (state->heap->heapSize > 0)
+	{
+		for (int i = 0; i < state->heap->heapSize; i++)
+		{
+			memcpy(byteAllocationPointer, heapNodeList[i], VARSIZE(heapNodeList[i]));
+			byteAllocationPointer += VARSIZE(heapNodeList[i]);
+		}
+	}
+
+	return (bytea *) bytes;
+}
+
+
+/*
+ * Converts a BinaryHeapState from a serialized form to allow the internal type to be bytea
+ * Incoming bytes look like:
+ * | Varlena Header | isMaxN | heapSize | heapSpace | heapNode * heapSpace |
+ */
+void
+DeserializeBinaryHeapState(bytea *byteArray,
+						   BinaryHeapState *state)
+{
+	if (byteArray == NULL)
+	{
+		return;
+	}
+
+	char *bytes = (char *) VARDATA(byteArray);
+
+	state->isMaxN = *(bool *) (bytes);
+	bytes += sizeof(bool);
+
+	int64 heapSize = *(int64 *) (bytes);
+	bytes += sizeof(int64);
+
+	int64 heapSpace = *(int64 *) (bytes);
+	bytes += sizeof(int64);
+
+	state->heap = (BinaryHeap *) palloc(sizeof(BinaryHeap));
+	state->heap->heapSize = heapSize;
+	state->heap->heapSpace = heapSpace;
+	state->heap->heapNodes = (bson_value_t *) palloc(sizeof(bson_value_t) * heapSpace);
+
+	if (state->heap->heapSize > 0)
+	{
+		for (int i = 0; i < state->heap->heapSize; i++)
+		{
+			pgbson *pgbsonValue = (pgbson *) bytes;
+			bytes += VARSIZE(pgbsonValue);
+
+			pgbsonelement element;
+			PgbsonToSinglePgbsonElement(pgbsonValue, &element);
+			state->heap->heapNodes[i] = element.bsonValue;
+		}
+	}
+	state->heap->heapComparator = state->isMaxN ? HeapSortComparatorMaxN :
+								  HeapSortComparatorMinN;
+}
+
+
+/*
+ * Applies the "final" (FINALFUNC) for maxN/minN.
+ * This takes the final value created and outputs a bson "maxN/minN"
+ * with the appropriate type.
+ */
+Datum
+bson_maxminn_final(PG_FUNCTION_ARGS)
+{
+	bytea *maxNIntermediateState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+
+	pgbson *finalPgbson = NULL;
+
+	pgbson_writer writer;
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterInit(&writer);
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	if (maxNIntermediateState != NULL)
+	{
+		BinaryHeapState *maxNState = (BinaryHeapState *) palloc(sizeof(BinaryHeapState));
+
+		DeserializeBinaryHeapState(maxNIntermediateState, maxNState);
+
+		int64_t numEntries = maxNState->heap->heapSize;
+		bson_value_t *valueArray = (bson_value_t *) palloc(sizeof(bson_value_t) *
+														   numEntries);
+
+		while (maxNState->heap->heapSize > 0)
+		{
+			valueArray[maxNState->heap->heapSize - 1] = PopFromHeap(maxNState->heap);
+		}
+
+		for (int64_t i = 0; i < numEntries; i++)
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, &valueArray[i]);
+		}
+
+		PgbsonWriterEndArray(&writer, &arrayWriter);
+		finalPgbson = PgbsonWriterGetPgbson(&writer);
+
+		pfree(valueArray);
+		FreeHeap(maxNState->heap);
+	}
+
+	PG_RETURN_POINTER(finalPgbson);
+}
+
+
+/*
+ * Applies the "state transition" (SFUNC) for maxN.
+ * For maxN, we need to maintain a small root heap.
+ * When currentValue is greater than the top of the heap, we need to remove the top of the heap and insert currentValue.
+ */
+Datum
+bson_maxn_transition(PG_FUNCTION_ARGS)
+{
+	bool isMaxN = true;
+	return bson_maxminn_transition(fcinfo, isMaxN);
+}
+
+
+/*
+ * Applies the "state transition" (SFUNC) for minN.
+ * For minN, we need to maintain a large root heap.
+ * When currentValue is less than the top of the heap, we need to remove the top of the heap and insert currentValue.
+ */
+Datum
+bson_minn_transition(PG_FUNCTION_ARGS)
+{
+	bool isMaxN = false;
+	return bson_maxminn_transition(fcinfo, isMaxN);
+}
+
+
+/*
+ * Applies the "combine" (COMBINEFUNC) for maxN/minN.
+ */
+Datum
+bson_maxminn_combine(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggregateContext;
+	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	{
+		ereport(ERROR, errmsg(
+					"aggregate function maxN/minN combine called in non-aggregate context"));
+	}
+
+	if (PG_ARGISNULL(0))
+	{
+		return PG_GETARG_DATUM(1);
+	}
+
+	if (PG_ARGISNULL(1))
+	{
+		return PG_GETARG_DATUM(0);
+	}
+
+	bytea *bytesLeft;
+	bytea *bytesRight;
+	BinaryHeapState *currentLeftState = (BinaryHeapState *) palloc(
+		sizeof(BinaryHeapState));
+	BinaryHeapState *currentRightState = (BinaryHeapState *) palloc(
+		sizeof(BinaryHeapState));
+
+	bytesLeft = PG_GETARG_BYTEA_P(0);
+	DeserializeBinaryHeapState(bytesLeft, currentLeftState);
+
+	bytesRight = PG_GETARG_BYTEA_P(1);
+	DeserializeBinaryHeapState(bytesRight, currentRightState);
+
+
+	/* Merge the left heap into the currentRightState heap. */
+	while (currentLeftState->heap->heapSize > 0)
+	{
+		bson_value_t leftBsonValue = TopHeap(currentLeftState->heap);
+		bson_value_t rightBsonValue = TopHeap(currentRightState->heap);
+
+		/*
+		 * For maxN, If the root of the left heap is greater than the root of the currentState heap,
+		 * remove the root of the currentState heap and insert the root of the left heap.
+		 *
+		 * For minN, If the root of the left heap is less than the root of the currentState heap,
+		 * remove the root of the currentState heap and insert the root of the left heap.
+		 *
+		 */
+		if (currentRightState->heap->heapSize < currentRightState->heap->heapSpace)
+		{
+			PushToHeap(currentRightState->heap, &leftBsonValue);
+		}
+		else if (!currentLeftState->heap->heapComparator(&leftBsonValue, &rightBsonValue))
+		{
+			PopFromHeap(currentRightState->heap);
+			PushToHeap(currentRightState->heap, &leftBsonValue);
+		}
+		PopFromHeap(currentLeftState->heap);
+	}
+	FreeHeap(currentLeftState->heap);
+
+	bytesRight = SerializeBinaryHeapState(aggregateContext, currentRightState,
+										  bytesRight);
+	PG_RETURN_POINTER(bytesRight);
 }
