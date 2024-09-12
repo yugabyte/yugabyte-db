@@ -20,7 +20,6 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Adding primary key to a partitioned table results in an error](#adding-primary-key-to-a-partitioned-table-results-in-an-error)
 - [Index creation on partitions fail for some YugabyteDB builds](#index-creation-on-partitions-fail-for-some-yugabytedb-builds)
 - [Creation of certain views in the rule.sql file](#creation-of-certain-views-in-the-rule-sql-file)
-- [Indexes on INET type are not supported](#indexes-on-inet-type-are-not-supported)
 - [Create or alter conversion is not supported](#create-or-alter-conversion-is-not-supported)
 - [GENERATED ALWAYS AS STORED type column is not supported](#generated-always-as-stored-type-column-is-not-supported)
 - [Unsupported ALTER TABLE DDL variants in source schema](#unsupported-alter-table-ddl-variants-in-source-schema)
@@ -38,6 +37,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [GIN indexes on multiple columns are not supported](#gin-indexes-on-multiple-columns-are-not-supported)
 - [Policies on users in source require manual user creation](#policies-on-users-in-source-require-manual-user-creation)
 - [VIEW WITH CHECK OPTION is not supported](#view-with-check-option-is-not-supported)
+- [UNLOGGED table is not supported](#unlogged-table-is-not-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -155,40 +155,6 @@ CREATE OR REPLACE VIEW public.v1 AS
   FROM public.foo
   GROUP BY foo.n1;
 ```
-
----
-
-### Indexes on INET type are not supported
-
-**GitHub**: [Issue #17017](https://github.com/yugabyte/yb-voyager/issues/17017)
-
-**Description**: If there is an index on a column of the INET type, it errors out during import.
-
-**Workaround**: Modify the column to a TEXT type.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-create table test( id int primary key, f1 inet);
-create index test_index on test(f1);
-```
-
-The import schema error is as follows:
-
-```sql
-INDEXES_table.sql: CREATE INDEX test_index ON public.test USING btree (f1);
-ERROR: INDEX on column of type 'INET' not yet supported (SQLSTATE 0A000)
-```
-
-Suggested workaround is to change the INET column to TEXT for the index creation to succeed as follows:
-
-```sql
-create table test( id int primary key, f1 text);
-```
-
----
 
 ### Create or alter conversion is not supported
 
@@ -590,9 +556,9 @@ CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
 
 ### Indexes on some complex data types are not supported
 
-**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829) 
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [Issue #17017](https://github.com/yugabyte/yugabyte-db/issues/17017) 
 
-**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, UDTs, citext, and so on, those will error out in import schema phase with the following error:
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, ARRAYs, INET, UDTs, citext, and so on, those will error out in import schema phase with the following error:
 
 ```output
  ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
@@ -908,6 +874,42 @@ CREATE TRIGGER trigger_modify_employee_12000
     INSTEAD OF INSERT OR UPDATE ON employees_less_than_12000
     FOR EACH ROW
     EXECUTE FUNCTION modify_employees_less_than_12000();
+```
+
+---
+
+---
+
+### UNLOGGED table is not supported
+
+**GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
+
+**Description**: If there are UNLOGGED objects in the source schema will error out in import schema with  below error as it is not supported in target YugabyteDB. 
+
+```output
+ERROR:  UNLOGGED database object not supported yet
+```
+
+**Workaround**: Make it a LOGGED object and it should work
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE UNLOGGED TABLE tbl_unlogged (
+  id int,
+  val text
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+CREATE TABLE tbl_unlogged (
+  id int,
+  val text
+);
 ```
 
 ---
