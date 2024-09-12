@@ -580,12 +580,16 @@ EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '
 END;
 -- (6) currently unsupported scenarions: 
 -- (6.A) $in with nested objects
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [{ "B" : "caT"}, { "c" : "caT"}] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects
-CONTEXT:  while executing command on localhost:58070
+END;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "B" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects
-CONTEXT:  while executing command on localhost:58070
+END;
 -- (6.B) $cond needs collationString to be plumbed
 BEGIN;
 SET LOCAL helio_api.enableCollation TO on;
@@ -1288,6 +1292,8 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filte
  { "_id" : { "$numberInt" : "7" }, "a" : { "b" : "DOG" } }
 (5 rows)
 
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "a.b": { "$gt": "CAT" }, "a.b" : {"$lte" : "DOG"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                             
 ---------------------------------------------------------------------
@@ -1303,6 +1309,7 @@ EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '
                Filter: ((collection.document OPERATOR(helio_api_catalog.@>) '{ "a.b" : "CAT", "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@<=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
 (10 rows)
 
+END;
 SELECT helio_api.shard_collection('db', 'ci_search5', '{ "_id": "hashed" }', false);
  shard_collection 
 ---------------------------------------------------------------------
@@ -1407,6 +1414,8 @@ SELECT document FROM bson_aggregation_pipeline('db',
  { "_id" : "dOg", "a" : { "b" : "dOg" }, "matched_docs" : [ { "_id" : "DOG", "a" : { "b" : "DOG" } }, { "_id" : "dog", "a" : { "b" : "dog" } }, { "_id" : "Dog", "a" : { "b" : "Dog" } }, { "_id" : "DoG", "a" : { "b" : "DoG" } }, { "_id" : "dOg", "a" : { "b" : "dOg" } } ] }
 (7 rows)
 
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
@@ -1435,9 +1444,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                                  Index Cond: (collection_0_1.shard_key_value = '7995'::bigint)
 (22 rows)
 
+END;
 -- lookup with id join optimized (explicitly asked to make _id join collation agnostic)
 BEGIN;
 SET LOCAL helio_api.enableLookupIdJoinOptimizationOnCollation to true;
+SET LOCAL helio_api.enableCollation TO on;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
                                                 document                                                 
@@ -1498,6 +1509,9 @@ SELECT document FROM bson_aggregation_pipeline('db',
  { "_id" : "dOg", "a" : { "b" : "dOg" }, "matched_docs" : [ { "_id" : "DOG", "a" : { "b" : "DOG" } }, { "_id" : "dog", "a" : { "b" : "dog" } }, { "_id" : "Dog", "a" : { "b" : "Dog" } }, { "_id" : "DoG", "a" : { "b" : "DoG" } }, { "_id" : "dOg", "a" : { "b" : "dOg" } } ] }
 (7 rows)
 
+-- lookup with non-id join (collation aware - explain)
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
@@ -1526,6 +1540,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                                  Index Cond: (collection_0_1.shard_key_value = '7995'::bigint)
 (22 rows)
 
+END;
 -- $facet and $unionwith
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [ { "$facet": { "a" : [ { "$match": { "a.b": "cat" } }, { "$count": "catCount" } ], "b" : [ { "$match": { "a.b": "dog" } }, { "$count": "dogCount" } ]  } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}}');
                                                  document                                                 
@@ -1574,6 +1589,8 @@ SELECT document FROM bson_aggregation_pipeline('db',
  { "_id" : "cAT", "a" : { "b" : "cAT" }, "matched_docs" : [ { "_id" : "Cat", "a" : { "b" : "Cat" } }, { "_id" : "cAT", "a" : { "b" : "cAT" } } ] }
 (7 rows)
 
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
@@ -1619,6 +1636,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                            Filter: helio_api_internal.bson_dollar_lookup_join_filter(intermediate_result_1.document, intermediate_result.lookup_filter, '_id'::text)
 (39 rows)
 
+END;
 -- lookup with non-id join (collation aware)
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
@@ -1633,6 +1651,8 @@ SELECT document FROM bson_aggregation_pipeline('db',
  { "_id" : "cAT", "a" : { "b" : "cAT" }, "matched_docs" : [ { "_id" : "Cat", "a" : { "b" : "Cat" } }, { "_id" : "cAT", "a" : { "b" : "cAT" } } ] }
 (7 rows)
 
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "a.b", "foreignField": "a.b", "pipeline": [ { "$match": { "$or" : [ { "a.b": "cat" }, { "a.b": "dog" } ] } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
@@ -1678,6 +1698,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                            Filter: helio_api_internal.bson_dollar_lookup_join_filter(intermediate_result_1.document, intermediate_result.lookup_filter, 'a.b'::text)
 (39 rows)
 
+END;
 -- $facet and $unionwith
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [ { "$facet": { "a" : [ { "$match": { "a.b": "cat" } }, { "$count": "catCount" } ], "b" : [ { "$match": { "a.b": "dog" } }, { "$count": "dogCount" } ]  } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}}');
                                                  document                                                 

@@ -37,7 +37,7 @@ static bson_mem_vtable_t gMemVtable = {
 bool BsonTextUseJsonRepresentation = DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION;
 
 /* GUC deciding whether collation is support */
-#define DEFAULT_ENABLE_COLLATION true
+#define DEFAULT_ENABLE_COLLATION false
 bool EnableCollation = DEFAULT_ENABLE_COLLATION;
 
 /* --------------------------------------------------------- */
