@@ -5,8 +5,6 @@ linkTitle: Manage
 description: Manging YugabyteDB deployments
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent: Manage your YugabyteDB deployment
-aliases:
-  - /preview/manage/
 menu:
   preview:
     identifier: manage
@@ -20,7 +18,7 @@ type: indexpage
     title="Back up and restore"
     body="Back up and restore data in YugabyteDB."
     href="backup-restore/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-light fa-life-ring">}}
 
   {{<index/item
     title="Migrate data"

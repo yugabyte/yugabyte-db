@@ -3,7 +3,7 @@ title: Back up and restore data
 headerTitle: Backup and restore
 linkTitle: Backup and restore
 description: Back up and restore YugabyteDB
-image: /images/section_icons/manage/enterprise.png
+image: fa-light fa-life-ring
 headcontent: Create backups and restore your data
 menu:
   stable:
@@ -38,18 +38,18 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
     href="export-import-data/"
-    icon="/images/section_icons/manage/export_import.png">}}
+    icon="fa-light fa-file-import">}}
 
   {{<index/item
     title="Distributed snapshots"
     body="Back up and restore data using distributed snapshots."
     href="snapshot-ysql/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-light fa-camera">}}
 
   {{<index/item
     title="Point-in-time recovery"
     body="Restore data to a particular point in time."
     href="point-in-time-recovery/"
-    icon="/images/section_icons/manage/pitr.png">}}
+    icon="fa-light fa-timeline-arrow">}}
 
 {{</index/block>}}
