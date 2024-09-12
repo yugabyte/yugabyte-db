@@ -878,7 +878,6 @@ CREATE TRIGGER trigger_modify_employee_12000
 
 ---
 
----
 
 ### UNLOGGED table is not supported
 
