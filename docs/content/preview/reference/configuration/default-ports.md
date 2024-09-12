@@ -72,9 +72,9 @@ The following common ports are required for firewall rules:
 
 ** 54422 is a custom SSH port for universe nodes.
 
-### Port changes for CIS hardened images
+### Firewall changes for CIS hardened images
 
-Running YugabyteDB on CIS hardened RHEL 8 or 9 requires the following changes to the default ports:
+Running YugabyteDB on CIS hardened RHEL 8 or 9 requires the following changes to the firewall:
 
 ```sh
 #!/bin/bash

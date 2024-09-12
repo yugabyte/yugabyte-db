@@ -29,7 +29,7 @@ The following ports need to be open.
 | Operator | YBA&nbsp;node | Open the following ports on the YugabyteDB Anywhere node so that administrators can access the YBA UI and monitor the system and node metrics. These ports are also used by standby YBA instances in [high availability](../../administer-yugabyte-platform/high-availability/) setups.<ul><li>443 - HTTPS</li><li>9090 - Served by Prometheus, for metrics</li></ul>Port 5432 serves a local PostgreSQL instance, and is not exposed outside of localhost. |
 | DB nodes<br>YBA node | Storage | Database clusters must be allowed to contact backup storage (such as AWS S3, GCP GCS, Azure blob).<ul><li>443 - HTTPS</li></ul> |
 
-### Firewall changes for CIS hardened RHEL 8 and 9
+### Firewall changes for CIS hardened images
 
 If you are installing YugabyteDB Anywhere on CIS hardened RHEL 8 or 9, you need to make the following firewall changes to allow [YBA Installer](../../install-yugabyte-platform/install-software/installer/) to install YugabyteDB Anywhere.
 
