@@ -42,7 +42,7 @@ try:
     common_sbt_options = ['-batch', '-no-colors']
     _, err = Popen(["sbt", "clean"] + common_sbt_options, stderr=PIPE).communicate()
     if err:
-        raise RuntimeError(err)
+        log_message(logging.WARNING, "sbt clean error: " + str(err))
 
     log_message(logging.INFO, "Kick off SBT universal packaging")
 
