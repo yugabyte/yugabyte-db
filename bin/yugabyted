@@ -8462,10 +8462,10 @@ class YBAdminProxy(object):
             YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
-    def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=10):
+    def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=30):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, str(new_master_rpc_port)]
-        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        out, err, ret_code = run_process_with_retries(cmd=cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
@@ -9545,6 +9545,29 @@ def run_process_checked(cmd, timeout=None, log_cmd=True, env_vars=None):
     if retcode:
         Output.log_error_and_exit("Error: {}".format(err))
     return out
+
+def run_process_with_retries(cmd, encrypted_cmd=None, timeout=None, log_cmd=False, env_vars=None,
+                             shell=False, retries=10):
+    start_time = time.time()
+    now = start_time
+    try_count = 0
+    while True:
+        try_count+=1
+        if log_cmd:
+            Output.log("Running {}. Total retries: {}, Timeout: {}, Try count: {}".format(cmd,
+                                                                    retries, timeout, try_count))
+        out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, timeout=timeout,
+                                        log_cmd=log_cmd, env_vars=env_vars, shell=shell)
+        now = time.time()
+        if retcode:
+            if now - start_time > timeout:
+                return (out, err, retcode)
+            elif try_count == retries:
+                return (out, err, retcode)
+            else:
+                time.sleep(0.2)
+        else:
+            return (out, err, retcode)
 
 def rmcontents(dirname, exclude_names=[]):
     for f in os.listdir(dirname):
