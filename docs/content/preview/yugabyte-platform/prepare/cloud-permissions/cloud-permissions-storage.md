@@ -78,11 +78,11 @@ The following permissions are required:
 "s3:GetBucketLocation"
 ```
 
-The Access key ID and Secret Access Key for the service account are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3.
+The Access key ID and Secret Access Key for the service account are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Service account Access key ID and Secret Access Key | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3 |
+| Service account Access key ID and Secret Access Key | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3 |
 
   </div>
 
@@ -96,11 +96,11 @@ To grant the required access, create a GCP service account with [IAM roles for c
 roles/storage.admin
 ```
 
-The credentials for this account (in JSON format) are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS.
+The credentials for this account (in JSON format) are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Storage service account JSON credentials | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
+| Storage service account JSON credentials | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
 
 For database clusters deployed to GKE, you can alternatively assign the appropriate IAM roles to the YugabyteDB Anywhere VM and the YugabyteDB nodes.
 
@@ -114,11 +114,11 @@ To grant the required access, create a [Shared Access Signature (SAS)](https://l
 
 ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-The Connection string and SAS token are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure.
+The Connection string and SAS token are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Azure storage Connection string and SAS token | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
+| Azure storage Connection string and SAS token | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
 
   </div>
 
