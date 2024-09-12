@@ -9,7 +9,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../../../../../config';
-import { FailedTask } from '../../dtos';
+import { FailedTask, SubTaskDetailsResp } from '../../dtos';
 
 /**
  * Get the details of the failed task.
@@ -42,4 +42,11 @@ export const retryTasks = (taskUUID: string) => {
 export const abortTask = (taskUUID: string) => {
   const cUUID = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/abort`);
+};
+/**
+ * fetch subTaskInfos
+ */
+export const getSubTaskDetails = (taskUUID: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.get<SubTaskDetailsResp>(`${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/details`);
 };
