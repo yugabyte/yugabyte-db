@@ -12933,16 +12933,13 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		!OidIsValid(yb_new_tablegroup_oid) &&
 		OidIsValid(yb_orig_tablegroup_oid))
 	{
+		/* Update pg_shdepend values with the new Tablespace. */
 		changeDependencyOnTablespace(YbTablegroupRelationId,
 									 yb_orig_tablegroup_oid, new_tablespaceoid);
 		/* Update entry in pg_yb_tablegroup */
 		ybAlterTablespaceForTablegroup(yb_orig_tablegroup_name,
-									   new_tablespaceoid);
-
-		ObjectAddress objAddress = RenameTablegroup(yb_orig_tablegroup_name,
-													yb_new_tablegroup_name);
-		/* Update pg_shdepend values with the new Tablespace. */
-		UnlockRelationOid(objAddress.objectId, RowExclusiveLock);
+									   new_tablespaceoid,
+									   yb_new_tablegroup_name);
 	}
 
 	return new_tablespaceoid;
