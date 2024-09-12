@@ -107,8 +107,9 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			formatter.Colorize(nodeName, formatter.GreenColor), operation)
 
 		nodesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewNodesFormat(viper.GetString("output")),
+			Command: "edit",
+			Output:  os.Stdout,
+			Format:  universe.NewNodesFormat(viper.GetString("output")),
 		}
 
 		nodeInstance, response, err := authAPI.GetNodeDetails(universeUUID, nodeName).Execute()

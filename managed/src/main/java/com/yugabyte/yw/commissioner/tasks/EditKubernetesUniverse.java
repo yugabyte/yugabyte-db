@@ -379,6 +379,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
     }
+
+    // Handle Namespaced services ownership change/delete
+    addHandleKubernetesNamespacedServices(
+            false /* readReplicaDelete */,
+            taskParams(),
+            taskParams().getUniverseUUID(),
+            true /* handleOwnershipChanges */)
+        .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
+
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.

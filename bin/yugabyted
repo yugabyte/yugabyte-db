@@ -384,9 +384,8 @@ PG_PARITY_FLAGS_DICT = {
 "ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
                       "yb_enable_optimizer_statistics=true,"
                       "yb_bnl_batch_size=1024,"
-                      "yb_fetch_row_limit=0,"
-                      "yb_fetch_size_limit=1MB,"
-                      "yb_use_hash_splitting_by_default=false"
+                      "yb_use_hash_splitting_by_default=false,"
+                      "yb_enable_bitmapscan=true"
                     }
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.

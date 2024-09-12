@@ -48,6 +48,8 @@ using yb::rpc_test::AddRequestPB;
 using yb::rpc_test::AddResponsePB;
 using yb::rpc_test::EchoRequestPB;
 using yb::rpc_test::EchoResponsePB;
+using yb::rpc_test::RepeatedEchoRequestPB;
+using yb::rpc_test::RepeatedEchoResponsePB;
 using yb::rpc_test::ForwardRequestPB;
 using yb::rpc_test::ForwardResponsePB;
 using yb::rpc_test::PanicRequestPB;
@@ -213,6 +215,21 @@ void GenericCalculatorService::DoEcho(InboundCall* incoming) {
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
+void GenericCalculatorService::DoRepeatedEcho(InboundCall* incoming) {
+  Slice param(incoming->serialized_request());
+  RepeatedEchoRequestPB req;
+  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
+    incoming->RespondFailure(
+        ErrorStatusPB::ERROR_INVALID_REQUEST,
+        STATUS(InvalidArgument, "Couldn't parse pb", req.InitializationErrorString()));
+    return;
+  }
+
+  RepeatedEchoResponsePB resp;
+  resp.set_data(std::string(req.count(), static_cast<char>(req.character())));
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
+}
+
 namespace {
 
 class CalculatorService: public CalculatorServiceIf {
@@ -267,6 +284,12 @@ class CalculatorService: public CalculatorServiceIf {
   void Echo(const EchoRequestPB* req, EchoResponsePB* resp, RpcContext context) override {
     TEST_PAUSE_IF_FLAG(TEST_pause_calculator_echo_request);
     resp->set_data(req->data());
+    context.RespondSuccess();
+  }
+
+  void RepeatedEcho(const RepeatedEchoRequestPB* req, RepeatedEchoResponsePB* resp,
+                    RpcContext context) override {
+    resp->set_data(std::string(req->count(), static_cast<char>(req->character())));
     context.RespondSuccess();
   }
 

@@ -95,7 +95,8 @@ CreateSetupUniverseReplicationTask(
       new XClusterInboundReplicationGroupSetupTask(
           master, catalog_manager, epoch, xcluster::ReplicationGroupId(req->replication_group_id()),
           req->producer_master_addresses(), std::move(source_table_ids), std::move(stream_ids),
-          req->transactional(), std::move(source_namespace_ids), std::move(target_namespace_ids)));
+          req->transactional(), std::move(source_namespace_ids), std::move(target_namespace_ids),
+          req->automatic_ddl_mode()));
   RETURN_NOT_OK(setup_task->ValidateInputArguments());
 
   return setup_task;
@@ -107,7 +108,7 @@ XClusterInboundReplicationGroupSetupTask::XClusterInboundReplicationGroupSetupTa
     const google::protobuf::RepeatedPtrField<HostPortPB>& source_masters,
     std::vector<TableId>&& source_table_ids, std::vector<xrepl::StreamId>&& stream_ids,
     bool transactional, std::vector<NamespaceId>&& source_namespace_ids,
-    std::vector<NamespaceId>&& target_namespace_ids)
+    std::vector<NamespaceId>&& target_namespace_ids, bool automatic_ddl_mode)
     : MultiStepMonitoredTask(*catalog_manager.AsyncTaskPool(), *master.messenger()),
       master_(master),
       catalog_manager_(catalog_manager),
@@ -116,14 +117,15 @@ XClusterInboundReplicationGroupSetupTask::XClusterInboundReplicationGroupSetupTa
       epoch_(epoch),
       replication_group_id_(std::move(replication_group_id)),
       source_masters_(source_masters),
-      transactional_(transactional),
       source_table_ids_(std::move(source_table_ids)),
       stream_ids_(std::move(stream_ids)),
       source_namespace_ids_(std::move(source_namespace_ids)),
       target_namespace_ids_(std::move(target_namespace_ids)),
       is_alter_replication_(xcluster::IsAlterReplicationGroupId(replication_group_id_)),
+      stream_ids_provided_(!stream_ids_.empty()),
+      transactional_(transactional),
       is_db_scoped_(!source_namespace_ids_.empty()),
-      stream_ids_provided_(!stream_ids_.empty()) {
+      automatic_ddl_mode_(automatic_ddl_mode) {
   log_prefix_ = Format(
       "xCluster InboundReplicationGroup [$0] $1: ", replication_group_id_,
       (is_alter_replication_ ? "Alter" : "Setup"));
@@ -201,6 +203,10 @@ bool XClusterInboundReplicationGroupSetupTask::TryCancel() {
 Status XClusterInboundReplicationGroupSetupTask::ValidateInputArguments() {
   SCHECK(!replication_group_id_.empty(), InvalidArgument, "Invalid Replication Group Id");
   SCHECK(!source_table_ids_.empty(), InvalidArgument, "No tables provided");
+
+  SCHECK(
+      !automatic_ddl_mode_ || is_db_scoped_, InvalidArgument,
+      "Automatic DDL mode is only valid for DB scoped replication groups");
 
   for (const auto& source_table_id : source_table_ids_) {
     SCHECK(!source_table_id.empty(), InvalidArgument, "Invalid Table Id");
@@ -586,6 +592,10 @@ XClusterInboundReplicationGroupSetupTask::CreateNewUniverseReplicationInfo() {
   metadata->set_state(SysUniverseReplicationEntryPB::ACTIVE);
   metadata->set_transactional(transactional_);
 
+  if (is_db_scoped_) {
+    metadata->mutable_db_scoped_info()->set_automatic_ddl_mode(automatic_ddl_mode_);
+  }
+
   return ri;
 }
 
@@ -922,12 +932,14 @@ Status XClusterTableSetupTask::PopulateTableStreamEntry(
   stream_entry.mutable_producer_schema()->set_last_compatible_consumer_schema_version(
       target_schema_version);
 
-  // Mark this stream as special if it is for the ddl_queue table.
-  auto yb_table_info = parent_task_->catalog_manager_.GetTableInfo(target_table_id);
-  stream_entry.set_is_ddl_queue_table(
-      yb_table_info->GetTableType() == PGSQL_TABLE_TYPE &&
-      yb_table_info->name() == xcluster::kDDLQueueTableName &&
-      yb_table_info->pgschema_name() == xcluster::kDDLQueuePgSchemaName);
+  if (parent_task_->automatic_ddl_mode_) {
+    // Mark this stream as special if it is for the ddl_queue table.
+    auto yb_table_info = parent_task_->catalog_manager_.GetTableInfo(target_table_id);
+    stream_entry.set_is_ddl_queue_table(
+        yb_table_info->GetTableType() == PGSQL_TABLE_TYPE &&
+        yb_table_info->name() == xcluster::kDDLQueueTableName &&
+        yb_table_info->pgschema_name() == xcluster::kDDLQueuePgSchemaName);
+  }
 
   return Status::OK();
 }

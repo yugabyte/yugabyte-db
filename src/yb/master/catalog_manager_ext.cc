@@ -1209,25 +1209,30 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
   std::optional<std::string> colocation_parent_table_id;
+  bool found_colocated_user_table = false;
   docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id](
+      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
             pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
           VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
-          if (IsColocatedDbParentTableId(id.ToBuffer()) ||
-              IsColocatedDbTablegroupParentTableId(id.ToBuffer())) {
-            colocation_parent_table_id = id.ToBuffer();
+          const auto id_str = id.ToBuffer();
+          if (pb.colocated()) {
+            if (IsColocationParentTableId(id_str)) {
+              colocation_parent_table_id = id_str;
+            } else {
+              found_colocated_user_table = true;
+            }
           }
           // Tables and tablets will be added to backup entries at the end.
           tables_to_tablets.insert(std::make_pair(
-              id.ToBuffer(), TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+              id_str, TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
         }
         return Status::OK();
       }));
@@ -1261,11 +1266,14 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.OrderTabletsByPartitions();
   }
-  // Populate the backup_entries with SysTablesEntry and SysTabletsEntry
+  // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
   // Start with the colocation_parent_table_id if the database is colocated.
   if (colocation_parent_table_id) {
-    tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-        colocation_parent_table_id.value(), &backup_entries);
+    // Only create the colocated parent table if there are colocated user tables.
+    if (found_colocated_user_table) {
+      tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
+          colocation_parent_table_id.value(), &backup_entries);
+    }
     tables_to_tablets.erase(colocation_parent_table_id.value());
   }
   for (auto& sys_table_entry : tables_to_tablets) {

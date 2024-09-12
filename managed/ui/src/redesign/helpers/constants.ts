@@ -44,7 +44,8 @@ export const RuntimeConfigKey = {
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
-  PERFOMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
+  XCLUSTER_DB_SCOPED_FEATURE_FLAG: 'yb.xcluster.db_scoped.enabled',
+  PERFORMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
   GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',
   IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
@@ -75,7 +76,8 @@ export const RuntimeConfigKey = {
   DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf',
   ENABLE_AUTO_MASTER_FAILOVER: 'yb.auto_master_failover.enabled',
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
-  PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics'
+  PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
+  ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling'
 } as const;
 
 /**
@@ -198,6 +200,9 @@ export const UNIVERSE_TASKS = {
 
 export const MIN_PG_SUPPORTED_PREVIEW_VERSION = '2.23.0.0-b416';
 export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
+
+export const CONNECTION_POOL_SUPPORTED_PREV_VERSION = '2.23.1.0-b75';
+export const CONNECTION_POOL_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
 
 export const GFLAG_GROUPS = {
   ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'

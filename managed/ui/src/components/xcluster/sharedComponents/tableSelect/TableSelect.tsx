@@ -28,6 +28,7 @@ import {
 } from '../../ReplicationUtils';
 import {
   XClusterConfigAction,
+  XClusterConfigType,
   XCLUSTER_TABLE_INELIGIBLE_STATUSES,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
@@ -78,7 +79,7 @@ interface CommonTableSelectProps {
   setSelectedNamespaceUuids: (selectedNamespaceUuids: string[]) => void;
   selectionError: { title?: string; body?: string } | null;
   selectionWarning: { title: string; body: string } | null;
-  isTransactionalConfig: boolean;
+  xClusterConfigType: XClusterConfigType;
 }
 
 export type TableSelectProps =
@@ -176,7 +177,7 @@ export const TableSelect = (props: TableSelectProps) => {
     setSelectedNamespaceUuids,
     selectionError,
     selectionWarning,
-    isTransactionalConfig
+    xClusterConfigType
   } = props;
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
@@ -493,23 +494,26 @@ export const TableSelect = (props: TableSelectProps) => {
           expandableRow={(namespaceItem: NamespaceItem) => {
             return namespaceItem.tables.length > 0;
           }}
-          expandComponent={(namespaceItem: NamespaceItem) => (
-            <ExpandedTableSelect
-              row={namespaceItem}
-              isSelectable={
-                tableType === TableType.YQL_TABLE_TYPE ||
+          expandComponent={(namespaceItem: NamespaceItem) => {
+            const isTableSelectionPermitted =
+              xClusterConfigType !== XClusterConfigType.DB_SCOPED &&
+              (tableType === TableType.YQL_TABLE_TYPE ||
                 (props.configAction === XClusterConfigAction.MANAGE_TABLE &&
                   initialNamespaceUuids.includes(namespaceItem.uuid) &&
-                  selectedNamespaceUuids.includes(namespaceItem.uuid))
-              }
-              isTransactionalConfig={isTransactionalConfig}
-              selectedTableUUIDs={selectedTableUuids}
-              tableType={tableType}
-              xClusterConfigAction={props.configAction}
-              handleTableSelect={handleTableToggle}
-              handleTableGroupSelect={handleTableGroupToggle}
-            />
-          )}
+                  selectedNamespaceUuids.includes(namespaceItem.uuid)));
+            return (
+              <ExpandedTableSelect
+                row={namespaceItem}
+                isSelectable={isTableSelectionPermitted}
+                selectedTableUUIDs={selectedTableUuids}
+                tableType={tableType}
+                xClusterConfigAction={props.configAction}
+                xClusterConfigType={xClusterConfigType}
+                handleTableSelect={handleTableToggle}
+                handleTableGroupSelect={handleTableGroupToggle}
+              />
+            );
+          }}
           expandColumnOptions={{
             expandColumnVisible: true,
             expandColumnComponent: ExpandColumnComponent,
@@ -695,9 +699,6 @@ const getReplicationItemsFromTables = (
             isDroppedOnTarget
           };
 
-          // The client only needs to select and submit index tables when dealing with non-txn xCluster configs.
-          // For txn xCluster configs, the index table is added/dropped automatically after performing the ddl operation
-          // on the source/target databases and reconciling with YBA.
           if (isUnreplicatedTableInReplicatedNamespace && indexTableReplicationEligibility) {
             unreplicatedIndexTablesInReplicatedNamespace.push(indexTableReplicationCandidate);
           }

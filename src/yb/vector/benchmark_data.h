@@ -247,10 +247,6 @@ class VecsFileReader : public VectorSource<Vector> {
   mutable Vector current_vector_;
 };
 
-using BvecsFileReader = VecsFileReader<std::vector<uint8_t>>;
-using FvecsFileReader = VecsFileReader<FloatVector>;
-using IvecsFileReader = VecsFileReader<Int32Vector>;
-
 // Determine coordinate kind by file name (.fvecs/.bvecs/.ivecs).
 Result<CoordinateKind> GetCoordinateKindFromVecsFileName(const std::string& vecs_file_path);
 

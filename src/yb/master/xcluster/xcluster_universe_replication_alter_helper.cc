@@ -41,6 +41,10 @@ Status AlterUniverseReplicationHelper::Alter(
 
 Status AlterUniverseReplicationHelper::AlterUniverseReplication(
     const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp) {
+  SCHECK(
+      !req->has_deprecated_new_replication_group_id(), InvalidArgument,
+      "Use of field deprecated_new_replication_group_id is not supported");
+
   auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
   auto original_ri = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK_EC_FORMAT(
@@ -51,7 +55,6 @@ Status AlterUniverseReplicationHelper::AlterUniverseReplication(
   int config_count = (req->producer_master_addresses_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_add_size() > 0 ? 1 : 0) +
-                     (req->has_new_replication_group_id() ? 1 : 0) +
                      (!req->producer_namespace_id_to_remove().empty() ? 1 : 0);
   SCHECK_EC_FORMAT(
       config_count == 1, InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
@@ -77,11 +80,6 @@ Status AlterUniverseReplicationHelper::AlterUniverseReplication(
     RETURN_NOT_OK(AddTablesToReplication(original_ri, req, resp));
     xcluster_manager_.CreateXClusterSafeTimeTableAndStartService();
     return Status::OK();
-  }
-
-  if (req->has_new_replication_group_id()) {
-    return RenameUniverseReplication(
-        original_ri, xcluster::ReplicationGroupId(req->new_replication_group_id()));
   }
 
   return Status::OK();
@@ -270,47 +268,6 @@ Status AlterUniverseReplicationHelper::AddTablesToReplication(
     }
     return SetupError(resp->mutable_error(), s);
   }
-
-  return Status::OK();
-}
-
-Status AlterUniverseReplicationHelper::RenameUniverseReplication(
-    scoped_refptr<UniverseReplicationInfo> universe,
-    const xcluster::ReplicationGroupId new_replication_group_id) {
-  const xcluster::ReplicationGroupId old_replication_group_id(universe->id());
-  SCHECK_NE(
-      old_replication_group_id, new_replication_group_id, InvalidArgument,
-      "Old and new replication ids must be different");
-
-  SCHECK(
-      catalog_manager_.GetUniverseReplication(new_replication_group_id) == nullptr, InvalidArgument,
-      "New replication id is already in use");
-
-  auto l = universe->LockForWrite();
-
-  // Since the replication_group_id is used as the key, we need to create a new
-  // UniverseReplicationInfo.
-  scoped_refptr<UniverseReplicationInfo> new_ri =
-      new UniverseReplicationInfo(new_replication_group_id);
-  new_ri->mutable_metadata()->StartMutation();
-  SysUniverseReplicationEntryPB* metadata = &new_ri->mutable_metadata()->mutable_dirty()->pb;
-  metadata->CopyFrom(l->pb);
-  metadata->set_replication_group_id(new_replication_group_id.ToString());
-
-  // Also need to update internal maps.
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto cl = cluster_config->LockForWrite();
-  auto replication_group_map =
-      cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-  (*replication_group_map)[new_replication_group_id.ToString()] =
-      std::move((*replication_group_map)[old_replication_group_id.ToString()]);
-  replication_group_map->erase(old_replication_group_id.ToString());
-
-  RETURN_NOT_OK(
-      catalog_manager_.ReplaceUniverseReplication(*universe, *new_ri, *cluster_config, epoch_));
-
-  new_ri->mutable_metadata()->CommitMutation();
-  cl.Commit();
 
   return Status::OK();
 }

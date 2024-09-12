@@ -185,7 +185,7 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "The maximum interval in seconds that the xcluster checkpoint map can go without being "
     "refreshed. If the map is not refreshed within this interval, it is considered stale, "
     "and all WAL segments will be retained until the next refresh. "
-    "Setting to 0 will disable Opid-based WAL segment retention for XCluster.");
+    "Setting to 0 will disable Opid-based and time-based WAL segment retention for XCluster.");
 
 DEFINE_RUNTIME_int32(
     cdcsdk_max_expired_tables_to_clean_per_run, 1,
@@ -198,7 +198,7 @@ DEFINE_RUNTIME_AUTO_bool(
     cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
     "When enabled, Update Peers and Metrics will look for entries in the state table that have "
     "either become not of interest or have expired for a stream. The cleanup logic will then "
-    "update these entries in cdc_state table and also move the corresponing table's entry to "
+    "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -2972,8 +2972,9 @@ void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
 
     if (!s.ok()) {
       failed_tablet_ids->insert(tablet_id);
-      VLOG(1) << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
-              << ", on all tablet peers";
+      YB_LOG_EVERY_N_SECS(INFO, 300)
+          << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
+          << ", on all tablet peers - " << s;
     }
   }
 }

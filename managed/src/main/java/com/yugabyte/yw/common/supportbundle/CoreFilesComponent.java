@@ -46,6 +46,19 @@ class CoreFilesComponent implements SupportBundleComponent {
       Path bundlePath,
       NodeDetails node)
       throws Exception {
+    // pass
+  }
+
+  @Override
+  public void downloadComponentBetweenDates(
+      SupportBundleTaskParams supportBundleTaskParams,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
     String nodeHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
     String coresDir = nodeHomeDir + "/cores/";
     bundlePath = Paths.get(bundlePath.toAbsolutePath().toString(), "cores");
@@ -53,7 +66,9 @@ class CoreFilesComponent implements SupportBundleComponent {
 
     // Get and filter the core files list based on the 2 params given in the request body.
     List<Pair<Long, String>> fileSizeNameList =
-        nodeUniverseManager.getNodeFilePathsAndSize(node, universe, coresDir).stream()
+        nodeUniverseManager
+            .getNodeFilePathsAndSize(node, universe, coresDir, startDate, endDate)
+            .stream()
             .limit(supportBundleTaskParams.bundleData.maxNumRecentCores)
             .filter(p -> p.getFirst() <= supportBundleTaskParams.bundleData.maxCoreFileSize)
             .collect(Collectors.toList());
@@ -77,7 +92,6 @@ class CoreFilesComponent implements SupportBundleComponent {
               node.nodeName, coreFilesSize, YbaDiskSpaceFreeInBytes);
       throw new RuntimeException(errMsg);
     }
-    ;
 
     log.debug(
         "List of core files to get from the node '{}' after filtering: '{}'",
@@ -94,18 +108,5 @@ class CoreFilesComponent implements SupportBundleComponent {
         sourceNodeFiles,
         this.getClass().getSimpleName(),
         true /* skipUntar */);
-  }
-
-  @Override
-  public void downloadComponentBetweenDates(
-      SupportBundleTaskParams supportBundleTaskParams,
-      Customer customer,
-      Universe universe,
-      Path bundlePath,
-      Date startDate,
-      Date endDate,
-      NodeDetails node)
-      throws Exception {
-    this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
   }
 }

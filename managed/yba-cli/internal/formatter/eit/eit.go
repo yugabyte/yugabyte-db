@@ -35,7 +35,7 @@ type Context struct {
 // NewEITFormat for formatting output
 func NewEITFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultEITListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -46,7 +46,7 @@ func NewEITFormat(source string) formatter.Format {
 // Write renders the context for a list of EITs
 func Write(ctx formatter.Context, eits []ybaclient.CertificateInfoExt) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of eits into JSON
 		var output []byte
 		var err error

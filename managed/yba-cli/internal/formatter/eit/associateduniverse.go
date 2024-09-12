@@ -30,7 +30,7 @@ type AssociatedUniverseContext struct {
 // NewAssociatedUniverseFormat for formatting output
 func NewAssociatedUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUni
 		return formatter.Format(format)
 	default: // custom format or json or pretty

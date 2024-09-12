@@ -32,6 +32,8 @@ import {
 } from '../common/BackupUtils';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
+import { default as BackupRestoreModalWithPITR } from '../../../redesign/features/backup/restore/BackupRestoreModal';
+import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
@@ -44,7 +46,6 @@ import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { AllowedTasks, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
 import {
   RbacValidator,
   customPermValidateFunction,
@@ -55,7 +56,6 @@ import { Action, Resource } from '../../../redesign/features/rbac';
 import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
 import './BackupList.scss';
 
-import './BackupList.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -164,6 +164,8 @@ export const BackupList: FC<BackupListOptions> = ({
 
   const isNewRestoreModalEnabled =
     featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
+
+  const enableBackupPITR = featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
@@ -781,16 +783,32 @@ export const BackupList: FC<BackupListOptions> = ({
         }
       />
       {isNewRestoreModalEnabled && restoreDetails && (
-        <BackupRestoreNewModal
-          backupDetails={restoreDetails as any}
-          visible={true}
-          onHide={() => {
-            setRestoreDetails(null);
-            setRestoreEntireBackup(false);
-            setIncrementalBackupsProps({});
-          }}
-          incrementalBackupProps={incrementalBackupProps}
-        />
+
+        !enableBackupPITR ? (
+          <BackupRestoreNewModal
+            backupDetails={restoreDetails as any}
+            visible={true}
+            onHide={() => {
+              setRestoreDetails(null);
+              setRestoreEntireBackup(false);
+              setIncrementalBackupsProps({});
+            }}
+            incrementalBackupProps={incrementalBackupProps}
+          />
+        ) : (
+          <BackupRestoreModalWithPITR
+            backupDetails={restoreDetails as any}
+            onHide={() => {
+              setRestoreDetails(null);
+              setRestoreEntireBackup(false);
+              setIncrementalBackupsProps({});
+            }}
+            visible={true}
+            incrementalBackupProps={incrementalBackupProps}
+
+          />
+        )
+
       )}
     </Row>
   );

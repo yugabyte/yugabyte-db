@@ -37,11 +37,12 @@ var listUniverseCmd = &cobra.Command{
 		}
 
 		universeCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewUniverseFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No universes found\n")
 			} else {
 				logrus.Infoln("[]\n")

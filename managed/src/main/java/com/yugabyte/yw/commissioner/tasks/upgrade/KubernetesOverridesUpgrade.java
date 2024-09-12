@@ -61,6 +61,13 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               /* isTServerChanged */ true,
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
+          // Remove extra Namespaced scope services.
+          addHandleKubernetesNamespacedServices(
+                  false /* readReplicaDelete */,
+                  universe.getUniverseDetails(),
+                  universe.getUniverseUUID(),
+                  false /* handleOwnershipChanges */)
+              .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
           // Persist new overrides in the DB.
           addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
         });

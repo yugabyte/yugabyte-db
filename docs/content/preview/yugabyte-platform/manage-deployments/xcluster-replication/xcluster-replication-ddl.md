@@ -60,7 +60,7 @@ Perform DDL operations in the order as shown in the following table. The order v
 | :-- | :----- | :----- | :----- |
 | CREATE TABLE | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
 | DROP TABLE   | [Remove table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
-| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Reconcile&nbsp;configuration](#reconcile-configuration) |
+| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Add table to replication](#add-a-table-to-replication)  |
 | DROP INDEX   | [Remove index table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Target | Execute&nbsp;on&nbsp;Source | No changes needed |
 
@@ -71,6 +71,7 @@ In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on target, then CREATE TABLE on source, making sure that you force the Colocation ID to be identical to that on target.
 - If you try to make a DDL change on source and it fails, you must also make the same attempt on target and get the same failure.
+- TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both source and target, and resume replication.
 
 Use the following guidance when managing tables and indexes in universes with replication configured.
 

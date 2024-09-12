@@ -3,7 +3,7 @@ import { AxiosError } from 'axios';
 import { browserHistory } from 'react-router';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { YBCheckbox, YBInput, YBModal, YBModalProps } from '../../../../redesign/components';

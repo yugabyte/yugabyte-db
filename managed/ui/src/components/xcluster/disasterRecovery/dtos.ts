@@ -1,5 +1,5 @@
 import { PitrConfig } from '../../../redesign/helpers/dtos';
-import { XClusterConfigStatus } from '../constants';
+import { XClusterConfigStatus, XClusterConfigType } from '../constants';
 import { XClusterTableDetails } from '../dtos';
 
 /**
@@ -30,6 +30,7 @@ export interface DrConfig {
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
   tables: string[];
+  type: XClusterConfigType;
   xclusterConfigUuid: string;
   xclusterConfigsUuid: string[]; // Internal API field for now.
 }

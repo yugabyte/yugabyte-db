@@ -263,7 +263,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
           CallJsonAdmin("list_clones", source_namespace_id, seq_no));
       const auto entries = out.GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
-      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||

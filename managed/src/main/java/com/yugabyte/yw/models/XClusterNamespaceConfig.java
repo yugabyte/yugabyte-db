@@ -16,16 +16,17 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
 import java.io.Serializable;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Entity
 @IdClass(XClusterNamespaceConfig.XClusterNamespaceConfigPK.class)
+@NoArgsConstructor
 @Getter
 @Setter
 public class XClusterNamespaceConfig {
@@ -83,24 +84,6 @@ public class XClusterNamespaceConfig {
     this.setConfig(config);
     this.setSourceNamespaceId(sourceNamespaceId);
     this.setStatus(Status.Validated);
-  }
-
-  /**
-   * Retrieves an XClusterNamespaceConfig object based on the provided sourceNamespaceId.
-   *
-   * @param sourceNamespaceId The unique identifier of the namespace.
-   * @return An Optional containing the XClusterNamespaceConfig object if found, or an empty
-   *     Optional if not found.
-   */
-  public static Optional<XClusterNamespaceConfig> maybeGetByNamespaceId(String sourceNamespaceId) {
-    XClusterNamespaceConfig xClusterNamespaceConfig =
-        find.query().where().eq("source_namespace_id", sourceNamespaceId).findOne();
-    if (xClusterNamespaceConfig == null) {
-      log.info(
-          "Cannot find an xClusterNamespaceConfig with sourceNamespaceId {}", sourceNamespaceId);
-      return Optional.empty();
-    }
-    return Optional.of(xClusterNamespaceConfig);
   }
 
   /** This class is the primary key for XClusterNamespaceConfig. */

@@ -35,9 +35,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -173,14 +176,23 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public String getPreferredServiceIP(
+  public Set<String> getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
       String namespace,
       boolean isMaster,
-      boolean newNamingStyle) {
-    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+      boolean k8sNewLabels,
+      String universeName) {
+    String appLabel = k8sNewLabels ? "app.kubernetes.io/name" : "app";
     String appName = isMaster ? "yb-master" : "yb-tserver";
+    String universeIdentifier, universeLabel;
+    if (k8sNewLabels) {
+      universeLabel = "app.kubernetes.io/part-of";
+      universeIdentifier = universeName;
+    } else {
+      universeLabel = "release";
+      universeIdentifier = universePrefix;
+    }
     try (KubernetesClient client = getClient(config)) {
       // We don't use service-type=endpoint selector for backwards
       // compatibility with old charts which don't have service-type
@@ -190,19 +202,19 @@ public class NativeKubernetesManager extends KubernetesManager {
               .services()
               .inNamespace(namespace)
               .withLabel(appLabel, appName)
-              .withLabel("release", universePrefix)
+              .withLabel(universeLabel, universeIdentifier)
               .withLabelNotIn("service-type", "headless", "non-endpoint")
               .list()
               .getItems();
-      // TODO: PLAT-5625: This might need a change when we have one
-      // common TServer/Master endpoint service across multiple Helm
-      // releases. Currently we call getPreferredServiceIP for each AZ
-      // deployment/Helm release, and return all the IPs.
-      if (services.size() != 1) {
+      if (services.size() > 0) {
+        return services.stream()
+            .map(service -> getIp(service))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+      } else {
         throw new RuntimeException(
-            "There must be exactly one Master or TServer endpoint service, got " + services.size());
+            "There must be atleast one Master or TServer endpoint service, got 0");
       }
-      return getIp(services.get(0));
     }
   }
 
@@ -554,5 +566,37 @@ public class NativeKubernetesManager extends KubernetesManager {
       String namespace, String helmReleaseName, Map<String, String> config) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getServerTypeGflagsChecksum'");
+  }
+
+  @Override
+  public void deleteNamespacedService(
+      Map<String, String> config, String namespace, String universeName) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'deleteNamespacedService'");
+  }
+
+  @Override
+  public void deleteNamespacedService(
+      Map<String, String> config,
+      String namespace,
+      String universeName,
+      @Nullable Set<String> serviceNames) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'deleteNamespacedService'");
+  }
+
+  @Override
+  public void updateNamespacedServiceOwnership(
+      Map<String, String> config, String namespace, String universeName, String ownerReleaseName) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException(
+        "Unimplemented method 'updateNamespacedServiceOwnership'");
+  }
+
+  @Override
+  public List<Service> getNamespacedServices(
+      Map<String, String> config, String namespace, String universeName) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getNamespacedServices'");
   }
 }

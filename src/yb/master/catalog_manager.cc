@@ -298,10 +298,7 @@ DEFINE_test_flag(bool, fail_table_creation_at_preparing_state, false,
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
                  "Inside StartElectionIfReady, pause before sending request for hinted election");
 
-// This flag is only used on the first master leader setup, after which we serialize the
-// cluster_uuid to disk. So changing this at runtime is meaningless.
-DEFINE_NON_RUNTIME_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
-TAG_FLAG(cluster_uuid, hidden);
+DECLARE_string(cluster_uuid);
 
 DEFINE_RUNTIME_int32(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
@@ -4385,7 +4382,7 @@ Status CatalogManager::CreateTableIfNotFound(
 void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
                                                 const TableInfoPtr& table,
                                                 const LeaderEpoch& epoch) {
-  auto when_done = [this, table, epoch](Result<bool> exists) {
+  auto when_done = [this, table, epoch](Result<std::optional<bool>> exists) {
     WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
@@ -4394,10 +4391,13 @@ void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
 }
 
 Status CatalogManager::VerifyTablePgLayer(
-    scoped_refptr<TableInfo> table, Result<bool> exists, const LeaderEpoch& epoch) {
+    scoped_refptr<TableInfo> table, Result<std::optional<bool>> exists, const LeaderEpoch& epoch) {
   if (!exists.ok()) {
     return exists.status();
   }
+  auto opt_exists = exists.get();
+  SCHECK(opt_exists.has_value(), IllegalState,
+         Substitute("Unexpected opt_exists for $0", table->ToString()));
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   auto l = table->LockForWrite();
   auto* mutable_table_info = table->mutable_metadata()->mutable_dirty();
@@ -4409,7 +4409,7 @@ Status CatalogManager::VerifyTablePgLayer(
           "Unexpected table state ($0), abandoning transaction GC work for $1",
           SysTablesEntryPB_State_Name(metadata.state()), table->ToString()));
 
-  if (exists.get()) {
+  if (*opt_exists) {
     // Remove the transaction from the entry since we're done processing it.
     metadata.clear_transaction();
     RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));

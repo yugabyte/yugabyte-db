@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,10 +13,10 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -36,6 +36,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -50,120 +51,6 @@ YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
-class PgTxnManager;
-class PgSession;
-
-struct LightweightTableYbctid {
-  LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
-      : table_id(table_id_), ybctid(ybctid_) {}
-  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
-      : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
-
-  PgOid table_id;
-  std::string_view ybctid;
-};
-
-struct TableYbctid {
-  TableYbctid(PgOid table_id_, std::string ybctid_)
-      : table_id(table_id_), ybctid(std::move(ybctid_)) {}
-
-  explicit operator LightweightTableYbctid() const {
-    return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
-  }
-
-  PgOid table_id;
-  std::string ybctid;
-};
-
-struct TableYbctidComparator {
-  using is_transparent = void;
-
-  bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
-    return l.table_id == r.table_id && l.ybctid == r.ybctid;
-  }
-
-  template<class T1, class T2>
-  bool operator()(const T1& l, const T2& r) const {
-    return (*this)(AsLightweightTableYbctid(l), AsLightweightTableYbctid(r));
-  }
-
- private:
-  static const LightweightTableYbctid& AsLightweightTableYbctid(
-      const LightweightTableYbctid& value) {
-    return value;
-  }
-
-  static LightweightTableYbctid AsLightweightTableYbctid(const TableYbctid& value) {
-    return LightweightTableYbctid(value);
-  }
-};
-
-struct TableYbctidHasher {
-  using is_transparent = void;
-
-  size_t operator()(const LightweightTableYbctid& value) const;
-  size_t operator()(const TableYbctid& value) const;
-};
-
-using OidSet = std::unordered_set<PgOid>;
-using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
-using TableYbctidVector = std::vector<TableYbctid>;
-
-class TableYbctidVectorProvider {
- public:
-  class Accessor {
-   public:
-    ~Accessor() { container_.clear(); }
-    TableYbctidVector* operator->() { return &container_; }
-    TableYbctidVector& operator*() { return container_; }
-    operator TableYbctidVector&() { return container_; }
-
-   private:
-    explicit Accessor(TableYbctidVector* container) : container_(*container) {}
-
-    friend class TableYbctidVectorProvider;
-
-    TableYbctidVector& container_;
-
-    DISALLOW_COPY_AND_ASSIGN(Accessor);
-  };
-
-  [[nodiscard]] Accessor Get() { return Accessor(&container_); }
-
- private:
-  TableYbctidVector container_;
-};
-
-class ExplicitRowLockBuffer {
- public:
-  struct Info {
-    int rowmark;
-    int pg_wait_policy;
-    int docdb_wait_policy;
-    PgOid database_id;
-
-    friend bool operator==(const Info&, const Info&) = default;
-  };
-
-  using YbctidReader = LWFunction<Status(TableYbctidVector*, const Info&, const OidSet&)>;
-
-  explicit ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider);
-  Status Add(
-      Info&& info, const LightweightTableYbctid& key, bool is_region_local,
-      const YbctidReader& reader);
-  Status Flush(const YbctidReader& reader);
-  void Clear();
-  bool IsEmpty() const;
-
- private:
-  Status DoFlush(const YbctidReader& reader);
-
-  TableYbctidVectorProvider& ybctid_container_provider_;
-  TableYbctidSet intents_;
-  OidSet region_local_tables_;
-  std::optional<Info> info_;
-};
-
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
@@ -173,11 +60,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(
-      PgClient* pg_client,
+      PgClient& pg_client,
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
-      YBCPgExecStatsState* stats_state);
-  virtual ~PgSession();
+      YBCPgExecStatsState& stats_state,
+      YbctidReader&& ybctid_reader);
+  ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
@@ -341,9 +229,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  using YbctidReader = LWFunction<Status(TableYbctidVector*, const OidSet&)>;
-  Result<bool> ForeignKeyReferenceExists(
-      const LightweightTableYbctid& key, const YbctidReader& reader);
+  Result<bool> ForeignKeyReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
   void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
   void AddForeignKeyReference(const LightweightTableYbctid& key);
 
@@ -445,7 +331,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
-  TableYbctidSet fk_reference_cache_;
+  const YbctidReader ybctid_reader_;
+  MemoryOptimizedTableYbctidSet fk_reference_cache_;
   TableYbctidSet fk_reference_intent_;
   OidSet fk_intent_region_local_tables_;
 
@@ -454,7 +341,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgDocMetrics metrics_;
 
   const YBCPgCallbacks& pg_callbacks_;
-  const PgWaitEventWatcher::Starter wait_starter_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;

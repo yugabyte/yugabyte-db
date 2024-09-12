@@ -42,9 +42,11 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -227,35 +229,43 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public String getPreferredServiceIP(
+  public Set<String> getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
       String namespace,
       boolean isMaster,
-      boolean newNamingStyle) {
-    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+      boolean k8sNewLabels,
+      String universeName) {
+    String appLabel = k8sNewLabels ? "app.kubernetes.io/name" : "app";
     String appName = isMaster ? "yb-master" : "yb-tserver";
+    String universeIdentifier;
+    if (k8sNewLabels) {
+      universeIdentifier = String.format("app.kubernetes.io/part-of=%s", universeName);
+    } else {
+      universeIdentifier = String.format("release=%s", universePrefix);
+    }
     // We don't use service-type=endpoint selector for backwards
     // compatibility with old charts which don't have service-type
     // label on endpoint/exposed services.
     String selector =
         String.format(
-            "release=%s,%s=%s,service-type notin (headless, non-endpoint)",
-            universePrefix, appLabel, appName);
+            "%s,%s=%s,service-type notin (headless, non-endpoint)",
+            universeIdentifier, appLabel, appName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "get", "svc", "--namespace", namespace, "-l", selector, "-o", "json");
     ShellResponse response = execCommand(config, commandList).processErrors();
     List<Service> services = deserialize(response.message, ServiceList.class).getItems();
-    // TODO: PLAT-5625: This might need a change when we have one
-    // common TServer/Master endpoint service across multiple Helm
-    // releases. Currently we call getPreferredServiceIP for each AZ
-    // deployment/Helm release, and return all the IPs.
-    if (services.size() != 1) {
+
+    if (services.size() > 0) {
+      return services.stream()
+          .map(service -> getIp(service))
+          .filter(Objects::nonNull)
+          .collect(Collectors.toSet());
+    } else {
       throw new RuntimeException(
-          "There must be exactly one Master or TServer endpoint service, got " + services.size());
+          "There must be atleast one Master or TServer endpoint service, got 0");
     }
-    return getIp(services.get(0));
   }
 
   @Override
@@ -1140,5 +1150,91 @@ public class ShellKubernetesManager extends KubernetesManager {
                       }));
     }
     return serverTypeGflagsChecksumMap;
+  }
+
+  @Override
+  public List<Service> getNamespacedServices(
+      Map<String, String> config, String namespace, String universeName) {
+    String appLabel = "app.kubernetes.io/part-of";
+    String serviceTypeLabelSelector = "service-type=endpoint";
+    String sanitizedUniverseName = Util.sanitizeKubernetesNamespace(universeName, 0);
+    String labelSelector =
+        String.format("%s=%s,%s", appLabel, sanitizedUniverseName, serviceTypeLabelSelector);
+    List<String> masterCommandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "svc", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, masterCommandList)
+            .processErrors("Unable to retrieve namespaced service");
+    List<Service> namespacedServices =
+        deserialize(response.getMessage(), ServiceList.class).getItems();
+    if (CollectionUtils.isNotEmpty(namespacedServices)) {
+      return namespacedServices.stream()
+          .filter(
+              gS ->
+                  gS.getMetadata()
+                      .getAnnotations()
+                      .getOrDefault("helm.sh/resource-policy", "delete")
+                      .equals("keep"))
+          .toList();
+    }
+    return null;
+  }
+
+  @Override
+  public void deleteNamespacedService(
+      Map<String, String> config, String namespace, String universeName) {
+    deleteNamespacedService(config, namespace, universeName, null /* serviceName */);
+  }
+
+  @Override
+  public void deleteNamespacedService(
+      Map<String, String> config,
+      String namespace,
+      String universeName,
+      @Nullable Set<String> serviceNames) {
+    String appLabel = "app.kubernetes.io/part-of";
+    String serviceTypeLabelSelector = "service-type=endpoint";
+    String serviceScope = "scope=Namespaced";
+    String sanitizedUniverseName = Util.sanitizeKubernetesNamespace(universeName, 0);
+    String labelSelector =
+        String.format(
+            "%s=%s,%s,%s", appLabel, sanitizedUniverseName, serviceTypeLabelSelector, serviceScope);
+    // Add service name for specific service to be deleted
+    if (CollectionUtils.isNotEmpty(serviceNames)) {
+      String commaSeparatedServiceNames = StringUtils.join(serviceNames, ",");
+      String serviceNamelabel = String.format("serviceName in (%s)", commaSeparatedServiceNames);
+      labelSelector = String.format("%s,%s", labelSelector, serviceNamelabel);
+    }
+    List<String> masterCommandList =
+        ImmutableList.of("kubectl", "--namespace", namespace, "delete", "svc", "-l", labelSelector);
+    execCommand(config, masterCommandList).processErrors("Unable to delete namespaced service");
+  }
+
+  @Override
+  public void updateNamespacedServiceOwnership(
+      Map<String, String> config, String namespace, String universeName, String ownerReleaseName) {
+    String appLabel = "app.kubernetes.io/part-of";
+    String serviceTypeLabelSelector = "service-type=endpoint";
+    String serviceScope = "scope=Namespaced";
+    String sanitizedUniverseName = Util.sanitizeKubernetesNamespace(universeName, 0);
+    String labelSelector =
+        String.format(
+            "%s=%s,%s,%s", appLabel, sanitizedUniverseName, serviceTypeLabelSelector, serviceScope);
+    String ownerReleaseAnnotation =
+        String.format("%s=%s", "meta.helm.sh/release-name", ownerReleaseName);
+    List<String> masterCommandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "annotate",
+            "svc",
+            "-l",
+            labelSelector,
+            ownerReleaseAnnotation,
+            "--overwrite");
+    execCommand(config, masterCommandList)
+        .processErrors("Unable to update namespaced service ownership");
   }
 }

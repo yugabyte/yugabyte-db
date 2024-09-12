@@ -1,28 +1,24 @@
 import { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { useQueries, useQuery, UseQueryResult } from 'react-query';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Typography } from '@material-ui/core';
 
 import { YBButton } from '../common/forms/fields';
 import { XClusterConfigList } from './XClusterConfigList';
-import { api, xClusterQueryKey } from '../../redesign/helpers/api';
+import { api } from '../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates, UNIVERSE_TASKS } from '../../redesign/helpers/constants';
-import { getXClusterConfigUuids } from './ReplicationUtils';
-import { fetchXClusterConfig } from '../../actions/xClusterReplication';
-import { XClusterConfigType } from './constants';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { YBTooltip } from '../../redesign/components';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
+import { isActionFrozen } from '../../redesign/helpers/utils';
 
 import { Universe } from '../../redesign/helpers/dtos';
-import { XClusterConfig } from './dtos';
 
 import styles from './XClusterReplication.module.scss';
-import { isActionFrozen } from '../../redesign/helpers/utils';
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster';
 
@@ -33,24 +29,6 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
   const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
     api.fetchUniverse(currentUniverseUUID)
   );
-  const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
-    universeQuery.data
-  );
-
-  // List the XCluster Configurations for which the current universe is a source or a target.
-  const universeXClusterConfigUUIDs: string[] = [
-    ...sourceXClusterConfigUuids,
-    ...targetXClusterConfigUuids
-  ];
-  // The unsafe cast is needed due to issue with useQueries typing
-  // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
-  const xClusterConfigQueries = useQueries(
-    universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: xClusterQueryKey.detail(uuid),
-      queryFn: () => fetchXClusterConfig(uuid),
-      enabled: universeQuery.data?.universeDetails !== undefined
-    }))
-  ) as UseQueryResult<XClusterConfig>[];
 
   if (universeQuery.isLoading || universeQuery.isIdle) {
     return <YBLoading />;
@@ -68,12 +46,8 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
   const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
 
   const allowedTasks = universeQuery.data?.allowedTasks;
-  const universeHasTxnXCluster = xClusterConfigQueries.some(
-    (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
-  );
   const shouldDisableCreateXClusterConfig =
     UnavailableUniverseStates.includes(getUniverseStatus(universeQuery.data).state) ||
-    universeHasTxnXCluster ||
     isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_REPLICATION);
   return (
     <>
@@ -94,11 +68,9 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
                 <YBTooltip
                   title={
                     shouldDisableCreateXClusterConfig
-                      ? universeHasTxnXCluster
-                        ? t('actionButton.createXClusterConfig.tooltip.universeLinkedToTxnXCluster')
-                        : UnavailableUniverseStates.includes(
-                            getUniverseStatus(universeQuery.data).state
-                          )
+                      ? UnavailableUniverseStates.includes(
+                          getUniverseStatus(universeQuery.data).state
+                        )
                         ? t('actionButton.createXClusterConfig.tooltip.universeUnavailable')
                         : ''
                       : ''

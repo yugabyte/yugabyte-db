@@ -19,10 +19,32 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
+
+DECLARE_uint32(protobuf_message_total_bytes_limit);
+DECLARE_uint64(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
+
+namespace {
+
+template <typename PB>
+Status SerializePB(PB& pb, faststring& buf) {
+  LOG(INFO) << "Source proto: " << pb.ShortDebugString();
+
+  AnyMessageConstPtr ptr(&pb);
+  buf.resize(ptr.SerializedSize());
+  RETURN_NOT_OK(ptr.SerializeToArray(buf.data()));
+
+  LOG(INFO) << "Binary dump: " << Slice(buf).ToDebugHexString();
+
+  return Status::OK();
+}
+
+} // namespace
 
 // Make sure LW protobuf skips unknown fields.
 TEST(LWProtoTest, SkipsUnknownFields) {
@@ -37,13 +59,7 @@ TEST(LWProtoTest, SkipsUnknownFields) {
     pb.set_int32_2(15);
     pb.mutable_record2()->set_text("record2");
 
-    LOG(INFO) << "Source proto: " << pb.ShortDebugString();
-
-    AnyMessageConstPtr ptr(&pb);
-    buf.resize(ptr.SerializedSize());
-    ASSERT_OK(ptr.SerializeToArray(buf.data()));
-
-    LOG(INFO) << "Binary dump: " << Slice(buf).ToDebugHexString();
+    ASSERT_OK(SerializePB(pb, buf));
   }
 
   {
@@ -80,6 +96,30 @@ TEST(LWProtoTest, SkipsUnknownFields) {
     ASSERT_TRUE(lwpb2.record2().has_text());
     ASSERT_EQ(pb.record2().text(), lwpb2.record2().text());
   }
+}
+
+// Test a very large proto (rpc_max_message_size < proto size < protobuf_message_total_bytes_limit).
+TEST(LWProtoTest, BigMessage) {
+  faststring buf;
+  rpc_test::TestObjectPB pb;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = 4_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_protobuf_message_total_bytes_limit) = 8_MB;
+
+  constexpr auto kPBSize = 6_MB;
+
+  pb.set_string1(RandomHumanReadableString(kPBSize));
+  ASSERT_OK(SerializePB(pb, buf));
+
+  ThreadSafeArena arena;
+  rpc_test::LWTestObjectPBv2 lwpb2(&arena);
+  AnyMessagePtr ptr(&lwpb2);
+
+  ASSERT_OK(ptr.ParseFromSlice(Slice(buf)));
+  LOG(INFO) << "Read lightweight proto: " << lwpb2.ShortDebugString();
+
+  ASSERT_TRUE(lwpb2.has_string1());
+  ASSERT_EQ(pb.string1(), lwpb2.string1());
 }
 
 } // namespace rpc

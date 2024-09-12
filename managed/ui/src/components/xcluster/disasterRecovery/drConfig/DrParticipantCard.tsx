@@ -14,6 +14,8 @@ import { PlacementRegion } from '../../../../redesign/helpers/dtos';
 interface DrParticipantCardProps {
   xClusterConfig: XClusterConfig;
   universeXClusterRole: UniverseXClusterRole;
+
+  width?: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -23,7 +25,7 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
 
     padding: theme.spacing(2),
-    width: '480px',
+    width: (props: { width?: number }) => (props.width ? `${props.width}px` : '480px'),
     height: '80px',
 
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
@@ -34,9 +36,10 @@ const useStyles = makeStyles((theme) => ({
 
 export const DrParticipantCard = ({
   xClusterConfig,
-  universeXClusterRole
+  universeXClusterRole,
+  width
 }: DrParticipantCardProps) => {
-  const classes = useStyles();
+  const classes = useStyles({ width });
   const theme = useTheme();
 
   const universeUuid =

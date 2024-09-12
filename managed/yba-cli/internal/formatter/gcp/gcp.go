@@ -6,6 +6,7 @@ package gcp
 
 import (
 	"encoding/json"
+	"fmt"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -21,10 +22,13 @@ const (
 	Region = "table {{.InstanceTemplate}}\t{{.YbImage}}"
 
 	// EAR1 for EAR listing
-	EAR1 = "table {{.GCPConfig}}\t{{.LocationID}}\t{{.ProtectionLevel}}"
+	EAR1 = "table {{.LocationID}}\t{{.ProtectionLevel}}"
 
 	// EAR2 for EAR listing
-	EAR2 = "table {{.GcpKmsEndpoint}}\t{{.KeyRingID}}\t{{.CryptoKeyID}}"
+	EAR2 = "table {{.GCPConfig}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.GcpKmsEndpoint}}\t{{.KeyRingID}}\t{{.CryptoKeyID}}"
 
 	projectHeader          = "GCE Project"
 	vpcTypeHeader          = "VPC Type"
@@ -63,7 +67,7 @@ type EARContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -74,7 +78,7 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -85,7 +89,7 @@ func NewRegionFormat(source string) formatter.Format {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -165,7 +169,14 @@ func (c *RegionContext) MarshalJSON() ([]byte, error) {
 
 // GCPConfig fetches the GCP config
 func (c *EARContext) GCPConfig() string {
-	return c.Gcp.GCPConfig
+	config := ""
+	for k, v := range c.Gcp.GCPConfig {
+		config = fmt.Sprintf("%s%s : %s\n", config, k, v)
+	}
+	if len(config) == 0 {
+		return ""
+	}
+	return config[0 : len(config)-1]
 }
 
 // LocationID fetches the location ID

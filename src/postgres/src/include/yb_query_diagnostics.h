@@ -35,6 +35,13 @@
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048
 #define YB_QD_MAX_PGSS_LEN 2048
+#define YB_QD_DESCRIPTION_LEN 128
+
+/*
+ * Currently, if the explain plan is larger than 16KB, we truncate it.
+ * Github issue #23720: handles queries with explain plans excedding 16KB.
+ */
+#define YB_QD_MAX_EXPLAIN_PLAN_LEN 16384
 
 /* GUC variables */
 extern int yb_query_diagnostics_bg_worker_interval_ms;
@@ -125,6 +132,9 @@ typedef struct YbQueryDiagnosticsEntry
 
 	/* Holds the pg_stat_statements data until flushed to disc */
 	YbQueryDiagnosticsPgss pgss;
+
+	/* Holds the explain plan data until flushed to disc */
+	char		explain_plan[YB_QD_MAX_EXPLAIN_PLAN_LEN];
 } YbQueryDiagnosticsEntry;
 
 typedef void (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int query_len, char *normalized_query);

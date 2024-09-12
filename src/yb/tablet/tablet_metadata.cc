@@ -246,6 +246,10 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
+  if (index_info && index_info->is_vector_idx()) {
+    doc_read_context->SetVectorIdxOptions(index_info->get_vector_idx_options());
+  }
+
   if (!index_info || !index_info->is_unique()) {
     return;
   }

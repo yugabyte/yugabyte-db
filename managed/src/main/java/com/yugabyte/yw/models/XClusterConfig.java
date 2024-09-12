@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
@@ -133,7 +134,10 @@ public class XClusterConfig extends Model {
     Updating("Updating"),
     DeletedUniverse("DeletedUniverse"),
     DeletionFailed("DeletionFailed"),
-    Failed("Failed");
+    Failed("Failed"),
+
+    // New states to handle retry-ability.
+    DrainedData("DrainedData");
 
     private final String status;
 
@@ -182,6 +186,7 @@ public class XClusterConfig extends Model {
   private Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
+  @JsonIgnore
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -209,7 +214,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Whether the config is txn xCluster")
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
   private ConfigType type;
 
   @ApiModelProperty(value = "Whether the source is active in txn xCluster")
@@ -285,11 +290,19 @@ public class XClusterConfig extends Model {
         .findAny();
   }
 
-  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String namespaceId) {
-    // There will be at most one namespaceConfig for a namespaceId within each xCluster config.
-    return this.getNamespaceDetails().stream()
-        .filter(namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(namespaceId))
-        .findAny();
+  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String sourceNamespaceId) {
+    // There will be at most one namespaceConfig for a sourceNamespaceId within each xCluster
+    // config.
+    Optional<XClusterNamespaceConfig> optClusterNamespaceConfig =
+        this.getNamespaceDetails().stream()
+            .filter(
+                namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(sourceNamespaceId))
+            .findAny();
+    if (optClusterNamespaceConfig.isEmpty()) {
+      log.info(
+          "Cannot find an xClusterNamespaceConfig with sourceNamespaceId {}", sourceNamespaceId);
+    }
+    return optClusterNamespaceConfig;
   }
 
   public Optional<DrConfig> maybeGetDrConfig() {
@@ -380,6 +393,11 @@ public class XClusterConfig extends Model {
     return tables.stream()
         .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
         .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  @JsonSetter("tableDetails")
+  private void setTableDetails(Set<XClusterTableConfig> tableDetails) {
+    this.tables = tableDetails;
   }
 
   @ApiModelProperty(value = "Namespaces participating in this xCluster config")

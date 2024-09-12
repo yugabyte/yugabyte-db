@@ -38,8 +38,9 @@ var listRestoreCmd = &cobra.Command{
 		}
 
 		restoreCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: restore.NewRestoreFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  restore.NewRestoreFormat(viper.GetString("output")),
 		}
 
 		var limit int32 = 10
@@ -81,7 +82,7 @@ var listRestoreCmd = &cobra.Command{
 
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
-				if util.IsOutputType("table") {
+				if util.IsOutputType(formatter.TableFormatKey) {
 					logrus.Infoln("No restores found\n")
 				} else {
 					logrus.Infoln("[]\n")

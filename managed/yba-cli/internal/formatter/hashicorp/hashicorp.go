@@ -6,6 +6,7 @@ package hashicorp
 
 import (
 	"encoding/json"
+	"fmt"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -14,19 +15,22 @@ import (
 
 const (
 	// EIT provides header for EIT cert info
-	EIT = "table {{.Engine}}\t{{.MountPath}}\t{{.Role}}\t{{.VaultAddress}}"
+	EIT = "table {{.Engine}}\t{{.MountPath}}\t{{.Role}}\t{{.VaultAddress}}\t{{.Token}}"
 
 	// EAR1 for HcVaultAuthConfigField listing
-	EAR1 = "table {{.Token}}\t{{.Address}}\t{{.Engine}}"
+	EAR1 = "table {{.Address}}\t{{.Engine}}"
 
 	// EAR2 for HcVaultAuthConfigField listing
-	EAR2 = "table {{.MountPath}}\t{{.KeyName}}\t{{.PkiRole}}"
+	EAR2 = "table {{.MountPath}}\t{{.KeyName}}"
 
 	// EAR3 for HcVaultAuthConfigField listing
-	EAR3 = "table {{.RoleID}}\t{{.SecretID}}\t{{.AuthNamespace}}"
+	EAR3 = "table {{.Token}}"
 
 	// EAR4 for HcVaultAuthConfigField listing
-	EAR4 = "table {{.TTL}}\t{{.TTLExpiry}}"
+	EAR4 = "table {{.RoleID}}\t{{.SecretID}}\t{{.AuthNamespace}}"
+
+	// EAR5 for HcVaultAuthConfigField listing
+	EAR5 = "table {{.TTL}}\t{{.TTLExpiry}}"
 
 	engineHeader    = "Engine"
 	mountPathHeader = "Mount Path"
@@ -39,7 +43,6 @@ const (
 	roleIDHeader        = "Role ID"
 	secretIDHeader      = "Secret ID"
 	authNamespaceHeader = "Auth Namespace"
-	pkiRoleHeader       = "Pki Role"
 
 	ttlHeader       = "TTL"
 	ttlExpiryHeader = "TTL Expiry"
@@ -62,7 +65,7 @@ type EARContext struct {
 // NewEITFormat for formatting output
 func NewEITFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EIT
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -73,7 +76,7 @@ func NewEITFormat(source string) formatter.Format {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -107,7 +110,6 @@ func NewEARContext() *EARContext {
 		"AuthNamespace": authNamespaceHeader,
 		"TTL":           ttlHeader,
 		"TTLExpiry":     ttlExpiryHeader,
-		"PkiRole":       pkiRoleHeader,
 	}
 	return &hashicorpEARCtx
 }
@@ -162,11 +164,6 @@ func (c *EARContext) AuthNamespace() string {
 	return c.Hashicorp.HcVaultAuthNamespace
 }
 
-// PkiRole fetches HCV pki role
-func (c *EARContext) PkiRole() string {
-	return c.Hashicorp.HcVaultPkiRole
-}
-
 // Token fetches HCV token
 func (c *EARContext) Token() string {
 	return c.Hashicorp.HcVaultToken
@@ -184,12 +181,15 @@ func (c *EARContext) KeyName() string {
 
 // TTL fetches HCV TTL
 func (c *EARContext) TTL() string {
-	return c.Hashicorp.HcVaultTTL
+	return fmt.Sprintf("%d", c.Hashicorp.HcVaultTTL)
 }
 
 // TTLExpiry fetches HCV TTL expiry
 func (c *EARContext) TTLExpiry() string {
-	return c.Hashicorp.HcVaultTTLExpiry
+	if c.Hashicorp.HcVaultTTL == 0 {
+		return "Won't Expire"
+	}
+	return fmt.Sprintf("%d", c.Hashicorp.HcVaultTTLExpiry)
 }
 
 // MarshalJSON function

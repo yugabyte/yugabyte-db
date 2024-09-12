@@ -25,8 +25,8 @@ var GCPEARCmd = &cobra.Command{
 func init() {
 	GCPEARCmd.Flags().SortFlags = false
 
-	// GCPEARCmd.AddCommand(createGCPEARCmd)
-	// GCPEARCmd.AddCommand(updateGCPEARCmd)
+	GCPEARCmd.AddCommand(createGCPEARCmd)
+	GCPEARCmd.AddCommand(updateGCPEARCmd)
 	GCPEARCmd.AddCommand(listGCPEARCmd)
 	GCPEARCmd.AddCommand(describeGCPEARCmd)
 	GCPEARCmd.AddCommand(deleteGCPEARCmd)

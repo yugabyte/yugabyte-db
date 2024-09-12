@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterNamespaceConfig.Status;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.time.Duration;
@@ -50,6 +51,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.IsXClusterBootstrapRequiredResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
@@ -173,7 +175,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
-        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+        // Check equality of auto flags on both universes only if universe is used for DR.
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse, xClusterConfig.isUsedForDr())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
 
         createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Updating);
@@ -197,6 +200,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               taskParams().getPitrParams());
         }
 
+        // After all the other subtasks are done, set the DR states to show replication is
+        // happening.
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Replicating,
+                  SourceUniverseState.ReplicatingData,
+                  TargetUniverseState.ReceivingData,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
         createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -207,41 +222,41 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+        // Set xCluster config status to failed.
+        xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
+        // Set tables in updating status to failed.
+        Set<String> tablesInPendingStatus =
+            xClusterConfig.getTableIdsInStatus(
+                getTableIds(taskParams().getTableInfoList()),
+                X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
+        xClusterConfig.updateStatusForTables(
+            tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+        if (xClusterConfig.isUsedForDr()) {
+          // Prevent all other DR tasks except delete from running.
+          log.info(
+              "Setting the dr config state of xCluster config {} to {} from {}",
+              xClusterConfig.getUuid(),
+              State.Failed,
+              xClusterConfig.getDrConfig().getState());
+          xClusterConfig.getDrConfig().setState(State.Failed);
+          xClusterConfig.getDrConfig().update();
+        }
+
+        // Set backup and restore status to failed and alter load balanced.
+        boolean isLoadBalancerAltered = false;
+        for (Restore restore : restoreList) {
+          isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
+        }
+        handleFailedBackupAndRestore(
+            backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
+        throw new RuntimeException(e);
       } finally {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
-    } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
-      // Set xCluster config status to failed.
-      xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
-      // Set tables in updating status to failed.
-      Set<String> tablesInPendingStatus =
-          xClusterConfig.getTableIdsInStatus(
-              getTableIds(taskParams().getTableInfoList()),
-              X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
-      xClusterConfig.updateStatusForTables(
-          tablesInPendingStatus, XClusterTableConfig.Status.Failed);
-
-      if (xClusterConfig.isUsedForDr()) {
-        // Prevent all other DR tasks except delete from running.
-        log.info(
-            "Setting the dr config state of xCluster config {} to {} from {}",
-            xClusterConfig.getUuid(),
-            State.Error,
-            xClusterConfig.getDrConfig().getState());
-        xClusterConfig.getDrConfig().setState(State.Error);
-        xClusterConfig.getDrConfig().update();
-      }
-
-      // Set backup and restore status to failed and alter load balanced.
-      boolean isLoadBalancerAltered = false;
-      for (Restore restore : restoreList) {
-        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
-      }
-      handleFailedBackupAndRestore(
-          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
-      throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
@@ -310,17 +325,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         sourceDbIds,
         !CollectionUtils.isEmpty(tableIdsNotNeedBootstrap),
         pitrParams);
-
-    // After all the other subtasks are done, set the DR states to show replication is happening.
-    if (xClusterConfig.isUsedForDr()) {
-      createSetDrStatesTask(
-              xClusterConfig,
-              State.Replicating,
-              SourceUniverseState.ReplicatingData,
-              TargetUniverseState.ReceivingData,
-              null /* keyspacePending */)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-    }
   }
 
   protected void addSubtasksToCreateXClusterConfig(
@@ -374,9 +378,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             ? CommonTypes.TableType.PGSQL_TABLE_TYPE
             : requestedTableInfoList.get(0).getTableType();
 
-    // Create checkpoints for the tables.
-    createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrap)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
+    if (xClusterConfig.getTablesById(tableIdsNotNeedBootstrap).stream()
+        .anyMatch(tableConfig -> Objects.isNull(tableConfig.getStreamId()))) {
+      // Create checkpoints for the tables.
+      createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrap)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
+    }
 
     if (xClusterConfig.isUsedForDr()) {
       createSetDrStatesTask(
@@ -410,68 +417,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       }
       namespaces.forEach(
           namespace -> {
-            Optional<PitrConfig> pitrConfigOptional =
-                PitrConfig.maybeGet(
-                    xClusterConfig.getTargetUniverseUUID(), tableType, namespace.getName());
-            long retentionPeriodSeconds;
-            long snapshotIntervalSeconds;
-            if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
-              retentionPeriodSeconds = pitrParams.retentionPeriodSec;
-              snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
-            } else {
-              retentionPeriodSeconds =
-                  confGetter
-                      .getConfForScope(
-                          targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
-                      .getSeconds();
-              snapshotIntervalSeconds =
-                  confGetter
-                      .getConfForScope(
-                          targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
-                      .getSeconds();
-            }
-            log.info(
-                "Using retentionPeriodSeconds={} and snapshotIntervalSeconds={} as PITR params",
-                retentionPeriodSeconds,
-                snapshotIntervalSeconds);
-
-            if (pitrConfigOptional.isPresent()) {
-              // Only delete and recreate if the PITR config parameters differ from taskParams.
-              if (pitrConfigOptional.get().getRetentionPeriod() != retentionPeriodSeconds
-                  || pitrConfigOptional.get().getScheduleInterval() != snapshotIntervalSeconds) {
-                log.info(
-                    "Deleting the existing PITR config and creating a new one with the new"
-                        + " parameters");
-                createDeletePitrConfigTask(
-                    pitrConfigOptional.get().getUuid(),
-                    targetUniverse.getUniverseUUID(),
-                    false /* ignoreErrors */);
-                // We mark this PITR config as not created during DR as it existed before DR with
-                // different params.
-                // In Future, we will set the PITR config with old params if it not required by DR.
-                createCreatePitrConfigTask(
-                    targetUniverse,
-                    namespace.getName(),
-                    tableType,
-                    retentionPeriodSeconds,
-                    snapshotIntervalSeconds,
-                    xClusterConfig,
-                    false /* createdForDr */);
-              } else {
-                log.info("Reusing the existing PITR config because it has the right parameters");
-                xClusterConfig.addPitrConfig(pitrConfigOptional.get());
-              }
-            } else {
-              log.info("Creating a new PITR config");
-              createCreatePitrConfigTask(
-                  targetUniverse,
-                  namespace.getName(),
-                  tableType,
-                  retentionPeriodSeconds,
-                  snapshotIntervalSeconds,
-                  xClusterConfig,
-                  true /* createdForDr */);
-            }
+            createPitrConfigIfRequired(
+                xClusterConfig, targetUniverse, tableType, namespace.getName(), pitrParams);
+            createPitrConfigIfRequired(
+                xClusterConfig, sourceUniverse, tableType, namespace.getName(), pitrParams);
           });
     }
 
@@ -518,12 +467,26 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       String namespaceId = dbNameToDbIdMap.get(namespaceName);
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap = null;
 
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        Optional<XClusterNamespaceConfig> namespaceConfigOptional =
+            xClusterConfig.maybeGetNamespaceById(namespaceId);
+        if (namespaceConfigOptional.isPresent()
+            && namespaceConfigOptional.get().getStatus() == Status.Running) {
+          log.info(
+              "Namespace {} already is in replication {}, skipping",
+              namespaceName,
+              xClusterConfig.getUuid());
+          continue;
+        }
+      }
+
       // For db scoped replication, we will skip backup/restore subtasks at runtime if bootstrapping
       //   is not required. For non-db scoped replication, we always perform backup restore here.
       Predicate<ITask> bootstrapRequiredPredicate =
           task -> {
+            // No bootstrap should be done for switchover.
             if (xClusterConfig.isUsedForDr()
-                && xClusterConfig.getDrConfig().getFailoverXClusterConfig() != null) {
+                && xClusterConfig.getDrConfig().getState().equals(State.SwitchoverInProgress)) {
               return false;
             }
 
@@ -556,7 +519,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       }
 
       if (xClusterConfig.getType() == ConfigType.Db) {
-
         if (!xClusterConfig.getDbIds().contains(namespaceId)) {
           xClusterConfig.addNamespaces(Set.of(namespaceId));
         }
@@ -622,22 +584,43 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       }
 
       // Before dropping the tables on the target universe, delete the associated PITR configs.
-      Optional<PitrConfig> pitrConfigOptional =
+      Optional<PitrConfig> pitrConfigOnTargetOptional =
           PitrConfig.maybeGet(
               xClusterConfig.getTargetUniverseUUID(),
               tableType,
               namespaceName); // Need to drop pitr configs that may be dangling.
-      boolean hadPitrBeforeDr = false;
+      long retentionPeriodSeconds;
+      long snapshotIntervalSeconds;
+      if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
+        retentionPeriodSeconds = pitrParams.retentionPeriodSec;
+        snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
+      } else {
+        retentionPeriodSeconds =
+            confGetter
+                .getConfForScope(
+                    targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+                .getSeconds();
+        snapshotIntervalSeconds =
+            confGetter
+                .getConfForScope(
+                    targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                .getSeconds();
+      }
       if (xClusterConfig.getType() != ConfigType.Basic) {
-        if (pitrConfigOptional.isPresent()) {
-          hadPitrBeforeDr = true;
-        }
-        pitrConfigOptional.ifPresent(
+        // Delete the PITR config if the the bootstrap required predicate is true or the PITR
+        // config has different parameters.
+        pitrConfigOnTargetOptional.ifPresent(
             pitrConfig ->
                 createDeletePitrConfigTask(
-                    pitrConfig.getUuid(),
-                    targetUniverse.getUniverseUUID(),
-                    false /* ignoreErrors */));
+                        pitrConfig.getUuid(),
+                        targetUniverse.getUniverseUUID(),
+                        false /* ignoreErrors */)
+                    .setShouldRunPredicate(
+                        bootstrapRequiredPredicate.or(
+                            task ->
+                                pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
+                                    || pitrConfig.getScheduleInterval()
+                                        != snapshotIntervalSeconds)));
       }
 
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
@@ -682,6 +665,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               targetUniverse, UniverseConfKeys.sleepTimeBeforeRestoreXClusterSetup);
       if (waitTime.compareTo(Duration.ZERO) > 0) {
         createWaitForDurationSubtask(targetUniverse, waitTime)
+            .setShouldRunPredicate(bootstrapRequiredPredicate)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       }
 
@@ -692,6 +676,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 SourceUniverseState.WaitingForDr,
                 TargetUniverseState.Bootstrapping,
                 namespaceName)
+            .setShouldRunPredicate(bootstrapRequiredPredicate)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -722,31 +707,35 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       // Recreate the PITR config for txn xCluster.
       if (xClusterConfig.getType() != ConfigType.Basic) {
-        long retentionPeriodSeconds;
-        long snapshotIntervalSeconds;
-        if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
-          retentionPeriodSeconds = pitrParams.retentionPeriodSec;
-          snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
+        if (pitrConfigOnTargetOptional.isPresent()) {
+          PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
+          // Create the PITR config on the target if the predicate is true which means the
+          // previously existed PITR is deleted.
+          createCreatePitrConfigTask(
+                  targetUniverse,
+                  namespaceName,
+                  tableType,
+                  retentionPeriodSeconds,
+                  snapshotIntervalSeconds,
+                  xClusterConfig,
+                  false /* createdForDr */)
+              .setShouldRunPredicate(
+                  bootstrapRequiredPredicate.or(
+                      task ->
+                          pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
+                              || pitrConfig.getScheduleInterval() != snapshotIntervalSeconds));
         } else {
-          retentionPeriodSeconds =
-              confGetter
-                  .getConfForScope(
-                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
-                  .getSeconds();
-          snapshotIntervalSeconds =
-              confGetter
-                  .getConfForScope(
-                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
-                  .getSeconds();
+          createCreatePitrConfigTask(
+              targetUniverse,
+              namespaceName,
+              tableType,
+              retentionPeriodSeconds,
+              snapshotIntervalSeconds,
+              xClusterConfig,
+              true /* createdForDr */);
         }
-        createCreatePitrConfigTask(
-            targetUniverse,
-            namespaceName,
-            tableType,
-            retentionPeriodSeconds,
-            snapshotIntervalSeconds,
-            xClusterConfig,
-            !hadPitrBeforeDr);
+        createPitrConfigIfRequired(
+            xClusterConfig, sourceUniverse, tableType, namespaceName, pitrParams);
       }
 
       if (xClusterConfig.getType() == ConfigType.Db) {
@@ -773,15 +762,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         if (xClusterConfig.getType() == ConfigType.Db) {
           createXClusterDbReplicationSetupTask(xClusterConfig)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          createXClusterConfigSetStatusForNamespaceTask(
-              xClusterConfig,
-              Collections.singleton(namespaceId),
-              XClusterNamespaceConfig.Status.Running);
         } else {
           createXClusterConfigSetupTask(xClusterConfig, tableIdsNeedBootstrap)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
         isReplicationConfigCreated = true;
+      }
+
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        createXClusterConfigSetStatusForNamespacesTask(
+            xClusterConfig,
+            Collections.singleton(namespaceId),
+            XClusterNamespaceConfig.Status.Running);
       }
     }
   }
@@ -1014,6 +1006,72 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           cert ->
               createTransferXClusterCertsCopyTasks(
                   sourceUniverse.getNodes(), replicationGroupName, cert, sourceUniverse));
+    }
+  }
+
+  protected void createPitrConfigIfRequired(
+      XClusterConfig xClusterConfig,
+      Universe universe,
+      TableType tableType,
+      String dbName,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    long retentionPeriodSeconds;
+    long snapshotIntervalSeconds;
+    if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
+      retentionPeriodSeconds = pitrParams.retentionPeriodSec;
+      snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
+    } else {
+      retentionPeriodSeconds =
+          confGetter
+              .getConfForScope(universe, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+              .getSeconds();
+      snapshotIntervalSeconds =
+          confGetter
+              .getConfForScope(universe, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+              .getSeconds();
+    }
+    log.info(
+        "Using retentionPeriodSeconds={} and snapshotIntervalSeconds={} as PITR params",
+        retentionPeriodSeconds,
+        snapshotIntervalSeconds);
+    Optional<PitrConfig> pitrConfigOptional =
+        PitrConfig.maybeGet(universe.getUniverseUUID(), tableType, dbName);
+    if (pitrConfigOptional.isPresent()) {
+      // Only delete and recreate if the PITR config parameters differ from taskParams.
+      if (pitrConfigOptional.get().getRetentionPeriod() != retentionPeriodSeconds
+          || pitrConfigOptional.get().getScheduleInterval() != snapshotIntervalSeconds) {
+        log.info(
+            "Deleting the existing PITR config and creating a new one with the new"
+                + " parameters");
+        createDeletePitrConfigTask(
+            pitrConfigOptional.get().getUuid(),
+            universe.getUniverseUUID(),
+            false /* ignoreErrors */);
+        // We mark this PITR config as not created during DR as it existed before DR with
+        // different params.
+        // In Future, we will set the PITR config with old params if it not required by DR.
+        createCreatePitrConfigTask(
+            universe,
+            dbName,
+            tableType,
+            retentionPeriodSeconds,
+            snapshotIntervalSeconds,
+            xClusterConfig,
+            false /* createdForDr */);
+      } else {
+        log.info("Reusing the existing PITR config because it has the right parameters");
+        xClusterConfig.addPitrConfig(pitrConfigOptional.get());
+      }
+    } else {
+      log.info("Creating a new PITR config");
+      createCreatePitrConfigTask(
+          universe,
+          dbName,
+          tableType,
+          retentionPeriodSeconds,
+          snapshotIntervalSeconds,
+          xClusterConfig,
+          true /* createdForDr */);
     }
   }
 }

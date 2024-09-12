@@ -13,14 +13,13 @@ import { useTranslation } from 'react-i18next';
 import { isEqual } from 'lodash';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { YBModal, YBRadioGroup } from '../../../../../../components';
-import { BackupObjectsModel } from '../../models/IBackupObjects';
 import { YBTable } from '../../../../../../../components/backupv2/components/restore/pages/selectTables/YBTable';
 
 import { Backup_Options_Type, ITable } from '../../../../../../../components/backupv2';
 import { ReactComponent as EditIcon } from '../../../../../../assets/edit-pen-orange.svg';
 
 interface SelectTablesProps {
-  control: Control<BackupObjectsModel, any>;
+  control: Control;
   tablesInSelectedKeyspace: ITable[];
 }
 

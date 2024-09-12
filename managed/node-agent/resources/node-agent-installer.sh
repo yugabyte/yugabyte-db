@@ -26,6 +26,7 @@ CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
 NODE_IP=""
+BIND_IP=""
 NODE_PORT=""
 API_TOKEN=""
 PLATFORM_URL=""
@@ -395,6 +396,7 @@ Options:
     Server IP.
   -p, --node_port (OPTIONAL for install command)
     Server port.
+  --bind_ip (OPTIONAL if bind_ip is different than node_ip)
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
@@ -544,6 +546,10 @@ main() {
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      # if bind ip is provided use that.
+      if [ -n "$BIND_IP" ]; then
+        NODE_AGENT_CONFIG_ARGS+=( --bind_ip "$BIND_IP" )
+      fi
     fi
     setup_node_agent_dir
     extract_package
@@ -657,6 +663,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     -ip|--node_ip)
       NODE_IP=$2
+      shift
+    ;;
+    --bind_ip)
+      BIND_IP=$2
       shift
     ;;
     -p|--node_port)

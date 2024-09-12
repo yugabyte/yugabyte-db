@@ -1,22 +1,26 @@
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @NoArgsConstructor
 @Getter
 @Setter
+@JsonDeserialize(converter = DrConfigTaskParams.Converter.class)
 public class DrConfigTaskParams extends XClusterConfigTaskParams {
 
   protected DrConfig drConfig;
@@ -63,7 +67,7 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
       @Nullable XClusterConfig oldXClusterConfig,
       XClusterConfig newXClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap) {
     super(
@@ -82,7 +86,7 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
       @Nullable XClusterConfig oldXClusterConfig,
       XClusterConfig newXClusterConfig,
       @Nullable Map<String, Long> namespaceIdSafetimeEpochUsMap,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap) {
     super(
         newXClusterConfig,
@@ -104,7 +108,7 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
     super(
         newXClusterConfig,
         null /* bootstrapParams */,
-        Collections.emptyList(), /* tableInfoList */
+        Collections.emptyList(), /* tableInfoRespList */
         Collections.emptyMap(), /* mainTableIndexTablesMap */
         Collections.emptyMap() /* sourceTableIdTargetTableIdMap */);
     this.drConfig = drConfig;
@@ -112,4 +116,30 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
     this.oldXClusterConfig = oldXClusterConfig;
     this.namespaceIdSafetimeEpochUsMap = namespaceIdSafetimeEpochUsMap;
   }
+
+  public DrConfigTaskParams(
+      DrConfig drConfig,
+      RestartBootstrapParams bootstrapParams,
+      DrConfigCreateForm.PitrParams pitrParams) {
+    super(drConfig.getActiveXClusterConfig());
+    this.drConfig = drConfig;
+    if (bootstrapParams != null) {
+      this.bootstrapParams = new BootstrapParams();
+      this.bootstrapParams.backupRequestParams = bootstrapParams.backupRequestParams;
+    }
+    this.pitrParams = pitrParams;
+  }
+
+  @Override
+  public void refreshIfExists() {
+    super.refreshIfExists();
+    if (Objects.nonNull(drConfig)) {
+      drConfig = DrConfig.maybeGet(drConfig.getUuid()).orElse(null);
+    }
+    if (Objects.nonNull(oldXClusterConfig)) {
+      oldXClusterConfig = XClusterConfig.maybeGet(oldXClusterConfig.getUuid()).orElse(null);
+    }
+  }
+
+  public static class Converter extends BaseConverter<DrConfigTaskParams> {}
 }

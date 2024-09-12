@@ -110,8 +110,8 @@ export const EditConfigTargetModal = ({
 
   if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
     const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedDrReplicaUniveresUuid'
-      : 'undefinedDrPrimaryUniveresUuid';
+      ? 'undefinedDrReplicaUniverseUuid'
+      : 'undefinedDrPrimaryUniverseUuid';
     return (
       <YBModal
         title={t('title')}

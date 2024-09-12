@@ -38,7 +38,7 @@ type Context struct {
 // NewNodesFormat for formatting output
 func NewNodesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultNodesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -49,7 +49,7 @@ func NewNodesFormat(source string) formatter.Format {
 // Write renders the context for a list of Nodess
 func Write(ctx formatter.Context, nodes []ybaclient.NodeInstance) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of nodes into JSON
 		var output []byte
 		var err error

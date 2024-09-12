@@ -4158,12 +4158,12 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Size (in KiBs) of ASH circular buffer that stores the samples"),
-			NULL,
+			gettext_noop("If this is 0, the size will be calculated based on the number of cores"),
 			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
-		16 * 1024, 1, INT_MAX,
-		NULL, NULL, NULL
+		0, 0, INT_MAX,
+		yb_ash_circular_buffer_size_check_hook, NULL, NULL
 	},
 
 	{
@@ -11593,6 +11593,12 @@ read_gucstate_binary(char **srcptr, char *srcend, void *dest, Size size)
 
 	memcpy(dest, *srcptr, size);
 	*srcptr += size;
+}
+
+void YbSetParallelWorker()
+{
+	yb_is_parallel_worker = true;
+	elog(LOG, "yb_is_parallel_worker has been set to true");
 }
 
 /*

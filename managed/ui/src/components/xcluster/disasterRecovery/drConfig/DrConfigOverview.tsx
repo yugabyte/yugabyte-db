@@ -9,6 +9,7 @@ import { UniverseXClusterRole } from '../../constants';
 import { ReplicationIcon } from '../../icons/ReplicationIcon';
 import { getXClusterConfig } from '../utils';
 import { EstimatedDataLossLabel } from './EstimatedDataLossLabel';
+import { SchemaChangeModeLabel } from './SchemaChangeModeLabel';
 
 import { DrConfig } from '../dtos';
 
@@ -80,6 +81,12 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
             </YBTooltip>
           </div>
           <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
+        </Box>
+        <Box display="flex">
+          <div className={classes.propertyLabel}>
+            <Typography variant="body2">{t('property.schemaChangeMode.label')}</Typography>
+          </div>
+          <SchemaChangeModeLabel drConfig={drConfig} />
         </Box>
       </Box>
       <Box

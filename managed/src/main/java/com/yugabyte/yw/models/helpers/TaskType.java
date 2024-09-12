@@ -411,6 +411,11 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  EditDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfigParams.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -584,6 +589,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreateYbaBackup,
       CustomerTask.TargetType.Yba),
 
+  EnableNodeAgentInUniverse(
+      com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
+      CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -689,6 +699,9 @@ public enum TaskType {
   UpdateAndPersistKubernetesOverrides(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides.class),
 
+  HandleKubernetesNamespacedServices(
+      com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedServices.class),
+
   UpdatePlacementInfo(com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.class),
 
   UpdateSoftwareVersion(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion.class),
@@ -772,6 +785,9 @@ public enum TaskType {
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
+
+  UpdateDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams.class),
 
   XClusterAddNamespaceToOutboundReplicationGroup(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
@@ -953,6 +969,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
+
+  CheckCertificateConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig.class),
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 

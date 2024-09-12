@@ -11,21 +11,10 @@
 // under the License.
 //
 
-#include "yb/client/table_info.h"
-
-#include "yb/docdb/deadline_info.h"
-
 #include "yb/integration-tests/cql_test_base.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/external_mini_cluster_validator.h"
-#include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_client.pb.h"
@@ -36,9 +25,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -50,6 +37,7 @@ using namespace std::literals;
 DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
 
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -227,6 +215,13 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   explicit WaitStateTestCheckMethodCounts(TestMode test_mode)
       : WaitStateITest(test_mode) {}
 
+  void SetUp() {
+    WaitStateITest::SetUp();
+    if (IsSQLEnabled()) {
+      main_thread_connection_ = ASSERT_RESULT(Connect());
+    }
+  }
+
   void CreateTables();
 
   virtual void LaunchWorkers(TestThreadHolder* thread_holder);
@@ -252,9 +247,9 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   void DoCqlWritesUntilStopped(std::atomic<bool>& stop);
   void DoCqlReadsUntilStopped(std::atomic<bool>& stop);
 
-  void CreatePgTables();
+  virtual void CreatePgTables();
   void DoPgWritesUntilStopped(std::atomic<bool>& stop);
-  void DoPgReadsUntilStopped(std::atomic<bool>& stop);
+  virtual void DoPgReadsUntilStopped(std::atomic<bool>& stop);
   virtual void MaybeSleepBeforePgWriteCommits() {}
 
   std::atomic<size_t> num_ash_calls_done_;
@@ -267,6 +262,7 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   std::mutex mutex_;
   bool enable_sql_ = true;
   bool enable_cql_ = true;
+  std::optional<pgwrapper::PGConn> main_thread_connection_;
 };
 
 void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
@@ -274,7 +270,6 @@ void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
     return;
   }
 
-  auto conn = ASSERT_RESULT(Connect());
   // Verify that we get the correct uuid for top_level_node_id.
   // Some rpc's like those received from the master may not have the ash_metadata set, thus
   // resulting in a nil/zero uuid for top_level_node_id. Expect to see that all the received
@@ -287,7 +282,7 @@ void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
       Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid())
           .ToString();
   LOG(INFO) << "Running: " << query;
-  auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+  auto rows = ASSERT_RESULT(main_thread_connection_->FetchAllAsString(query, ",", "\n"));
   LOG(INFO) << " Got :\n" << rows;
   // Some of the tests only check for the wait-state to have been reached.
   // We may not have collected many samples in the circular buffer, so it is ok for the query to
@@ -329,8 +324,8 @@ void WaitStateTestCheckMethodCounts::DoCqlReadsUntilStopped(std::atomic<bool>& s
 }
 
 void WaitStateTestCheckMethodCounts::CreatePgTables() {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(main_thread_connection_->Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
 }
 
 void WaitStateTestCheckMethodCounts::DoPgWritesUntilStopped(std::atomic<bool>& stop) {
@@ -344,16 +339,16 @@ void WaitStateTestCheckMethodCounts::DoPgWritesUntilStopped(std::atomic<bool>& s
           conn.Execute(yb::Format(
               "INSERT INTO t (key, value) VALUES ($0, 'v-$1')", i % kNumKeys,
               std::string(1000, 'A' + i % 26))),
-          "Insert failed")
+          "Insert failed");
     } else {
       WARN_NOT_OK(
           conn.Execute(yb::Format(
               "UPDATE t SET value = 'v-$1' where key = $0", i % kNumKeys,
               std::string(1000, 'A' + i % 26))),
-          "Insert failed")
+          "Update failed");
     }
     MaybeSleepBeforePgWriteCommits();
-    WARN_NOT_OK(conn.Execute("COMMIT"), "Insert/Commit failed")
+    WARN_NOT_OK(conn.Execute("COMMIT"), "Insert/Commit failed");
   }
 }
 
@@ -482,7 +477,6 @@ void WaitStateTestCheckMethodCounts::PrintRowsFromASH() {
     return;
   }
 
-  auto conn = ASSERT_RESULT(Connect());
   std::vector<std::string> queries;
   queries.push_back("SELECT count(*) FROM yb_active_session_history;");
   queries.push_back(
@@ -516,7 +510,7 @@ void WaitStateTestCheckMethodCounts::PrintRowsFromASH() {
       "by wait_event_component, client_node_ip;");
   for (const auto& query : queries) {
     LOG(INFO) << "\n\nRunning: " << query;
-    auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+    auto rows = ASSERT_RESULT(main_thread_connection_->FetchAllAsString(query, ",", "\n"));
     LOG(INFO) << "Got :\n" << rows;
   }
 }
@@ -708,7 +702,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
     const auto code_class = ash::Class(to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
     do_compactions_ = (code_class == ash::Class::kRocksDB);
 
-    WaitStateITest::SetUp();
+    WaitStateTestCheckMethodCounts::SetUp();
   }
 
   void SetCompactionAndFlushRate(int run_id) override {
@@ -801,7 +795,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
 };
 
 void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& stop) {
-  auto session = ASSERT_RESULT(EstablishSession(cql_driver_.get()));
+  auto session = ASSERT_RESULT(CqlSessionWithRetries(stop, __PRETTY_FUNCTION__));
   constexpr auto kNamespace = "test";
   const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
   for (int i = 1; !stop; i++) {
@@ -918,7 +912,7 @@ class AshTestWithPriorityQueue
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) = use_priority_queue;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) = use_priority_queue;
 
-    WaitStateITest::SetUp();
+    WaitStateTestCheckMethodCounts::SetUp();
   }
 
   bool UsePriorityQueueForFlush() const override {
@@ -951,6 +945,106 @@ INSTANTIATE_TEST_SUITE_P(
     WaitStateCodeAndBoolToString);
 
 TEST_P(AshTestWithPriorityQueue, VerifyWaitStateEntered) {
+  RunTestsAndFetchAshMethodCounts();
+}
+
+class AshTestVerifyPgOccurrenceBase : public WaitStateTestCheckMethodCounts {
+ public:
+  explicit AshTestVerifyPgOccurrenceBase(ash::WaitStateCode code)
+      : WaitStateTestCheckMethodCounts(TestMode::kYSQL),
+        code_to_look_for_(code),
+        ash_query_for_wait_event_(yb::Format(
+            "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event = '$0'",
+            yb::ToString(code_to_look_for_).erase(0, 1))) {
+  }
+
+ protected:
+  void SetUp() override {
+    const int kSamplingIntervalMs = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_sampling_interval_ms) = kSamplingIntervalMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms) =
+        4 * kTimeMultiplier * kSamplingIntervalMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at) =
+        yb::to_underlying(code_to_look_for_);
+
+    WaitStateTestCheckMethodCounts::SetUp();
+  }
+
+  void VerifyCountsUnlocked() REQUIRES(mutex_) override {}
+  void CreatePgTables() override;
+  bool IsDone() EXCLUDES(mutex_) override;
+  void DoPgReadsUntilStopped(std::atomic<bool>& stop) override;
+  void CreateAndDropIndex();
+  void LaunchWorkers(TestThreadHolder* thread_holder) override;
+
+  const ash::WaitStateCode code_to_look_for_;
+  std::string ash_query_for_wait_event_;
+};
+
+void AshTestVerifyPgOccurrenceBase::CreatePgTables() {
+  WaitStateTestCheckMethodCounts::CreatePgTables();
+  if (code_to_look_for_ == ash::WaitStateCode::kIndexRead ||
+      code_to_look_for_ == ash::WaitStateCode::kCatalogWrite) {
+    ASSERT_OK(main_thread_connection_->Execute("CREATE INDEX t_idx ON t (value)"));
+  }
+}
+
+bool AshTestVerifyPgOccurrenceBase::IsDone() {
+  return EXPECT_RESULT(main_thread_connection_->FetchRow<pgwrapper::PGUint64>(
+      ash_query_for_wait_event_)) > 0;
+}
+
+void AshTestVerifyPgOccurrenceBase::DoPgReadsUntilStopped(std::atomic<bool>& stop) {
+  if (code_to_look_for_ == ash::WaitStateCode::kIndexRead) {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i++) {
+      WARN_NOT_OK(
+          conn.FetchRows<std::string>(yb::Format("SELECT key FROM t where value = 'v-$0'",
+              std::string(1000, 'A' + i % 26))),
+          "Select failed");
+    }
+  } else {
+    WaitStateTestCheckMethodCounts::DoPgReadsUntilStopped(stop);
+  }
+}
+
+void AshTestVerifyPgOccurrenceBase::CreateAndDropIndex() {
+  const std::string kColocatedDB = "colocated_db";
+  ASSERT_OK(main_thread_connection_->ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE",
+      kColocatedDB));
+  auto conn = ASSERT_RESULT(ConnectToDB(kColocatedDB));
+  ASSERT_OK(conn.Execute("CREATE TABLE temp (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX temp_idx ON temp (v)"));
+  ASSERT_OK(conn.Execute("DROP INDEX temp_idx"));
+}
+
+void AshTestVerifyPgOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder) {
+  if (code_to_look_for_ == ash::WaitStateCode::kIndexWrite) {
+    CreateAndDropIndex();
+  } else {
+    WaitStateTestCheckMethodCounts::LaunchWorkers(thread_holder);
+  }
+}
+
+class AshTestVerifyPgOccurrence : public AshTestVerifyPgOccurrenceBase,
+                                  public ::testing::WithParamInterface<ash::WaitStateCode> {
+ public:
+  AshTestVerifyPgOccurrence() : AshTestVerifyPgOccurrenceBase(GetParam()) {}
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    WaitStateITest, AshTestVerifyPgOccurrence,
+    ::testing::Values(
+      ash::WaitStateCode::kCatalogRead,
+      ash::WaitStateCode::kIndexRead,
+      ash::WaitStateCode::kTableRead,
+      ash::WaitStateCode::kStorageFlush,
+      ash::WaitStateCode::kCatalogWrite,
+      ash::WaitStateCode::kIndexWrite,
+      ash::WaitStateCode::kTableWrite
+      ), WaitStateCodeToString);
+
+TEST_P(AshTestVerifyPgOccurrence, VerifyWaitStateEntered) {
   RunTestsAndFetchAshMethodCounts();
 }
 

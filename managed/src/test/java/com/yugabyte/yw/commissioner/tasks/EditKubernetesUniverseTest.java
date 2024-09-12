@@ -14,6 +14,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -33,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -62,6 +64,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -212,6 +215,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
@@ -225,6 +229,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -245,6 +250,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.CheckNodeSafeToDelete,
@@ -260,6 +266,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedRemovePodTaskResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -282,6 +289,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.UpdatePlacementInfo,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
@@ -311,6 +319,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -907,6 +916,46 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String expectedMsg =
         "Additional disk size of 199.50 GB is needed, but only 157.50 GB is available";
     assertTrue(subTaskInfo.getErrorMessage().contains(expectedMsg));
+  }
+
+  @Test
+  public void testVolumeDecreaseForRRIsForbidden() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.provider = kubernetesProvider.getUuid().toString();
+    userIntent.providerType = Common.CloudType.kubernetes;
+    userIntent.regionList =
+        Collections.singletonList(Region.getByCode(kubernetesProvider, "region-1").getUuid());
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid(), pi, 1, 1, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters =
+        Collections.singletonList(
+            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize--;
+    taskParams.nodePrefix = NODE_PREFIX;
+    Exception expected = null;
+    try {
+      UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
+      waitForTask(taskUUID);
+    } catch (Exception e) {
+      expected = e;
+    }
+    assertNotNull(expected);
+    assertTrue(expected.getMessage().contains("Cannot decrease disk size in a Kubernetes cluster"));
   }
 
   private void mockMetrics(

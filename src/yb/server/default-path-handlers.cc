@@ -452,96 +452,6 @@ void SetParsedValue(Value* v, const Result<Value>& result) {
   }
 }
 
-static void ParseRequestOptions(const Webserver::WebRequest& req,
-                                MetricPrometheusOptions *prometheus_opts,
-                                MetricJsonOptions *json_opts = nullptr,
-                                JsonWriter::Mode *json_mode = nullptr) {
-  auto ParseMetricOptions = [](const Webserver::WebRequest& req,
-                               MetricOptions *metric_opts) {
-    if (const string* metrics_p = FindOrNull(req.parsed_args, "metrics")) {
-      metric_opts->general_metrics_allowlist = SplitStringUsing(*metrics_p, ",");
-    }
-
-    string arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
-    metric_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
-
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    SetParsedValue(&metric_opts->level, MetricLevelFromName(arg));
-  };
-
-  string arg;
-  if (json_opts) {
-    ParseMetricOptions(req, json_opts);
-
-    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
-    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
-
-    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
-    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-
-  if (prometheus_opts) {
-    ParseMetricOptions(req, prometheus_opts);
-
-    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
-      prometheus_opts->export_help_and_type =
-          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
-    }
-
-    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
-        try {
-          if (arg_p->starts_with('-')) {
-            throw std::invalid_argument("Input value is negative");
-          }
-          prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
-        } catch (const std::exception& e) {
-          LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
-                       << ". Failed to convert its value to unsigned 32 bits integer: "
-                       << e.what();
-        }
-    }
-
-    prometheus_opts->version = FindWithDefault(req.parsed_args, "version",
-        kFilterVersionOne);
-
-    if (prometheus_opts->version == kFilterVersionTwo) {
-      // Set it to accept all metrics, because we ignore metrics URL parameter when using v2.
-      prometheus_opts->general_metrics_allowlist = std::nullopt;
-
-      auto FindHandlingAllOrNone = [&](
-          const std::string& arg, const std::string& default_value) -> std::string {
-        std::string regex_string = FindWithDefault(req.parsed_args, arg, default_value);
-        if (regex_string == "ALL") {
-          return ".*";
-        } else if (regex_string == "NONE") {
-          return "";
-        }
-        return regex_string;
-      };
-
-      prometheus_opts->table_allowlist_string = FindHandlingAllOrNone("table_allowlist", "ALL");
-
-      prometheus_opts->table_blocklist_string = FindHandlingAllOrNone("table_blocklist", "NONE");
-
-      prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
-
-      prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
-    } else {
-      prometheus_opts->priority_regex_string = FindWithDefault(
-          req.parsed_args, "priority_regex", ".*");
-      LOG_IF(WARNING, prometheus_opts->version != kFilterVersionOne)
-          << "Prometheus endpoint URL parameter version=" << prometheus_opts->version
-          << " is not recognized. Only v1 or v2 can be accepted.";
-    }
-  }
-
-  if (json_mode) {
-    arg = FindWithDefault(req.parsed_args, "compact", "false");
-    *json_mode =
-        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
-  }
-}
-
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   MetricJsonOptions opts;
@@ -557,8 +467,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       const Webserver::WebRequest& req,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
-  opts.export_help_and_type =
-      ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
+  opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
   opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
   ParseRequestOptions(req, &opts);
 
@@ -686,6 +595,92 @@ static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::
 }
 
 } // anonymous namespace
+
+void ParseRequestOptions(
+    const Webserver::WebRequest& req, MetricPrometheusOptions* prometheus_opts,
+    MetricJsonOptions* json_opts, JsonWriter::Mode* json_mode) {
+  auto ParseMetricOptions = [](const Webserver::WebRequest& req, MetricOptions* metric_opts) {
+    if (const string* metrics_p = FindOrNull(req.parsed_args, "metrics")) {
+      metric_opts->general_metrics_allowlist = SplitStringUsing(*metrics_p, ",");
+    }
+
+    string arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    metric_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    SetParsedValue(&metric_opts->level, MetricLevelFromName(arg));
+  };
+
+  string arg;
+  if (json_opts) {
+    ParseMetricOptions(req, json_opts);
+
+    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
+    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
+    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
+  }
+
+  if (prometheus_opts) {
+    ParseMetricOptions(req, prometheus_opts);
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
+      prometheus_opts->export_help_and_type =
+          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
+    }
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
+      try {
+        if (arg_p->starts_with('-')) {
+          throw std::invalid_argument("Input value is negative");
+        }
+        prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
+      } catch (const std::exception& e) {
+        LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
+                     << ". Failed to convert its value to unsigned 32 bits integer: " << e.what();
+      }
+    }
+
+    prometheus_opts->version = FindWithDefault(req.parsed_args, "version", kFilterVersionOne);
+
+    if (prometheus_opts->version == kFilterVersionTwo) {
+      // Set it to accept all metrics, because we ignore metrics URL parameter when using v2.
+      prometheus_opts->general_metrics_allowlist = std::nullopt;
+
+      auto FindHandlingAllOrNone = [&](const std::string& arg,
+                                       const std::string& default_value) -> std::string {
+        std::string regex_string = FindWithDefault(req.parsed_args, arg, default_value);
+        if (regex_string == "ALL") {
+          return ".*";
+        } else if (regex_string == "NONE") {
+          return "";
+        }
+        return regex_string;
+      };
+
+      prometheus_opts->table_allowlist_string = FindHandlingAllOrNone("table_allowlist", "ALL");
+
+      prometheus_opts->table_blocklist_string = FindHandlingAllOrNone("table_blocklist", "NONE");
+
+      prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
+
+      prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
+    } else {
+      prometheus_opts->priority_regex_string =
+          FindWithDefault(req.parsed_args, "priority_regex", ".*");
+      LOG_IF(WARNING, prometheus_opts->version != kFilterVersionOne)
+          << "Prometheus endpoint URL parameter version=" << prometheus_opts->version
+          << " is not recognized. Only v1 or v2 can be accepted.";
+    }
+  }
+
+  if (json_mode) {
+    arg = FindWithDefault(req.parsed_args, "compact", "false");
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  }
+}
 
 // Registered to handle "/memz", and prints out memory allocation statistics.
 void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {

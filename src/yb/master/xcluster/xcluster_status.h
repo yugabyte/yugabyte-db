@@ -47,6 +47,7 @@ struct XClusterInboundReplicationGroupStatus {
   std::string db_scoped_info;
   // Map of target namespace id to source namespace id. Only used in db scope replication.
   std::unordered_map<NamespaceId, NamespaceId> db_scope_namespace_id_map;
+  bool automatic_ddl_mode = false;
   std::unordered_map<NamespaceName, std::vector<InboundXClusterReplicationGroupTableStatus>>
       table_statuses_by_namespace;
 };

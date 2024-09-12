@@ -112,28 +112,32 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
       int iterationNumber = 0;
       // Loop until there is no undrained replication streams.
       while (true) {
-        log.info("Running waitForReplicationDrain for streams {}", activeStreamIds);
-        WaitForReplicationDrainResponse resp = client.waitForReplicationDrain(activeStreamIds);
-        if (resp.hasError()) {
-          throw new RuntimeException(
-              String.format(
-                  "waitForReplicationDrain failed universe %s on XClusterConfig(%s): %s",
-                  universe.getUniverseUUID(), xClusterConfig, resp.errorMessage()));
-        }
-        List<String> undrainedStreamIds =
-            resp.getUndrainedStreams().stream()
-                .map(streamInfo -> streamInfo.getStreamId().toStringUtf8())
-                .collect(Collectors.toList());
-        if (undrainedStreamIds.isEmpty()) {
-          log.info("All streams were drained in {} ms", stopwatch.elapsed().toMillis());
-          break;
+        try {
+          log.info("Running waitForReplicationDrain for streams {}", activeStreamIds);
+          WaitForReplicationDrainResponse resp = client.waitForReplicationDrain(activeStreamIds);
+          if (resp.hasError()) {
+            throw new RuntimeException(
+                String.format(
+                    "waitForReplicationDrain failed universe %s on XClusterConfig(%s): %s",
+                    universe.getUniverseUUID(), xClusterConfig, resp.errorMessage()));
+          }
+          List<String> undrainedStreamIds =
+              resp.getUndrainedStreams().stream()
+                  .map(streamInfo -> streamInfo.getStreamId().toStringUtf8())
+                  .collect(Collectors.toList());
+          if (undrainedStreamIds.isEmpty()) {
+            log.info("All streams were drained in {} ms", stopwatch.elapsed().toMillis());
+            break;
+          }
+          log.warn("Streams {} are not drained", undrainedStreamIds);
+        } catch (Exception waitForReplicationDrainError) {
+          if (waitForReplicationDrainError.getMessage().contains("TIMED_OUT")) {
+            log.warn("waitForReplicationDrain timed out");
+          } else {
+            throw new RuntimeException(waitForReplicationDrainError);
+          }
         }
         subtaskElapsedTime = stopwatch.elapsed();
-        if (subtaskElapsedTime.compareTo(subtaskTimeout) > 0) {
-          log.warn("Streams {} are not drained", undrainedStreamIds);
-        } else {
-          log.warn("Streams {} are not drained; retrying...", undrainedStreamIds);
-        }
         if (subtaskElapsedTime.compareTo(subtaskTimeout) > 0) {
           throw new RuntimeException(
               String.format(
@@ -141,6 +145,8 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
                       + "%sms which is more than subtaskTimeout (%sms)",
                   iterationNumber, subtaskElapsedTime.toMillis(), subtaskTimeout.toMillis()));
         }
+        // The following method gives an opportunity to the task to be aborted.
+        waitFor(Duration.ofSeconds(1));
         iterationNumber++;
       }
     } catch (Exception e) {

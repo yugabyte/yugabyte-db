@@ -53,6 +53,7 @@ interface NodeAgentStatusProps {
 const NODE_AGENT_STATUS_TO_DISPLAY_TEXT = {
   READY: 'Ready',
   REGISTERING: 'Registering',
+  REGISTERED: 'Registered',
   UPGRADE: 'Upgrading',
   UPGRADED: 'Upgrading',
   UNREACHABLE: 'Unreachable'
@@ -76,6 +77,7 @@ export const NodeAgentStatus: FC<NodeAgentStatusProps> = ({ status, isReachable 
         imageSrc = Check;
         break;
       case NodeAgentStatusList.REGISTERING:
+      case NodeAgentStatusList.REGISTERED:
         tagColor = helperClasses.tagBlue;
         tagTextColor = helperClasses.tagTextBlue;
         imageSrc = Loading;

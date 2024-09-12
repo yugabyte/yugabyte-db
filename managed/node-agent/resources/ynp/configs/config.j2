@@ -3,8 +3,10 @@
 
 [DEFAULT]
 version = 1.0.0
-loglevel = DEBUG
-logfile = app.log
+# Keep this as debug level for printing the shell file output.
+loglevel = {{ logging.level }}
+logdir = {{ logging.directory }}
+logfile = {{ logging.file }}
 is_airgap = {{ ynp.is_airgap }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
@@ -67,4 +69,8 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 [InstallNodeAgent]
 {{ render_section(yba) -}}
 tmp_directory = {{ ynp.tmp_directory }}
-node_ip = {{ ynp.node_ip }}
+node_ip = {{ ynp.node_external_fqdn }}
+bind_ip = {{ ynp.node_ip }}
+
+[RebootNode]
+tmp_directory = {{ynp.tmp_directory}}

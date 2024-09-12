@@ -50,7 +50,7 @@ func (fp *FullProviderContext) SetFullProvider(provider ybaclient.Provider) {
 // NewFullProviderFormat for formatting output
 func NewFullProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultProviderListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

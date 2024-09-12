@@ -89,15 +89,14 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return nodeAgentManager.create(nodeAgent, false);
   }
 
-  @Override
-  public void run() {
+  public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
       if (!taskParams().reinstall && nodeAgent.getState() == State.READY) {
-        return;
+        return nodeAgent;
       }
       nodeAgentManager.purge(nodeAgent);
     }
@@ -179,5 +178,12 @@ public class InstallNodeAgent extends AbstractTaskBase {
     command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    nodeAgent.saveState(State.REGISTERED);
+    return nodeAgent;
+  }
+
+  @Override
+  public void run() {
+    install();
   }
 }

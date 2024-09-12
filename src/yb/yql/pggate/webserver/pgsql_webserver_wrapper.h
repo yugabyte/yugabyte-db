@@ -33,8 +33,15 @@ extern "C" {
 
 struct WebserverWrapper;
 
+#define YB_PG_METRIC_NAME_LEN 120
+
+#define YB_PG_METRIC_NAME_LEN 120
+
 typedef struct ybpgmEntry {
-  char name[120];
+  char name[YB_PG_METRIC_NAME_LEN];
+  char table_name[YB_PG_METRIC_NAME_LEN];
+  char count_help[YB_PG_METRIC_NAME_LEN];
+  char sum_help[YB_PG_METRIC_NAME_LEN];
   YB_ATOMIC_ULLONG calls;
   YB_ATOMIC_ULLONG total_time;
   YB_ATOMIC_ULLONG rows;
@@ -97,6 +104,13 @@ typedef struct {
   /* # of connections established since start of postmaster. */
   uint64_t *new_conn;
 } YbConnectionMetrics;
+
+typedef struct {
+  const char* name;
+  uint64_t value;
+  const char* type;
+  const char* help;
+} YsqlConnMgrMetric;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void DestroyWebserver(struct WebserverWrapper *webserver);

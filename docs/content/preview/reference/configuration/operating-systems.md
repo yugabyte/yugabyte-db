@@ -24,7 +24,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
-| Red Hat Enterprise Linux&nbsp;9.3 | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<badge/ea>}} |
+| Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<badge/ea>}} |
 | Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<badge/ea>}} |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<badge/ea>}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |

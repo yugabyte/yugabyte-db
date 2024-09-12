@@ -24,7 +24,10 @@ const (
 	EAR1 = "table {{.AccessKeyID}}\t{{.AccessKeySecret}}\t{{.EndPoint}}"
 
 	// EAR2 for EAR listing
-	EAR2 = "table {{.Region}}\t{{.CMKPolicy}}\t{{.CMKID}}"
+	EAR2 = "table {{.Region}}\t{{.CMKID}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.CMKPolicy}}"
 
 	// AccessKeyIDHeader for Access key ID header
 	AccessKeyIDHeader = "AWS Access Key ID"
@@ -67,7 +70,7 @@ type EARContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -78,7 +81,7 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -89,7 +92,7 @@ func NewRegionFormat(source string) formatter.Format {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty

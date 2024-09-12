@@ -25,17 +25,23 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 
-#include "yb/vector/hnsw_options.h"
-#include "yb/vector/benchmark_data.h"
+#include "yb/vector/ann_methods.h"
 #include "yb/vector/ann_validation.h"
-#include "yb/vector/graph_repr_defs.h"
-#include "yb/vector/usearch_wrapper.h"
+#include "yb/vector/benchmark_data.h"
 #include "yb/vector/distance.h"
+#include "yb/vector/graph_repr_defs.h"
+#include "yb/vector/hnsw_options.h"
 #include "yb/vector/hnsw_util.h"
+#include "yb/vector/hnswlib_wrapper.h"
+#include "yb/vector/sharded_index.h"
+#include "yb/vector/usearch_wrapper.h"
+#include "yb/vector/vector_index_wrapper_util.h"
 
 #include "yb/tools/tool_arguments.h"
 
 namespace po = boost::program_options;
+
+using namespace std::literals;
 
 namespace yb::tools {
 
@@ -82,10 +88,12 @@ struct BenchmarkArguments {
   size_t num_threads = 0;
   size_t num_validation_queries = 0;
   size_t num_vectors_to_insert = 0;
-  size_t report_num_keys = 1000;
+  size_t report_num_keys = 2500;
+  size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
   std::string query_vecs_path;
+  ANNMethodKind ann_method;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
@@ -127,6 +135,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
     BOOST_PP_STRINGIZE(field_name), po::value(&args.field_name)->default_value( \
         args.field_name)
 
+#define OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(field_name, lower_bound) \
+    OPTIONAL_ARG_FIELD(field_name)->notifier( \
+        OptionLowerBound(BOOST_PP_STRINGIZE(field_name), lower_bound))
+
 #define BOOL_SWITCH_ARG_FIELD(field_name) \
     BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.field_name)
 
@@ -138,7 +150,16 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 #define HNSW_OPTION_BOOL_ARG(field_name) \
     BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.hnsw_options.field_name)
 
+  const auto ann_method_help =
+      Format("Approximate nearest neighbor search method to use. Possible values: $0.",
+             ValidEnumValuesCommaSeparatedForHelp<ANNMethodKind>());
+  const auto distance_kind_help =
+      Format("What kind of distance function (metric) to use. Possible values: $0." +
+             ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
+
   result->desc.add_options()
+      (OPTIONAL_ARG_FIELD(ann_method),
+       ann_method_help.c_str() /* Boost copies the string internally */)
       (OPTIONAL_ARG_FIELD(num_vectors_to_insert),
        "Number of vectors to use for building the index. This is used if no input file is "
        "specified.")
@@ -149,8 +170,6 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
-      ("input_file_name_fvec", po::value(&args.num_vectors_to_insert),
-       "Number of randomly generated vectors to add")
       (OPTIONAL_ARG_FIELD(k),
        "Number of results to retrieve with each validation query")
       (OPTIONAL_ARG_FIELD(num_validation_queries),
@@ -158,12 +177,11 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       ("dimensions", po::value(&args.hnsw_options.dimensions),
        "Number of dimensions for automatically generated vectors. Required if no input file "
        "is specified.")
-      ("report_num_keys",
-       po::value(&args.report_num_keys)->notifier(OptionLowerBound("report_num_keys", 1)),
+      (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(report_num_keys, 1),
        "Report progress after each batch of this many keys is inserted. 0 to disable reporting.")
       (HNSW_OPTION_BOOL_ARG(extend_candidates),
        "Whether to extend the set of candidates with their neighbors before executing the "
-       "neihgborhood selection heuristic.")
+       "neighborhood selection heuristic.")
       (HNSW_OPTION_BOOL_ARG(keep_pruned_connections),
        "Whether to keep the maximum number of discarded candidates with the minimum distance to "
        "the base element in the neighborhood selection heuristic.")
@@ -186,6 +204,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (HNSW_OPTION_ARG(robust_prune_alpha),
        "The parameter inspired by DiskANN that controls the neighborhood pruning procedure. "
        "Higher values result in fewer candidates being pruned. Typically between 1.0 and 1.6.")
+      (HNSW_OPTION_ARG(distance_kind),
+       distance_kind_help.c_str())
       (OPTIONAL_ARG_FIELD(num_threads),
        "Number of threads to use for indexing and validation. Defaults to the number of CPU "
        "cores.")
@@ -198,7 +218,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "result sets using brute-force precise nearest neighbor search. Could be slow.")
       (OPTIONAL_ARG_FIELD(max_memory_for_loading_vectors_mb),
        "Maximum amount of memory to use for loading raw input vectors. Used to avoid memory "
-       "overflow on large datasets. Specify 0 to disable.");
+       "overflow on large datasets. Specify 0 to disable.")
+      (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(num_index_shards, 1),
+       "For experiments that try to take advantage of a large number of cores, this allows to "
+       "create multiple instances of the vector index and insert into them concurrently.");
 
 #undef OPTIONAL_ARG_FIELD
 #undef BOOL_SWITCH_ARG_FIELD
@@ -230,25 +253,47 @@ Result<CoordinateKind> DetermineCoordinateKind(BenchmarkArguments& args) {
 
 std::unique_ptr<FloatVectorSource> CreateRandomFloatVectorSource(
     size_t num_vectors, size_t dimensions) {
-  return vectorindex::CreateUniformRandomVectorSource(num_vectors, dimensions, 0.0f, 1.0f);
+  return CreateUniformRandomVectorSource(num_vectors, dimensions, 0.0f, 1.0f);
 }
 
-// We instantiate this template as soon as we determine what coordinate type we are working with.
-template<IndexableVectorType Vector>
+// We instantiate this template as soon as we determine what coordinate type and distance result
+// type we are working with.
+//
+// Because in some cases the input coordinate type is not supoprted by the index implementation,
+// we are using separate "input" and "indexed" vector types and distance result types.
+template<IndexableVectorType InputVector,
+         ValidDistanceResultType InputDistanceResult,
+         IndexableVectorType IndexedVector,
+         ValidDistanceResultType IndexedDistanceResult>
 class BenchmarkTool {
  public:
-  // Usearch HNSW currently does not support other types of vectors, so we cast the input vectors to
-  // float for now. See also: https://github.com/unum-cloud/usearch/issues/469
-  using HNSWVectorType = FloatVector;
-  using HNSWImpl = UsearchIndex<HNSWVectorType>;
-
-  explicit BenchmarkTool(const BenchmarkArguments& args) : args_(args) {}
+  explicit BenchmarkTool(
+      const BenchmarkArguments& args,
+      std::unique_ptr<VectorIndexFactory<IndexedVector, IndexedDistanceResult>> index_factory)
+      : args_(args),
+        index_factory_(std::move(index_factory)) {
+  }
 
   Status Execute() {
-    LOG(INFO) << "Uisng input file coordinate type: " << args_.coordinate_kind;
+    SCHECK_EQ(args_.coordinate_kind,
+              CoordinateTypeTraits<typename InputVector::value_type>::kKind,
+              RuntimeError,
+              "InputVector template argument does not match the inferred coordinate type");
 
+    LOG(INFO) << "Using ANN method: " << args_.ann_method;
+    LOG(INFO) << "Using input file coordinate type: " << args_.coordinate_kind;
+    LOG(INFO) << "Vector index internally uses the coordinate type: "
+              << CoordinateTypeTraits<typename IndexedVector::value_type>::kKind;
+
+    LOG(INFO) << "Using distance result type in the input data: "
+              << CoordinateTypeTraits<InputDistanceResult>::kKind;
+    LOG(INFO) << "Using distance result type in the index implementation: "
+              << CoordinateTypeTraits<IndexedDistanceResult>::kKind;
+    if (args_.num_index_shards > 1) {
+      LOG(INFO) << "Using " << args_.num_index_shards << " index shards";
+    }
     indexed_vector_source_ = VERIFY_RESULT(CreateVectorSource(
-      args_.build_vecs_path, "vectors to build index on", args_.num_vectors_to_insert));
+        args_.build_vecs_path, "vectors to build index on", args_.num_vectors_to_insert));
     query_vector_source_ = VERIFY_RESULT(CreateVectorSource(
         args_.query_vecs_path, "vectors to query", args_.num_validation_queries));
     RETURN_NOT_OK(LoadPrecomputedGroundTruth());
@@ -265,7 +310,14 @@ class BenchmarkTool {
 
     PrintConfiguration();
 
-    hnsw_ = std::make_unique<HNSWImpl>(hnsw_options());
+    if (args_.num_index_shards > 1) {
+      index_factory_ =
+          std::make_unique<ShardedVectorIndexFactory<IndexedVector, IndexedDistanceResult>>(
+              args_.num_index_shards, std::move(index_factory_));
+    }
+
+    index_factory_->SetOptions(hnsw_options());
+    vector_index_ = index_factory_->Create();
 
     RETURN_NOT_OK(BuildIndex());
 
@@ -301,19 +353,19 @@ class BenchmarkTool {
     return hnsw_options().dimensions;
   }
 
-  Result<std::unique_ptr<VectorSource<Vector>>> CreateVectorSource(
+  Result<std::unique_ptr<VectorSource<InputVector>>> CreateVectorSource(
       const std::string& vectors_file_path,
       const std::string& description,
       size_t num_vectors_to_use) {
     if (!vectors_file_path.empty()) {
-      auto vec_reader = VERIFY_RESULT(OpenVecsFile<Vector>(vectors_file_path, description));
+      auto vec_reader = VERIFY_RESULT(OpenVecsFile<InputVector>(vectors_file_path, description));
       RETURN_NOT_OK(vec_reader->Open());
       RETURN_NOT_OK(SetDimensions(vec_reader->dimensions()));
       return vec_reader;
     }
 
     if (num_vectors_to_use > 0) {
-      if constexpr (std::is_same<Vector, FloatVector>::value) {
+      if constexpr (std::is_same<InputVector, FloatVector>::value) {
         return CreateRandomFloatVectorSource(args_.num_validation_queries, dimensions());
       }
       return STATUS(InvalidArgument,
@@ -355,7 +407,7 @@ class BenchmarkTool {
       if (ground_truth_vec.size() != args_.k) {
         return STATUS_FORMAT(
             IllegalState,
-            "Provided ground truth vector has $0 dimensions but the configured number k of top "
+            "Provided ground truth vector has size of $0 but the configured number k of top "
             "results is $1",
             ground_truth_vec.size(), args_.k);
       }
@@ -382,27 +434,38 @@ class BenchmarkTool {
   }
 
   Status Validate() {
-    std::vector<Vector> query_vectors;
-    for (;;) {
-      auto query = VERIFY_RESULT(query_vector_source_->Next());
-      if (query.empty()) {
-        break;
-      }
-      query_vectors.push_back(query);
+    std::vector<InputVector> query_vectors = VERIFY_RESULT(query_vector_source_->LoadVectors());
+
+    auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
+        args_.hnsw_options.distance_kind);
+
+    auto vertex_id_to_query_distance_fn =
+      [this, &distance_fn](VertexId vertex_id, const InputVector& v) -> InputDistanceResult {
+        // Avoid vector_cast on the critical path of the brute force search here.
+        return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
+      };
+
+    VectorIndexReaderIf<InputVector, InputDistanceResult>* reader;
+    using Adapter = VectorIndexReaderAdapter<
+        IndexedVector, IndexedDistanceResult, InputVector, InputDistanceResult>;
+    std::optional<Adapter> adapter;
+
+    if constexpr (std::is_same_v<InputVector, IndexedVector>) {
+      reader = vector_index_.get();
+    } else {
+      // In case the index uses a different vector type, create an adapter to map the results from
+      // the indexed type back to the input type.
+      adapter.emplace(*vector_index_.get());
+      reader = &adapter.value();
     }
-
-    std::vector<FloatVector> float_query_vectors = ToFloatVectorOfVectors(query_vectors);
-
-    vectorindex::GroundTruth<FloatVector> ground_truth(
-        [this](VertexId vertex_id, const FloatVector& v) -> float {
-          const auto& vertex_v = input_vectors_[VertexIdToInputVectorIndex(vertex_id)];
-          return distance::DistanceL2Squared<Vector, FloatVector>(vertex_v, v);
-        },
+    // The ground truth evaluation is always done in the input coordinate type.
+    GroundTruth<InputVector, InputDistanceResult> ground_truth(
+        vertex_id_to_query_distance_fn,
         args_.k,
-        float_query_vectors,
+        query_vectors,
         loaded_ground_truth_,
         args_.validate_ground_truth,
-        *hnsw_,
+        *reader,
         // The set of vertex ids to recompute ground truth with.
         //
         // In case ground truth is specified as an input file, it must have been computed using all
@@ -450,16 +513,23 @@ class BenchmarkTool {
     auto elapsed_usec = (MonoTime::Now() - load_start_time).ToMicroseconds();
     double n_log_n_constant = elapsed_usec * 1.0 / num_inserted / log(num_inserted);
     double elapsed_time_sec = elapsed_usec / 1000000.0;
+    size_t remaining_points = max_num_vectors_to_insert() - num_inserted;
+    auto keys_per_sec = num_inserted / elapsed_time_sec;
     LOG(INFO) << "n: " << num_inserted << ", "
-              << "elapsed time (seconds): " << elapsed_time_sec << ", "
+              << "elapsed time: " << StringPrintf("%.1f", elapsed_time_sec) << " sec, "
               << "O(n*log(n)) constant: " << n_log_n_constant << ", "
-              << "keys per second: " << (num_inserted / elapsed_time_sec);
+              << "remaining points: " << remaining_points << ", "
+              << "keys per second: " << static_cast<size_t>(keys_per_sec) << ", "
+              << "time remaining: "
+              << StringPrintf("%.1f", keys_per_sec > 0 ? remaining_points / keys_per_sec : 0)
+              << " sec";
   }
 
   Status PrepareInputVectors() {
     size_t num_vectors_to_load = max_num_vectors_to_insert();
     double total_mem_required_mb =
-        num_vectors_to_load * sizeof(typename Vector::value_type) * dimensions() / 1024.0 / 1024;
+        num_vectors_to_load * sizeof(typename InputVector::value_type) *
+        dimensions() / 1024.0 / 1024;
     if (args_.max_memory_for_loading_vectors_mb != 0 &&
         total_mem_required_mb > args_.max_memory_for_loading_vectors_mb) {
       return STATUS_FORMAT(
@@ -491,12 +561,7 @@ class BenchmarkTool {
 
   Status InsertOneVector(VertexId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
-    Status s;
-    if constexpr (std::is_same<HNSWVectorType, Vector>::value) {
-      s = hnsw_->Insert(vertex_id, v);
-    } else {
-      s = hnsw_->Insert(vertex_id, ToFloatVector(v));
-    }
+    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v));
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
       ReportIndexingProgress(load_start_time, new_num_inserted);
@@ -533,7 +598,7 @@ class BenchmarkTool {
   }
 
   Status BuildIndex() {
-    hnsw_->Reserve(num_points_to_insert());
+    RETURN_NOT_OK(vector_index_->Reserve(num_points_to_insert()));
     return InsertVectors();
   }
 
@@ -566,7 +631,7 @@ class BenchmarkTool {
     return index;
   }
 
-  const Vector& GetVectorByVertexId(VertexId vertex_id) {
+  const InputVector& GetVectorByVertexId(VertexId vertex_id) {
     auto vector_index = VertexIdToInputVectorIndex(vertex_id);
     return input_vectors_[vector_index];
   }
@@ -574,12 +639,13 @@ class BenchmarkTool {
   BenchmarkArguments args_;
 
   // Source from which we take vectors to build the index on.
-  std::unique_ptr<VectorSource<Vector>> indexed_vector_source_;
+  std::unique_ptr<VectorSource<InputVector>> indexed_vector_source_;
 
   // Source for vectors to run validation queries on.
-  std::unique_ptr<VectorSource<Vector>> query_vector_source_;
+  std::unique_ptr<VectorSource<InputVector>> query_vector_source_;
 
-  std::unique_ptr<HNSWImpl> hnsw_;
+  std::unique_ptr<VectorIndexFactory<IndexedVector, IndexedDistanceResult>> index_factory_;
+  std::unique_ptr<VectorIndexIf<IndexedVector, IndexedDistanceResult>> vector_index_;
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
@@ -592,23 +658,89 @@ class BenchmarkTool {
   std::vector<VertexId> all_vertex_ids_;
 
   // Raw input vectors in the order they appeared in the input file.
-  std::vector<Vector> input_vectors_;
+  std::vector<InputVector> input_vectors_;
 };
+
+template<ANNMethodKind ann_method_kind,
+         DistanceKind distance_kind,
+         IndexableVectorType InputVector,
+         IndexableVectorType IndexedVector>
+std::optional<Status> BenchmarkExecuteHelper(
+    const BenchmarkArguments& args,
+    CoordinateKind input_coordinate_kind) {
+  using InputDistanceResult = typename DistanceTraits<InputVector, distance_kind>::Result;
+  using IndexedDistanceResult = typename DistanceTraits<IndexedVector, distance_kind>::Result;
+  if (args.ann_method == ann_method_kind &&
+      args.hnsw_options.distance_kind == distance_kind &&
+      input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
+    using IndexFactory = typename ANNMethodTraits<ann_method_kind>::template IndexFactory<
+        IndexedVector,
+        typename DistanceTraits<IndexedVector, distance_kind>::Result>;
+    return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
+        args,
+        std::make_unique<IndexFactory>()
+    ).Execute();
+  }
+  return std::nullopt;
+}
 
 Status BenchmarkExecute(const BenchmarkArguments& args) {
   auto args_copy = args;
   args_copy.FinalizeDefaults();
-  auto coordinate_kind = VERIFY_RESULT(DetermineCoordinateKind(args_copy));
-  switch (coordinate_kind) {
-    case CoordinateKind::kFloat32:
-      return BenchmarkTool<std::vector<float>>(args_copy).Execute();
-    case CoordinateKind::kUInt8:
-      return BenchmarkTool<std::vector<uint8_t>>(args_copy).Execute();
-    default:
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Input files with coordinate type $0 are not supported", coordinate_kind);
-  }
+
+  LOG(INFO) << "Distance kind: " << args_copy.hnsw_options.distance_kind;
+
+  // The input coordinate type is based on input file extensions.
+  auto input_coordinate_kind = VERIFY_RESULT(DetermineCoordinateKind(args_copy));
+
+  // Determining the right template arguments is a bit tricky. We have a few supported combinations
+  // of the ANN method, distance function, input vector type, and the indexed vector type that the
+  // method has to use in case the ANN method doesn't support the input vector type. To avoid
+  // error-prone code duplication, we use a macro that expands to a bunch of if statements.
+
+#define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES      \
+    /* method, distance,   input type, indexed type */  \
+    /* Euclidean distance */                           \
+    ((Usearch, L2Squared,    float,      float  ))     \
+    ((Usearch, L2Squared,    uint8_t,    float  ))     \
+    ((Hnswlib, L2Squared,    float,      float  ))     \
+    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))     \
+    /* Cosine similarity */                            \
+    ((Usearch, Cosine,       float,      float  ))     \
+    ((Usearch, Cosine,       uint8_t,    float  ))     \
+    /* Inner product */                                \
+    ((Usearch, InnerProduct, float,      float  ))     \
+    ((Usearch, InnerProduct, uint8_t,    float  ))     \
+    ((Hnswlib, InnerProduct, float,      float  ))     \
+    ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
+
+#define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
+    if (auto status = BenchmarkExecuteHelper< \
+            ANNMethodKind::BOOST_PP_CAT(k, method), \
+            distance_enum_element, \
+            std::vector<input_type>, \
+            std::vector<indexed_type>>(args_copy, input_coordinate_kind); status.has_value()) { \
+        return *status; \
+      }
+
+#define YB_VECTOR_INDEX_BENCHMARK_FOR_EACH_HELPER(r, data, elem) \
+    YB_VECTOR_INDEX_BENCHMARK_HELPER( \
+        BOOST_PP_TUPLE_ELEM(4, 0, elem), \
+        DistanceKind::BOOST_PP_CAT(k, BOOST_PP_TUPLE_ELEM(4, 1, elem)), \
+        BOOST_PP_TUPLE_ELEM(4, 2, elem), \
+        BOOST_PP_TUPLE_ELEM(4, 3, elem))
+
+  BOOST_PP_SEQ_FOR_EACH(YB_VECTOR_INDEX_BENCHMARK_FOR_EACH_HELPER, _,
+      YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES)
+
+  return STATUS_FORMAT(
+      InvalidArgument,
+      "Unsupported combination of ANN method $0, distance kind $1, and input coordinate type $2",
+      args_copy.ann_method,
+      args_copy.hnsw_options.distance_kind,
+      input_coordinate_kind);
+
+  return Status::OK();
 }
 
 YB_TOOL_ARGUMENTS(HnswAction, HNSW_ACTIONS);

@@ -99,11 +99,12 @@ class PgDdlAtomicityStressTest
   Status TestDml(PGConn* conn, const int num_iterations);
 
   template<class... Args>
-  Result<bool> ExecuteFormatWithRetry(PGConn* conn, const std::string& format, Args&&... args) {
-    return DoExecuteWithRetry(conn, Format(format, std::forward<Args>(args)...));
+  Result<bool> ExecuteFormatWithRetry(
+      PGConn* conn, bool is_ddl, const std::string& format, Args&&... args) {
+    return DoExecuteWithRetry(conn, is_ddl, Format(format, std::forward<Args>(args)...));
   }
 
-  Result<bool> DoExecuteWithRetry(PGConn* conn, const std::string& stmt);
+  Result<bool> DoExecuteWithRetry(PGConn* conn, bool is_ddl, const std::string& stmt);
 
   Status InsertTestData(const int num_rows);
 
@@ -166,7 +167,7 @@ Status PgDdlAtomicityStressTest::TestDdl(
     for (const auto& ddl : ddls) {
       auto stmt = Format(ddl, kTable, i);
       LOG(INFO) << "Executing stmt " << stmt;
-      while (!VERIFY_RESULT(DoExecuteWithRetry(conn, stmt))) {
+      while (!VERIFY_RESULT(DoExecuteWithRetry(conn, true /* is_ddl */, stmt))) {
         LOG(INFO) << "Retry executing stmt " << stmt;
       }
     }
@@ -174,7 +175,8 @@ Status PgDdlAtomicityStressTest::TestDdl(
   return Status::OK();
 }
 
-Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(PGConn* conn, const std::string& stmt) {
+Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
+    PGConn* conn, bool is_ddl, const std::string& stmt) {
   auto s = conn->Execute(stmt);
   if (s.ok()) {
     LOG(INFO) << "Execution of stmt " << stmt << " succeeded";
@@ -214,8 +216,12 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(PGConn* conn, const st
     "already exists"sv
   };
   if (HasSubstring(msg, failed_retry_msgs)) {
-    LOG(INFO) << "Execution of stmt " << stmt << " considered a success: " << s;
-    return true;
+    if (is_ddl) {
+      LOG(INFO) << "Execution of stmt " << stmt << " considered a success: " << s;
+      return true;
+    }
+    LOG(INFO) << "Execution of stmt " << stmt << " failed: " << s;
+    return false;
   }
 
   // Unexpected error
@@ -224,22 +230,23 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(PGConn* conn, const st
 }
 
 Status PgDdlAtomicityStressTest::TestConcurrentIndex(PGConn* conn, const int num_iterations) {
+  const bool is_ddl = true;
   for (int i = 0; i < num_iterations; ++i) {
     bool index_created = false;
     while (!index_created) {
       // If concurrent index creation fails, it does not clean up the invalid index. Thus to
       // make the statement idempotent, drop the index if the create index failed before retrying.
       index_created = VERIFY_RESULT(ExecuteFormatWithRetry(
-          conn, "CREATE INDEX idx_$0 ON $1(key)", i, kTable));
+          conn, is_ddl, "CREATE INDEX idx_$0 ON $1(key)", i, kTable));
       if (!index_created) {
         auto stmt = Format("DROP INDEX IF EXISTS idx_$0", i);
-        while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, stmt))) {
+        while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, is_ddl, stmt))) {
           LOG(INFO) << "Retry executing stmt " << stmt;
         }
       }
     }
     auto stmt = Format("DROP INDEX idx_$0", i);
-    while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, stmt))) {
+    while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, is_ddl, stmt))) {
       LOG(INFO) << "Retry executing stmt " << stmt;
     }
   }
@@ -248,8 +255,8 @@ Status PgDdlAtomicityStressTest::TestConcurrentIndex(PGConn* conn, const int num
 
 Status PgDdlAtomicityStressTest::TestDml(PGConn* conn, const int num_iterations) {
   for (int i = 1; i <= num_iterations;) {
-    if (VERIFY_RESULT(ExecuteFormatWithRetry(
-                      conn, "UPDATE $0 SET value = 'value_$1' WHERE key = $1", kTable, i))) {
+    auto stmt = Format("UPDATE $0 SET value = 'value_$1' WHERE key = $1", kTable, i);
+    if (VERIFY_RESULT(ExecuteFormatWithRetry(conn, false /* is_ddl */, stmt))) {
       ++i;
     }
   }

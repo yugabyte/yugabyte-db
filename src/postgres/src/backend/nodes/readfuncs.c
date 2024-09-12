@@ -2697,8 +2697,34 @@ _readYbSkippableEntities(void)
 static YbUpdateAffectedEntities *
 _readYbUpdateAffectedEntities(void)
 {
-	/* TODO(kramanathan): Define serializability for YbUpdateAffectedEntities */
-	return NULL;
+	int nfields;
+	int nentities;
+
+	READ_LOCALS(YbUpdateAffectedEntities);
+
+	READ_INT_FIELD(matrix.nrows);
+	READ_INT_FIELD(matrix.ncols);
+
+	nfields = local_node->matrix.nrows;
+	nentities = local_node->matrix.ncols;
+
+	local_node->entity_list = palloc0(nentities * sizeof(struct YbUpdateEntity));
+	for (int i = 0; i < nentities; i++)
+	{
+		READ_OID_FIELD(entity_list[i].oid);
+		READ_ENUM_FIELD(entity_list[i].etype, YbSkippableEntityType);
+	}
+
+	local_node->col_info_list = palloc0(nfields * sizeof(struct YbUpdateColInfo));
+	for (int i = 0; i < nfields; i++)
+	{
+		READ_INT_FIELD(col_info_list[i].attnum);
+		READ_NODE_FIELD(col_info_list[i].entity_refs);
+	}
+
+	READ_BITMAPSET_FIELD(matrix.data);
+
+	READ_DONE();
 }
 
 /*

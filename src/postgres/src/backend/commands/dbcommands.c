@@ -1105,7 +1105,7 @@ removing_database_from_system:
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
 
-			if (YbIsYsqlConnMgrWarmupRandomEnabled())
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
 				yb_net_client_connections = yb_num_logical_conn;
 		}
 
@@ -1308,7 +1308,7 @@ RenameDatabase(const char *oldname, const char *newname)
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
 
-			if (YbIsYsqlConnMgrWarmupRandomEnabled())
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
 				yb_net_client_connections = yb_num_logical_conn;
 		}
 

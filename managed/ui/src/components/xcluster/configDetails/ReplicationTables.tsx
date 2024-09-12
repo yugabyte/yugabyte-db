@@ -20,7 +20,8 @@ import {
   formatBytes,
   augmentTablesWithXClusterDetails,
   getStrictestReplicationLagAlertThreshold,
-  shouldAutoIncludeIndexTables
+  shouldAutoIncludeIndexTables,
+  getInConfigTableUuid
 } from '../ReplicationUtils';
 import DeleteReplicationTableModal from './DeleteReplicationTableModal';
 import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
@@ -40,6 +41,7 @@ import {
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
+  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
@@ -230,15 +232,19 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     dispatch(closeDialog());
   };
   const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
-  const tablesInConfig = augmentTablesWithXClusterDetails(
+  const xClusterTables = augmentTablesWithXClusterDetails(
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
     { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
+  const inConfigTableUuids = getInConfigTableUuid(xClusterConfig.tableDetails);
+  const isDropTablePermitted = (table: XClusterReplicationTable) =>
+    inConfigTableUuids.includes(getTableUuid(table)) &&
+    xClusterConfig.type !== XClusterConfigType.DB_SCOPED;
 
   const sourceUniverse = sourceUniverseQuery.data;
-  const filteredTablesInConfig = tablesInConfig.filter((table) =>
+  const filteredTablesInConfig = xClusterTables.filter((table) =>
     isTableMatchedBySearchTokens(table, searchTokens)
   );
   return (
@@ -268,7 +274,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           data={filteredTablesInConfig}
           tableBodyClass={styles.table}
           trClassName="tr-row-style"
-          pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
+          pagination={xClusterTables && xClusterTables.length > TABLE_MIN_PAGE_SIZE}
         >
           <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
           <TableHeaderColumn
@@ -392,43 +398,45 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                     e.currentTarget.blur();
                   }}
                 />
-                <Dropdown id={`${styles.tableActionColumn}_dropdown`} pullRight>
-                  <Dropdown.Toggle noCaret className={styles.actionButton}>
-                    <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      isControl
-                    >
-                      <MenuItem
-                        onClick={() => {
-                          setDeleteTableDetails(table);
-                          dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
+                {isDropTablePermitted(table) && (
+                  <Dropdown id={`${styles.tableActionColumn}_dropdown`} pullRight>
+                    <Dropdown.Toggle noCaret className={styles.actionButton}>
+                      <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
                         }}
-                        disabled={
-                          table.status !== XClusterTableStatus.DROPPED &&
-                          table.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE
-                        }
+                        isControl
                       >
-                        <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
-                          Remove Table
-                        </YBLabelWithIcon>
-                      </MenuItem>
-                    </RbacValidator>
-                  </Dropdown.Menu>
-                </Dropdown>
+                        <MenuItem
+                          onClick={() => {
+                            setDeleteTableDetails(table);
+                            dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
+                          }}
+                          disabled={
+                            table.status !== XClusterTableStatus.DROPPED &&
+                            table.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE
+                          }
+                        >
+                          <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
+                            Remove Table
+                          </YBLabelWithIcon>
+                        </MenuItem>
+                      </RbacValidator>
+                    </Dropdown.Menu>
+                  </Dropdown>
+                )}
               </>
             )}
           ></TableHeaderColumn>

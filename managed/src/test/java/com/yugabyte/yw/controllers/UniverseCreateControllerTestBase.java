@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
@@ -29,6 +30,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.times;
@@ -61,6 +63,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -70,8 +73,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -576,6 +581,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   // @formatter:on
   public void testK8sUniverseCreateNewHelmNaming(String ybVersion, boolean newNamingStyle) {
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
     ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
         ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
@@ -594,6 +601,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     Provider p = ModelFactory.kubernetesProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    Map<String, String> config = new HashMap<>();
+    config.put("KUBECONFIG", "xyz");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(p, config);
+    p.save();
     InstanceType i =
         InstanceType.upsert(p.getUuid(), "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
@@ -727,6 +738,12 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    if (cloudType == kubernetes) {
+      Map<String, String> config = new HashMap<>();
+      config.put("KUBECONFIG", "xyz");
+      CloudInfoInterface.setCloudProviderInfoFromConfig(p, config);
+      p.save();
+    }
     InstanceType i =
         InstanceType.upsert(
             p.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());

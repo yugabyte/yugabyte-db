@@ -298,9 +298,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public boolean skipMatchWithUserIntent = false;
 
-  @ApiModelProperty(value = "YbaApi Internal. Install node agent if it is set to true")
+  @ApiModelProperty(value = "YbaApi Internal. Disable node agent if it is set to true")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
-  public boolean installNodeAgent = false;
+  public boolean disableNodeAgent = false;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -853,6 +853,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Setting at user intent level since it can be unique across types of clusters.
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Default service scope for Kubernetes universes")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
 

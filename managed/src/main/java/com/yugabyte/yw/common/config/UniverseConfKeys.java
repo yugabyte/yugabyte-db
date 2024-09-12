@@ -291,14 +291,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Authorised NFS directories for backups",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ybcEnableVervbose =
-      new ConfKeyInfo<>(
-          "yb.ybc_flags.enable_verbose",
-          ScopeType.UNIVERSE,
-          "Enable Verbose Logging",
-          "Enable verbose ybc logging",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxThreads =
       new ConfKeyInfo<>(
           "yb.perf_advisor.max_threads",
@@ -915,6 +907,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " PITR config creation in each iteration",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrRestorePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.restore_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the PITR config restore status",
+          "It is the delay after which the restore PITR config subtask rechecks the status of the"
+              + " restore operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrRestoreTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.restore_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for restoring a universe using a PITR config",
+          "It is the maximum time that the restore PITR config subtask waits for the restore"
+              + " operation using PITR to be completed; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> pitrCreateTimeout =
       new ConfKeyInfo<>(
           "yb.pitr.create_timeout",
@@ -943,6 +953,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "xCluster replication; it will be used when there is no existing PITR configs "
               + "and it is not specified in the task parameters",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultipleTxnReplicationConfigs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.allow_multiple_configs",
+          ScopeType.UNIVERSE,
+          "Allow multiple txn replication configs",
+          "Allow multiple txn replication configs",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
       new ConfKeyInfo<>(
@@ -1070,15 +1088,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verify current cluster state (from db perspective) before running task",
           "Verify current cluster state (from db perspective) before running task",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.operation_timeout",
           ScopeType.UNIVERSE,
-          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          "Wait time for xcluster/DR replication setup and edit RPCs",
           "Wait time for xcluster/DR replication setup and edit RPCs.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterBootstrapProducerTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout",
+          ScopeType.UNIVERSE,
+          "Maximum timeout for xCluster bootstrap producer RPC call",
+          "If the RPC call to create the bootstrap streams on the source universe does not return"
+              + " before this timeout, the task will retry with exponential backoff until it"
+              + " fails.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1173,7 +1202,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.task.upgrade.batch_roll_enabled",
           ScopeType.UNIVERSE,
           "Stop multiple nodes in az simultaneously during upgrade",
-          "Stop multiple nodes simultaneously in az during upgrade",
+          "Stop multiple nodes in az simultaneously during upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollK8sEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_enabled_k8s",
+          ScopeType.UNIVERSE,
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =

@@ -138,6 +138,8 @@ class XClusterOutboundReplicationGroup
   Result<std::string> GetStreamId(const NamespaceId& namespace_id, const TableId& table_id) const
       EXCLUDES(mutex_);
 
+  Result<bool> AutomaticDDLMode() const EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
   friend class AddTableToXClusterSourceTask;

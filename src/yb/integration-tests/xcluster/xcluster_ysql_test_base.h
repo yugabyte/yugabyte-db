@@ -135,8 +135,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
-  Status CheckpointReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+  virtual Status CheckpointReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      bool automatic_ddl_mode = false);
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& source_namespace_id);

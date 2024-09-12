@@ -17,7 +17,8 @@ from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMet
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
-    OnPremPrecheckInstanceMethod, OnPremAccessAddKeyMethod, OnPremInstallNodeAgentMethod
+    OnPremPrecheckInstanceMethod, OnPremAccessAddKeyMethod, OnPremInstallNodeAgentMethod, \
+    OnPremVerifyCertificatesMethod
 
 
 class OnPremInstanceCommand(InstanceCommand):
@@ -47,6 +48,7 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(WaitForConnection(self))
         self.add_method(OnPremInstallNodeAgentMethod(self))
         self.add_method(ManageOtelCollector(self))
+        self.add_method(OnPremVerifyCertificatesMethod(self))
 
 
 class OnPremAccessCommand(AccessCommand):

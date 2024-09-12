@@ -43,7 +43,7 @@ func (fb *FullBackupContext) SetFullBackup(backup ybaclient.BackupResp) {
 // NewFullBackupFormat for formatting output
 func NewFullBackupFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultBackupListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

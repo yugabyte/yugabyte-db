@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../../../../reference/drivers/ysql-client-drivers/#rust-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Rust.
+The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../../../../drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Rust.
 
 ## Prerequisites
 
@@ -147,4 +147,4 @@ let exec_txn = || -> Result<(), DBError> {
 
 ## Learn more
 
-[Rust-Postgres driver](../../../../reference/drivers/ysql-client-drivers/#rust-postgres)
+[Rust-Postgres driver](../../../../drivers-orms/rust/yb-rust-postgres/)

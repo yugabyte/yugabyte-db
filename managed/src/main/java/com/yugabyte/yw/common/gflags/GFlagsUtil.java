@@ -449,7 +449,7 @@ public class GFlagsUtil {
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", Integer.toString(1));
+    ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
     ybcFlags.put(
         "server_port",
@@ -505,11 +505,6 @@ public class GFlagsUtil {
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
-    boolean enableVerbose =
-        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
-    if (enableVerbose) {
-      ybcFlags.put("v", "1");
-    }
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
@@ -540,7 +535,7 @@ public class GFlagsUtil {
             ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
             : node.cloudInfo.private_ip;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", Integer.toString(1));
+    ybcFlags.put("v", "1");
     ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
     ybcFlags.put("server_address", serverAddress);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));

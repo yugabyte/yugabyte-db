@@ -90,7 +90,7 @@ public class CommonUtils {
           "API",
           "POLICY",
           "HC_VAULT_TOKEN",
-          "vaultToken",
+          "VAULTTOKEN",
           "SAS_TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =

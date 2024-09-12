@@ -38,10 +38,9 @@ import (
 
 // ALl of our install files and directories.
 const (
-	//installMarkerName string = ".install_marker"
-	//installLocationOne string = "one"
-	//installLocationTwo string = "two"
 	InstallSymlink string = "active"
+
+	dataVersionFileName = ".version.txt"
 )
 
 // Directory names for config files
@@ -71,6 +70,10 @@ func GetBaseInstall() string {
 
 func GetDataRoot() string {
 	return filepath.Join(dm.BaseInstall(), "data")
+}
+
+func DataVersionFile() string {
+	return filepath.Join(GetDataRoot(), dataVersionFileName)
 }
 
 // GetInstallRoot returns the InstallRoot where YBA is installed.

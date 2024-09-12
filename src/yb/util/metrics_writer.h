@@ -40,13 +40,14 @@ class PrometheusWriter {
   // Write to the a single metric entry for non-table level metrics.
   template <typename T>
   Status WriteSingleEntryNonTable(
-      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
+      const char* type = "unknown", const char* help = "unknown") {
     auto it = attr.find("table_id");
     if (it != attr.end()) {
       return STATUS(
           InvalidArgument, "Expect no table_id in attr argument when calling this function.");
     }
-
+    FlushHelpAndTypeIfRequested(name, type, help);
     RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
     return Status::OK();
   }

@@ -9,12 +9,12 @@ import {
   useTheme,
 } from "@material-ui/core";
 import type { Migration } from "../../MigrationOverview";
-import { GenericFailure, YBButton } from "@app/components";
+import { GenericFailure, YBButton, YBCodeBlock } from "@app/components";
 import { useTranslation } from "react-i18next";
 import RefreshIcon from "@app/assets/refresh.svg";
+import BookIcon from "@app/assets/book.svg";
 import { StepCard } from "../schema/StepCard";
 import { Prereqs } from "../schema/Prereqs";
-import { StepDetails } from "../schema/StepDetails";
 import { useGetVoyagerDataMigrationMetricsQuery } from "@app/api/src";
 import { MigrationPhase } from "../../migration";
 
@@ -37,6 +37,17 @@ const useStyles = makeStyles((theme) => ({
   },
   barBg: {
     backgroundColor: theme.palette.grey[200],
+  },
+  commandCodeBlock: {
+    lineHeight: 1.5,
+    padding: theme.spacing(1.2),
+  },
+  docsLink: {
+    display: "flex",
+    paddingRight: theme.spacing(1.5),
+  },
+  menuIcon: {
+    marginRight: theme.spacing(1),
   },
 }));
 
@@ -87,8 +98,10 @@ export const MigrationData: FC<MigrationDataProps> = ({
   const [importPage, setImportPage] = React.useState<number>(0);
   const [importPerPage, setImportPerPage] = React.useState<number>(5);
 
-  const [triggerPage, setTriggerPage] = React.useState<number>(0);
-  const [triggerPerPage, setTriggerPerPage] = React.useState<number>(5);
+  const EXPORT_DATA_DOCS_URL =
+      "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-data"
+  const IMPORT_DATA_DOCS_URL =
+      "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-data"
 
   const {
     data,
@@ -127,8 +140,6 @@ export const MigrationData: FC<MigrationDataProps> = ({
         })),
     [dataAPI]
   );
-
-  const migrationTriggerData = [1, 2, 3, 4];
 
   const phase = migration.migration_phase || 0;
 
@@ -169,13 +180,6 @@ export const MigrationData: FC<MigrationDataProps> = ({
       importPage * importPerPage + importPerPage
     );
   }, [migrationImportProgressData, importPage, importPerPage]);
-
-  const paginatedTriggerData = useMemo(() => {
-    return migrationTriggerData.slice(
-      triggerPage * triggerPerPage,
-      triggerPage * triggerPerPage + triggerPerPage
-    );
-  }, [migrationTriggerData, triggerPage, triggerPerPage]);
 
   return (
     <Box>
@@ -219,12 +223,41 @@ export const MigrationData: FC<MigrationDataProps> = ({
                   return (
                     <>
                       <Prereqs items={exportDataPrereqs} />
-                      <StepDetails
-                        heading={t("clusterDetail.voyager.migrateData.dataExport")}
-                        message={t("clusterDetail.voyager.migrateData.dataExportDesc")}
-                        docsText={t("clusterDetail.voyager.migrateData.dataExportLearn")}
-                        docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-data"
+                      <Box mt={2} mb={2} width="fit-content">
+                        <Typography variant="body2">
+                          {t("clusterDetail.voyager.migrateData.dataExportDesc")}
+                        </Typography>
+                      </Box>
+                      <YBCodeBlock
+                        text={
+                          "# Replace the argument values with those applicable " +
+                          "for your migration\n" +
+                          "yb-voyager export data\n" +
+                          "--source-db-type <SOURCE_DB_TYPE> \\\n" +
+                          "--source-db-host <SOURCE_DB_HOST> \\\n" +
+                          "--source-db-user <SOURCE_DB_USER> \\\n" +
+                          "--source-db-password <SOURCE_DB_PASSWORD> \\\n" +
+                          "--source-db-name <SOURCE_DB_NAME> \\\n" +
+                          "--source-db-schema <SOURCE_DB_SCHEMA1>,<SOURCE_DB_SCHEMA2> \\\n" +
+                          "--export-dir <EXPORT/DIR/PATH>"
+                        }
+                        showCopyIconButton={true}
+                        preClassName={classes.commandCodeBlock}
                       />
+                      <Box mt={2} mb={2} width="fit-content">
+                        <Link
+                          className={classes.docsLink}
+                          href={EXPORT_DATA_DOCS_URL}
+                          target="_blank"
+                        >
+                          <BookIcon className={classes.menuIcon} />
+                          <Typography
+                            variant="body2"
+                          >
+                            {t("clusterDetail.voyager.migrateData.dataExportLearn")}
+                          </Typography>
+                        </Link>
+                      </Box>
                     </>
                   );
                 }
@@ -294,12 +327,40 @@ export const MigrationData: FC<MigrationDataProps> = ({
                 if (status === "TODO") {
                   return (
                     <>
-                      <StepDetails
-                        heading={t("clusterDetail.voyager.migrateData.dataImport")}
-                        message={t("clusterDetail.voyager.migrateData.dataImportDesc")}
-                        docsText={t("clusterDetail.voyager.migrateData.dataImportLearn")}
-                        docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-data"
+                      <Box mt={2} mb={2} width="fit-content">
+                        <Typography variant="body2">
+                          {t("clusterDetail.voyager.migrateData.dataImportDesc")}
+                        </Typography>
+                      </Box>
+                      <YBCodeBlock
+                        text={
+                          "# Replace the argument values with those applicable " +
+                          "for your migration\n" +
+                          "yb-voyager import data\n" +
+                          "--target-db-host <TARGET_DB_HOST> \\\n" +
+                          "--target-db-user <TARGET_DB_USER> \\\n" +
+                          "--target-db-password <TARGET_DB_PASSWORD> \\\n" +
+                          "--target-db-name <TARGET_DB_NAME> \\\n" +
+                          "--target-db-schema <TARGET_DB_SCHEMA> \\\n" +
+                          "--export-dir <EXPORT/DIR/PATH>"
+                        }
+                        showCopyIconButton={true}
+                        preClassName={classes.commandCodeBlock}
                       />
+                      <Box mt={2} mb={2} width="fit-content">
+                        <Link
+                          className={classes.docsLink}
+                          href={IMPORT_DATA_DOCS_URL}
+                          target="_blank"
+                        >
+                          <BookIcon className={classes.menuIcon} />
+                          <Typography
+                            variant="body2"
+                          >
+                            {t("clusterDetail.voyager.migrateData.dataImportLearn")}
+                          </Typography>
+                        </Link>
+                      </Box>
                     </>
                   );
                 }
@@ -339,69 +400,6 @@ export const MigrationData: FC<MigrationDataProps> = ({
                           rowsPerPage={importPerPage}
                           onRowsPerPageChange={(e) =>
                             setImportPerPage(parseInt(e.target.value, 10))
-                          }
-                        />
-                      </Box>
-                    </Box>
-                  );
-                }
-
-                return null;
-              }}
-            </StepCard>
-            <StepCard
-              title={t("clusterDetail.voyager.migrateData.indexTriggerTargetDB")}
-              renderChips={() => `${12}/${25} objects completed`}
-            >
-              {(status) => {
-                if (status === "TODO") {
-                  return (
-                    <>
-                      <StepDetails
-                        heading={t("clusterDetail.voyager.migrateData.indexTrigger")}
-                        message={t("clusterDetail.voyager.migrateData.indexTriggerDesc")}
-                        docsText={t("clusterDetail.voyager.migrateData.indexTriggerLearn")}
-                        docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-data-status"
-                      />
-                    </>
-                  );
-                }
-
-                if (status === "IN_PROGRESS") {
-                  return (
-                    <Box
-                      display="flex"
-                      flexDirection="column"
-                      gridGap={theme.spacing(4.5)}
-                      mt={3.5}
-                    >
-                      {paginatedTriggerData.map(() => (
-                        <Box>
-                          <Box display="flex" justifyContent="space-between" mb={1.5}>
-                            <Typography variant="body2">Object name</Typography>
-                            <Typography variant="body2">{44}% completed</Typography>
-                          </Box>
-                          <LinearProgress
-                            classes={{
-                              root: classes.progressbar,
-                              colorPrimary: classes.barBg,
-                              bar: classes.bar,
-                            }}
-                            variant="determinate"
-                            value={44}
-                          />
-                        </Box>
-                      ))}
-                      <Box ml="auto">
-                        <TablePagination
-                          component="div"
-                          count={migrationTriggerData.length}
-                          page={triggerPage}
-                          onPageChange={(_, newPage) => setTriggerPage(newPage)}
-                          rowsPerPageOptions={[5, 10, 20]}
-                          rowsPerPage={triggerPerPage}
-                          onRowsPerPageChange={(e) =>
-                            setTriggerPerPage(parseInt(e.target.value, 10))
                           }
                         />
                       </Box>

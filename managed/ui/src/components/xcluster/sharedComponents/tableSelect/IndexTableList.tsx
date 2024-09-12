@@ -11,7 +11,7 @@ import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
 import { TableNameCell } from './TableNameCell';
-import { XClusterConfigAction } from '../../constants';
+import { XClusterConfigAction, XClusterConfigType } from '../../constants';
 
 import {
   IndexTableReplicationCandidate,
@@ -25,7 +25,7 @@ interface IndexTableListProps {
   mainTableReplicationCandidate: MainTableReplicationCandidate;
   xClusterConfigAction: XClusterConfigAction;
   isMainTableSelectable: boolean;
-  isTransactionalConfig: boolean;
+  xClusterConfigType: XClusterConfigType;
   selectedTableUuids: string[];
   handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
   handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
@@ -37,7 +37,7 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 export const IndexTableList = ({
   mainTableReplicationCandidate,
   isMainTableSelectable,
-  isTransactionalConfig,
+  xClusterConfigType,
   selectedTableUuids,
   handleTableSelect,
   handleTableGroupSelect,
@@ -65,14 +65,18 @@ export const IndexTableList = ({
   const untoggleableTableUuids = indexTableRows
     .filter(
       (table) =>
-        isTransactionalConfig ||
+        xClusterConfigType === XClusterConfigType.TXN ||
+        xClusterConfigType === XClusterConfigType.DB_SCOPED ||
         !isTableToggleable(table, xClusterConfigAction) ||
         xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
     )
     .map((table) => table.tableUUID);
   const isSelectable =
     isMainTableSelectable &&
-    !isTransactionalConfig &&
+    !(
+      xClusterConfigType === XClusterConfigType.TXN ||
+      xClusterConfigType === XClusterConfigType.DB_SCOPED
+    ) &&
     xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE;
   return (
     <div className={styles.expandComponent}>

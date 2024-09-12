@@ -717,6 +717,19 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
   return STATUS_FORMAT(InternalError, "Did not find schema for table: ", req_table_id);
 }
 
+bool IsColocatedTableQualifiedForStreaming(
+    const TableId& table_id, const StreamMetadata& metadata) {
+  auto qualified_tables = metadata.GetTableIds();
+  std::unordered_set<TableId> qualified_tables_set(
+      qualified_tables.begin(), qualified_tables.end());
+
+  auto unqualified_tables = metadata.GetUnqualifiedTableIds();
+  std::unordered_set<TableId> unqualified_tables_set(
+      unqualified_tables.begin(), unqualified_tables.end());
+
+  return qualified_tables_set.contains(table_id) && !unqualified_tables_set.contains(table_id);
+}
+
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
   if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
@@ -905,6 +918,10 @@ Status PopulateCDCSDKIntentRecord(
         schema_version = schema_details.schema_version;
         table_name = table_info->table_name;
         table_id = table_info->table_id;
+        if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+          continue;
+        }
+
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
         schema_packing_storage = SchemaPackingStorage(tablet->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
@@ -1302,6 +1319,10 @@ Status PopulateCDCSDKWriteRecord(
         schema_version = schema_details.schema_version;
         table_name = table_info->table_name;
         table_id = table_info->table_id;
+        if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+          continue;
+        }
+
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
         schema_packing_storage = SchemaPackingStorage(tablet_ptr->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);

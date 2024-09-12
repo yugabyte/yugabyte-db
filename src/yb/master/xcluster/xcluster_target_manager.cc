@@ -446,6 +446,11 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
 
   if (IsDbScoped(replication_info_pb)) {
     result.replication_type = XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED;
+    result.automatic_ddl_mode = replication_info_pb.db_scoped_info().automatic_ddl_mode();
+
+    result.db_scoped_info += Format(
+        "ddl_mode: $0",
+        replication_info_pb.db_scoped_info().automatic_ddl_mode() ? "automatic" : "semi-automatic");
     for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
       result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
           namespace_info.producer_namespace_id();

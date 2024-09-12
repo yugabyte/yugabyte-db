@@ -199,7 +199,9 @@ export default class NodeAction extends Component {
       disabled,
       clusterType,
       isKubernetes,
-      isOnPremManuallyProvisioned
+      isOnPremManuallyProvisioned,
+      cluster,
+      accessKeys
     } = this.props;
 
     const allowedActions =
@@ -363,6 +365,10 @@ export default class NodeAction extends Component {
       );
     }
 
+    const accessKeyCode = cluster.userIntent.accessKeyCode;
+    const accessKey = accessKeys.data.find(
+      (key) => key.idKey.providerUUID === providerUUID && key.idKey.keyCode === accessKeyCode
+    );
     return (
       <DropdownButton
         className="btn btn-default"
@@ -382,6 +388,7 @@ export default class NodeAction extends Component {
                   label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
                   clusterType={clusterType}
                   universeUUID={universeUUID}
+                  disabled={accessKey === undefined && isOnPremManuallyProvisioned}
                 />
               )}
               {isNonEmptyArray(nodeAllowedActions) ? (

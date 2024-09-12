@@ -21,12 +21,12 @@ import {
   runtimeConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { generateUniqueName } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import {
   XClusterConfigAction,
+  XClusterConfigType,
   XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
   XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -43,6 +43,7 @@ import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos'
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
+  configName: string;
   targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   namespaceUuids: string[];
   tableUuids: string[];
@@ -103,17 +104,19 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const drConfigMutation = useMutation(
     ({
       formValues,
-      defaultPitrSnapshotInterval
+      defaultPitrSnapshotInterval,
+      isDbScoped
     }: {
       formValues: CreateDrConfigFormValues;
       defaultPitrSnapshotInterval: number;
+      isDbScoped: boolean;
     }) => {
       const retentionPeriodSec =
         formValues.pitrRetentionPeriodValue *
         DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
 
       const createDrConfigRequest: CreateDrConfigRequest = {
-        name: `dr-config-${generateUniqueName()}`,
+        name: formValues.configName,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
         dbs: formValues.namespaceUuids.map(formatUuidForXCluster),
@@ -129,7 +132,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             Math.min(defaultPitrSnapshotInterval, retentionPeriodSec - 1),
             1
           )
-        }
+        },
+        dbScoped: isDbScoped
       };
       return api.createDrConfig(createDrConfigRequest);
     },
@@ -288,6 +292,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     ? XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK
     : runtimeConfigDefaultPitrSnapshotInterval;
 
+  const isDbScopedEnabled =
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_FEATURE_FLAG
+    )?.value ?? false;
+
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
     // When the user changes target universe, the old table selection is no longer valid.
     const isTableSelectionInvalidated =
@@ -335,7 +344,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
       case FormStep.CONFIRM_ALERT:
-        return drConfigMutation.mutateAsync({ formValues, defaultPitrSnapshotInterval });
+        return drConfigMutation.mutateAsync({
+          formValues,
+          defaultPitrSnapshotInterval,
+          isDbScoped: isDbScopedEnabled
+        });
       default:
         return assertUnreachableCase(currentFormStep);
     }
@@ -383,6 +396,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   };
 
+  const xClusterConfigType = isDbScopedEnabled
+    ? XClusterConfigType.DB_SCOPED
+    : XClusterConfigType.TXN;
   const sourceUniverse = sourceUniverseQuery.data;
   const submitLabel = getFormSubmitLabel(currentFormStep);
   const selectedTableUuids = formMethods.watch('tableUuids');
@@ -418,7 +434,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           tableSelectProps={{
             configAction: XClusterConfigAction.CREATE,
             isDrInterface: true,
-            isTransactionalConfig: true,
             initialNamespaceUuids: [],
             selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUuids: selectedTableUuids,
@@ -428,6 +443,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             setSelectedTableUuids: setSelectedTableUuids,
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: TableType.PGSQL_TABLE_TYPE,
+            xClusterConfigType: xClusterConfigType,
             targetUniverseUuid: targetUniverseUuid
           }}
         />

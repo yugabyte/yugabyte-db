@@ -4,13 +4,12 @@ import { useQuery, useQueryClient } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { useInterval } from 'react-use';
+import { Link } from 'react-router';
 
-import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { DeleteConfigModal } from './deleteConfig/DeleteConfigModal';
 import { DrConfigDetails } from './drConfig/DrConfigDetails';
 import { DrConfigAction } from './constants';
 import { EditTablesModal } from './editTables/EditTablesModal';
-import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
@@ -29,8 +28,7 @@ import {
 import {
   getEnabledConfigActions,
   getInConfigTableUuid,
-  getIsXClusterConfigAllBidirectional,
-  getXClusterConfigUuids
+  getIsXClusterConfigAllBidirectional
 } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
@@ -52,12 +50,11 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
-import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
-import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isBootstrapRequired } from '../../../actions/xClusterReplication';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
+  drConfigUuid: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -115,11 +112,10 @@ const ActionMenu = {
 const PANEL_ID = 'DisasterRecovery';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery';
 
-export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
+export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => {
   const [isActionMenuOpen, setIsActionMenuOpen] = useState<boolean>(false);
   const [isSwitchoverModalOpen, setIsSwitchoverModalOpen] = useState<boolean>(false);
   const [isFailoverModalOpen, setIsFailoverModalOpen] = useState<boolean>(false);
-  const [isCreateConfigModalOpen, setIsCreateConfigModalOpen] = useState<boolean>(false);
   const [isDeleteConfigModalOpen, setIsDeleteConfigModalOpen] = useState<boolean>(false);
   const [isEditConfigModalOpen, setIsEditConfigModalOpen] = useState<boolean>(false);
   const [isEditConfigTargetModalOpen, setIsEditTargetConfigModalOpen] = useState<boolean>(false);
@@ -136,25 +132,11 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     api.fetchUniverse(currentUniverseUuid)
   );
 
-  // Currently, each universe only supports a single DR config.
-  // When we start allowing more than one DR config per universe, we will update this section of the UI.
-  const drConfigUuid =
-    currentUniverseQuery.data?.drConfigUuidsAsSource[0] ??
-    currentUniverseQuery.data?.drConfigUuidsAsTarget[0];
   const drConfigQuery = useQuery(
     drConfigQueryKey.detail(drConfigUuid),
     () => api.fetchDrConfig(drConfigUuid),
     { enabled: !!drConfigUuid, staleTime: PollingIntervalMs.DR_CONFIG }
   );
-
-  const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
-    currentUniverseQuery.data
-  );
-  // List the XCluster Configurations for which the current universe is a source or a target.
-  const universeXClusterConfigUUIDs: string[] = [
-    ...sourceXClusterConfigUuids,
-    ...targetXClusterConfigUuids
-  ];
 
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
@@ -236,51 +218,68 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     currentUniverseQuery.isLoading ||
     currentUniverseQuery.isIdle ||
     drConfigQuery.isLoading ||
-    participantUniverseQuery.isLoading
+    drConfigQuery.isIdle ||
+    participantUniverseQuery.isLoading ||
+    participantUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
 
   const allowedTasks = currentUniverseQuery.data?.allowedTasks;
-  const isConfigureActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
-  // DR config uses a txn xCluster config to implement the replication.
-  // When setting up txn xCluster config, no other xCluster config can exist
-  // on source and target.
-  const isDrCreationDisabled = universeXClusterConfigUUIDs.length > 0 || isConfigureActionFrozen;
-  const drConfig = drConfigQuery.data;
-  const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
-  const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
-  if (!drConfig) {
-    return (
-      <>
-        <div className={classes.header}>
-          <Typography variant="h3">{t('heading')}</Typography>
-        </div>
-        <EnableDrPrompt
-          onConfigureDrButtonClick={openCreateConfigModal}
-          isDisabled={isDrCreationDisabled}
-          universeUUID={currentUniverseUuid}
-        />
-        {isCreateConfigModalOpen && (
-          <CreateConfigModal
-            sourceUniverseUuid={currentUniverseUuid}
-            modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
-          />
-        )}
-      </>
-    );
-  }
+  const openDeleteConfigModal = () => setIsDeleteConfigModalOpen(true);
+  const closeDeleteConfigModal = () => setIsDeleteConfigModalOpen(false);
 
   if (!sourceUniverseUuid || !targetUniverseUuid) {
     const errorMessageKey = sourceUniverseUuid
       ? 'undefinedTargetUniverseUuid'
       : 'undefinedSourceUniverseUuid';
+    const remainingUniverseUUID = sourceUniverseUuid ?? targetUniverseUuid;
+    const redirectUrl = remainingUniverseUUID
+      ? `/universes/${remainingUniverseUUID}/recovery`
+      : '/universes';
+
     return (
-      <YBErrorIndicator
-        customErrorMessage={t(`error.${errorMessageKey}`, {
-          keyPrefix: 'clusterDetail.xCluster'
-        })}
-      />
+      <div>
+        <YBErrorIndicator
+          customErrorMessage={t(`error.${errorMessageKey}`, {
+            keyPrefix: 'clusterDetail.xCluster'
+          })}
+        />
+        <RbacValidator
+          customValidateFunction={() => {
+            return (
+              hasNecessaryPerm({
+                ...ApiPermissionMap.DELETE_DR_CONFIG,
+                onResource: xClusterConfig.sourceUniverseUUID
+              }) &&
+              hasNecessaryPerm({
+                ...ApiPermissionMap.DELETE_DR_CONFIG,
+                onResource: xClusterConfig.targetUniverseUUID
+              })
+            );
+          }}
+          isControl
+        >
+          <YBButton
+            variant="primary"
+            size="large"
+            type="button"
+            onClick={openDeleteConfigModal}
+            data-testid={`${PANEL_ID}-delete`}
+          >
+            {t('actionButton.actionMenu.deleteConfig')}
+          </YBButton>
+        </RbacValidator>
+        {isDeleteConfigModalOpen && (
+          <DeleteConfigModal
+            drConfig={drConfigQuery.data}
+            allowedTasks={allowedTasks}
+            currentUniverseName={currentUniverseQuery.data.name}
+            redirectUrl={redirectUrl}
+            modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
+          />
+        )}
+      </div>
     );
   }
 
@@ -288,8 +287,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const closeSwitchoverModal = () => setIsSwitchoverModalOpen(false);
   const openFailoverModal = () => setIsFailoverModalOpen(true);
   const closeFailoverModal = () => setIsFailoverModalOpen(false);
-  const openDeleteConfigModal = () => setIsDeleteConfigModalOpen(true);
-  const closeDeleteConfigModal = () => setIsDeleteConfigModalOpen(false);
   const openEditTablesModal = () => setIsEditTablesModalOpen(true);
   const closeEditTablesModal = () => setIsEditTablesModalOpen(false);
   const openEditConfigModal = () => setIsEditConfigModalOpen(true);
@@ -307,6 +304,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     setIsActionMenuOpen(isOpen);
   };
 
+  const drConfig = drConfigQuery.data;
   const enabledDrConfigActions = getEnabledDrConfigActions(
     drConfig,
     sourceUniverse,
@@ -317,6 +315,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     ? getIsXClusterConfigAllBidirectional(bootstrapRequirementQuery.data)
     : false;
   const xClusterConfig = getXClusterConfig(drConfig);
+  const deleteConfigRedirectUrl = `/universes/${currentUniverseUuid}/recovery`;
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
@@ -324,7 +323,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     isXClusterConfigAllBidirectional,
     drConfig.state
   );
-
   return (
     <>
       <RbacValidator
@@ -341,265 +339,77 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           );
         }}
       >
-        <DrBannerSection
-          drConfig={drConfig}
-          openRepairConfigModal={openRepairConfigModal}
-          openRestartConfigModal={openRestartConfigModal}
-          enabledDrConfigActions={enabledDrConfigActions}
-          enabledXClusterConfigActions={enabledXClusterConfigActions}
-        />
-        <div className={classes.header}>
-          <Typography variant="h3">{t('heading')}</Typography>
-          <div className={classes.actionButtonContainer}>
-            <RbacValidator
-              customValidateFunction={() => {
-                return (
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
-                    onResource: xClusterConfig.sourceUniverseUUID
-                  }) &&
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
-                    onResource: xClusterConfig.targetUniverseUUID
-                  })
-                );
-              }}
-              isControl
-            >
-              <YBButton
-                variant="primary"
-                size="large"
-                type="button"
-                onClick={openSwitchoverModal}
-                disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
-                data-testid={`${PANEL_ID}-switchover`}
+        <h2 className="content-title">
+          <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}`}>
+            {sourceUniverse?.name ?? 'Undefined Universe'}
+          </Link>
+          <span className="subtext">
+            <i className="fa fa-chevron-right submenu-icon" />
+            <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}/recovery/`}>
+              xCluster Disaster Recovery
+            </Link>
+            <i className="fa fa-chevron-right submenu-icon" />
+            {drConfig.name}
+          </span>
+        </h2>
+        <Box padding={3}>
+          <DrBannerSection
+            drConfig={drConfig}
+            openRepairConfigModal={openRepairConfigModal}
+            openRestartConfigModal={openRestartConfigModal}
+            enabledDrConfigActions={enabledDrConfigActions}
+            enabledXClusterConfigActions={enabledXClusterConfigActions}
+          />
+          <div className={classes.header}>
+            <Typography variant="h3">{t('heading')}</Typography>
+            <div className={classes.actionButtonContainer}>
+              <RbacValidator
+                customValidateFunction={() => {
+                  return (
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                      onResource: xClusterConfig.sourceUniverseUUID
+                    }) &&
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                      onResource: xClusterConfig.targetUniverseUUID
+                    })
+                  );
+                }}
+                isControl
               >
-                {t('actionButton.switchover')}
-              </YBButton>
-            </RbacValidator>
-            <DropdownButton
-              bsClass="dropdown"
-              title={t('actionButton.actionMenu.label')}
-              onToggle={handleActionMenuToggle}
-              id={`${PANEL_ID}-actionsDropdown`}
-              data-testid={`${PANEL_ID}-actionsDropdown`}
-              pullRight
-            >
-              <MenuItemsContainer
-                parentDropdownOpen={isActionMenuOpen}
-                mainMenu={(showSubmenu) => (
-                  <>
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={XClusterConfigAction.MANAGE_TABLE}
-                        onSelect={openEditTablesModal}
-                        disabled={
-                          !enabledXClusterConfigActions.includes(XClusterConfigAction.MANAGE_TABLE)
-                        }
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.editTables')}
-                          preLabelElement={<i className="fa fa-table" />}
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_EDIT,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_EDIT,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={DrConfigAction.EDIT}
-                        onSelect={openEditConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT)}
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.editDrConfig')}
-                          preLabelElement={<i className="fa fa-gear" />}
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={DrConfigAction.EDIT_TARGET}
-                        onSelect={openEditTargetConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET)}
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.editDrConfigTarget')}
-                          preLabelElement={<i className="fa fa-globe" />}
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                    <MenuItem
-                      eventKey={ActionMenu.ADVANCED}
-                      onSelect={() => showSubmenu(ActionMenu.ADVANCED)}
-                    >
-                      <YBMenuItemLabel
-                        label={t('actionButton.actionMenu.advancedSubmenu')}
-                        preLabelElement={<i className="fa fa-cogs" />}
-                        postLabelElement={
-                          <Box component="span" marginLeft="auto">
-                            <i className="fa fa-chevron-right" />
-                          </Box>
-                        }
-                      />
-                    </MenuItem>
-                    <MenuItem divider />
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={DrConfigAction.SWITCHOVER}
-                        onSelect={openSwitchoverModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.switchover')}
-                          preLabelElement={
-                            <SwitchoverIcon
-                              isDisabled={
-                                !enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)
-                              }
-                            />
-                          }
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_FAILOVER,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DR_CONFIG_FAILOVER,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={DrConfigAction.FAILOVER}
-                        onSelect={openFailoverModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigAction.FAILOVER)}
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.failover')}
-                          preLabelElement={
-                            <FailoverIcon
-                              isDisabled={!enabledDrConfigActions.includes(DrConfigAction.FAILOVER)}
-                            />
-                          }
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                    <MenuItem divider />
-                    <RbacValidator
-                      customValidateFunction={() => {
-                        return (
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DELETE_DR_CONFIG,
-                            onResource: xClusterConfig.sourceUniverseUUID
-                          }) &&
-                          hasNecessaryPerm({
-                            ...ApiPermissionMap.DELETE_DR_CONFIG,
-                            onResource: xClusterConfig.targetUniverseUUID
-                          })
-                        );
-                      }}
-                      overrideStyle={{ display: 'block' }}
-                      isControl
-                    >
-                      <MenuItem
-                        eventKey={DrConfigAction.DELETE}
-                        onSelect={openDeleteConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigAction.DELETE)}
-                      >
-                        <YBMenuItemLabel
-                          label={t('actionButton.actionMenu.deleteConfig')}
-                          preLabelElement={<i className="fa fa-trash" />}
-                        />
-                      </MenuItem>
-                    </RbacValidator>
-                  </>
-                )}
-                subMenus={{
-                  // eslint-disable-next-line react/display-name
-                  [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                <YBButton
+                  variant="primary"
+                  size="large"
+                  type="button"
+                  onClick={openSwitchoverModal}
+                  disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
+                  data-testid={`${PANEL_ID}-switchover`}
+                >
+                  {t('actionButton.switchover')}
+                </YBButton>
+              </RbacValidator>
+              <DropdownButton
+                bsClass="dropdown"
+                title={t('actionButton.actionMenu.label')}
+                onToggle={handleActionMenuToggle}
+                id={`${PANEL_ID}-actionsDropdown`}
+                data-testid={`${PANEL_ID}-actionsDropdown`}
+                pullRight
+              >
+                <MenuItemsContainer
+                  parentDropdownOpen={isActionMenuOpen}
+                  mainMenu={(showSubmenu) => (
                     <>
-                      <MenuItem eventKey="back" onSelect={navigateToMainMenu}>
-                        <YBMenuItemLabel
-                          label={t('back', { keyPrefix: 'common' })}
-                          preLabelElement={<i className="fa fa-chevron-left fa-fw" />}
-                        />
-                      </MenuItem>
                       <RbacValidator
                         customValidateFunction={() => {
                           return (
                             hasNecessaryPerm({
-                              ...ApiPermissionMap.DR_CONFIG_RESTART,
+                              ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
                               onResource: xClusterConfig.sourceUniverseUUID
                             }) &&
                             hasNecessaryPerm({
-                              ...ApiPermissionMap.DR_CONFIG_RESTART,
+                              ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
                               onResource: xClusterConfig.targetUniverseUUID
                             })
                           );
@@ -608,15 +418,17 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         isControl
                       >
                         <MenuItem
-                          eventKey={XClusterConfigAction.RESTART}
-                          onSelect={openRestartConfigModal}
+                          eventKey={XClusterConfigAction.MANAGE_TABLE}
+                          onSelect={openEditTablesModal}
                           disabled={
-                            !enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)
+                            !enabledXClusterConfigActions.includes(
+                              XClusterConfigAction.MANAGE_TABLE
+                            )
                           }
                         >
                           <YBMenuItemLabel
-                            label={t('actionButton.actionMenu.restartReplication')}
-                            preLabelElement={<i className="fa fa-refresh" />}
+                            label={t('actionButton.actionMenu.editTables')}
+                            preLabelElement={<i className="fa fa-table" />}
                           />
                         </MenuItem>
                       </RbacValidator>
@@ -624,11 +436,11 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         customValidateFunction={() => {
                           return (
                             hasNecessaryPerm({
-                              ...ApiPermissionMap.DR_CONFIG_SYNC,
+                              ...ApiPermissionMap.DR_CONFIG_EDIT,
                               onResource: xClusterConfig.sourceUniverseUUID
                             }) &&
                             hasNecessaryPerm({
-                              ...ApiPermissionMap.DR_CONFIG_SYNC,
+                              ...ApiPermissionMap.DR_CONFIG_EDIT,
                               onResource: xClusterConfig.targetUniverseUUID
                             })
                           );
@@ -637,98 +449,307 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         isControl
                       >
                         <MenuItem
-                          eventKey={XClusterConfigAction.DB_SYNC}
-                          onSelect={openDbSyncModal}
-                          disabled={
-                            !enabledXClusterConfigActions.includes(XClusterConfigAction.DB_SYNC)
-                          }
+                          eventKey={DrConfigAction.EDIT}
+                          onSelect={openEditConfigModal}
+                          disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT)}
                         >
                           <YBMenuItemLabel
-                            label={t('actionButton.actionMenu.dbSync')}
-                            preLabelElement={<i className="fa fa-refresh" />}
+                            label={t('actionButton.actionMenu.editDrConfig')}
+                            preLabelElement={<i className="fa fa-gear" />}
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={DrConfigAction.EDIT_TARGET}
+                          onSelect={openEditTargetConfigModal}
+                          disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET)}
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.editDrConfigTarget')}
+                            preLabelElement={<i className="fa fa-globe" />}
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                      <MenuItem
+                        eventKey={ActionMenu.ADVANCED}
+                        onSelect={() => showSubmenu(ActionMenu.ADVANCED)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.advancedSubmenu')}
+                          preLabelElement={<i className="fa fa-cogs" />}
+                          postLabelElement={
+                            <Box component="span" marginLeft="auto">
+                              <i className="fa fa-chevron-right" />
+                            </Box>
+                          }
+                        />
+                      </MenuItem>
+                      <MenuItem divider />
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={DrConfigAction.SWITCHOVER}
+                          onSelect={openSwitchoverModal}
+                          disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.switchover')}
+                            preLabelElement={
+                              <SwitchoverIcon
+                                isDisabled={
+                                  !enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)
+                                }
+                              />
+                            }
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_FAILOVER,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_FAILOVER,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={DrConfigAction.FAILOVER}
+                          onSelect={openFailoverModal}
+                          disabled={!enabledDrConfigActions.includes(DrConfigAction.FAILOVER)}
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.failover')}
+                            preLabelElement={
+                              <FailoverIcon
+                                isDisabled={
+                                  !enabledDrConfigActions.includes(DrConfigAction.FAILOVER)
+                                }
+                              />
+                            }
+                          />
+                        </MenuItem>
+                      </RbacValidator>
+                      <MenuItem divider />
+                      <RbacValidator
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DELETE_DR_CONFIG,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DELETE_DR_CONFIG,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
+                        overrideStyle={{ display: 'block' }}
+                        isControl
+                      >
+                        <MenuItem
+                          eventKey={DrConfigAction.DELETE}
+                          onSelect={openDeleteConfigModal}
+                          disabled={!enabledDrConfigActions.includes(DrConfigAction.DELETE)}
+                        >
+                          <YBMenuItemLabel
+                            label={t('actionButton.actionMenu.deleteConfig')}
+                            preLabelElement={<i className="fa fa-trash" />}
                           />
                         </MenuItem>
                       </RbacValidator>
                     </>
-                  )
-                }}
-              />
-            </DropdownButton>
+                  )}
+                  subMenus={{
+                    // eslint-disable-next-line react/display-name
+                    [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                      <>
+                        <MenuItem eventKey="back" onSelect={navigateToMainMenu}>
+                          <YBMenuItemLabel
+                            label={t('back', { keyPrefix: 'common' })}
+                            preLabelElement={<i className="fa fa-chevron-left fa-fw" />}
+                          />
+                        </MenuItem>
+                        <RbacValidator
+                          customValidateFunction={() => {
+                            return (
+                              hasNecessaryPerm({
+                                ...ApiPermissionMap.DR_CONFIG_RESTART,
+                                onResource: xClusterConfig.sourceUniverseUUID
+                              }) &&
+                              hasNecessaryPerm({
+                                ...ApiPermissionMap.DR_CONFIG_RESTART,
+                                onResource: xClusterConfig.targetUniverseUUID
+                              })
+                            );
+                          }}
+                          overrideStyle={{ display: 'block' }}
+                          isControl
+                        >
+                          <MenuItem
+                            eventKey={XClusterConfigAction.RESTART}
+                            onSelect={openRestartConfigModal}
+                            disabled={
+                              !enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)
+                            }
+                          >
+                            <YBMenuItemLabel
+                              label={t('actionButton.actionMenu.restartReplication')}
+                              preLabelElement={<i className="fa fa-refresh" />}
+                            />
+                          </MenuItem>
+                        </RbacValidator>
+                        <RbacValidator
+                          customValidateFunction={() => {
+                            return (
+                              hasNecessaryPerm({
+                                ...ApiPermissionMap.DR_CONFIG_SYNC,
+                                onResource: xClusterConfig.sourceUniverseUUID
+                              }) &&
+                              hasNecessaryPerm({
+                                ...ApiPermissionMap.DR_CONFIG_SYNC,
+                                onResource: xClusterConfig.targetUniverseUUID
+                              })
+                            );
+                          }}
+                          overrideStyle={{ display: 'block' }}
+                          isControl
+                        >
+                          <MenuItem
+                            eventKey={XClusterConfigAction.DB_SYNC}
+                            onSelect={openDbSyncModal}
+                            disabled={
+                              !enabledXClusterConfigActions.includes(XClusterConfigAction.DB_SYNC)
+                            }
+                          >
+                            <YBMenuItemLabel
+                              label={t('actionButton.actionMenu.dbSync')}
+                              preLabelElement={<i className="fa fa-refresh" />}
+                            />
+                          </MenuItem>
+                        </RbacValidator>
+                      </>
+                    )
+                  }}
+                />
+              </DropdownButton>
+            </div>
           </div>
-        </div>
-        <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
-          <DrConfigOverview drConfig={drConfig} />
-          <DrConfigDetails drConfig={drConfig} />
+          <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
+            <DrConfigOverview drConfig={drConfig} />
+            <DrConfigDetails drConfig={drConfig} />
+          </Box>
+          {isSwitchoverModalOpen && (
+            <InitiateSwitchoverModal
+              drConfig={drConfig}
+              allowedTasks={allowedTasks}
+              modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
+            />
+          )}
+          {isFailoverModalOpen && (
+            <InitiateFailoverModal
+              drConfig={drConfig}
+              allowedTasks={allowedTasks}
+              modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
+            />
+          )}
+          {isDeleteConfigModalOpen && (
+            <DeleteConfigModal
+              drConfig={drConfig}
+              allowedTasks={allowedTasks}
+              currentUniverseName={currentUniverseQuery.data.name}
+              redirectUrl={deleteConfigRedirectUrl}
+              modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
+            />
+          )}
+          {isEditConfigModalOpen && (
+            <EditConfigModal
+              drConfig={drConfig}
+              allowedTasks={allowedTasks}
+              modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
+            />
+          )}
+          {isEditConfigTargetModalOpen && (
+            <EditConfigTargetModal
+              drConfig={drConfig}
+              modalProps={{
+                open: isEditConfigTargetModalOpen,
+                onClose: closeEditTargetConfigModal
+              }}
+            />
+          )}
+          {isEditTablesModalOpen && (
+            <EditTablesModal
+              xClusterConfigUuid={xClusterConfig.uuid}
+              isDrInterface={true}
+              drConfigUuid={drConfig.uuid}
+              storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
+              modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
+            />
+          )}
+          {isRepairConfigModalOpen && (
+            <RepairDrConfigModal
+              drConfig={drConfig}
+              modalProps={{ open: isRepairConfigModalOpen, onClose: closeRepairConfigModal }}
+            />
+          )}
+          {isRestartConfigModalOpen && (
+            <RestartConfigModal
+              isDrInterface={true}
+              allowedTasks={allowedTasks}
+              drConfig={drConfig}
+              isVisible={isRestartConfigModalOpen}
+              onHide={closeRestartConfigModal}
+              xClusterConfigUuid={xClusterConfig.uuid}
+            />
+          )}
+          {isDbSyncModalOpen && (
+            <SyncXClusterConfigModal
+              allowedTasks={allowedTasks}
+              xClusterConfig={xClusterConfig}
+              isDrInterface={true}
+              drConfigUuid={drConfig.uuid}
+              modalProps={{ open: isDbSyncModalOpen, onClose: closeDbSyncModal }}
+            />
+          )}
         </Box>
-        {isSwitchoverModalOpen && (
-          <InitiateSwitchoverModal
-            drConfig={drConfig}
-            allowedTasks={allowedTasks}
-            modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
-          />
-        )}
-        {isFailoverModalOpen && (
-          <InitiateFailoverModal
-            drConfig={drConfig}
-            allowedTasks={allowedTasks}
-            modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
-          />
-        )}
-        {isDeleteConfigModalOpen && (
-          <DeleteConfigModal
-            drConfig={drConfig}
-            allowedTasks={allowedTasks}
-            currentUniverseName={currentUniverseQuery.data.name}
-            modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
-          />
-        )}
-        {isEditConfigModalOpen && (
-          <EditConfigModal
-            drConfig={drConfig}
-            allowedTasks={allowedTasks}
-            modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
-          />
-        )}
-        {isEditConfigTargetModalOpen && (
-          <EditConfigTargetModal
-            drConfig={drConfig}
-            modalProps={{ open: isEditConfigTargetModalOpen, onClose: closeEditTargetConfigModal }}
-          />
-        )}
-        {isEditTablesModalOpen && (
-          <EditTablesModal
-            xClusterConfigUuid={xClusterConfig.uuid}
-            isDrInterface={true}
-            drConfigUuid={drConfig.uuid}
-            storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
-            modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
-          />
-        )}
-        {isRepairConfigModalOpen && (
-          <RepairDrConfigModal
-            drConfig={drConfig}
-            modalProps={{ open: isRepairConfigModalOpen, onClose: closeRepairConfigModal }}
-          />
-        )}
-        {isRestartConfigModalOpen && (
-          <RestartConfigModal
-            isDrInterface={true}
-            allowedTasks={allowedTasks}
-            drConfig={drConfig}
-            isVisible={isRestartConfigModalOpen}
-            onHide={closeRestartConfigModal}
-            xClusterConfigUuid={xClusterConfig.uuid}
-          />
-        )}
-        {isDbSyncModalOpen && (
-          <SyncXClusterConfigModal
-            allowedTasks={allowedTasks}
-            xClusterConfig={xClusterConfig}
-            isDrInterface={true}
-            drConfigUuid={drConfig.uuid}
-            modalProps={{ open: isDbSyncModalOpen, onClose: closeDbSyncModal }}
-          />
-        )}
       </RbacValidator>
     </>
   );

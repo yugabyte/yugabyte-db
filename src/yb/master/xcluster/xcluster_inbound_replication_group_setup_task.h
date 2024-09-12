@@ -167,7 +167,7 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
       const google::protobuf::RepeatedPtrField<HostPortPB>& source_masters,
       std::vector<TableId>&& source_table_ids, std::vector<xrepl::StreamId>&& stream_ids,
       bool transactional, std::vector<NamespaceId>&& source_namespace_ids,
-      std::vector<NamespaceId>&& target_namespace_ids);
+      std::vector<NamespaceId>&& target_namespace_ids, bool automatic_ddl_mode);
 
   ~XClusterInboundReplicationGroupSetupTask() = default;
 
@@ -241,15 +241,18 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
 
   const xcluster::ReplicationGroupId replication_group_id_;
   const google::protobuf::RepeatedPtrField<HostPortPB> source_masters_;
-  const bool transactional_;
   // The following lists are preserved in the same order they were provided.
   const std::vector<TableId> source_table_ids_;
   const std::vector<xrepl::StreamId> stream_ids_;
   const std::vector<NamespaceId> source_namespace_ids_;
   const std::vector<NamespaceId> target_namespace_ids_;
+
   const bool is_alter_replication_;
-  const bool is_db_scoped_;
   const bool stream_ids_provided_;
+  const bool transactional_;  // Not used in ALTER.
+  const bool is_db_scoped_;  // Not used in ALTER.
+  const bool automatic_ddl_mode_;  // Not used in ALTER.
+
   std::string log_prefix_;
 
   std::shared_ptr<client::XClusterRemoteClientHolder> remote_client_;

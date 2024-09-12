@@ -156,11 +156,11 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
     ```
 
-1. Select the **Backup config** that corresponds to the location of the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+1. Select the **Backup config** that corresponds to the storage configuration that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 
-    Note that the backup config bucket takes precedence over the bucket specified in the backup location.
+    Note that the storage configuration bucket takes precedence over the bucket specified in the backup location.
 
-    For example, if the backup config you provide is for the following S3 Bucket:
+    For example, if the storage configuration you select is for the following S3 Bucket:
 
     ```output
     s3://test_bucket/test
