@@ -889,7 +889,7 @@ CREATE TRIGGER trigger_modify_employee_12000
 ERROR:  UNLOGGED database object not supported yet
 ```
 
-**Workaround**: Make it a LOGGED table and it should work
+**Workaround**: Convert it to a LOGGED table.
 
 **Example**
 
