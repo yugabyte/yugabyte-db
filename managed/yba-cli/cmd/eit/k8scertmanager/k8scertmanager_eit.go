@@ -27,8 +27,7 @@ var K8sCertManagerEITCmd = &cobra.Command{
 func init() {
 	K8sCertManagerEITCmd.Flags().SortFlags = false
 
-	// K8sCertManagerEITCmd.AddCommand(createK8sCertManagerEITCmd)
-	// K8sCertManagerEITCmd.AddCommand(updateK8sCertManagerEITCmd)
+	K8sCertManagerEITCmd.AddCommand(createK8sCertManagerEITCmd)
 	K8sCertManagerEITCmd.AddCommand(listK8sCertManagerEITCmd)
 	K8sCertManagerEITCmd.AddCommand(describeK8sCertManagerEITCmd)
 	K8sCertManagerEITCmd.AddCommand(deleteK8sCertManagerEITCmd)

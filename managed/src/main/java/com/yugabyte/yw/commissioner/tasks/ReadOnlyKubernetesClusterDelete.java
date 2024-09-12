@@ -123,6 +123,14 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
               KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
+      // Handle Namespaced services ownership change/delete
+      addHandleKubernetesNamespacedServices(
+              true /* readReplicaDelete */,
+              null /* universeParams */,
+              universe.getUniverseUUID(),
+              false /* handleOwnershipChanges */)
+          .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
+
       // This value cannot be changed once set during the Universe
       // creation, so we don't allow users to modify it later during
       // edit, upgrade, etc.

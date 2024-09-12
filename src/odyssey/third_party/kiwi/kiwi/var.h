@@ -1,3 +1,7 @@
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+
 #ifndef KIWI_VAR_H
 #define KIWI_VAR_H
 
@@ -61,6 +65,20 @@ struct kiwi_vars {
 #endif
 };
 
+static inline char* yb_lowercase_str(const char *str)
+{
+	if (str == NULL)
+		return NULL;
+
+	char *lower_str = malloc(strlen(str) + 1);
+	for (int i = 0; str[i]; i++)
+		lower_str[i] = tolower((unsigned char)str[i]);
+    
+	// Null-terminate the new string
+	lower_str[strlen(str)] = '\0';
+	return lower_str;
+}
+
 static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -69,8 +87,11 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 #else
 	if (name_len == 0)
 		var->name[0] = '\0';
-	else
-		memcpy(var->name, name, name_len);
+	else {
+		char *yb_lowercase_name = yb_lowercase_str(name);
+		memcpy(var->name, yb_lowercase_name, name_len);
+		free(yb_lowercase_name);
+	}
 #endif
 	var->name_len = name_len;
 	var->value_len = 0;
@@ -137,7 +158,9 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
-	memcpy(var->name, name, name_len);
+	char *yb_lowercase_name = yb_lowercase_str(name);
+	memcpy(var->name, yb_lowercase_name, name_len);
+	free(yb_lowercase_name);
 	var->name_len = name_len;
 	memcpy(var->value, value, value_len);
 	var->value_len = value_len;
@@ -158,10 +181,17 @@ static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 	if (vars->size == 0)
 		return NULL;
 
+	char *yb_lowercase_name = yb_lowercase_str(name);
 	for (int i = 0; i < vars->size; i++) {
-		if (strcmp(vars->vars[i].name, name) == 0)
+		char *yb_lowercase_var_name = yb_lowercase_str(vars->vars[i].name);
+		if (strcmp(yb_lowercase_var_name, yb_lowercase_name) == 0) {
+			free(yb_lowercase_var_name);
+			free(yb_lowercase_name);
 			return &vars->vars[i];
+		}
+		free(yb_lowercase_var_name);
 	}
+	free(yb_lowercase_name);
 	return NULL;
 }
 #endif

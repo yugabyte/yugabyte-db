@@ -214,6 +214,12 @@ public class UserTaskDetails {
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
 
+    // Delete Kubernetes Namespaced Service
+    KubernetesNamespacedServiceDelete,
+
+    // Handle Kubernetes Namespaced Service
+    KubernetesHandleNamespacedService,
+
     // Start master process on a node
     StartingMasterProcess,
 
@@ -525,6 +531,13 @@ public class UserTaskDetails {
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
         break;
+      case KubernetesNamespacedServiceDelete:
+        title = "Delete Kubernetes Namespaced Service";
+        description = "Delete Kubernetes Namespaced Service";
+        break;
+      case KubernetesHandleNamespacedService:
+        title = "Handle Kubernetes Namespaced Service";
+        description = "Handle Kubernetes Namespaced Service";
       case KubernetesCopyPackage:
         title = "Copy Package to Kubernetes Pod";
         description = "Copy Package to Kubernetes Pod";

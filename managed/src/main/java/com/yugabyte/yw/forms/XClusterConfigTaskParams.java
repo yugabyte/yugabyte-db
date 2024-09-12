@@ -1,7 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -9,6 +13,8 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -19,23 +25,25 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.yb.master.MasterDdlOuterClass;
+import lombok.Setter;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @NoArgsConstructor
 @Getter
+@JsonDeserialize(converter = XClusterConfigTaskParams.Converter.class)
 public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;
-  @JsonIgnore protected List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
+  @JsonIgnore protected List<TableInfo> tableInfoList;
   protected Set<String> sourceTableIdsWithNoTableOnTargetUniverse;
   protected Map<String, List<String>> mainTableIndexTablesMap;
-  protected XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
+  @Setter protected XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
   protected XClusterConfigEditFormData editFormData;
   protected XClusterConfigSyncFormData syncFormData;
   protected Set<String> tableIdsToAdd;
   protected Set<String> tableIdsToRemove;
   protected boolean isForced = false;
-  protected DrConfigCreateForm.PitrParams pitrParams;
+  @Setter protected DrConfigCreateForm.PitrParams pitrParams;
   protected boolean isForceBootstrap = false;
   public Set<String> dbs;
   protected Set<String> databaseIdsToAdd;
@@ -44,7 +52,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap,
       @Nullable DrConfigCreateForm.PitrParams pitrParams) {
@@ -68,7 +76,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap) {
     this(
@@ -116,7 +124,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigEditFormData editFormData,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsToAdd,
       Map<String, String> sourceTableIdTargetTableIdMap,
@@ -158,7 +166,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      List<TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap,
       boolean isForced,
@@ -251,11 +259,45 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     }
   }
 
-  public void setPitrParams(DrConfigCreateForm.PitrParams pitrParams) {
-    this.pitrParams = pitrParams;
+  public void refreshIfExists() {
+    // The entities that have non-serializable fields should be refreshed after deserialization that
+    //  happens during task retry.
+    if (Objects.nonNull(xClusterConfig)) {
+      xClusterConfig = XClusterConfig.maybeGet(xClusterConfig.getUuid()).orElse(null);
+    }
   }
 
-  public void setBootstrapParams(XClusterConfigCreateFormData.BootstrapParams bootstrapParams) {
-    this.bootstrapParams = bootstrapParams;
+  @JsonGetter
+  private List<String> getTableInfoAsBytesList() {
+    if (tableInfoList == null) {
+      return null;
+    }
+    List<String> tableInfoAsBytesList = new ArrayList<>();
+    tableInfoList.forEach(
+        tableInfo -> {
+          ByteString byteString = ByteString.copyFrom(tableInfo.toByteArray());
+          tableInfoAsBytesList.add(Base64.getEncoder().encodeToString(byteString.toByteArray()));
+        });
+    return tableInfoAsBytesList;
   }
+
+  @JsonSetter
+  private void setTableInfoAsBytesList(List<String> tableInfoAsBytesList) {
+    if (tableInfoAsBytesList == null) {
+      tableInfoList = null;
+      return;
+    }
+    tableInfoList = new ArrayList<>();
+    tableInfoAsBytesList.forEach(
+        encodedString -> {
+          try {
+            byte[] bytes = Base64.getDecoder().decode(encodedString);
+            tableInfoList.add(TableInfo.parseFrom(bytes));
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        });
+  }
+
+  public static class Converter extends BaseConverter<XClusterConfigTaskParams> {}
 }

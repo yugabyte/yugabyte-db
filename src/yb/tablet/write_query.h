@@ -218,7 +218,7 @@ class WriteQuery {
   tserver::WriteResponsePB* response_;
 
   // this transaction's start time
-  CoarseTimePoint start_time_;
+  MonoTime start_time_;
 
   HybridTime restart_read_ht_;
 

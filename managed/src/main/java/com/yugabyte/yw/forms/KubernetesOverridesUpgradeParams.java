@@ -6,9 +6,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +38,14 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "The universe type must be kubernetes to use k8s overrides upgrade API.");
+    }
+
+    // Verify service endpoints
+    try {
+      KubernetesUtil.validateUpgradeServiceEndpoints(
+          universeOverrides, azOverrides, universe.getUniverseDetails(), universe.getConfig());
+    } catch (IOException e) {
+      throw new RuntimeException("Error occured while parsing overrides", e.getCause());
     }
 
     // Check if overrides changed.

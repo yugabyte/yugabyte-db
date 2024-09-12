@@ -6,8 +6,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -15,22 +15,22 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.time.Duration;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.BootstrapUniverseResponse;
+import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.YBClient;
 
 @Slf4j
 public class BootstrapProducer extends XClusterConfigTaskBase {
-
-  public static final long MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
-  public static final long MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
-
   private static final long INITIAL_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER =
       1000; // 1 second
   private static final long MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER =
@@ -91,12 +91,12 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
         ybcClientConfigFactory.create(
             sourceUniverseMasterAddresses,
             sourceUniverseCertificate,
-            Math.max(
-                confGetter.getGlobalConf(GlobalConfKeys.bootstrapProducerTimeoutMs),
-                MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP),
-            Math.max(
-                confGetter.getGlobalConf(GlobalConfKeys.ybcSocketReadTimeoutMs),
-                MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP));
+            confGetter
+                .getConfForScope(sourceUniverse, UniverseConfKeys.xclusterBootstrapProducerTimeout)
+                .toMillis(),
+            confGetter
+                .getConfForScope(sourceUniverse, UniverseConfKeys.xclusterBootstrapProducerTimeout)
+                .toMillis());
     List<HostAndPort> tserverHostAndPortList =
         sourceUniverse.getTServersInPrimaryCluster().stream()
             .map(
@@ -106,79 +106,125 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             .collect(Collectors.toList());
 
     try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
-      // Set bootstrap creation time.
-      Date now = new Date();
-      xClusterConfig.updateBootstrapCreateTimeForTables(taskParams().tableIds, now);
-      log.info("Bootstrap creation time for tables {} set to {}", taskParams().tableIds, now);
+      Map<String, String> tableIdToBootstrapIdMap = new HashMap<>();
+      try {
+        ListCDCStreamsResponse listCDCStreamsResp =
+            client.listCDCStreams(null /* tableId */, null /* namespace */, null /* idType */);
+        if (listCDCStreamsResp.hasError()) {
+          String errMsg =
+              String.format(
+                  "Failed to listCDCStreams universe (%s): %s",
+                  taskParams().getUniverseUUID(), listCDCStreamsResp.errorMessage());
+          throw new RuntimeException(errMsg);
+        }
+        listCDCStreamsResp
+            .getStreams()
+            .forEach(
+                stream -> {
+                  if (isStreamInfoForXCluster(stream)
+                      && Objects.equals(stream.getOptions().get("state"), "INITIATED")) {
+                    List<String> streamTableIds = stream.getTableIds();
+                    if (streamTableIds.size() != 1) {
+                      return;
+                    }
+                    String tableId = streamTableIds.get(0);
+                    if (taskParams().tableIds.contains(tableId)
+                        && Objects.nonNull(
+                            xClusterConfig.getTableById(tableId).getBootstrapCreateTime())) {
+                      tableIdToBootstrapIdMap.put(tableId, stream.getStreamId());
+                    }
+                  }
+                });
+      } catch (Exception e) {
+        log.error("client.listCDCStreams RPC hit error : {}", e.getMessage());
+        throw new RuntimeException(e);
+      }
 
-      int tserverIndex = 0;
-      BootstrapUniverseResponse resp = null;
-      while (tserverIndex < tserverHostAndPortList.size() && Objects.isNull(resp)) {
-        try {
-          // Do the bootstrap.
-          HostAndPort hostAndPort = tserverHostAndPortList.get(tserverIndex);
-          resp = client.bootstrapUniverse(hostAndPort, taskParams().tableIds);
-          if (resp.hasError()) {
-            String errMsg =
-                String.format(
-                    "Failed to bootstrap universe (%s) for table (%s): %s",
-                    taskParams().getUniverseUUID(), taskParams().tableIds, resp.errorMessage());
-            throw new RuntimeException(errMsg);
+      if (!tableIdToBootstrapIdMap.isEmpty()) {
+        log.info("Tables {} are already bootstrapped", tableIdToBootstrapIdMap.keySet());
+      }
+      List<String> tableIdsWithoutBootstrapId =
+          taskParams().tableIds.stream()
+              .filter(tableId -> !tableIdToBootstrapIdMap.containsKey(tableId))
+              .collect(Collectors.toList());
+
+      if (!tableIdsWithoutBootstrapId.isEmpty()) {
+        // Set bootstrap creation time.
+        Date now = new Date();
+        xClusterConfig.updateBootstrapCreateTimeForTables(tableIdsWithoutBootstrapId, now);
+        log.info(
+            "Bootstrap creation time for tables {} set to {}", tableIdsWithoutBootstrapId, now);
+
+        int tserverIndex = 0;
+        BootstrapUniverseResponse resp = null;
+        while (tserverIndex < tserverHostAndPortList.size() && Objects.isNull(resp)) {
+          try {
+            // Do the bootstrap.
+            HostAndPort hostAndPort = tserverHostAndPortList.get(tserverIndex);
+            resp = client.bootstrapUniverse(hostAndPort, tableIdsWithoutBootstrapId);
+            if (resp.hasError()) {
+              String errMsg =
+                  String.format(
+                      "Failed to bootstrap universe (%s) for table (%s): %s",
+                      taskParams().getUniverseUUID(),
+                      tableIdsWithoutBootstrapId,
+                      resp.errorMessage());
+              throw new RuntimeException(errMsg);
+            }
+          } catch (Exception e) {
+            // Print the error and retry.
+            log.error("client.bootstrapUniverse RPC hit error : {}", e.getMessage());
+            resp = null;
+            waitFor(
+                Duration.ofMillis(
+                    Util.getExponentialBackoffDelayMs(
+                        INITIAL_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
+                        MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
+                        tserverIndex /* iterationNumber */)));
+          } finally {
+            tserverIndex++;
           }
-        } catch (Exception e) {
-          // Print the error and retry.
-          log.error("client.bootstrapUniverse RPC hit error : {}", e.getMessage());
-          resp = null;
-          // Busy waiting is unavoidable.
-          Thread.sleep(
-              Util.getExponentialBackoffDelayMs(
-                  INITIAL_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
-                  MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER,
-                  tserverIndex /* iterationNumber */));
-        } finally {
-          tserverIndex++;
+        }
+        if (Objects.isNull(resp)) {
+          throw new RuntimeException(
+              String.format(
+                  "BootstrapProducer RPC call has failed for %s", tableIdsWithoutBootstrapId));
+        }
+        List<String> bootstrapIds = resp.bootstrapIds();
+        if (bootstrapIds.size() != tableIdsWithoutBootstrapId.size()) {
+          String errMsg =
+              String.format(
+                  "Received invalid number of bootstrap ids (%d), must be (%d)",
+                  bootstrapIds.size(), tableIdsWithoutBootstrapId.size());
+          throw new IllegalStateException(errMsg);
+        }
+        for (int i = 0; i < tableIdsWithoutBootstrapId.size(); i++) {
+          tableIdToBootstrapIdMap.put(tableIdsWithoutBootstrapId.get(i), bootstrapIds.get(i));
         }
       }
 
-      if (Objects.isNull(resp)) {
-        throw new RuntimeException(
-            String.format("BootstrapProducer RPC call has failed for %s", taskParams().tableIds));
-      }
-
-      List<String> bootstrapIds = resp.bootstrapIds();
-      if (bootstrapIds.size() != taskParams().tableIds.size()) {
-        String errMsg =
-            String.format(
-                "Received invalid number of bootstrap ids (%d), must be (%d)",
-                bootstrapIds.size(), taskParams().tableIds.size());
-        throw new IllegalStateException(errMsg);
-      }
-
       // Save bootstrap ids.
-      for (int i = 0; i < taskParams().tableIds.size(); i++) {
-        Optional<XClusterTableConfig> tableConfig =
-            xClusterConfig.maybeGetTableById(taskParams().tableIds.get(i));
-        int idx = i;
-        tableConfig.ifPresentOrElse(
-            config -> {
-              String bootstrapId = bootstrapIds.get(idx);
-              config.setStreamId(bootstrapId);
-              // If the table is bootstrapped, no need to bootstrap again.
-              config.setNeedBootstrap(false);
-              log.info("Stream id for table {} set to {}", config.getTableId(), bootstrapId);
-            },
-            () -> {
-              // This code will never run because when we set the bootstrap creation time, we made
-              // sure
-              // that all the tableIds exist.
-              String errMsg =
-                  String.format(
-                      "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                      taskParams().tableIds.get(idx), taskParams().getXClusterConfig().getUuid());
-              throw new RuntimeException(errMsg);
-            });
-      }
-
+      tableIdToBootstrapIdMap.forEach(
+          (tableId, bootstrapId) -> {
+            Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
+            tableConfig.ifPresentOrElse(
+                config -> {
+                  config.setStreamId(bootstrapId);
+                  // If the table is bootstrapped, no need to bootstrap again.
+                  config.setNeedBootstrap(false);
+                  log.info("Stream id for table {} set to {}", tableId, bootstrapId);
+                },
+                () -> {
+                  // This code will never run because when we set the bootstrap creation time, we
+                  // made
+                  // sure that all the tableIds exist.
+                  String errMsg =
+                      String.format(
+                          "Could not find tableId (%s) in the xCluster config with uuid (%s)",
+                          tableId, taskParams().getXClusterConfig().getUuid());
+                  throw new IllegalStateException(errMsg);
+                });
+          });
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {

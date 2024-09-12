@@ -1733,13 +1733,26 @@ Default: `1GB`
 
 ##### enable_bitmapscan
 
-{{<badge/tp>}} Enables or disables the query planner's use of bitmap-scan plan types.
+PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
-Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bitmap is bounded by work_mem. If there are n bitmaps, it means we may use n * work_mem memory.
+Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 
 Bitmap scans are only supported for LSM indexes.
+
+Default: true
+
+##### yb_enable_bitmapscan
+
+{{<badge/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+
+| enable_bitmapscan | yb_enable_bitmapscan | Result |
+| :--- | :---  | :--- |
+| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
+| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
 Default: false
 

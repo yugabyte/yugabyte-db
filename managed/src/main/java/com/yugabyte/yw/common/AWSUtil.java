@@ -94,7 +94,6 @@ import org.yb.ybc.ProxySpec;
 @Singleton
 @Slf4j
 public class AWSUtil implements CloudUtil {
-  @Inject IAMTemporaryCredentialsProvider iamCredsProvider;
   @Inject CustomCAStoreManager customCAStoreManager;
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
@@ -305,7 +304,8 @@ public class AWSUtil implements CloudUtil {
       try {
         s3ClientBuilder.withCredentials(
             new AWSStaticCredentialsProvider(
-                new IAMTemporaryCredentialsProvider().getTemporaryCredentials(s3Data)));
+                (new IAMTemporaryCredentialsProvider(runtimeConfGetter))
+                    .getTemporaryCredentials(s3Data)));
       } catch (Exception e) {
         log.error("Fetching IAM credentials failed: {}", e.getMessage());
         throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
@@ -671,7 +671,8 @@ public class AWSUtil implements CloudUtil {
   private void fillMapWithIAMCreds(
       Map<String, String> s3CredsMap, CustomerConfigStorageS3Data s3Data) {
     try {
-      AWSCredentials creds = iamCredsProvider.getTemporaryCredentials(s3Data);
+      AWSCredentials creds =
+          (new IAMTemporaryCredentialsProvider(runtimeConfGetter)).getTemporaryCredentials(s3Data);
       s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, creds.getAWSAccessKeyId());
       s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, creds.getAWSSecretKey());
       if (creds instanceof AWSSessionCredentials) {

@@ -26,36 +26,37 @@ add_subdirectory(ysql_bench_metrics_handler)
 
 # PGGate API library.
 set(PGGATE_SRCS
-    ybc_pggate.cc
+    pg_callbacks.cc
+    pg_client.cc
+    pg_column.cc
+    pg_ddl.cc
+    pg_dml.cc
+    pg_dml_read.cc
+    pg_dml_write.cc
+    pg_doc_metrics.cc
+    pg_doc_op.cc
+    pg_explicit_row_lock_buffer.cc
+    pg_expr.cc
+    pg_function.cc
+    pg_function_helpers.cc
     pggate.cc
     pggate_thread_local_vars.cc
-    pg_client.cc
+    pg_memctx.cc
     pg_op.cc
     pg_operation_buffer.cc
     pg_perform_future.cc
     pg_sample.cc
-    pg_session.cc
-    pg_ddl.cc
-    pg_dml.cc
-    pg_dml_write.cc
-    pg_dml_read.cc
-    pg_function.cc
-    pg_function_helpers.cc
-    pg_type.cc
     pg_select.cc
     pg_select_index.cc
-    pg_expr.cc
-    pg_column.cc
-    pg_doc_op.cc
+    pg_session.cc
+    pg_sys_table_prefetcher.cc
     pg_table.cc
     pg_tabledesc.cc
-    pg_txn_manager.cc
-    pg_value.cc
-    pg_memctx.cc
-    pg_callbacks.cc
     pg_tools.cc
-    pg_sys_table_prefetcher.cc
-    pg_doc_metrics.cc)
+    pg_txn_manager.cc
+    pg_type.cc
+    pg_value.cc
+    ybc_pggate.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc

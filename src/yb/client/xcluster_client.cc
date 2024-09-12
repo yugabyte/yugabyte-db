@@ -215,7 +215,7 @@ Result<IsOperationDoneResult> XClusterClient::IsCreateXClusterReplicationDone(
 
 Status XClusterClient::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceId>& namespace_ids) {
+    const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
   SCHECK(!namespace_ids.empty(), InvalidArgument, "At least one namespace Id is required");
 
@@ -224,6 +224,8 @@ Status XClusterClient::CreateOutboundReplicationGroup(
   for (const auto& namespace_id : namespace_ids) {
     req.add_namespace_ids(namespace_id);
   }
+
+  req.set_automatic_ddl_mode(automatic_ddl_mode);
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterCreateOutboundReplicationGroup, req);
 
@@ -569,6 +571,7 @@ XClusterClient::GetUniverseReplicationInfo(
     result.db_scope_namespace_id_map.emplace(
         db_scoped_info.target_namespace_id(), db_scoped_info.source_namespace_id());
   }
+  result.automatic_ddl_mode = resp.automatic_ddl_mode();
 
   return result;
 }
@@ -578,8 +581,8 @@ Result<UniverseUuid> XClusterClient::SetupDbScopedUniverseReplication(
     const std::vector<HostPort>& source_master_addresses,
     const std::vector<NamespaceName>& namespace_names,
     const std::vector<NamespaceId>& source_namespace_ids,
-    const std::vector<TableId>& source_table_ids,
-    const std::vector<xrepl::StreamId>& bootstrap_ids) {
+    const std::vector<TableId>& source_table_ids, const std::vector<xrepl::StreamId>& bootstrap_ids,
+    bool automatic_ddl_mode) {
   master::SetupUniverseReplicationRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
   req.set_transactional(true);  // Db Scoped replication is always transactional.
@@ -594,6 +597,8 @@ Result<UniverseUuid> XClusterClient::SetupDbScopedUniverseReplication(
   for (const auto& bootstrap_id : bootstrap_ids) {
     req.add_producer_bootstrap_ids(bootstrap_id.ToString());
   }
+
+  req.set_automatic_ddl_mode(automatic_ddl_mode);
 
   SCHECK_EQ(
       namespace_names.size(), source_namespace_ids.size(), InvalidArgument,

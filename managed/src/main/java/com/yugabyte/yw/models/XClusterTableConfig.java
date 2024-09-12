@@ -9,7 +9,7 @@ import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SCHEMA_MISMATCH;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -30,7 +30,6 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
@@ -87,13 +86,13 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(value = "The backup config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "backup_uuid", referencedColumnName = "backup_uuid")
-  @JsonProperty("backupUuid")
+  @JsonIgnore
   private Backup backup;
 
   @ApiModelProperty(value = "The restore config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
-  @JsonProperty("restoreUuid")
+  @JsonIgnore
   private Restore restore;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -201,21 +200,13 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  /**
-   * Retrieves an XClusterTableConfig object based on the provided tableId.
-   *
-   * @param tableId The unique identifier of the table.
-   * @return An Optional containing the XClusterTableConfig object if found, or an empty Optional if
-   *     not found.
-   */
-  public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().where().eq("table_id", tableId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
-      return Optional.empty();
+  @JsonSetter("backupUuid")
+  private void setBackupFromUuid(UUID backupUuid) {
+    if (backupUuid == null) {
+      setBackup(null);
+      return;
     }
-    return Optional.of(xClusterTableConfig);
+    setBackup(Backup.maybeGet(backupUuid).orElse(null));
   }
 
   @JsonGetter("backupUuid")
@@ -224,6 +215,15 @@ public class XClusterTableConfig extends Model {
       return null;
     }
     return getBackup().getBackupUUID();
+  }
+
+  @JsonSetter("restoreUuid")
+  private void setRestoreFromUuid(UUID restoreUuid) {
+    if (restoreUuid == null) {
+      restore = null;
+      return;
+    }
+    setRestore(Restore.maybeGet(restoreUuid).orElse(null));
   }
 
   @JsonGetter("restoreUuid")

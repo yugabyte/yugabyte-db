@@ -728,9 +728,9 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
   auto target_uuid =
       VERIFY_RESULT(remote_client->GetXClusterClient().SetupDbScopedUniverseReplication(
           Id(), source_master_addresses, namespace_names, namespace_ids, source_table_ids,
-          bootstrap_ids));
+          bootstrap_ids, outbound_group.automatic_ddl_mode()));
 
-  auto* target_universe_info = l.mutable_data()->pb.mutable_target_universe_info();
+  auto* target_universe_info = outbound_group.mutable_target_universe_info();
 
   target_universe_info->set_universe_uuid(target_uuid.ToString());
   target_universe_info->set_state(
@@ -1145,6 +1145,12 @@ Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
   SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
 
   return table_info->stream_id();
+}
+
+Result<bool> XClusterOutboundReplicationGroup::AutomaticDDLMode() const {
+  SharedLock mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForRead());
+  return l->pb.automatic_ddl_mode();
 }
 
 }  // namespace yb::master

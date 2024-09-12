@@ -9,7 +9,8 @@ export const XClusterConfigStatus = {
   UPDATING: 'Updating',
   DELETED_UNIVERSE: 'DeletedUniverse',
   DELETION_FAILED: 'DeletionFailed',
-  FAILED: 'Failed'
+  FAILED: 'Failed',
+  DRAINED_DATA: 'DrainedData'
 } as const;
 export type XClusterConfigStatus = typeof XClusterConfigStatus[keyof typeof XClusterConfigStatus];
 

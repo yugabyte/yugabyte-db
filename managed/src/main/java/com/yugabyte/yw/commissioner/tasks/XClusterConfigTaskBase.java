@@ -23,7 +23,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterAddNamespaceToOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
@@ -31,6 +30,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse;
+import com.yugabyte.yw.common.DrConfigStates;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -88,6 +89,7 @@ import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
+import org.yb.client.CDCStreamInfo;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
@@ -155,6 +157,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
       new HashMap<>();
 
+  private static final Map<DrConfigStates.State, List<TaskType>> DR_CONFIG_STATE_TO_ALLOWED_TASKS =
+      new HashMap<>();
+
   static {
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Initialized,
@@ -179,6 +184,32 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Failed,
         ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
+
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.Initializing, ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.Replicating,
+        ImmutableList.of(
+            TaskType.EditDrConfig,
+            TaskType.SwitchoverDrConfig,
+            TaskType.FailoverDrConfig,
+            TaskType.EditXClusterConfig,
+            TaskType.RestartDrConfig,
+            TaskType.SetTablesDrConfig,
+            TaskType.SyncDrConfig,
+            TaskType.DeleteDrConfig,
+            TaskType.SetDatabasesDrConfig));
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.SwitchoverInProgress,
+        ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.FailoverInProgress,
+        ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.Halted,
+        ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig, TaskType.EditDrConfig));
+    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
+        State.Failed, ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
   }
 
   protected XClusterConfigTaskBase(
@@ -271,6 +302,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return allowedTaskTypes.contains(taskType);
   }
 
+  public static boolean isTaskAllowed(DrConfig drConfig, TaskType taskType) {
+    if (taskType == null) {
+      throw new RuntimeException("taskType cannot be null");
+    }
+    List<TaskType> allowedTaskTypes = getAllowedTasks(drConfig);
+    // Allow unknown situations to avoid bugs for now.
+    if (allowedTaskTypes == null) {
+      return true;
+    }
+    return allowedTaskTypes.contains(taskType);
+  }
+
   public static List<TaskType> getAllowedTasks(XClusterConfig xClusterConfig) {
     if (xClusterConfig == null) {
       throw new RuntimeException(
@@ -281,6 +324,20 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.warn(
           "Cannot retrieve the list of allowed tasks because it is not defined for status={}",
           xClusterConfig.getStatus());
+    }
+    return allowedTaskTypes;
+  }
+
+  public static List<TaskType> getAllowedTasks(DrConfig drConfig) {
+    if (drConfig == null) {
+      throw new RuntimeException(
+          "Cannot retrieve the list of allowed tasks because drConfig is null");
+    }
+    List<TaskType> allowedTaskTypes = DR_CONFIG_STATE_TO_ALLOWED_TASKS.get(drConfig.getState());
+    if (allowedTaskTypes == null) {
+      log.warn(
+          "Cannot retrieve the list of allowed tasks because it is not defined for state={}",
+          drConfig.getState());
     }
     return allowedTaskTypes;
   }
@@ -315,27 +372,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  /**
-   * It creates a subtask to set the status of an xCluster config and save it in the Platform DB.
-   *
-   * @param desiredStatus The xCluster config will have this status
-   * @return The created subtask group; it can be used to assign a subtask group type to this
-   *     subtask
-   */
-  protected SubTaskGroup createXClusterConfigSetStatusTask(
-      XClusterConfig xClusterConfig, XClusterConfigStatusType desiredStatus) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatus");
-    XClusterConfigSetStatus.Params setStatusParams = new XClusterConfigSetStatus.Params();
-    setStatusParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    setStatusParams.xClusterConfig = xClusterConfig;
-    setStatusParams.desiredStatus = desiredStatus;
-    XClusterConfigSetStatus task = createTask(XClusterConfigSetStatus.class);
-    task.initialize(setStatusParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   protected SubTaskGroup createXClusterConfigSetStatusForTablesTask(
       XClusterConfig xClusterConfig,
       Set<String> tableIds,
@@ -355,21 +391,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  public SubTaskGroup createXClusterConfigSetStatusForNamespaceTask(
+  protected SubTaskGroup createXClusterConfigSetStatusForNamespacesTask(
       XClusterConfig xClusterConfig,
-      Set<String> namespaceIds,
+      Set<String> dbIds,
       XClusterNamespaceConfig.Status desiredStatus) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatusForTables");
-    XClusterConfigSetStatusForNamespaces.Params setStatusForTablesParams =
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatusForNamespaces");
+    XClusterConfigSetStatusForNamespaces.Params params =
         new XClusterConfigSetStatusForNamespaces.Params();
-    setStatusForTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    setStatusForTablesParams.xClusterConfig = xClusterConfig;
-    setStatusForTablesParams.dbs = namespaceIds;
-    setStatusForTablesParams.desiredStatus = desiredStatus;
+    params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    params.xClusterConfig = xClusterConfig;
+    params.dbs = dbIds;
+    params.desiredStatus = desiredStatus;
 
     XClusterConfigSetStatusForNamespaces task =
         createTask(XClusterConfigSetStatusForNamespaces.class);
-    task.initialize(setStatusForTablesParams);
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -1214,6 +1250,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     && !sourceYsqlTableIdsToSkipBidirectional.contains(entry.getKey()))
         .map(Entry::getKey)
         .collect(Collectors.toSet());
+  }
+
+  public static boolean isStreamInfoForXCluster(CDCStreamInfo streamInfo) {
+    Map<String, String> options = streamInfo.getOptions();
+    return options != null
+        && Objects.equals(options.get("record_format"), "WAL")
+        && Objects.equals(options.get("source_type"), "XCLUSTER");
   }
 
   public static Map<String, String> getSourceTableIdTargetTableIdMap(
@@ -3046,7 +3089,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * Add the databases to the replication.
    *
    * @param xClusterConfig config used
-   * @param dbIds db ids on the source universe that are being added to the replication.
+   * @param dbId db id on the source universe that is being added to the replication.
    * @return The created subtask group
    */
   protected SubTaskGroup createAddNamespaceToXClusterReplicationTask(

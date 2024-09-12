@@ -13,13 +13,10 @@
 
 #pragma once
 
-#include <cstring>
 #include <functional>
 #include <optional>
-#include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,6 +36,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -52,131 +50,6 @@ YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
-
-struct LightweightTableYbctid {
-  LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
-      : table_id(table_id_), ybctid(ybctid_) {}
-  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
-      : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
-
-  PgOid table_id;
-  std::string_view ybctid;
-};
-
-struct TableYbctid {
-  TableYbctid(PgOid table_id_, std::string ybctid_)
-      : table_id(table_id_), ybctid(std::move(ybctid_)) {}
-
-  operator LightweightTableYbctid() const {
-    return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
-  }
-
-  PgOid table_id;
-  std::string ybctid;
-};
-
-struct MemoryOptimizedTableYbctid {
-  MemoryOptimizedTableYbctid(PgOid table_id_, std::string_view ybctid_)
-      : table_id(table_id_),
-        ybctid_size(static_cast<uint32_t>(ybctid_.size())),
-        ybctid_data(new char[ybctid_size]) {
-    std::memcpy(ybctid_data.get(), ybctid_.data(), ybctid_size);
-  }
-
-  operator LightweightTableYbctid() const {
-    return LightweightTableYbctid(table_id, std::string_view(ybctid_data.get(), ybctid_size));
-  }
-
-  PgOid table_id;
-  uint32_t ybctid_size;
-  std::unique_ptr<char[]> ybctid_data;
-};
-
-static_assert(
-    sizeof(MemoryOptimizedTableYbctid) == 16 &&
-    sizeof(MemoryOptimizedTableYbctid) < sizeof(TableYbctid));
-
-struct TableYbctidComparator {
-  using is_transparent = void;
-
-  bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
-    return l.table_id == r.table_id && l.ybctid == r.ybctid;
-  }
-};
-
-struct TableYbctidHasher {
-  using is_transparent = void;
-
-  size_t operator()(const LightweightTableYbctid& value) const;
-};
-
-using OidSet = std::unordered_set<PgOid>;
-template <class T>
-using TableYbctidSetHelper =
-    std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
-using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
-using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
-using TableYbctidVector = std::vector<TableYbctid>;
-
-class TableYbctidVectorProvider {
- public:
-  class Accessor {
-   public:
-    ~Accessor() { container_.clear(); }
-    TableYbctidVector* operator->() { return &container_; }
-    TableYbctidVector& operator*() { return container_; }
-    operator TableYbctidVector&() { return container_; }
-
-   private:
-    explicit Accessor(TableYbctidVector* container) : container_(*container) {}
-
-    friend class TableYbctidVectorProvider;
-
-    TableYbctidVector& container_;
-
-    DISALLOW_COPY_AND_ASSIGN(Accessor);
-  };
-
-  [[nodiscard]] Accessor Get() { return Accessor(&container_); }
-
- private:
-  TableYbctidVector container_;
-};
-
-using ExecParametersMutator = LWFunction<void(PgExecParameters&)>;
-
-using YbctidReader =
-    std::function<Status(PgOid, TableYbctidVector&, const OidSet&, const ExecParametersMutator&)>;
-
-class ExplicitRowLockBuffer {
- public:
-  struct Info {
-    int rowmark;
-    int pg_wait_policy;
-    int docdb_wait_policy;
-    PgOid database_id;
-
-    friend bool operator==(const Info&, const Info&) = default;
-  };
-
-  ExplicitRowLockBuffer(
-      TableYbctidVectorProvider& ybctid_container_provider,
-      std::reference_wrapper<const YbctidReader> ybctid_reader);
-  Status Add(
-      Info&& info, const LightweightTableYbctid& key, bool is_region_local);
-  Status Flush();
-  void Clear();
-  bool IsEmpty() const;
-
- private:
-  Status DoFlush();
-
-  TableYbctidVectorProvider& ybctid_container_provider_;
-  const YbctidReader& ybctid_reader_;
-  TableYbctidSet intents_;
-  OidSet region_local_tables_;
-  std::optional<Info> info_;
-};
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.

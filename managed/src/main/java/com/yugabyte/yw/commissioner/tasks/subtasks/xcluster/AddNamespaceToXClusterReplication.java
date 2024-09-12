@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
@@ -23,6 +19,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonNet;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.AddNamespaceToXClusterReplicationResponse;
 import org.yb.client.IsAlterXClusterReplicationDoneResponse;
 import org.yb.client.YBClient;
@@ -30,7 +27,8 @@ import org.yb.util.NetUtil;
 
 @Slf4j
 public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
-  private static long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
+
+  private static final long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
 
   @Inject
   protected AddNamespaceToXClusterReplication(
@@ -40,6 +38,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
 
   @Getter
   public static class Params extends XClusterConfigTaskParams {
+
     // The target universe UUID must be stored in universeUUID field.
     // The parent xCluster config must be stored in xClusterConfig field.
     // The db to be added to the xcluster replication must be stored in the dbToAdd field.
@@ -63,6 +62,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
               "`db` in the task parameters must not be null or empty: it was %s",
               taskParams().getDbToAdd()));
     }
+    String dbId = taskParams().getDbToAdd();
 
     try (YBClient client =
         ybService.getClient(
@@ -77,93 +77,89 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
           xClusterConfig.getUuid(),
           taskParams().getDbToAdd());
 
-      String dbId = taskParams().getDbToAdd();
-      AddNamespaceToXClusterReplicationResponse createResponse =
-          client.addNamespaceToXClusterReplication(
-              xClusterConfig.getReplicationGroupName(), targetMasterAddresses, dbId);
-
-      if (createResponse.hasError()) {
-        throw new RuntimeException(
-            String.format(
-                "AddNamespaceToXClusterReplication rpc failed with error: %s",
-                createResponse.errorMessage()));
+      try {
+        AddNamespaceToXClusterReplicationResponse createResponse =
+            client.addNamespaceToXClusterReplication(
+                xClusterConfig.getReplicationGroupName(), targetMasterAddresses, dbId);
+        if (createResponse.hasError()) {
+          throw new RuntimeException(
+              String.format(
+                  "AddNamespaceToXClusterReplication rpc failed with error: %s",
+                  createResponse.errorMessage()));
+        }
+      } catch (Exception e) {
+        if (!e.getMessage().contains("already contains")) {
+          log.error(
+              "AddNamespaceToXClusterReplication rpc for xClusterConfig: {} hit error: {}",
+              xClusterConfig.getName(),
+              e.getMessage());
+          throw e;
+        }
+        // Skip if the replication group already contains the dbId.
       }
 
-      validateAlterReplicationCompleted(
-          client, sourceUniverse, targetMasterAddresses, xClusterConfig);
+      Duration xClusterWaitTimeout =
+          this.confGetter.getConfForScope(
+              sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
+      waitForAlterReplicationDone(
+          client,
+          xClusterConfig.getReplicationGroupName(),
+          targetMasterAddresses,
+          xClusterWaitTimeout.toMillis());
 
       log.debug(
           "Alter replication for xClusterConfig {} completed for source db id: {}",
           xClusterConfig.getUuid(),
           taskParams().getDbToAdd());
-
-      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Running);
-
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       Throwables.propagate(e);
     }
   }
 
-  protected void validateAlterReplicationCompleted(
+  protected void waitForAlterReplicationDone(
       YBClient client,
-      Universe sourceUniverse,
+      String replicationGroupName,
       Set<CommonNet.HostPortPB> targetMasterAddresses,
-      XClusterConfig xClusterConfig)
-      throws Exception {
-    Duration xclusterWaitTimeout =
-        this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
-    String dbId = taskParams().getDbToAdd();
-    log.info(
-        "Validating database {} for XClusterConfig({}) is done altering replication",
-        dbId,
-        xClusterConfig.getUuid());
-    boolean alterReplicationCompleted =
-        doWithConstTimeout(
-            DELAY_BETWEEN_RETRIES_MS,
-            xclusterWaitTimeout.toMillis(),
-            () -> {
-              IsAlterXClusterReplicationDoneResponse completionResponse;
-
-              try {
-                completionResponse =
-                    client.isAlterXClusterReplicationDone(
-                        xClusterConfig.getReplicationGroupName(), targetMasterAddresses);
-              } catch (Exception e) {
-                log.error(
-                    "IsAlterXClusterReplicationDone rpc for xClusterConfig: {}, db: {}, hit"
-                        + " error: {}",
-                    xClusterConfig.getName(),
-                    dbId,
-                    e.getMessage());
-                return false;
-              }
-
-              if (completionResponse.hasError()) {
-                log.error(
-                    "IsAlterXClusterReplication rpc for xClusterConfig: {}, db: {}, hit error:"
-                        + " {}",
-                    xClusterConfig.getName(),
-                    dbId,
-                    completionResponse.errorMessage());
-                return false;
-              }
-              log.debug(
-                  "Altering replication status is complete: {}, for universe: {}, xClusterConfig:"
-                      + " {}, dbId: {}",
-                  completionResponse.isDone(),
-                  sourceUniverse.getUniverseUUID(),
-                  xClusterConfig.getName(),
-                  dbId);
-              return completionResponse.isDone();
-            });
-    if (!alterReplicationCompleted) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Altering replication for database %s for xClusterConfig %s with source universe %s"
-                  + " timed out",
-              dbId, xClusterConfig.getName(), sourceUniverse.getUniverseUUID()));
-    }
+      long xClusterWaitTimeoutMs) {
+    doWithConstTimeout(
+        DELAY_BETWEEN_RETRIES_MS,
+        xClusterWaitTimeoutMs,
+        () -> {
+          try {
+            IsAlterXClusterReplicationDoneResponse completionResponse =
+                client.isAlterXClusterReplicationDone(replicationGroupName, targetMasterAddresses);
+            if (completionResponse.hasError()) {
+              throw new RuntimeException(
+                  String.format(
+                      "IsAlterXClusterReplication rpc for replication group name: %s, hit error:"
+                          + " %s",
+                      replicationGroupName, completionResponse.errorMessage()));
+            }
+            if (completionResponse.hasReplicationError()
+                && !completionResponse.getReplicationError().getCode().equals(ErrorCode.OK)) {
+              throw new RuntimeException(
+                  String.format(
+                      "IsAlterXClusterReplication rpc for replication group name: %s, hit"
+                          + " replication error: %s with error code: %s",
+                      replicationGroupName,
+                      completionResponse.getReplicationError().getMessage(),
+                      completionResponse.getReplicationError().getCode()));
+            }
+            if (!completionResponse.isDone()) {
+              throw new RuntimeException(
+                  String.format(
+                      "CreateXClusterReplication is not done for replication group name: %s",
+                      replicationGroupName));
+            }
+            // Replication alter is complete, return.
+          } catch (Exception e) {
+            log.error(
+                "IsAlterXClusterReplicationDone rpc for replication group name: {}, hit error: {}",
+                replicationGroupName,
+                e);
+            throw new RuntimeException(e);
+          }
+        });
   }
 }

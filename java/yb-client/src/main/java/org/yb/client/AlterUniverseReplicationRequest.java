@@ -87,7 +87,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
             .setRemoveTableIgnoreErrors(removeTableIgnoreErrors);
 
     if (newReplicationGroupName != null) {
-      builder.setNewReplicationGroupId(newReplicationGroupName);
+      builder.setDEPRECATEDNewReplicationGroupId(newReplicationGroupName);
     }
 
     // If all bootstrap IDs are null, it is not required.

@@ -708,12 +708,15 @@ message SysUniverseReplicationEntryPB {
 
   // DB Scoped repication.
   message DBScopeInfo {
+    optional bool automatic_ddl_mode = 1; // [default = false]
+
     message NamespaceInfo {
       required string consumer_namespace_id = 1;
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
   }
+
   optional DBScopeInfo db_scoped_info = 13;
 }
 
@@ -881,6 +884,8 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     DELETED = 1;
   }
   optional State state = 3 [ default = READY ];
+
+  optional bool automatic_ddl_mode = 4; // [default = false]
 }
 
 message SysTServerEntryPB {

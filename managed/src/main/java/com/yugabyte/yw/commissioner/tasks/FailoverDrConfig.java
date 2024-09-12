@@ -2,6 +2,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -11,17 +12,19 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 
 @Slf4j
+@Retryable
 public class FailoverDrConfig extends EditDrConfig {
 
   @Inject
@@ -44,20 +47,21 @@ public class FailoverDrConfig extends EditDrConfig {
   public void run() {
     log.info("Running {}", getName());
 
-    Optional<XClusterConfig> currentXClusterConfigOptional =
-        Optional.ofNullable(taskParams().getOldXClusterConfig());
-    // For failover, handling failure in the middle of task execution is not yet supported, thus
-    // the dr config should always have the current xCluster config object.
-    if (currentXClusterConfigOptional.isEmpty()) {
+    XClusterConfig currentXClusterConfig = taskParams().getOldXClusterConfig();
+    // Either the task is created which means the old xCluster config exists or the task is retry-ed
+    //  which means the old xCluster config can potentially be deleted.
+    if (isFirstTry() && Objects.isNull(currentXClusterConfig)) {
       throw new IllegalStateException(
           "The old xCluster config does not exist and cannot do a failover");
+    } else if (!isFirstTry() && Objects.isNull(currentXClusterConfig)) {
+      log.warn("The old xCluster config got deleted in the previous run");
     }
-    XClusterConfig currentXClusterConfig = currentXClusterConfigOptional.get();
     XClusterConfig failoverXClusterConfig = getXClusterConfigFromTaskParams();
+    // In failoverXClusterConfig, the source and target universes are swapped.
     Universe sourceUniverse =
-        Universe.getOrBadRequest(currentXClusterConfig.getSourceUniverseUUID());
+        Universe.getOrBadRequest(failoverXClusterConfig.getTargetUniverseUUID());
     Universe targetUniverse =
-        Universe.getOrBadRequest(currentXClusterConfig.getTargetUniverseUUID());
+        Universe.getOrBadRequest(failoverXClusterConfig.getSourceUniverseUUID());
     try {
       // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
@@ -67,79 +71,83 @@ public class FailoverDrConfig extends EditDrConfig {
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
-        createSetDrStatesTask(
+        if (!failoverXClusterConfig.getDrConfig().getState().equals(State.Halted)) {
+          if (Objects.nonNull(currentXClusterConfig)) {
+            createSetDrStatesTask(
+                    currentXClusterConfig,
+                    State.FailoverInProgress,
+                    SourceUniverseState.DrFailed,
+                    TargetUniverseState.SwitchingToDrPrimary,
+                    null /* keyspacePending */)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+            // The source and target universes are swapped in `failoverXClusterConfig`, so set the
+            // target universe state of that config which the source universe of the main config to
+            // `DrFailed`.
+            createSetDrStatesTask(
+                    failoverXClusterConfig,
+                    null /* drConfigState */,
+                    null /* sourceUniverseState */,
+                    TargetUniverseState.DrFailed,
+                    null /* keyspacePending */)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+            // Delete the main replication config.
+            // MUST skip deleting pitr configs here, otherwise we will not be able to restore to
+            // safetime.
+            createDeleteXClusterConfigSubtasks(
                 currentXClusterConfig,
-                State.FailoverInProgress,
-                SourceUniverseState.DrFailed,
-                TargetUniverseState.SwitchingToDrPrimary,
-                null /* keyspacePending */)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+                false /* keepEntry */,
+                true /* forceDelete */,
+                false /* deletePitrConfigs */);
+          }
 
-        // The source and target universes are swapped in `failoverXClusterConfig`, so set the
-        // target universe state of that config which the source universe of the main config to
-        // `DrFailed`.
-        createSetDrStatesTask(
-                failoverXClusterConfig,
-                null /* drConfigState */,
-                null /* sourceUniverseState */,
-                TargetUniverseState.DrFailed,
-                null /* keyspacePending */)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          // Todo: remove the following subtask from all the tasks.
+          createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
 
-        // Delete the main replication config.
-        // MUST skip deleting pitr configs here, otherwise we will not be able to restore to
-        // safetime.
-        createDeleteXClusterConfigSubtasks(
-            currentXClusterConfig,
-            false /* keepEntry */,
-            true /* forceDelete */,
-            false /* deletePitrConfigs */);
+          Set<NamespaceIdentifierPB> namespaces;
+          if (failoverXClusterConfig.getType().equals(ConfigType.Db)) {
+            namespaces = getNamespaces(this.ybService, targetUniverse, taskParams().getDbs());
+          } else {
+            namespaces = getNamespaces(taskParams().getTableInfoList());
+          }
 
-        createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
-
-        // Use pitr to restore to the safetime for all DBs.
-        getNamespaces(taskParams().getTableInfoList())
-            .forEach(
-                namespace -> {
-                  Optional<PitrConfig> pitrConfigOptional =
-                      PitrConfig.maybeGet(
-                          targetUniverse.getUniverseUUID(),
+          // Use pitr to restore to the safetime for all DBs.
+          namespaces.forEach(
+              namespace -> {
+                Optional<PitrConfig> pitrConfigOptional =
+                    PitrConfig.maybeGet(
+                        targetUniverse.getUniverseUUID(),
+                        failoverXClusterConfig.getTableTypeAsCommonType(),
+                        namespace.getName());
+                if (pitrConfigOptional.isEmpty()) {
+                  throw new IllegalStateException(
+                      String.format(
+                          "No PITR config for database %s.%s found on universe %s",
                           failoverXClusterConfig.getTableTypeAsCommonType(),
-                          namespace.getName());
-                  if (pitrConfigOptional.isEmpty()) {
-                    throw new IllegalStateException(
-                        String.format(
-                            "No PITR config for database %s.%s found on universe %s",
-                            failoverXClusterConfig.getTableTypeAsCommonType(),
-                            namespace.getName(),
-                            targetUniverse.getUniverseUUID()));
-                  }
+                          namespace.getName(),
+                          targetUniverse.getUniverseUUID()));
+                }
 
-                  // Todo: Ensure the PITR config exists on YBDB.
+                // Todo: Ensure the PITR config exists on YBDB.
 
-                  Long namespaceSafetimeEpochUs =
-                      taskParams()
-                          .getNamespaceIdSafetimeEpochUsMap()
-                          .get(namespace.getId().toStringUtf8());
-                  if (Objects.isNull(namespaceSafetimeEpochUs)) {
-                    throw new IllegalArgumentException(
-                        String.format(
-                            "No safetime for namespace %s is specified in the taskparams",
-                            namespace.getName()));
-                  }
+                Long namespaceSafetimeEpochUs =
+                    taskParams()
+                        .getNamespaceIdSafetimeEpochUsMap()
+                        .get(namespace.getId().toStringUtf8());
+                if (Objects.isNull(namespaceSafetimeEpochUs)) {
+                  throw new IllegalArgumentException(
+                      String.format(
+                          "No safetime for namespace %s is specified in the taskparams",
+                          namespace.getName()));
+                }
 
-                  // Todo: Add a subtask group for the following.
-                  createRestoreSnapshotScheduleTask(
-                      targetUniverse,
-                      pitrConfigOptional.get(),
-                      TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
-                });
-
-        // Delete PITR on failover as standby is now the new primary and we have restored snapshot.
-        List<PitrConfig> pitrConfigs = currentXClusterConfig.getPitrConfigs();
-        for (PitrConfig pitrConfig : pitrConfigs) {
-          createDeletePitrConfigTask(
-              pitrConfig.getUuid(), targetUniverse.getUniverseUUID(), true /* ignoreErrors */);
+                // Todo: Add a subtask group for the following.
+                createRestoreSnapshotScheduleTask(
+                    targetUniverse,
+                    pitrConfigOptional.get(),
+                    TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
+              });
         }
 
         createSetDrStatesTask(
@@ -157,38 +165,40 @@ public class FailoverDrConfig extends EditDrConfig {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+        if (Objects.nonNull(currentXClusterConfig)) {
+          // Load the xCluster from the DB again because it might be deleted.
+          Optional<XClusterConfig> xClusterConfigOptional =
+              XClusterConfig.maybeGet(currentXClusterConfig.getUuid());
+          if (xClusterConfigOptional.isPresent()
+              && !isInMustDeleteStatus(xClusterConfigOptional.get())) {
+            xClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
+          }
+        }
+        // Set xCluster config status to failed.
+        if (!failoverXClusterConfig.getStatus().equals(XClusterConfigStatusType.Initialized)) {
+          failoverXClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
+        }
+        // Set tables in updating status to failed.
+        Set<String> tablesInPendingStatus =
+            failoverXClusterConfig.getTableIdsInStatus(
+                getTableIds(taskParams().getTableInfoList()),
+                X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
+        failoverXClusterConfig.updateStatusForTables(
+            tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+        // Set backup and restore status to failed and alter load balanced.
+        boolean isLoadBalancerAltered = false;
+        for (Restore restore : restoreList) {
+          isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
+        }
+        handleFailedBackupAndRestore(
+            backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
+        throw new RuntimeException(e);
       } finally {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
-    } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
-      // Load the xCluster from the DB again because it might be deleted.
-      Optional<XClusterConfig> xClusterConfigOptional =
-          XClusterConfig.maybeGet(currentXClusterConfigOptional.get().getUuid());
-      if (xClusterConfigOptional.isPresent()
-          && !isInMustDeleteStatus(xClusterConfigOptional.get())) {
-        xClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
-      }
-      // Set xCluster config status to failed.
-      if (!failoverXClusterConfig.getStatus().equals(XClusterConfigStatusType.Initialized)) {
-        failoverXClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
-      }
-      // Set tables in updating status to failed.
-      Set<String> tablesInPendingStatus =
-          failoverXClusterConfig.getTableIdsInStatus(
-              getTableIds(taskParams().getTableInfoList()),
-              X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
-      failoverXClusterConfig.updateStatusForTables(
-          tablesInPendingStatus, XClusterTableConfig.Status.Failed);
-      // Set backup and restore status to failed and alter load balanced.
-      boolean isLoadBalancerAltered = false;
-      for (Restore restore : restoreList) {
-        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
-      }
-      handleFailedBackupAndRestore(
-          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
-      throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());

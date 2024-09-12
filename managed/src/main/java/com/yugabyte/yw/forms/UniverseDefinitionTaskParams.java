@@ -854,6 +854,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
 
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Default service scope for Kubernetes universes")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    public boolean defaultServiceScopeAZ = true;
+
     @ApiModelProperty public String awsArnString;
 
     @ApiModelProperty() public boolean enableLB = false;

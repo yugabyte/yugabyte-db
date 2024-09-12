@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -298,39 +300,41 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   /**
-   * This function is used to retry a function with a delay between retries. The delay is
-   * modifiable. The function will be retried on exceptions until the total delay has passed or the
-   * function returns.
+   * This function retries a function with a modifiable delay between retries. The function will
+   * retry on any exception but will not retry if the exception is an UnrecoverableException.
    *
    * @param delayFunct Function to calculate the delay between retries
    * @param totalDelayMs Total delay to wait before giving up
    * @param funct Function to retry; must abide by the Runnable interface
-   * @throws RuntimeException If the function does not return before the total delay
+   * @throws RuntimeException If the function does not succeed before the total delay, or if an
+   *     UnrecoverableException is thrown.
    */
   protected void doWithModifyingTimeout(
       Function<Long, Long> delayFunct, long totalDelayMs, Runnable funct) throws RuntimeException {
     long currentDelayMs = 0;
     long startTime = System.currentTimeMillis();
-    while (System.currentTimeMillis() < startTime + totalDelayMs - currentDelayMs) {
+    while (true) {
+      currentDelayMs = delayFunct.apply(currentDelayMs);
       try {
         funct.run();
         return;
+      } catch (UnrecoverableException e) {
+        log.error(
+            "Won't retry; Unrecoverable error while running the function: {}", e.getMessage());
+        throw e;
       } catch (Exception e) {
-        log.warn("Will retry; Error while running the function: {}", e.getMessage());
+        if (System.currentTimeMillis() < startTime + totalDelayMs - currentDelayMs) {
+          log.warn("Will retry; Error while running the function: {}", e.getMessage());
+        } else {
+          log.error("Retry timed out; Error while running the function: {}", e.getMessage());
+          Throwables.propagate(e);
+        }
       }
-      currentDelayMs = delayFunct.apply(currentDelayMs);
       log.debug(
           "Waiting for {} ms between retry, total delay remaining {} ms",
           currentDelayMs,
-          (startTime + totalDelayMs - System.currentTimeMillis()));
+          totalDelayMs - (System.currentTimeMillis() - startTime));
       waitFor(Duration.ofMillis(currentDelayMs));
-    }
-    // Retry for the last time and then throw the exception that funct raised.
-    try {
-      funct.run();
-    } catch (Exception e) {
-      log.error("Retry timed out; Error while running the function: {}", e.getMessage());
-      throw new RuntimeException(e);
     }
   }
 

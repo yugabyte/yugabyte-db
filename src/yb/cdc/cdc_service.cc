@@ -185,7 +185,7 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "The maximum interval in seconds that the xcluster checkpoint map can go without being "
     "refreshed. If the map is not refreshed within this interval, it is considered stale, "
     "and all WAL segments will be retained until the next refresh. "
-    "Setting to 0 will disable Opid-based WAL segment retention for XCluster.");
+    "Setting to 0 will disable Opid-based and time-based WAL segment retention for XCluster.");
 
 DEFINE_RUNTIME_int32(
     cdcsdk_max_expired_tables_to_clean_per_run, 1,

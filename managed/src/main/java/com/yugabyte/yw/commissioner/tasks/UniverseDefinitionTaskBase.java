@@ -44,6 +44,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -88,6 +89,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -1644,6 +1646,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
     }
+    // Validate kubernetes overrides
+    if (universeDetails.getPrimaryCluster().userIntent.providerType == CloudType.kubernetes) {
+      try {
+        KubernetesUtil.validateServiceEndpoints(taskParams(), universe.getConfig());
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
+      }
+    }
   }
 
   protected AnsibleConfigureServers.Params createCertUpdateParams(
@@ -2809,6 +2819,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
+      if (processType == ServerType.MASTER || processType == ServerType.TSERVER) {
+        // GFlags groups may depend on software version, so need to calculate them using fresh one.
+        Universe universe = getUniverse();
+        universe
+            .getUniverseDetails()
+            .clusters
+            .forEach(cluster -> cluster.userIntent.ybSoftwareVersion = softwareVersion);
+        params.gflags =
+            GFlagsUtil.getGFlagsForNode(
+                node,
+                processType,
+                universe.getCluster(node.placementUuid),
+                universe.getUniverseDetails().clusters);
+      }
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {

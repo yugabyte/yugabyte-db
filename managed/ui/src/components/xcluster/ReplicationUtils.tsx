@@ -480,6 +480,7 @@ export const getEnabledConfigActions = (
     switch (status) {
       case XClusterConfigStatus.INITIALIZED:
       case XClusterConfigStatus.UPDATING:
+      case XClusterConfigStatus.DRAINED_DATA:
         return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
       case XClusterConfigStatus.RUNNING:
         return [

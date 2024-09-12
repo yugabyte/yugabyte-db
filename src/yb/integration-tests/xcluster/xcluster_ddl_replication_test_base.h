@@ -28,6 +28,14 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status EnableDDLReplicationExtension();
 
+  // Set automatic_ddl_mode to true by default.
+  virtual Status CheckpointReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      bool automatic_ddl_mode = true) override {
+    return XClusterYsqlTestBase::CheckpointReplicationGroup(
+        replication_group_id, automatic_ddl_mode);
+  }
+
   Result<std::shared_ptr<client::YBTable>> GetProducerTable(
       const client::YBTableName& producer_table_name);
 
