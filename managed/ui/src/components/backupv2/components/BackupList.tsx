@@ -20,6 +20,8 @@ import { getBackupsList } from '../common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+import { Box, Typography, makeStyles } from '@material-ui/core';
+import { YBTooltip } from '../../../redesign/components';
 import { BackupDetails, IncrementalBackupProps } from './BackupDetails';
 import {
   BACKUP_REFETCH_INTERVAL,
@@ -42,7 +44,7 @@ import { formatBytes } from '../../xcluster/ReplicationUtils';
 
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 import { YBTable } from '../../common/YBTable';
-import { find } from 'lodash';
+import { find, isEmpty, get } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { AllowedTasks, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
@@ -55,7 +57,6 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
 import './BackupList.scss';
-
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -136,6 +137,37 @@ interface BackupListOptions {
   allowedTasks: AllowedTasks;
 }
 
+const useTooltipStyles = makeStyles((theme) => ({
+  customWidth: {
+    maxWidth: 'none'
+  },
+  tooltipHeader: {
+    padding: theme.spacing(1.5, 2),
+    borderBottom: '1px solid #E5E5E9'
+  },
+  toolTipTitle: {
+    fontWeight: 600,
+    fontSize: 15
+  },
+  tooltipBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    padding: theme.spacing(2.5, 2)
+  },
+  windowContainer: {
+    padding: theme.spacing(1.5, 2),
+    backgroundColor: '#F7F9FB',
+    borderRadius: '8px',
+    border: '1px solid #E5E5E9',
+    gap: '10px',
+    margin: theme.spacing(0.75, 0)
+  },
+  dottedBorder: {
+    borderBottom: '1px dotted #0B1117',
+    width: 'fit-content'
+  }
+}));
+
 export const BackupList: FC<BackupListOptions> = ({
   allowTakingBackup,
   universeUUID,
@@ -162,10 +194,12 @@ export const BackupList: FC<BackupListOptions> = ({
 
   const featureFlags = useSelector((state: any) => state.featureFlags);
 
+  const classes = useTooltipStyles();
   const isNewRestoreModalEnabled =
     featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
 
-  const enableBackupPITR = featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
+  const enableBackupPITR =
+    featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
@@ -387,17 +421,22 @@ export const BackupList: FC<BackupListOptions> = ({
   };
 
   const backups: IBackup[] = backupsList?.data.entities.map((b: IBackup) => {
-    return { ...b, backupUUID: b.commonBackupInfo.backupUUID };
+    const windowPITRArr = b.commonBackupInfo.responseList.filter(
+      (r) => !isEmpty(r?.backupPointInTimeRestoreWindow)
+    );
+    const statusPITR = isEmpty(windowPITRArr) ? 'Not Enabled' : 'Enabled';
+    return { ...b, backupUUID: b.commonBackupInfo.backupUUID, statusPITR, windowPITRArr };
   });
 
-  const isBackupNotSucceeded = (state: Backup_States) => [
-    Backup_States.IN_PROGRESS,
-    Backup_States.STOPPING,
-    Backup_States.FAILED,
-    Backup_States.FAILED_TO_DELETE,
-    Backup_States.SKIPPED,
-    Backup_States.STOPPED
-  ].includes(state);
+  const isBackupNotSucceeded = (state: Backup_States) =>
+    [
+      Backup_States.IN_PROGRESS,
+      Backup_States.STOPPING,
+      Backup_States.FAILED,
+      Backup_States.FAILED_TO_DELETE,
+      Backup_States.SKIPPED,
+      Backup_States.STOPPED
+    ].includes(state);
 
   if (!isFilterApplied() && backups?.length === 0) {
     return allowTakingBackup ? (
@@ -639,7 +678,9 @@ export const BackupList: FC<BackupListOptions> = ({
             }
             width="20%"
           >
-            Incremental Backups
+            Incremental
+            <br />
+            Backups
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="backupType"
@@ -648,6 +689,60 @@ export const BackupList: FC<BackupListOptions> = ({
           >
             API Type
           </TableHeaderColumn>
+          {enableBackupPITR && (
+            <TableHeaderColumn
+              dataField="statusPITR"
+              dataFormat={(statusPITR, row) => {
+                const startWindowTime = get(
+                  row,
+                  'windowPITRArr[0].backupPointInTimeRestoreWindow.timestampRetentionWindowStartMillis',
+                  false
+                );
+                const endWindowTime = get(
+                  row,
+                  'windowPITRArr[0].backupPointInTimeRestoreWindow.timestampRetentionWindowEndMillis',
+                  false
+                );
+                const windowExists = startWindowTime && endWindowTime;
+                return (
+                  <YBTooltip
+                    interactive={true}
+                    classes={{ tooltip: classes.customWidth }}
+                    title={
+                      windowExists ? (
+                        <Box display="flex" flexDirection="column" width="auto">
+                          <Box className={classes.tooltipHeader}>
+                            <Typography className={classes.toolTipTitle}>Restore Window</Typography>
+                          </Box>
+                          <Box className={classes.tooltipBody}>
+                            <Typography variant="body2">
+                              You may restore to any time between:
+                            </Typography>
+                            <Box className={classes.windowContainer}>
+                              <Typography variant="body2">
+                                <b>{ybFormatDate(startWindowTime)}</b> to &nbsp;
+                                <b>{ybFormatDate(endWindowTime)}</b>
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Box>
+                      ) : (
+                        ''
+                      )
+                    }
+                  >
+                    <div className={windowExists ? classes.dottedBorder : ''}>{statusPITR}</div>
+                  </YBTooltip>
+                );
+              }}
+              width="10%"
+              dataSort
+            >
+              Point-in-Time
+              <br />
+              Restore
+            </TableHeaderColumn>
+          )}
           <TableHeaderColumn
             dataField="createTime"
             dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
@@ -677,15 +772,14 @@ export const BackupList: FC<BackupListOptions> = ({
           <TableHeaderColumn
             dataField="lastBackupState"
             dataFormat={(lastBackupState, row: IBackup) => {
-
-              return <div onClick={e => e.stopPropagation()} className='backup-status'>
-                <StatusBadge statusType={lastBackupState} />
-                {
-                  isBackupNotSucceeded(row.commonBackupInfo.state) && (
+              return (
+                <div onClick={(e) => e.stopPropagation()} className="backup-status">
+                  <StatusBadge statusType={lastBackupState} />
+                  {isBackupNotSucceeded(row.commonBackupInfo.state) && (
                     <TaskDetailSimpleComp taskUUID={row.commonBackupInfo.taskUUID} />
-                  )
-                }
-              </div>;
+                  )}
+                </div>
+              );
             }}
             width="25%"
           >
@@ -782,9 +876,9 @@ export const BackupList: FC<BackupListOptions> = ({
           )
         }
       />
-      {isNewRestoreModalEnabled && restoreDetails && (
-
-        !enableBackupPITR ? (
+      {isNewRestoreModalEnabled &&
+        restoreDetails &&
+        (!enableBackupPITR ? (
           <BackupRestoreNewModal
             backupDetails={restoreDetails as any}
             visible={true}
@@ -805,11 +899,8 @@ export const BackupList: FC<BackupListOptions> = ({
             }}
             visible={true}
             incrementalBackupProps={incrementalBackupProps}
-
           />
-        )
-
-      )}
+        ))}
     </Row>
   );
 };

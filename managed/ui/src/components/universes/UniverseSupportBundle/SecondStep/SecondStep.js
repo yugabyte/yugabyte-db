@@ -163,8 +163,6 @@ export const updateOptions = (
       payloadObj = { ...payloadObj, prometheusMetricsTypes: prometheusMetricsTypes };
     }
   });
-  console.warn('_______ payload obj');
-  console.warn(payloadObj);
   return payloadObj;
 };
 
