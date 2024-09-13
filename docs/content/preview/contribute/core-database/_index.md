@@ -3,7 +3,7 @@ title: Contribute to the core database
 headerTitle: Contribute to the core database
 linkTitle: Core database
 description: Contribute to the core database
-image: fa-light fa-person-dolly-empty
+image: fa-light fa-rectangle-terminal
 headcontent: How to contribute code to the core database
 menu:
   preview:
