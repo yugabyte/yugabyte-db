@@ -2196,6 +2196,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
           }
+
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(Integer.toString(taskParam.cgroupSize));
           break;
         }
       case List:

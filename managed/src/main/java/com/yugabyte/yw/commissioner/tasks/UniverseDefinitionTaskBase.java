@@ -1414,6 +1414,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   universe.getUniverseDetails().clusters);
         }
       }
+      params.cgroupSize = getCGroupSize(node);
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
