@@ -20,7 +20,7 @@ For best performance, configure the project as a compilation database project:
 
 1. Run `./yb_build.sh compilecmds` to generate the `compile_commands.json` file in the `yugabyte-db` directory.
 
-1. Verify that `compile_commands.json` is present in the `yugabyte-db` folder. From the yugabyte-db folder, run the following command:
+1. Verify that `compile_commands.json` is present in the `yugabyte-db` folder. From the `yugabyte-db` folder, run the following command:
 
     ```sh
     $ find . -name "compile_commands.json"
