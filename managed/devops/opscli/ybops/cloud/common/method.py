@@ -1231,6 +1231,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gcs_remote_download', action="store_true")
         self.parser.add_argument('--gcs_credentials_json')
         self.parser.add_argument('--http_remote_download', action="store_true")
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
         self.parser.add_argument('--http_package_checksum', default='')
         self.parser.add_argument('--install_third_party_packages',
                                  action="store_true",
@@ -1309,6 +1311,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
             if args.yb_process_type:
                 self.extra_vars["yb_process_type"] = args.yb_process_type.lower()
+
+            if args.pg_max_mem_mb:
+                self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
         else:
             raise YBOpsRuntimeError("Supported types for this command are only: {}".format(
                 self.supported_types))
