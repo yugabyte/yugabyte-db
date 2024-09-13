@@ -5,6 +5,7 @@ package util
 import (
 	"context"
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -293,4 +294,24 @@ func VerifyJWT(ctx context.Context, config *Config, authToken string) (*jwt.MapC
 		}
 	}
 	return nil, fmt.Errorf("Invalid token")
+}
+
+// TlsConfig returns the common TLS config to be used.
+func TlsConfig(certs []tls.Certificate, nextProtos []string) *tls.Config {
+	whitelists := []uint16{}
+	for _, suites := range tls.CipherSuites() {
+		// Method excludes insecure ones but the check is just added to be more cautious.
+		if !suites.Insecure {
+			whitelists = append(whitelists, suites.ID)
+		}
+	}
+	tlsConfig := &tls.Config{
+		Certificates: certs,
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: whitelists,
+	}
+	if len(nextProtos) > 0 {
+		tlsConfig.NextProtos = nextProtos
+	}
+	return tlsConfig
 }
