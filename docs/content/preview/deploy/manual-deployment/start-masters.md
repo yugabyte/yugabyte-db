@@ -31,8 +31,6 @@ The number of nodes in a cluster running YB-Masters must equal the replication f
 
 Run the yb-master server on each of the three nodes as follows.
 
-You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
-
 ```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
@@ -44,7 +42,9 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-The number of comma-separated addresses present in `--master_addresses` should also equal the replication factor.
+The number of comma-separated addresses in `--master_addresses` should equal the replication factor.
+
+You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 

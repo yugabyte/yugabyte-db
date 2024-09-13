@@ -32,8 +32,6 @@ The number of nodes in a cluster running YB-TServers must equal or exceed the re
 
 Run the yb-tserver server on each of the six nodes as follows.
 
-You need to provide all of the master addresses using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
-
 ```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
@@ -48,13 +46,9 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
+Provide all of the master addresses using the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
+
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
-
-{{< note title="Note" >}}
-
-The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag should match the total number of YB-Master servers (that is, the replication factor).
-
-{{< /note >}}
 
 ## Run YB-TServer with configuration file
 
