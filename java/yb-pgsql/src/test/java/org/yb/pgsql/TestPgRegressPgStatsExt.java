@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressExtendedStatistics extends BasePgRegressTest {
+public class TestPgRegressPgStatsExt extends BasePgRegressTestPorted {
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -28,7 +28,7 @@ public class TestPgRegressExtendedStatistics extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressExtendedStatistics() throws Exception {
-    runPgRegressTest("yb_extended_stats_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_stats_ext_schedule");
   }
 }

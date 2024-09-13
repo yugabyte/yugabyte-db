@@ -199,6 +199,7 @@ SET default_tablespace TO regress_tblspace;
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 \d testschema.test_index1
 \d testschema.test_index2
+-- YB_TODO: Update output after GH #23825 is fixed.
 SELECT * FROM testschema.test_default_tab;
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
