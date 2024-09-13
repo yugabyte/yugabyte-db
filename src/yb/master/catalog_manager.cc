@@ -9970,10 +9970,16 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
+  // See comment in GetYsqlDBCatalogVersion.
+  TableId table_id;
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    table_id = kPgYbCatalogVersionTableIdPg11;
+  } else {
+    table_id = kPgYbCatalogVersionTableId;
+  }
+  auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId,
-                                                             versions));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(table_id, versions));
   } else {
     versions->clear();
   }
