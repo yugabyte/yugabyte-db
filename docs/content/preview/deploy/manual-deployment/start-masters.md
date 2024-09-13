@@ -31,7 +31,7 @@ The number of nodes in a cluster running YB-Masters must equal the replication f
 
 Run the yb-master server on each of the three nodes as follows.
 
-Note how multiple directories can be provided to the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
+You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
 ```sh
 $ ./bin/yb-master \
