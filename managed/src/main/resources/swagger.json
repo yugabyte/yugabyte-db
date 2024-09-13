@@ -5188,6 +5188,11 @@
           "type" : "array",
           "uniqueItems" : true
         },
+        "type" : {
+          "description" : "Whether the config is basic, txn, or db scoped xCluster",
+          "enum" : [ "Basic", "Txn", "Db" ],
+          "type" : "string"
+        },
         "uuid" : {
           "description" : "DR config UUID",
           "format" : "uuid",
@@ -16151,7 +16156,7 @@
           "type" : "string"
         },
         "type" : {
-          "description" : "Whether the config is txn xCluster",
+          "description" : "Whether the config is basic, txn, or db scoped xCluster",
           "enum" : [ "Basic", "Txn", "Db" ],
           "type" : "string"
         },
@@ -16394,7 +16399,7 @@
           "type" : "string"
         },
         "type" : {
-          "description" : "Whether the config is txn xCluster",
+          "description" : "Whether the config is basic, txn, or db scoped xCluster",
           "enum" : [ "Basic", "Txn", "Db" ],
           "type" : "string"
         },

@@ -1284,6 +1284,10 @@ public class NodeManagerTest extends FakeDBApplication {
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
     }
+    if (type == NodeManager.NodeCommandType.Configure) {
+      expectedCommand.add("--pg_max_mem_mb");
+      expectedCommand.add("0");
+    }
     expectedCommand.add("--remote_tmp_dir");
     expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
@@ -2061,7 +2065,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 9, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))

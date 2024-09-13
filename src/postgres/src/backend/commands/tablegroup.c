@@ -617,7 +617,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
  * raised.
  */
 void
-ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
+ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace, const char *newname)
 {
 	Oid					tablegroupoid;
 	HeapTuple			tuple;
@@ -650,9 +650,25 @@ ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
 
 	if (datForm->grptablespace != newTablespace)
 	{
-		datForm->grptablespace = newTablespace;
+		Datum		repl_val[Natts_pg_yb_tablegroup];
+		bool		repl_null[Natts_pg_yb_tablegroup];
+		bool		repl_repl[Natts_pg_yb_tablegroup];
+		HeapTuple	newtuple;
 
-		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
+
+		repl_repl[Anum_pg_yb_tablegroup_grptablespace - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grptablespace - 1] = newTablespace;
+
+		repl_repl[Anum_pg_yb_tablegroup_grpname - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grpname - 1] =
+			DirectFunctionCall1(namein, CStringGetDatum(newname));
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		heap_freetuple(newtuple);
 	}
 
 	InvokeObjectPostAlterHook(YbTablegroupRelationId, tablegroupoid, 0);

@@ -2890,4 +2890,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         + " plugin pgoutput. Consider using output plugin yboutput instead."));
     }
   }
+
+  @Test
+  public void testDefaultWalLevel() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      Row row = getSingleRow(stmt, "SHOW wal_level");
+      assertEquals("logical", row.getString(0));
+    }
+  }
 }

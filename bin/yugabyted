@@ -6243,9 +6243,8 @@ class ControlScript(object):
 
     # Get the current master leader known to a tserver using api/v1/masters endpoint
     # of the tserver.
-    def get_current_master_leader_from_api(self, tserverIP, timeout=60):
-        tserver_addr = "{}:{}".format(tserverIP,
-                            self.configs.saved_data.get("tserver_webserver_port"))
+    def get_current_master_leader_from_api(self, tserverIP, tserver_webserver_port, timeout=60):
+        tserver_addr = "{}:{}".format(tserverIP, tserver_webserver_port)
         try:
             tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
             Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
@@ -6961,6 +6960,13 @@ class ControlScript(object):
                 self.setup_env_init.set_ycql_keyspace(args.keyspace)
 
         if args.parser == "start":
+            master_webserver_port = self.configs.saved_data.get("master_webserver_port")
+            if args.master_webserver_port is not None:
+                master_webserver_port = args.master_webserver_port
+
+            tserver_webserver_port = self.configs.saved_data.get("tserver_webserver_port")
+            if args.tserver_webserver_port is not None:
+                tserver_webserver_port = args.tserver_webserver_port
             if args.read_replica and not args.join:
                 Output.print_out(Output.make_red("ERROR") + ": read_replica neds to be " +
                                  "started with --join flag.")
@@ -7044,12 +7050,12 @@ class ControlScript(object):
                 if not cluster_member:
                     # Check if tserver webserver at join_IP is reachable or not
                     # Also get the leader master(used to get the info of all tservers)
-                    master_leader = self.get_current_master_leader_from_api(args.join)
+                    master_leader = self.get_current_master_leader_from_api(args.join,
+                                                                tserver_webserver_port)
                     args.join = master_leader
 
                     # Get info on all tservers
-                    master_leader_hostport = "{}:{}".format(master_leader,
-                                        self.configs.saved_data.get("master_webserver_port"))
+                    master_leader_hostport = "{}:{}".format(master_leader, master_webserver_port)
                     tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
                     # Check if any existing node has the same IP as advertise address
@@ -7125,8 +7131,7 @@ class ControlScript(object):
 
             if args.insecure:
                 if args.join and not cluster_member:
-                    master_hostport = "{}:{}".format(args.join,
-                            self.configs.saved_data.get("master_webserver_port"))
+                    master_hostport = "{}:{}".format(args.join, master_webserver_port)
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -7136,8 +7141,7 @@ class ControlScript(object):
                             "secure and an insecure node.")
             elif args.secure:
                 if args.join and not cluster_member:
-                    master_hostport = "{}:{}".format(args.join,
-                            self.configs.saved_data.get("master_webserver_port"))
+                    master_hostport = "{}:{}".format(args.join, master_webserver_port)
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.

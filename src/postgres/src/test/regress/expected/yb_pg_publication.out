@@ -60,8 +60,6 @@ RESET client_min_messages;
 -- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
 NOTICE:  tables without primary key will be skipped
-WARNING:  wal_level is insufficient to publish logical changes
-HINT:  Set wal_level to "logical" before creating subscriptions.
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
 ERROR:  Publishing only a subset of DML commands is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
