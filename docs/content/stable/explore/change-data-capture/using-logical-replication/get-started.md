@@ -173,7 +173,7 @@ To start the services needed for this tutorial, you must:
 
 - [Start Zookeeper](#start-zookeeper)
 - [Start Kafka](#start-kafka)
-- [Start a YugabyteDB database](#start-a-yugabytedb-database)
+- [Start a YugabyteDB database](#start-yugabytedb)
 - [Start Kafka Connect](#start-kafka-connect)
 
 #### Start Zookeeper
@@ -202,9 +202,11 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 {{< /note >}}
 
-#### Start a YugabyteDB database
+#### Start YugabyteDB
 
-At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. Follow the [Quick Start](../../../../quick-start) to start an instance using yugabyted.
+At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
+
+Follow the [Quick Start](../../../../quick-start) to start an instance using yugabyted.
 
 {{< note title="Note" >}}
 
