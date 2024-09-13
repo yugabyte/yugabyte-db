@@ -821,6 +821,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                 # copy and run the script
                 self.cloud.execute_boot_script(args, self.extra_vars)
 
+        if args.air_gap:
+            self.extra_vars.update({"air_gap": args.air_gap})
+
         if not args.skip_preprovision:
             self.preprovision(args)
             self.extra_vars["device_names"] = self.get_device_names(args, host_info)
@@ -828,8 +831,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.air_gap:
-            self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
             self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
         if args.install_node_exporter:

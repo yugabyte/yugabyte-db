@@ -51,6 +51,8 @@
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
   tasks:
     # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
     - block:
@@ -159,6 +161,7 @@
         name: policycoreutils-python
         state: present
       when: >
+        not air_gapped and
         'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
       tags: yb-prebuilt-ami
@@ -171,6 +174,7 @@
         name: policycoreutils-python-utils
         state: present
       when: >
+        not air_gapped and
         'policycoreutils-python-utils' not in ansible_facts.packages and custom_ssh_port != '22' and
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version != '7')
       tags: yb-prebuilt-ami
@@ -194,7 +198,8 @@
       register: result
       until: result.rc == 0
       retries: 10
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+      when: not air_gapped and ansible_distribution == 'OracleLinux' and
+            ansible_distribution_major_version == '8' and
             custom_ssh_port != '22'
       tags: yb-prebuilt-ami
 
@@ -222,6 +227,6 @@
         args:
           executable: /bin/bash
 
-      when: not (air_gap | default(false) | bool) and
+      when: not air_gapped and
             install_locales | default(false) | bool
             and ansible_os_family == 'RedHat' and ansible_distribution_major_version != "7"
