@@ -361,8 +361,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				ybc_state->exec_params->rowmark = erm->markType;
 				ybc_state->exec_params->pg_wait_policy = erm->waitPolicy;
-				YBSetRowLockPolicy(&ybc_state->exec_params->docdb_wait_policy,
-								   erm->waitPolicy);
+				ybc_state->exec_params->docdb_wait_policy =
+					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
 			break;
 		}

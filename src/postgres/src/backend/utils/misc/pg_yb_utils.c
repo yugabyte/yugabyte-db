@@ -4423,8 +4423,10 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
+LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
+	LockWaitPolicy result = pg_wait_policy;
+
 	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
 	{
 		/* The user requested NOWAIT, which isn't allowed in RR. */
@@ -4443,14 +4445,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 						  "(GH issue #11761)",
 						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
 
-		*docdb_wait_policy = LockWaitBlock;
-	}
-	else
-	{
-		*docdb_wait_policy = pg_wait_policy;
+		result = LockWaitBlock;
 	}
 
-	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
+	if (result == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -4459,9 +4457,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
 		elog(DEBUG1, "Falling back to LockWaitError since wait-queues are not enabled");
-		*docdb_wait_policy = LockWaitError;
+		result = LockWaitError;
 	}
-	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", *docdb_wait_policy, pg_wait_policy);
+	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", result, pg_wait_policy);
+	return result;
 }
 
 uint32_t YbGetNumberOfDatabases()
