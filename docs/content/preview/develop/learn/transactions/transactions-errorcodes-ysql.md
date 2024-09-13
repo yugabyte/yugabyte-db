@@ -91,8 +91,7 @@ Serialization failure errors can be retried by the client. See [Client-side retr
 
 ## 40P01: Deadlock detected
 
-This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted
-and they fail with the following error.
+This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted and they fail with the following error.
 
 ```output
 ERROR:  deadlock detected (...)
