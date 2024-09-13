@@ -144,12 +144,12 @@ class MasterPathHandlers {
 
     void operator+=(const ZoneTabletCounts& other);
 
-    typedef std::map<std::string, ZoneTabletCounts> ZoneTree;
-    typedef std::map<std::string, ZoneTree> RegionTree;
-    typedef std::map<std::string, RegionTree> CloudTree;
+    using ZoneTree = std::map<std::string, ZoneTabletCounts>;
+    using RegionTree = std::map<std::string, ZoneTree>;
+    using CloudTree = std::map<std::string, RegionTree>;
   };
   // Map of tserver UUID -> TabletCounts
-  typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
+  using TabletCountMap = std::unordered_map<std::string, TabletCounts>;
 
   struct ReplicaInfo {
     PeerRole role;
@@ -162,13 +162,13 @@ class MasterPathHandlers {
   };
 
   // Map of table id -> tablet list for a tserver.
-  typedef std::unordered_map<std::string, std::vector<ReplicaInfo>> PerTServerTableTree;
+  using PerTServerTableTree = std::unordered_map<std::string, std::vector<ReplicaInfo>>;
 
   // Map of tserver UUID -> its table tree.
-  typedef std::unordered_map<std::string, PerTServerTableTree> TServerTree;
+  using TServerTree = std::unordered_map<std::string, PerTServerTableTree>;
 
   // Map of zone -> its tserver tree.
-  typedef std::unordered_map<std::string, TServerTree> ZoneToTServer;
+  using ZoneToTServer = std::unordered_map<std::string, TServerTree>;
 
   const std::string table_type_[kNumTypes] = {"User", "Index", "Parent", "System"};
 
@@ -247,7 +247,7 @@ class MasterPathHandlers {
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
   // Otherwise, do not perform calculation if number of tables is less than max_table_count.
-  Status CalculateTServerTree(TServerTree* tserver_tree, int max_table_count);
+  Result<TServerTree> CalculateTServerTree(int max_table_count);
   void RenderLoadBalancerViewPanel(
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
       const std::vector<TableInfoPtr>& tables, std::stringstream* output);
