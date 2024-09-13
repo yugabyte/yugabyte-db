@@ -2664,6 +2664,7 @@ alter_table_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetTableSpace;
 					n->name = $3;
+					n->yb_cascade = false;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> SET (...) */

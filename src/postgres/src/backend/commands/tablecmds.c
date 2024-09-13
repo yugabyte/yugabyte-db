@@ -490,7 +490,7 @@ static ObjectAddress ATExecClusterOn(Relation rel, const char *indexName,
 static void ATExecDropCluster(Relation rel, LOCKMODE lockmode);
 static bool ATPrepChangePersistence(Relation rel, bool toLogged);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
-					const char *tablespacename, LOCKMODE lockmode);
+					const char *tablespacename, LOCKMODE lockmode, bool cascade);
 static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode);
 static void ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace);
 static void ATExecSetRelOptions(Relation rel, List *defList,
@@ -4240,7 +4240,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimplePermissions(rel, ATT_TABLE | ATT_MATVIEW | ATT_INDEX |
 								ATT_PARTITIONED_INDEX);
 			/* This command never recurses */
-			ATPrepSetTableSpace(tab, rel, cmd->name, lockmode);
+			ATPrepSetTableSpace(tab, rel, cmd->name, lockmode, cmd->yb_cascade);
 			pass = AT_PASS_MISC;	/* doesn't actually matter */
 			break;
 		case AT_SetRelOptions:	/* SET (...) */
@@ -12124,7 +12124,8 @@ ATExecDropCluster(Relation rel, LOCKMODE lockmode)
  * ALTER TABLE SET TABLESPACE
  */
 static void
-ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacename, LOCKMODE lockmode)
+ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
+					const char *tablespacename, LOCKMODE lockmode, bool cascade)
 {
 	Oid			tablespaceId;
 
@@ -12150,6 +12151,19 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set tablespace for primary key index")));
+	}
+
+	if (IsYugaByteEnabled() && !cascade && MyDatabaseColocated &&
+		YbGetTableProperties(rel)->is_colocated)
+	{
+		/*
+		 * Cannot move one colocated relation alone
+		 * Use Alter TABLE ALL IN TABLESPACE <tsp> SET TABLESPACE <new tsp> CASCADE;
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot move one colocated relation alone"),
+				 errhint("Use ALTER ... ALL ... CASCADE to move all colocated relations.")));
 	}
 
 	/* Check that the tablespace exists */
@@ -12934,6 +12948,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 
 		cmd->subtype = AT_SetTableSpace;
 		cmd->name = stmt->new_tablespacename;
+		cmd->yb_cascade = true;
 
 		cmds = lappend(cmds, cmd);
 
