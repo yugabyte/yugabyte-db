@@ -97,101 +97,101 @@ Create a new database user, and assign the necessary user permissions.
 
   {{% tab header="Standalone Oracle Container Database" %}}
 
-  1. Ensure that your database log_mode is `archivelog` as follows:
+1. Ensure that your database log_mode is `archivelog` as follows:
 
-      ```sql
-      SELECT LOG_MODE FROM V$DATABASE;
-      ```
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
 
-      ```output
-      LOG_MODE
-      ------------
-      ARCHIVELOG
-      ```
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
 
-      If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
 
-      ```sql
-      sqlplus /nolog
-      SQL>alter system set db_recovery_file_dest_size = 10G;
-      SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
-      SQL> connect / as sysdba
-      SQL> Shutdown immediate
-      SQL> Startup mount
-      SQL> Alter database archivelog;
-      SQL> Alter database open;
-      ```
+    ```sql
+    sqlplus /nolog
+    SQL>alter system set db_recovery_file_dest_size = 10G;
+    SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
+    SQL> connect / as sysdba
+    SQL> Shutdown immediate
+    SQL> Startup mount
+    SQL> Alter database archivelog;
+    SQL> Alter database open;
+    ```
 
-  1. Create the tablespaces as follows:
+1. Create the tablespaces as follows:
 
-      1. Connect to Pluggable database (PDB) as sysdba and run the following command:
+    1. Connect to Pluggable database (PDB) as sysdba and run the following command:
 
-          ```sql
-          CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
-            SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-          ```
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
 
-      1. Connect to Container database (CDB) as sysdba and run the following command:
+    1. Connect to Container database (CDB) as sysdba and run the following command:
 
-          ```sql
-          CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'
-            SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-          ```
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
 
-  1. Run the following commands from CDB as sysdba:
+1. Run the following commands from CDB as sysdba:
 
-      ```sql
-      CREATE USER c##ybvoyager IDENTIFIED BY password
-        DEFAULT TABLESPACE logminer_tbs
-        QUOTA UNLIMITED ON logminer_tbs
-        CONTAINER=ALL;
+    ```sql
+    CREATE USER c##ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs
+      CONTAINER=ALL;
 
-      GRANT CREATE SESSION TO c##ybvoyager CONTAINER=ALL;
-      GRANT SET CONTAINER TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$DATABASE to c##ybvoyager CONTAINER=ALL;
-      GRANT FLASHBACK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT EXECUTE_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ANY TRANSACTION TO c##ybvoyager CONTAINER=ALL;
-      GRANT LOGMINING TO c##ybvoyager CONTAINER=ALL;
+    GRANT CREATE SESSION TO c##ybvoyager CONTAINER=ALL;
+    GRANT SET CONTAINER TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$DATABASE to c##ybvoyager CONTAINER=ALL;
+    GRANT FLASHBACK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOGMINING TO c##ybvoyager CONTAINER=ALL;
 
-      GRANT CREATE TABLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT LOCK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-      GRANT CREATE SEQUENCE TO c##ybvoyager CONTAINER=ALL;
+    GRANT CREATE TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOCK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT CREATE SEQUENCE TO c##ybvoyager CONTAINER=ALL;
 
-      GRANT EXECUTE ON DBMS_LOGMNR TO c##ybvoyager CONTAINER=ALL;
-      GRANT EXECUTE ON DBMS_LOGMNR_D TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO c##ybvoyager CONTAINER=ALL;
 
-      GRANT SELECT ON V_$LOG TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$LOG_HISTORY TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$LOGMNR_LOGS TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$LOGMNR_CONTENTS TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$LOGMNR_PARAMETERS TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$LOGFILE TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$ARCHIVED_LOG TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOG_HISTORY TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_LOGS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_PARAMETERS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGFILE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$TRANSACTION TO c##ybvoyager CONTAINER=ALL;
 
-      GRANT SELECT ON V_$MYSTAT TO c##ybvoyager CONTAINER=ALL;
-      GRANT SELECT ON V_$STATNAME TO c##ybvoyager CONTAINER=ALL;
-      ```
+    GRANT SELECT ON V_$MYSTAT TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$STATNAME TO c##ybvoyager CONTAINER=ALL;
+    ```
 
-  1. Enable supplemental logging in the database as follows:
+1. Enable supplemental logging in the database as follows:
 
-      ```sql
-      ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
-      ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
-      ```
+    ```sql
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+    ```
 
-  1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
+1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
 
-     ```sql
-     CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
-     GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
-     ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
+    ```sql
+    CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
+    GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
+    ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
 
-     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
+    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
                   migration_uuid VARCHAR2(36),
                   channel_no INT,
                   last_applied_vsn NUMBER(19),
@@ -201,7 +201,7 @@ Create a new database user, and assign the necessary user permissions.
                   PRIMARY KEY (migration_uuid, channel_no)
             );
 
-     CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
+    CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
                   migration_uuid VARCHAR2(36),
                   table_name VARCHAR2(250),
                   channel_no INT,
@@ -211,282 +211,276 @@ Create a new database user, and assign the necessary user permissions.
                   num_deletes NUMBER(19),
                   PRIMARY KEY (migration_uuid, table_name, channel_no)
             );
-     ```
+    ```
 
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
-   ```sql
-   CREATE ROLE <SCHEMA_NAME>_writer_role;
+    ```sql
+    CREATE ROLE <SCHEMA_NAME>_writer_role;
 
-   BEGIN
-       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
-       LOOP
-          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
-       END LOOP;
-   END;
-   /
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+            EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+        END LOOP;
+    END;
+    /
 
-   DECLARE
-      v_sql VARCHAR2(4000);
-   BEGIN
-      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
-         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
-         EXECUTE IMMEDIATE v_sql;
-      END LOOP;
-   END;
-   /
+    DECLARE
+        v_sql VARCHAR2(4000);
+    BEGIN
+        FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+          v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+          EXECUTE IMMEDIATE v_sql;
+        END LOOP;
+    END;
+    /
 
-   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
-   ```
+    GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+    ```
 
 1. Assign the writer role to the source database user as follows:
 
-   ```sql
-   GRANT <SCHEMA_NAME>_writer_role TO c##ybvoyager;
-   ```
-
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance:
-
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
-{{< /note >}}
+    ```sql
+    GRANT <SCHEMA_NAME>_writer_role TO c##ybvoyager;
+    ```
 
   {{% /tab %}}
 
   {{% tab header="RDS Oracle" %}}
 
-  1. Ensure that your database log_mode is `archivelog` as follows:
+1. Ensure that your database log_mode is `archivelog` as follows:
 
-      ```sql
-      SELECT LOG_MODE FROM V$DATABASE;
-      ```
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
 
-      ```output
-      LOG_MODE
-      ------------
-      ARCHIVELOG
-      ```
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
 
-      If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
 
-      ```sql
-      exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
-      ```
+    ```sql
+    exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
+    ```
 
-  1. Connect to your database as an admin user, and create the tablespaces as follows:
+1. Connect to your database as an admin user, and create the tablespaces as follows:
 
-      ```sql
-      CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;
-      ```
+    ```sql
+    CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;
+    ```
 
-  1. Run the following commands connected to the admin or privileged user:
+1. Run the following commands connected to the admin or privileged user:
 
-      ```sql
-      CREATE USER ybvoyager IDENTIFIED BY password
-        DEFAULT TABLESPACE logminer_tbs
-        QUOTA UNLIMITED ON logminer_tbs;
+    ```sql
+    CREATE USER ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs;
 
-      GRANT CREATE SESSION TO YBVOYAGER;
-      begin rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$DATABASE',
+    GRANT CREATE SESSION TO YBVOYAGER;
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$DATABASE',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    GRANT FLASHBACK ANY TABLE TO YBVOYAGER;
+    GRANT SELECT ANY TABLE TO YBVOYAGER;
+    GRANT SELECT_CATALOG_ROLE TO YBVOYAGER;
+    GRANT EXECUTE_CATALOG_ROLE TO YBVOYAGER;
+    GRANT SELECT ANY TRANSACTION TO YBVOYAGER;
+    GRANT LOGMINING TO YBVOYAGER;
+
+    GRANT CREATE TABLE TO YBVOYAGER;
+    GRANT LOCK ANY TABLE TO YBVOYAGER;
+    GRANT CREATE SEQUENCE TO YBVOYAGER;
+
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR_D',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$LOG',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOG_HISTORY',
             p_grantee   => 'YBVOYAGER',
             p_privilege => 'SELECT');
-      end;
-      /
+    end;
+    /
 
-      GRANT FLASHBACK ANY TABLE TO YBVOYAGER;
-      GRANT SELECT ANY TABLE TO YBVOYAGER;
-      GRANT SELECT_CATALOG_ROLE TO YBVOYAGER;
-      GRANT EXECUTE_CATALOG_ROLE TO YBVOYAGER;
-      GRANT SELECT ANY TRANSACTION TO YBVOYAGER;
-      GRANT LOGMINING TO YBVOYAGER;
-
-      GRANT CREATE TABLE TO YBVOYAGER;
-      GRANT LOCK ANY TABLE TO YBVOYAGER;
-      GRANT CREATE SEQUENCE TO YBVOYAGER;
-
-
-      begin rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name => 'DBMS_LOGMNR',
-            p_grantee => 'YBVOYAGER',
-            p_privilege => 'EXECUTE',
-            p_grant_option => true);
-      end;
-      /
-
-      begin rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name => 'DBMS_LOGMNR_D',
-            p_grantee => 'YBVOYAGER',
-            p_privilege => 'EXECUTE',
-            p_grant_option => true);
-      end;
-      /
-
-      begin rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOG',
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_LOGS',
             p_grantee   => 'YBVOYAGER',
             p_privilege => 'SELECT');
-      end;
-      /
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$LOG_HISTORY',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_CONTENTS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$LOGMNR_LOGS',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_PARAMETERS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$LOGMNR_CONTENTS',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGFILE',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$LOGMNR_PARAMETERS',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVED_LOG',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$LOGFILE',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVE_DEST_STATUS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$ARCHIVED_LOG',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$TRANSACTION',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$ARCHIVE_DEST_STATUS',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$MYSTAT',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$TRANSACTION',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$STATNAME',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+    ```
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$MYSTAT',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
+1. Enable supplemental logging in the database as follows:
 
-      begin
-          rdsadmin.rdsadmin_util.grant_sys_object(
-              p_obj_name  => 'V_$STATNAME',
-              p_grantee   => 'YBVOYAGER',
-              p_privilege => 'SELECT');
-      end;
-      /
-      ```
+    ```sql
+    exec rdsadmin.rdsadmin_util.alter_supplemental_logging('ADD');
 
-  1. Enable supplemental logging in the database as follows:
+    begin
+        rdsadmin.rdsadmin_util.alter_supplemental_logging(
+            p_action => 'ADD',
+            p_type   => 'ALL');
+    end;
+    /
+    ```
 
-      ```sql
-      exec rdsadmin.rdsadmin_util.alter_supplemental_logging('ADD');
+1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
 
-      begin
-          rdsadmin.rdsadmin_util.alter_supplemental_logging(
-              p_action => 'ADD',
-              p_type   => 'ALL');
-      end;
-      /
-      ```
+    ```sql
+    CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
+    GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
+    ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
 
-  1. Create `ybvoyager_metadata` schema or user, and tables for voyager to use during migration as follows:
+    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
+                migration_uuid VARCHAR2(36),
+                channel_no INT,
+                last_applied_vsn NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, channel_no)
+          );
 
-     ```sql
-     CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
-     GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
-     ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
-
-     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
-                  migration_uuid VARCHAR2(36),
-                  channel_no INT,
-                  last_applied_vsn NUMBER(19),
-                  num_inserts NUMBER(19),
-                  num_updates NUMBER(19),
-                  num_deletes NUMBER(19),
-                  PRIMARY KEY (migration_uuid, channel_no)
-            );
-
-     CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
-                  migration_uuid VARCHAR2(36),
-                  table_name VARCHAR2(250),
-                  channel_no INT,
-                  total_events NUMBER(19),
-                  num_inserts NUMBER(19),
-                  num_updates NUMBER(19),
-                  num_deletes NUMBER(19),
-                  PRIMARY KEY (migration_uuid, table_name, channel_no)
-            );
-     ```
+    CREATE TABLE ybvoyager_metadata.ybvoyager_imported_event_count_by_table (
+                migration_uuid VARCHAR2(36),
+                table_name VARCHAR2(250),
+                channel_no INT,
+                total_events NUMBER(19),
+                num_inserts NUMBER(19),
+                num_updates NUMBER(19),
+                num_deletes NUMBER(19),
+                PRIMARY KEY (migration_uuid, table_name, channel_no)
+          );
+    ```
 
 1. Create a writer role for the source schema for Voyager to be able to write the changes from the target YugabyteDB database to the source database (in case of a fall-back):
 
-   ```sql
-   CREATE ROLE <SCHEMA_NAME>_writer_role;
+    ```sql
+    CREATE ROLE <SCHEMA_NAME>_writer_role;
 
-   BEGIN
-       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
-       LOOP
-          EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
-       END LOOP;
-   END;
-   /
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+            EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+        END LOOP;
+    END;
+    /
 
-   DECLARE
-      v_sql VARCHAR2(4000);
-   BEGIN
-      FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
-         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
-         EXECUTE IMMEDIATE v_sql;
-      END LOOP;
-   END;
-   /
+    DECLARE
+        v_sql VARCHAR2(4000);
+    BEGIN
+        FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+          v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
+          EXECUTE IMMEDIATE v_sql;
+        END LOOP;
+    END;
+    /
 
-   GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
-   ```
+    GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+    ```
 
 1. Assign the writer role to the source database user as follows:
 
-   ```sql
-   GRANT <SCHEMA_NAME>_writer_role TO ybvoyager;
-   ```
+    ```sql
+    GRANT <SCHEMA_NAME>_writer_role TO ybvoyager;
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
@@ -497,10 +491,6 @@ You can use only one of the following arguments to connect to your Oracle instan
 - --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
 - --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
 
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
@@ -621,8 +611,6 @@ You can use only one of the following arguments to connect to your Oracle instan
     --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
   {{% /tab %}}
 
   {{% tab header="RDS PostgreSQL" %}}
@@ -742,11 +730,11 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
     --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 </div>
 

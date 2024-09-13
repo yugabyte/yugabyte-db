@@ -183,16 +183,6 @@ Create a new database user, and assign the necessary user permissions.
     ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
     ```
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
-
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
-{{< /note >}}
-
   {{% /tab %}}
 
   {{% tab header="RDS Oracle" %}}
@@ -365,6 +355,10 @@ You can use only one of the following arguments to connect to your Oracle instan
     /
     ```
 
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
@@ -374,10 +368,6 @@ You can use only one of the following arguments to connect to your Oracle instan
 - --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
 - --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
 
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
@@ -491,8 +481,6 @@ You can use only one of the following arguments to connect to your Oracle instan
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
     ```
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
   {{% /tab %}}
 
   {{% tab header="RDS PostgreSQL" %}}
@@ -605,11 +593,11 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
     The `ybvoyager` user can now be used for migration.
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 </div>
 
