@@ -3538,14 +3538,6 @@ SELECT * FROM cypher('issue_1988', $$
     MATCH (p) RETURN p $$) as (p agtype);
 
 --
--- Test external extension function logic for fuzzystrmatch
---
-SELECT * FROM create_graph('fuzzystrmatch');
--- These should fail with extension not installed
-SELECT * FROM cypher('fuzzystrmatch', $$ RETURN soundex("hello world!") $$) AS (result agtype);
-SELECT * FROM cypher('fuzzystrmatch', $$ RETURN difference("hello world!", "hello world!") $$) AS (result agtype);
-
---
 -- Issue 2093: Server crashes when executing SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
 --
 SELECT agtype_access_operator(agtype_in('[null, null]'));
@@ -3554,7 +3546,6 @@ SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
 --
 -- Cleanup
 --
-SELECT * FROM drop_graph('fuzzystrmatch', true);
 SELECT * FROM drop_graph('issue_1988', true);
 SELECT * FROM drop_graph('issue_1953', true);
 SELECT * FROM drop_graph('expanded_map', true);

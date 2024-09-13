@@ -25,6 +25,8 @@
 #include "postgres.h"
 
 #include "catalog/pg_proc.h"
+#include "catalog/dependency.h"
+#include "commands/extension.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -34,6 +36,7 @@
 #include "parser/cypher_clause.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/float.h"
@@ -97,14 +100,24 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
                                                   ColumnRef *cr);
 static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
                                                  cypher_unwind *expr);
-static bool is_fuzzystrmatch_function(FuncCall *fn);
-static void check_for_extension_functions(char *extension, FuncCall *fn);
-static List *cast_agtype_input_to_other_type(cypher_parsestate *cpstate,
-                                             FuncCall *fn, List *targs);
-static Node *cast_input_to_output_type(cypher_parsestate *cpstate, Node *expr,
-                                       Oid source_oid, Oid target_oid);
+static Node *transform_external_ext_FuncCall(cypher_parsestate *cpstate,
+                                             FuncCall *fn, List *targs,
+                                             Form_pg_proc procform,
+                                             char *extension);
+static List *cast_agtype_args_to_target_type(cypher_parsestate *cpstate,
+                                             Form_pg_proc procform,
+                                             List *fargs,
+                                             Oid *target_types);
+static Node *cast_to_target_type(cypher_parsestate *cpstate, Node *expr,
+                                 Oid source_oid, Oid target_oid);
 static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
                                         FuncExpr *fexpr);
+static Form_pg_proc get_procform(FuncCall *fn, bool err_not_found);
+static char *get_mapped_extension(Oid func_oid);
+static bool is_extension_external(char *extension);
+static bool is_pgvector_datatype(char *typename);
+static char *construct_age_function_name(char *funcname);
+static bool function_exists(char *funcname, char *extension);
 
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
@@ -1548,6 +1561,7 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
 {
     List *fname;
     FuncCall *fnode;
+    ParseState *pstate;
 
     /* verify input parameter */
     Assert (cpstate != NULL);
@@ -1555,6 +1569,7 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
 
     /* create the qualified function name, schema first */
     fname = list_make1(makeString("ag_catalog"));
+    pstate = &cpstate->pstate;
 
     /* append the name of the requested typecast function */
     if (pg_strcasecmp(ctypecast->typecast, "edge") == 0)
@@ -1599,7 +1614,40 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     {
         fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_TEXT));
     }
+    else if (is_pgvector_datatype(ctypecast->typecast))
+    {
+        TypeName *target_typname;
+        Oid source_oid;
+        Oid target_oid;
+        Node *expr;
 
+        /* transform the expr before casting */
+        expr = transform_cypher_expr_recurse(cpstate,
+                                             ctypecast->expr);
+
+        /* get the source and target oids */
+        target_typname = makeTypeNameFromNameList(list_make1(
+                                            makeString(ctypecast->typecast)));
+        target_oid = typenameTypeId(pstate, target_typname);
+        source_oid = exprType(expr);
+
+        if (source_oid == AGTYPEOID)
+        {
+            /* 
+             * Cast to text and then to target type, since we cant
+             * directly cast agtype to pgvector datatypes.
+             */
+            expr = cast_to_target_type(cpstate, expr, source_oid, TEXTOID);
+            expr = cast_to_target_type(cpstate, expr, TEXTOID, target_oid);
+        }
+        else
+        {
+            /* try a direct cast, it will error out if not possible */
+            expr = cast_to_target_type(cpstate, expr, source_oid, target_oid);
+        }
+
+        return expr;
+    }
     /* if none was found, error out */
     else
     {
@@ -1616,23 +1664,53 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     return transform_FuncCall(cpstate, fnode);
 }
 
-/* is the function part of the fuzzystrmatch extension */
-static bool is_fuzzystrmatch_function(FuncCall *fn)
+static Node *transform_external_ext_FuncCall(cypher_parsestate *cpstate,
+                                             FuncCall *fn, List *targs,
+                                             Form_pg_proc procform,
+                                             char *extension)
 {
-    char *funcname = (((String*)linitial(fn->funcname))->sval);
+    ParseState *pstate = &cpstate->pstate;
+    FuncExpr *fexpr = NULL;
+    Node *retval = NULL;
+    Node *last_srf = pstate->p_last_srf;
+    Oid *proargtypes;
 
-    if (pg_strcasecmp(funcname, "soundex") == 0 ||
-        pg_strcasecmp(funcname, "difference") == 0 ||
-        pg_strcasecmp(funcname, "daitch_mokotoff") == 0 ||
-        pg_strcasecmp(funcname, "soundex_tsvector") == 0 ||
-        pg_strcasecmp(funcname, "levenshtein") == 0 ||
-        pg_strcasecmp(funcname, "levenshtein_less_equal") == 0 ||
-        pg_strcasecmp(funcname, "metaphone") == 0 ||
-        pg_strcasecmp(funcname, "dmetaphone") == 0)
+    /* make sure procform in not NULL */
+    Assert(procform != NULL);
+    proargtypes = procform->proargtypes.values;
+
+    /* cast the agtype arguments to the types accepted by function */
+    targs = cast_agtype_args_to_target_type(cpstate, procform, targs, proargtypes);
+
+    /* now get the function node for the external function */
+    fexpr = (FuncExpr *)ParseFuncOrColumn(pstate, fn->funcname, targs,
+                                          last_srf, fn, false,
+                                          fn->location);
+
+    /*
+     * This will cast TEXT output to AGTYPE. It will error out if this is
+     * not possible to do. For TEXT to AGTYPE we need to wrap the output
+     * due to issues with creating a cast from TEXT to AGTYPE.
+     */
+    if (fexpr->funcresulttype == TEXTOID)
     {
-        return true;
+        retval = wrap_text_output_to_agtype(cpstate, fexpr);
     }
-    return false;
+    else
+    {
+        retval = (Node *)fexpr;
+    }
+
+    /* additional casts or wraps can be done here for other types */
+
+    /* flag that an aggregate was found during a transform */
+    if (retval != NULL && retval->type == T_Aggref)
+    {
+        cpstate->exprHasAgg = true;
+    }
+
+    /* we can just return it here */
+    return retval;
 }
 
 /*
@@ -1640,140 +1718,66 @@ static bool is_fuzzystrmatch_function(FuncCall *fn)
  * type. This is used for functions that don't take agtype as input and where
  * there isn't an implicit cast to do this for us.
  */
-static List *cast_agtype_input_to_other_type(cypher_parsestate *cpstate,
-                                             FuncCall *fn, List *targs)
+static List *cast_agtype_args_to_target_type(cypher_parsestate *cpstate,
+                                             Form_pg_proc procform,
+                                             List *fargs,
+                                             Oid *target_types)
 {
-    char *funcname = (((String*)linitial(fn->funcname))->sval);
-    int nargs = fn->args->length;
-    CatCList *catlist = NULL;
-    List *new_targs = NIL;
+    char *funcname = NameStr(procform->proname);
+    int nargs = procform->pronargs;
     ListCell *lc = NULL;
     int i = 0;
 
-    /* get a list of matching functions from the sys cache */
-    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
-
-    /* iterate through the list of functions for ones that match */
-    for (i = 0; i < catlist->n_members; i++)
+    /* verify the length of args are same */
+    if (list_length(fargs) != nargs)
     {
-        HeapTuple proctup = &catlist->members[i]->tuple;
-        Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("function %s requires %d arguments, %d given",
+                        funcname, nargs, list_length(fargs))));
+    }
 
-        /* check that the names, number of args, and variadic match */
-        if (pg_strcasecmp(funcname, procform->proname.data) == 0 &&
-            nargs == procform->pronargs &&
-            fn->func_variadic == procform->provariadic)
+    /* iterate through the function's args */
+    foreach (lc, fargs)
+    {
+        char *target_typname;
+        Node *expr = lfirst(lc);
+        Oid source_oid = exprType(expr);
+        Oid target_oid = target_types[i];
+
+        /* get the typename from target_oid */
+        target_typname = format_type_be(target_oid);
+
+        /* cast the agtype to the target type */
+        if (source_oid == AGTYPEOID && is_pgvector_datatype(target_typname))
         {
-            Oid *proargtypes = procform->proargtypes.values;
-            int j = 0;
-
-            /*
-             * Rebuild targs with castings to the function's input types from
-             * targ's output type.
+            /* 
+             * There is no cast from agtype to vector, so we first
+             * cast agtype to text and then text to vector.
              */
-            foreach(lc, targs)
-            {
-                Oid poid = proargtypes[j];
-                Node *targ = lfirst(lc);
-                Oid toid = exprType(targ);
-
-                /* cast the arg. this will error out if it can't be done. */
-                targ = cast_input_to_output_type(cpstate, targ, toid, poid);
-
-                /* add it to the new argument list */
-                new_targs = lappend(new_targs, targ);
-                j++;
-            }
-
-            /* free the old args and replace them with the new ones */
-            pfree_if_not_null(targs);
-            targs = new_targs;
-            break;
+            expr = cast_to_target_type(cpstate, expr, source_oid, TEXTOID);
+            expr = cast_to_target_type(cpstate, expr, TEXTOID, target_oid);
         }
-    }
-    /* we need to release the cache list */
-    ReleaseSysCacheList(catlist);
-    return targs;
-}
-
-/*
- * Verify that a called function, that is mapped to a specific
- * function in some other extension, is loaded. Otherwise, bail
- * out with an error, stating the issue.
- *
- * Note: some code borrowed from FuncnameGetCandidates
- */
-static void check_for_extension_functions(char *extension, FuncCall *fn)
-{
-    char *funcname = (((String*)linitial(fn->funcname))->sval);
-    CatCList *catlist = NULL;
-    bool found = false;
-    int i = 0;
-
-    /* get a list of matching functions */
-    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
-
-    /* if the catalog list is empty, the extension isn't loaded */
-    if (catlist->n_members == 0)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("extension %s is not installed for function %s",
-                        extension, funcname)));
-    }
-
-    /* iterate through them and verify that they are in the search path */
-    for (i = 0; i < catlist->n_members; i++)
-    {
-        HeapTuple proctup = &catlist->members[i]->tuple;
-        Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
-        List *asp = fetch_search_path(false);
-        ListCell *nsp;
-
-        /*
-         * Consider only procs that are in the search path and are not in
-         * the temp namespace.
-         */
-        foreach(nsp, asp)
+        /* additional casts can be added here for other types */
+        else
         {
-            Oid oid = lfirst_oid(nsp);
-
-            if (procform->pronamespace == oid &&
-                isTempNamespace(procform->pronamespace) == false)
-            {
-                pfree_if_not_null(asp);
-                found = true;
-                break;
-            }
+            /* try a direct cast, it will error out if not possible */
+            expr = cast_to_target_type(cpstate, expr, source_oid, target_oid);
         }
 
-        if (found)
-        {
-            break;
-        }
-
-        pfree_if_not_null(asp);
+        lfirst(lc) = expr;
+        i++;
     }
 
-    /* if we didn't find it, it isn't in the search path */
-    if (!found)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("extension %s is not in search path for function %s",
-                        extension, funcname)));
-    }
-
-    /* release the system cache list */
-    ReleaseSysCacheList(catlist);
+    return fargs;
 }
 
 /*
  * Cast an input type to an output type, error out if not possible.
  * Thanks to Taha for this idea.
  */
-static Node *cast_input_to_output_type(cypher_parsestate *cpstate, Node *expr,
-                                       Oid source_oid, Oid target_oid)
+static Node *cast_to_target_type(cypher_parsestate *cpstate, Node *expr,
+                                 Oid source_oid, Oid target_oid)
 {
     ParseState *pstate = &cpstate->pstate;
 
@@ -1831,6 +1835,181 @@ static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
     return retval;
 }
 
+/* 
+ * Returns Form_pg_proc struct for given function, if the function
+ * is not in search path, it is not considered.
+ */
+static Form_pg_proc get_procform(FuncCall *fn, bool err_not_found)
+{
+    CatCList *catlist = NULL;
+    Form_pg_proc procform = NULL;
+    int nargs;
+    int i = 0;
+    List *asp;
+    bool found = false;
+    char *funcname = (((String*)linitial(fn->funcname))->sval);
+
+    /* get a list of matching functions */
+    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
+
+    if (catlist->n_members == 0)
+    {
+        ReleaseSysCacheList(catlist);
+        return NULL;
+    }
+
+    asp = fetch_search_path(false);
+    nargs = list_length(fn->args);
+
+    /* iterate through them and verify that they are in the search path */
+    for (i = 0; i < catlist->n_members; i++)
+    {
+        ListCell *nsp;
+        HeapTuple proctup = &catlist->members[i]->tuple;
+        procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+        /*
+         * Check if the function name, number of arguments, and
+         * variadic match before checking if it is in the search
+         * path.
+         */
+        if (pg_strcasecmp(funcname, procform->proname.data) == 0 &&
+            nargs == procform->pronargs &&
+            fn->func_variadic == procform->provariadic)
+        {
+            foreach(nsp, asp)
+            {
+                Oid oid = lfirst_oid(nsp);
+
+                if (procform->pronamespace == oid &&
+                    isTempNamespace(procform->pronamespace) == false)
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (found)
+        {
+            break;
+        }
+
+        /* reset procform */
+        procform = NULL;
+    }
+
+    /* Error out if function not found */
+    if (err_not_found && (procform == NULL))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_FUNCTION),
+                 errmsg("function %s does not exist", funcname),
+                 errhint("If the function is from an external extension, "
+                         "make sure the extension is installed and the "
+                         "function is in the search path.")));
+    }
+
+    /* we need to release the cache list */
+    ReleaseSysCacheList(catlist);
+    pfree_if_not_null(asp);
+
+    return procform;
+}
+
+static char *get_mapped_extension(Oid func_oid)
+{
+    Oid extension_oid;
+    char *extension = NULL;
+
+    extension_oid = getExtensionOfObject(ProcedureRelationId, func_oid);
+    extension = get_extension_name(extension_oid);
+
+    return extension;
+}
+
+static bool is_extension_external(char *extension)
+{
+    return ((extension != NULL) &&
+            (pg_strcasecmp(extension, "age") != 0));
+}
+
+static bool is_pgvector_datatype(char *typename)
+{
+    return (pg_strcasecmp(typename, "vector") ||
+            pg_strcasecmp(typename, "halfvec") ||
+            pg_strcasecmp(typename, "sparsevec"));
+}
+
+/* Returns age_ prefiexed lower case function name */
+static char *construct_age_function_name(char *funcname)
+{
+    int pnlen = strlen(funcname);
+    char *ag_name = palloc(pnlen + 5);
+    int i;
+
+    /* copy in the prefix - all AGE functions are prefixed with age_ */
+    strncpy(ag_name, "age_", 4);
+
+    /*
+     * All AGE function names are in lower case. So, copy in the funcname
+     * in lower case.
+     */
+    for (i = 0; i < pnlen; i++)
+    {
+        ag_name[i + 4] = tolower(funcname[i]);
+    }
+
+    /* terminate it with 0 */
+    ag_name[i + 4] = 0;
+
+    return ag_name;
+}
+
+
+/*
+ * Checks if a function exists. If the extension name is given,
+ * then it checks if the function exists in that extension.
+ */
+static bool function_exists(char *funcname, char *extension)
+{
+    CatCList *catlist = NULL;
+    bool found = false;
+    int i = 0;
+
+    /* get a list of matching functions */
+    catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
+
+    if (catlist->n_members == 0)
+    {
+        ReleaseSysCacheList(catlist);
+        return false;
+    }
+    else if (extension == NULL)
+    {
+        ReleaseSysCacheList(catlist);
+        return true;
+    }
+
+    for (i = 0; i < catlist->n_members; i++)
+    {
+        HeapTuple proctup = &catlist->members[i]->tuple;
+        Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+        char *ext = get_mapped_extension(procform->oid);
+
+        if (ext != NULL && pg_strcasecmp(ext, extension) == 0)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    /* we need to release the cache list */
+    ReleaseSysCacheList(catlist);
+
+    return found;
+}
+
 /*
  * Code borrowed from PG's transformFuncCall and updated for AGE
  */
@@ -1842,7 +2021,6 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     List *fname = NIL;
     ListCell *arg;
     Node *retval = NULL;
-    bool found = false;
 
     /* Transform the list of arguments ... */
     foreach(arg, fn->args)
@@ -1856,120 +2034,84 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     /* within group should not happen */
     Assert(!fn->agg_within_group);
 
-    /*
-     * Check for cypher functions that map to the fuzzystrmatch extension and
-     * verify that the external functions exist.
-     */
-    if (is_fuzzystrmatch_function(fn))
-    {
-        /* abort if the extension isn't loaded or in the path */
-        check_for_extension_functions("fuzzystrmatch", fn);
-
-        /* everything looks good so mark found as true */
-        found = true;
-    }
-
-    /*
-     * If we found a function that is part of an extension, which is in the
-     * search_path, then cast the agtype inputs to that function's type inputs.
-     */
-    if (found)
-    {
-        FuncExpr *fexpr = NULL;
-
-        /*
-         * Coerce agtype inputs to function's inputs. this will error out if
-         * this is not possible to do.
-         */
-        targs = cast_agtype_input_to_other_type(cpstate, fn, targs);
-
-        /* now get the function node for the external function */
-        fexpr = (FuncExpr *)ParseFuncOrColumn(pstate, fn->funcname, targs,
-                                              last_srf, fn, false,
-                                              fn->location);
-
-        /*
-         * This will cast TEXT outputs to AGTYPE. It will error out if this is
-         * not possible to do. For TEXT to AGTYPE we need to wrap the output
-         * due to issues with creating a cast from TEXT to AGTYPE.
-         */
-        if (fexpr->funcresulttype == TEXTOID)
-        {
-            retval = wrap_text_output_to_agtype(cpstate, fexpr);
-        }
-        else
-        {
-            retval = (Node *)fexpr;
-        }
-
-        /* additional casts or wraps can be done here for other types */
-
-        /* flag that an aggregate was found during a transform */
-        if (retval != NULL && retval->type == T_Aggref)
-        {
-            cpstate->exprHasAgg = true;
-        }
-
-        /* we can just return it here */
-        return retval;
-    }
-
-    /*
-     * If the function name is not qualified and not from an extension, then it
-     * is one of ours. We need to construct its name, and qualify it, so that PG
-     * can find it.
-     */
-    if (list_length(fn->funcname) == 1)
-    {
-        /* get the name, size, and the ag name allocated */
-        char *name = ((String*)linitial(fn->funcname))->sval;
-        int pnlen = strlen(name);
-        char *ag_name = palloc(pnlen + 5);
-        int i;
-
-        /* copy in the prefix - all AGE functions are prefixed with age_ */
-        strncpy(ag_name, "age_", 4);
-
-        /*
-         * All AGE function names are in lower case. So, copy in the name
-         * in lower case.
-         */
-        for (i = 0; i < pnlen; i++)
-        {
-            ag_name[i + 4] = tolower(name[i]);
-        }
-
-        /* terminate it with 0 */
-        ag_name[i + 4] = 0;
-
-        /* qualify the name with our schema name */
-        fname = list_make2(makeString("ag_catalog"), makeString(ag_name));
-
-        /*
-         * Currently 3 functions need the graph name passed in as the first
-         * argument - in addition to the other arguments: startNode, endNode,
-         * and vle. So, check for those 3 functions here and that the arg list
-         * is not empty. Then prepend the graph name if necessary.
-         */
-        if ((list_length(targs) != 0) &&
-            (strcmp("startNode", name) == 0 ||
-             strcmp("endNode", name) == 0 ||
-             strcmp("vle", name) == 0 ||
-             strcmp("vertex_stats", name) == 0))
-        {
-            char *graph_name = cpstate->graph_name;
-            Datum d = string_to_agtype(graph_name);
-            Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false,
-                                 false);
-
-            targs = lcons(c, targs);
-        }
-
-    }
-    /* If it is not one of our functions, pass the name list through */
-    else
+    /* If it is a qualified function call, let it through. */
+    if (list_length(fn->funcname) > 1)
     {
         fname = fn->funcname;
+    }
+    /*
+     * Else We need to check if the function call is for
+     * age or for some external extension.
+     */
+    else
+    {
+        char *name = strVal(linitial(fn->funcname));
+        char *ag_name = construct_age_function_name(name);
+
+        if (function_exists(ag_name, "age"))
+        {
+            /* qualify the name with our schema name */
+            fname = list_make2(makeString("ag_catalog"), makeString(ag_name));
+
+            /*
+             * Currently 3 functions need the graph name passed in as the first
+             * argument - in addition to the other arguments: startNode, endNode,
+             * and vle. So, check for those 3 functions here and that the arg list
+             * is not empty. Then prepend the graph name if necessary.
+             */
+            if ((list_length(targs) != 0) &&
+                (strcmp("startNode", name) == 0 ||
+                strcmp("endNode", name) == 0 ||
+                strcmp("vle", name) == 0 ||
+                strcmp("vertex_stats", name) == 0))
+            {
+                char *graph_name = cpstate->graph_name;
+                Datum d = string_to_agtype(graph_name);
+                Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false,
+                                    false);
+
+                targs = lcons(c, targs);
+            }
+        }
+        /* 
+         * If it's not in age, check if it's a potential call to some function
+         * in another installed extension.
+         */
+        else if(function_exists(name, NULL))
+        {
+            Form_pg_proc procform = get_procform(fn, true);
+            char *extension = get_mapped_extension(procform->oid);
+
+            /*
+             * If the function is from another extension, transform
+             * it if possible and return the function expr.
+             */
+            if (is_extension_external(extension))
+            {
+                retval = transform_external_ext_FuncCall(cpstate, fn, targs,
+                                                         procform, extension);
+                return retval;
+            }
+            else
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_UNDEFINED_FUNCTION),
+                        errmsg("function %s does not exist", name),
+                        errhint("If the function is from an external extension, "
+                                "make sure the extension is installed and the "
+                                "function is in the search path.")));
+            }
+        }
+        /* no function found */
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_UNDEFINED_FUNCTION),
+                    errmsg("function %s does not exist", name),
+                    errhint("If the function is from an external extension, "
+                            "make sure the extension is installed and the "
+                            "function is in the search path.")));
+        }
     }
 
     /* ... and hand off to ParseFuncOrColumn */

@@ -112,8 +112,13 @@ REGRESS = scan \
           name_validation \
           jsonb_operators \
           list_comprehension \
-          map_projection \
-          drop
+          map_projection
+
+ifneq ($(EXTRA_TESTS),)
+  REGRESS += $(EXTRA_TESTS)
+endif
+
+REGRESS += drop
 
 srcdir=`pwd`
 

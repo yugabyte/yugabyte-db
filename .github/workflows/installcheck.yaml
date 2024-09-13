@@ -22,25 +22,37 @@ jobs:
           path: ~/pg15
           key: ${{ runner.os }}-v1-pg15-${{ env.PG_COMMIT_HASH }}
 
-      - name: Install PostgreSQL 15
+      - name: Install PostgreSQL 15 and some extensions
         if: steps.pg15cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch REL_15_STABLE git://git.postgresql.org/git/postgresql.git ~/pg15source
           cd ~/pg15source
           ./configure --prefix=$HOME/pg15 CFLAGS="-std=gnu99 -ggdb -O0" --enable-cassert
           make install -j$(nproc) > /dev/null
+          cd contrib
+          cd fuzzystrmatch
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
+          cd ../pg_trgm
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
 
       - uses: actions/checkout@v3
 
-      - name: Build
+      - name: Build AGE
         id: build
         run: |
           make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc)
+        
+      - name: Pull and build pgvector
+        id: pgvector
+        run: |
+          git clone https://github.com/pgvector/pgvector.git
+          cd pgvector
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
 
       - name: Regression tests
         id: regression_tests
         run: |
-          make PG_CONFIG=$HOME/pg15/bin/pg_config installcheck
+          make PG_CONFIG=$HOME/pg15/bin/pg_config installcheck EXTRA_TESTS="pgvector fuzzystrmatch pg_trgm"
         continue-on-error: true
 
       - name: Dump regression test errors
