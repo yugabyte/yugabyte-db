@@ -335,7 +335,7 @@ export function fetchTaskUntilItCompletes(
       }
       if (status === 'Failed' || status === 'Failure') {
         onTaskCompletion(true, resp);
-      } else if (percent === 100) {
+      } else if (percent === 100 && status === 'Success') {
         onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);
