@@ -332,7 +332,7 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 The following examples describe different use cases detailing the Wait-on-Conflict behavior.
 
 1. Note that the examples require you to set the YB-TServer flag `enable_wait_queues=true`.
-1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
+1. Also, set the per-session GUC parameter `yb_max_query_layer_retries=0` to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag.
 
 A restart is necessary for these flags to take effect.
 

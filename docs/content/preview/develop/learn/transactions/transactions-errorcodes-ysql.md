@@ -82,11 +82,24 @@ The client can reconnect to the server and retry the transaction.
 This error occurs when a transaction cannot be applied or progress further because of other conflicting transactions. For example, when multiple transactions are modifying the same key.
 
 ```output
-ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
+ERROR:  could not serialize access due to concurrent update (...)
 ```
 
 {{<lead link="../transactions-retries-ysql/#client-side-retry">}}
 Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
+{{</lead>}}
+
+## 40P01: Deadlock detected
+
+This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted
+and they fail with the following error.
+
+```output
+ERROR:  deadlock detected (...)
+```
+
+{{<lead link="../transactions-retries-ysql/#client-side-retry">}}
+Deadlock detected errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
 {{</lead>}}
 
 ## 2D000: Invalid transaction termination

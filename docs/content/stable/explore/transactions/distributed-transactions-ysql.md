@@ -156,9 +156,8 @@ Each update performed as a part of the transaction is replicated across multiple
 
 ### Concurrency control
 
-[Concurrency control](../../../architecture/transactions/concurrency-control/) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are optimistic and pessimistic.
-
-YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
+[Concurrency control](../../../architecture/transactions/concurrency-control/) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. YugabyteDB currently supports concurrency control mechanisms: Wait-on-Conflict and Fail-on-Conflict.
+These are orthogonal to isolation levels (except for Read Committed isolation which has the same behaviour in both modes barring some limitations and performance penalty in Fail-on-Conflict mode). Also note that the Wait-on-Conflict concurrency control mode exactly matches Postgres semantics and also gives better performance.
 
 ## Transaction options
 
