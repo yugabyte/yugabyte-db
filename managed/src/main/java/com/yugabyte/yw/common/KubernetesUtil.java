@@ -39,6 +39,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -759,6 +760,9 @@ public class KubernetesUtil {
       universeOverrides = mapper.readValue(universeOverridesStr, Map.class);
     }
 
+    if (CollectionUtils.isEmpty(placementInfo.cloudList)) {
+      return result;
+    }
     Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
     for (PlacementRegion pr : placementInfo.cloudList.get(0).regionList) {
       Region region = Region.getOrBadRequest(pr.uuid);
@@ -804,7 +808,7 @@ public class KubernetesUtil {
       if (cluster.userIntent.providerType != CloudType.kubernetes) {
         continue;
       }
-      if (clusterType != cluster.clusterType) {
+      if ((clusterType != null) && (clusterType != cluster.clusterType)) {
         continue;
       }
       PlacementInfo pi = cluster.placementInfo;
@@ -855,7 +859,7 @@ public class KubernetesUtil {
       if (cluster.userIntent.providerType != CloudType.kubernetes) {
         continue;
       }
-      if (clusterType != cluster.clusterType) {
+      if ((clusterType != null) && (clusterType != cluster.clusterType)) {
         continue;
       }
       Map<UUID, Map<String, Object>> finalOverrides =
@@ -920,8 +924,10 @@ public class KubernetesUtil {
 
   /**
    * Generate Map of Namespace and Per-AZ Namespace scoped services. Returns empty map for AZs where
-   * serviceEndpoints is not defined. Returns null for AZs where serviceEndpoints is defined but
-   * empty.
+   * serviceEndpoints is not defined. Returns null for AZs where serviceEndpoints is defined as
+   * empty array. For helm default overrides( i.e. no overrides specified ): <br>
+   * 1. Returns null for default scope "AZ" <br>
+   * 2. Returns empty map for default scope "Namespaced"
    *
    * @param universeParams
    * @return Generated namespaced NS scope services in the form &lt;Namespace, &lt;AZ_uuid,
@@ -934,6 +940,9 @@ public class KubernetesUtil {
           throws IOException {
     Map<String, Map<UUID, Map<String, Object>>> namespaceAZOverrides =
         generateNamespaceAZOverridesMap(universeParams, clusterType);
+    if (namespaceAZOverrides == null) {
+      return null;
+    }
     Map<String, Map<UUID, Map<String, Map<String, Object>>>> nsNamespacedServices = new HashMap<>();
     String defaultScopeUserIntent =
         universeParams.getPrimaryCluster().userIntent.defaultServiceScopeAZ ? "AZ" : "Namespaced";
@@ -945,8 +954,13 @@ public class KubernetesUtil {
               azOverridesEntry -> {
                 Map<String, Object> override = azOverridesEntry.getValue();
                 Map<String, Map<String, Object>> services = getServicesFromOverrides(override);
-                if (services == null) {
+                if (services == null
+                    || (MapUtils.isEmpty(services) && defaultScopeUserIntent.equals("AZ"))) {
                   azNamespacedServicesMap.put(azOverridesEntry.getKey(), null /* empty Services */);
+                } else if (MapUtils.isEmpty(services)
+                    && defaultScopeUserIntent.equals("Namespaced")) {
+                  azNamespacedServicesMap.put(
+                      azOverridesEntry.getKey(), new HashMap<String, Map<String, Object>>());
                 } else {
                   Map<String, Map<String, Object>> namespacedServices =
                       services.entrySet().stream()
@@ -967,11 +981,16 @@ public class KubernetesUtil {
                                 return scope.equals("Namespaced");
                               })
                           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                  // Set null if using default helm overrides and userIntent service scope is "AZ"
+                  if (MapUtils.isEmpty(namespacedServices)) {
+                    namespacedServices = null;
+                  }
                   azNamespacedServicesMap.put(azOverridesEntry.getKey(), namespacedServices);
                 }
               });
       nsNamespacedServices.put(namespace, azNamespacedServicesMap);
     }
+    log.debug("Namespaced services: {}", nsNamespacedServices);
     return nsNamespacedServices;
   }
 
@@ -1224,9 +1243,20 @@ public class KubernetesUtil {
   public static void validateServiceEndpoints(
       UniverseDefinitionTaskParams universeParams, Map<String, String> universeConfig)
       throws IOException {
-    // Return if should not configure
     if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
-      log.debug("Universe configuration does not support Namespace scoped services, skipping");
+      Map<String, Map<UUID, Map<String, Map<String, Object>>>> nsScopedServices =
+          getNamespaceNSScopedServices(universeParams, null /* clusterType */);
+      if (nsScopedServices == null) {
+        return;
+      }
+      boolean nsServicePresent =
+          nsScopedServices.values().stream()
+              .flatMap(azsMap -> azsMap.values().stream())
+              .anyMatch(Objects::nonNull);
+      if (nsServicePresent) {
+        throw new RuntimeException(
+            "Universe configuration does not support Namespace scoped services");
+      }
       return;
     }
     // Validate service name does not appear twice in final overrides per AZ.
@@ -1250,17 +1280,17 @@ public class KubernetesUtil {
       UniverseDefinitionTaskParams universeParams,
       Map<String, String> universeConfig)
       throws IOException {
-    // Return if should not configure
-    if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
-      log.debug("Universe configuration does not support Namespace scoped services, skipping");
-      return;
-    }
     UniverseDefinitionTaskParams taskParams =
         Json.fromJson(Json.toJson(universeParams), UniverseDefinitionTaskParams.class);
     taskParams.getPrimaryCluster().userIntent.universeOverrides = newUniverseOverrides;
     taskParams.getPrimaryCluster().userIntent.azOverrides = newAZOverrides;
     // Validate new overrides for service endpoint independently
     validateServiceEndpoints(taskParams, universeConfig);
+
+    // Return if not supported
+    if (!shouldConfigureNamespacedService(taskParams, universeConfig)) {
+      return;
+    }
 
     String defaultScope =
         universeParams.getPrimaryCluster().userIntent.defaultServiceScopeAZ ? "AZ" : "Namespaced";
