@@ -133,12 +133,12 @@ Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs
 
 To enable EPCM in YugabyteDB:
 
-- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../../../reference/configuration/yugabyted/) when starting your cluster.
+- Pass the `enable_pg_parity_tech_preview` flag to [yugabyted](../../../reference/configuration/yugabyted/) when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
 ```sh
-./bin/yugabyted start --enable_pg_parity_early_access
+./bin/yugabyted start --enable_pg_parity_tech_preview
 ```
 
 Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
