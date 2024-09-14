@@ -1558,12 +1558,12 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 										"unit must be 'week' or smaller"),
 									errdetail_log("unit must be 'week' or smaller")));
 				}
-				*unitInMs =
-					((Interval *) DatumGetIntervalP(
-						 GetIntervalFromDateUnitAndAmount(
-							 unit,
-							 1)))
-					->time / 1000;
+				Datum interval = GetIntervalFromDateUnitAndAmount(unit, 1);
+				float8 secondsInInterval = DatumGetFloat8(DirectFunctionCall2(
+															  interval_part,
+															  CStringGetTextDatum(EPOCH),
+															  interval));
+				*unitInMs = (long) (secondsInInterval * 1000);
 			}
 			else
 			{
