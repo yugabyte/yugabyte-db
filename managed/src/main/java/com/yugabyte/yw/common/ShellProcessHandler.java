@@ -239,13 +239,13 @@ public class ShellProcessHandler {
             .peek(
                 line -> {
                   if (logOutput) {
-                    log.debug(fileMarker, line);
+                    log.debug(fileMarker, RedactingService.redactQueryParams(line));
                   }
                 })
             .collect(Collectors.joining("\n"))
             .trim();
     if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      log.debug(consoleMarker, lines);
+      log.debug(consoleMarker, RedactingService.redactQueryParams(lines));
     }
     return lines;
   }

@@ -127,6 +127,12 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testUpdate() throws Exception {
+    // Restart the cluster to allow connection manager to operate without
+    // warmed up connections, and set up for the test once again after doing so.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
     final String updateQuery = "UPDATE %s SET %s = %s + 5 WHERE %s %s";
     final int numRows = 4;
 
@@ -221,6 +227,7 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // Clear the table.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("TRUNCATE %s CASCADE", TEST_TABLE));
+      waitForTServerHeartbeatIfConnMgrEnabled();
     }
 
     TopLevelCheckerBuilder topLevelChecker = makeTopLevelBuilder()
@@ -315,6 +322,12 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testForeignKey() throws Exception {
+    // Restart the cluster to allow connection manager to operate without
+    // warmed up connections, and set up for the test once again after doing so.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
     final String fkSimpleInsert = "INSERT INTO %s VALUES %s";
 
     // Create a table with a foreign key constraint.

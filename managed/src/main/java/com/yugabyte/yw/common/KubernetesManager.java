@@ -38,7 +38,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -55,6 +54,7 @@ import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class KubernetesManager {
@@ -613,7 +613,7 @@ public abstract class KubernetesManager {
   }
 
   public String getKubernetesServiceIPPort(ServerType type, Universe universe) {
-    List<String> allIPs = new ArrayList<>();
+    Set<String> allIPs = new HashSet<>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
     // If no service is exposed, fail early.
@@ -654,14 +654,18 @@ public abstract class KubernetesManager {
                 false,
                 universeDetails.useNewHelmNamingStyle);
 
-        String ip =
+        Set<String> ips =
             getPreferredServiceIP(
                 config,
                 helmReleaseName,
                 namespace,
                 type == ServerType.MASTER,
-                universeDetails.useNewHelmNamingStyle);
-        if (ip == null) {
+                universe
+                    .getConfig()
+                    .getOrDefault(Universe.LABEL_K8S_RESOURCES, "false")
+                    .equals("true") /* k8sNewLabels */,
+                universe.getName());
+        if (CollectionUtils.isEmpty(ips)) {
           return null;
         }
 
@@ -682,7 +686,7 @@ public abstract class KubernetesManager {
           default:
             throw new IllegalArgumentException("Unexpected type " + type);
         }
-        allIPs.add(String.format("%s:%d", ip, rpcPort));
+        ips.stream().forEach(ip -> allIPs.add(String.format("%s:%d", ip, rpcPort)));
       }
       return String.join(",", allIPs);
     }
@@ -722,12 +726,13 @@ public abstract class KubernetesManager {
   /**
    * @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp
    */
-  public abstract String getPreferredServiceIP(
+  public abstract Set<String> getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
       String namespace,
       boolean isMaster,
-      boolean newNamingStyle);
+      boolean k8sNewLabels,
+      String universeName);
 
   public abstract List<Node> getNodeInfos(Map<String, String> config);
 
@@ -872,4 +877,19 @@ public abstract class KubernetesManager {
 
   public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
       String namespace, String helmReleaseName, Map<String, String> config);
+
+  public abstract void deleteNamespacedService(
+      Map<String, String> config, String namespace, String universeName);
+
+  public abstract void deleteNamespacedService(
+      Map<String, String> config,
+      String namespace,
+      String universeName,
+      @Nullable Set<String> serviceNames);
+
+  public abstract void updateNamespacedServiceOwnership(
+      Map<String, String> config, String namespace, String universeName, String ownerReleaseName);
+
+  public abstract List<Service> getNamespacedServices(
+      Map<String, String> config, String namespace, String universeName);
 }

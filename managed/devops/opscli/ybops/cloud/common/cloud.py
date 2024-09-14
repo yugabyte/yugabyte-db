@@ -406,17 +406,33 @@ class AbstractCloud(AbstractCommandParser):
                 "'{}' does not match with any entry in CN or SAN of the node cert: {}, "
                 "cert_cn: {}, cert_san: {}".format(host, node_crt_path, cert_cn, cert_san))
 
-    def verify_certs(self, root_crt_path, node_crt_path, connect_options, verify_hostname=False):
+    def verify_certs(self, root_crt_path, server_crt_path, server_key_path, connect_options,
+                     verify_hostname=False, perform_extended_validation=False):
         remote_shell = RemoteShell(connect_options)
-        # Verify that both cert are present in FS and have read rights
+
+        # Verify that the root cert, server certs and keys are not empty strings or None
+        if not root_crt_path or not server_crt_path or not server_key_path:
+            raise YBOpsRuntimeError(
+                "Path to root cert: {}, server cert: {} or key: {} is empty."
+                .format(root_crt_path, server_crt_path, server_key_path))
+
+        # Verify that both cert and the key are present in FS and have read rights
         root_file_verify = remote_shell.run_command_raw("test -r {}".format(root_crt_path))
         if root_file_verify.exited == 1:
             raise YBOpsRuntimeError(
                 "Root cert: {} is absent or is not readable.".format(root_crt_path))
-        node_file_verify = remote_shell.run_command_raw("test -r {}".format(node_crt_path))
-        if node_file_verify.exited == 1:
+
+        cert_file_verify = remote_shell.run_command_raw("test -r {}".format(server_crt_path))
+        if cert_file_verify.exited == 1:
             raise YBOpsRuntimeError(
-                "Node cert: {} is absent or is not readable.".format(node_crt_path))
+                "Server cert: {} is absent or is not readable.".format(server_crt_path))
+
+        key_file_verify = remote_shell.run_command_raw("test -r {}".format(server_key_path))
+        if key_file_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                "Key file: {} is absent or is not readable.".format(server_key_path))
+
+        # Verify OpenSSL is installed
         try:
             remote_shell.run_command('which openssl')
         except YBOpsRuntimeError:
@@ -427,29 +443,63 @@ class AbstractCloud(AbstractCommandParser):
         cert_verify = remote_shell.run_command_raw(
             ("openssl crl2pkcs7 -nocrl -certfile {} -certfile {} "
                 "| openssl pkcs7 -print_certs -text -noout")
-            .format(root_crt_path, node_crt_path))
+            .format(root_crt_path, server_crt_path))
         if cert_verify.exited == 1:
             raise YBOpsRuntimeError(
                 "Provided certs ({}, {}) are not valid."
-                .format(root_crt_path, node_crt_path))
+                .format(root_crt_path, server_crt_path))
 
-        # Verify if the node cert is not expired
+        # Verify if the server cert is not expired
         validity_verify = remote_shell.run_command_raw(
-            "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
+            "openssl x509 -noout -checkend 86400 -in {}".format(server_crt_path))
         if validity_verify.exited == 1:
             raise YBOpsRuntimeError(
-                "Node cert: {} is expired or will expire in one day.".format(node_crt_path))
+                "Node cert: {} is expired or will expire in one day.".format(server_crt_path))
 
-        # Verify if node cert has valid signature
+        # Verify if node cert has valid signature and the certificate chain is valid
         signature_verify = remote_shell.run_command_raw(
-            "openssl verify -CAfile {} {} | egrep error".format(root_crt_path, node_crt_path))
+            "openssl verify -CAfile {} {} | egrep error".format(root_crt_path, server_crt_path))
         if signature_verify.exited != 1:
             raise YBOpsRuntimeError(
-                "Node cert: {} is not signed by the provided root cert: {}.".format(node_crt_path,
+                "Node cert: {} is not signed by the provided root cert: {}.".format(server_crt_path,
                                                                                     root_crt_path))
+        if perform_extended_validation:
+            # Verify both certificates are RSA
+            for crt_path, cert_name in [(root_crt_path, "Root"), (server_crt_path, "Server")]:
+                output = remote_shell.run_command_raw(f"openssl x509 -in {crt_path} -noout -text")
+                if output.exited != 0:
+                    raise YBOpsRuntimeError(
+                        f"Failed to read {cert_name.lower()} certificate - {crt_path}.")
+                if "RSA Public-Key" not in output.stdout:
+                    raise YBOpsRuntimeError(
+                        f"{cert_name} certificate - {crt_path} is not of RSA algorithm.")
+
+            # Verify server key is RSA and at least 2048 bits
+            key_info = remote_shell.run_command_raw(
+                f"openssl rsa -in {server_key_path} -noout -text")
+            if key_info.exited != 0:
+                raise YBOpsRuntimeError(f"Key file: {server_key_path} is not using RSA algorithm.")
+
+            # Extract and verify the key size
+            key_size = int(key_info.stdout.split("Private-Key: (")[1].split()[0].strip())
+            logging.info(f"Key size: {key_size}")
+            if key_size < 2048:
+                raise YBOpsRuntimeError(
+                    f"RSA key size in server cert at {server_key_path} is less than 2048 bits.")
+
+            # Verify key signs the certificate
+            cert_md5 = remote_shell.run_command_raw(
+                "openssl x509 -noout -modulus -in {} | openssl md5".format(server_crt_path)).stdout
+            key_md5 = remote_shell.run_command_raw(
+                "openssl rsa -noout -modulus -in {} | openssl md5".format(
+                    server_key_path)
+                ).stdout
+            if cert_md5 != key_md5:
+                raise YBOpsRuntimeError(
+                    "Server certificate and server key do not match.")
 
         if verify_hostname:
-            self.__verify_certs_hostname(node_crt_path, connect_options)
+            self.__verify_certs_hostname(server_crt_path, connect_options)
 
     def copy_server_certs(
             self,
@@ -510,7 +560,7 @@ class AbstractCloud(AbstractCommandParser):
                     logging.info(
                         "Skipping host name validation for certs for node {}".format(node_ip))
                     verify_hostname = False
-                self.verify_certs(root_cert_path, server_cert_path,
+                self.verify_certs(root_cert_path, server_cert_path, server_key_path,
                                   connect_options, verify_hostname)
             if copy_root:
                 remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,

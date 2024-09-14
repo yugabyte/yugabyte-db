@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.JobSchedule;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig.ScheduleType;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -255,5 +256,91 @@ public class JobSchedulerTest extends FakeDBApplication {
     jobSchedule = JobSchedule.getOrBadRequest(uuid);
     assertEquals(0, jobSchedule.getExecutionCount());
     assertEquals(0, jobSchedule.getFailedCount());
+  }
+
+  @Test
+  public void testJobScheduleSnooze() throws Exception {
+    ScheduleConfig scheduleConfig =
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(3).build();
+    TestJobConfig jobConfig = new TestJobConfig();
+    JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
+    UUID uuid = jobScheduler.submitSchedule(jobSchedule);
+    long snoozeSecs = 5 * 60;
+    Instant beforeSnooze = Instant.now().plusSeconds(snoozeSecs);
+    Thread.sleep(1000);
+    jobScheduler.snooze(uuid, snoozeSecs);
+    Thread.sleep(1000);
+    Instant afterSnooze = Instant.now().plusSeconds(snoozeSecs);
+    List<JobInstance> jobInstances = JobInstance.getAll(uuid);
+    assertEquals(0, jobInstances.size());
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+    // Toggling disable must not change the snooze time.
+    jobScheduler.disableSchedule(uuid, true);
+    jobScheduler.disableSchedule(uuid, false);
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+    jobScheduler.updateSchedule(
+        uuid, jobSchedule.getScheduleConfig().toBuilder().intervalSecs(5).build());
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    // Updating schedule config must not change the snooze time.
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+  }
+
+  @Test
+  public void testHandleRestart() {
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
+    UUID uuid1 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new TestJobConfig()));
+    UUID uuid2 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new DummyTestJobConfig()));
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.RUNNING);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SCHEDULED);
+              } else {
+                fail();
+              }
+              i.save();
+              JobSchedule jobSchedule = JobSchedule.getOrBadRequest(i.getJobScheduleUuid());
+              jobSchedule.setState(JobSchedule.State.ACTIVE);
+              jobSchedule.save();
+            });
+    jobScheduler.handleRestart();
+    JobSchedule.getAll()
+        .forEach(
+            s -> {
+              assertEquals(JobSchedule.State.INACTIVE, s.getState());
+            });
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.FAILED);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SKIPPED);
+              } else {
+                fail();
+              }
+              assertTrue("End time for job instance must be set", i.getEndTime() != null);
+            });
   }
 }

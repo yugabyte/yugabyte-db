@@ -3,6 +3,7 @@ title: Java Driver 4.15 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 4.15 driver
+badges: ycql
 menu:
   preview:
     identifier: ycql-java-driver-4.x

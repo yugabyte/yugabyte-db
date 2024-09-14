@@ -235,3 +235,6 @@ set(YB_BACKUP_TEST_BASE_DEPS
 ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
+
+add_executable(hnsw_tool hnsw_tool.cc)
+target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb yb_vector)

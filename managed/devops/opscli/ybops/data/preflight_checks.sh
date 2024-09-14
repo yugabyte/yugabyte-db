@@ -84,50 +84,7 @@ preflight_provision_check() {
   check_filepath "PAM Limits" $ulimit_filepath true
 
   # Check NTP synchronization
-  if [[ "$skip_ntp_check" = false ]]; then
-    ntp_status=$(timedatectl status)
-    ntp_check=true
-    enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
-    if [[ $ntp_status =~ $enabled_regex ]]; then
-      enabled_status="${BASH_REMATCH[2]// /}"
-      if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
-        # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
-        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " \
-              && "${BASH_REMATCH[2]// /}" == "n/a") ]]; then
-          ntp_check=false
-        fi
-      fi
-    else
-      systemd_regex='systemd-timesyncd.service active:'
-      if [[ ! $ntp_status =~ $systemd_regex ]]; then # See PLAT-3373
-        ntp_check=false
-      fi
-    fi
-    synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
-    if [[ $ntp_status =~ $synchro_regex ]]; then
-      synchro_status="${BASH_REMATCH[2]// /}"
-      if [[ "$synchro_status" != "yes" ]]; then
-        ntp_check=false
-      fi
-    else
-      ntp_check=false
-    fi
-    # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
-    service_regex="Active: active \(running\)"
-    service_check=false
-    for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
-      service_status=$(systemctl status $ntp_service)
-      if [[ $service_status =~ $service_regex ]]; then
-        service_check=true
-        break
-      fi
-    done
-    if $service_check && $ntp_check; then
-      update_result_json "NTP time synchronization set up" true
-    else
-      update_result_json "NTP time synchronization set up" false
-    fi
-  fi
+  check_ntp_service
 
   # Check mount points are writeable.
   IFS="," read -ra mount_points_arr <<< "$mount_points"
@@ -188,9 +145,8 @@ preflight_configure_check() {
   test ${vm_max_map_count:-0} -ge $VM_MAX_MAP_COUNT
   update_result_json_with_rc "vm_max_map_count" "$?"
 
-  # Check for chronyc utility.
-  command -v chronyc >/dev/null 2>&1
-  update_result_json_with_rc "chronyc_installed" "$?"
+  # Check NTP synchronization
+  check_ntp_service
 }
 
 preflight_all_checks() {
@@ -272,6 +228,53 @@ check_free_space() {
   test $(echo $YB_SUDO_PASS | sudo -S df -m $path | awk 'FNR == 2 {print $4}') -gt $required_mb
 
   update_result_json_with_rc "$1 has free space of $required_mb MB $SPACE_STR" "$?"
+}
+
+check_ntp_service() {
+  if [[ "$skip_ntp_check" = false ]]; then
+    ntp_status=$(timedatectl status)
+    ntp_check=true
+    enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
+    if [[ $ntp_status =~ $enabled_regex ]]; then
+      enabled_status="${BASH_REMATCH[2]// /}"
+      if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
+        # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
+        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " \
+              && "${BASH_REMATCH[2]// /}" == "n/a") ]]; then
+          ntp_check=false
+        fi
+      fi
+    else
+      systemd_regex='systemd-timesyncd.service active:'
+      if [[ ! $ntp_status =~ $systemd_regex ]]; then # See PLAT-3373
+        ntp_check=false
+      fi
+    fi
+    synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
+    if [[ $ntp_status =~ $synchro_regex ]]; then
+      synchro_status="${BASH_REMATCH[2]// /}"
+      if [[ "$synchro_status" != "yes" ]]; then
+        ntp_check=false
+      fi
+    else
+      ntp_check=false
+    fi
+    # Check if one of chronyd, ntpd and systemd-timesyncd is running on the node
+    service_regex="Active: active \(running\)"
+    service_check=false
+    for ntp_service in chronyd ntp ntpd systemd-timesyncd; do
+      service_status=$(systemctl status $ntp_service)
+      if [[ $service_status =~ $service_regex ]]; then
+        service_check=true
+        break
+      fi
+    done
+    if $service_check && $ntp_check; then
+      update_result_json "NTP time synchronization set up" true
+    else
+      update_result_json "NTP time synchronization set up" false
+    fi
+  fi
 }
 
 update_result_json() {

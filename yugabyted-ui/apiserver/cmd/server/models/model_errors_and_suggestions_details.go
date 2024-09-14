@@ -3,6 +3,8 @@ package models
 // ErrorsAndSuggestionsDetails - Errors and suggestions details
 type ErrorsAndSuggestionsDetails struct {
 
+    IssueType string `json:"issueType"`
+
     ObjectType string `json:"objectType"`
 
     ObjectName string `json:"objectName"`

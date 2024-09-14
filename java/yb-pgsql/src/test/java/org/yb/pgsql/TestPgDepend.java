@@ -144,7 +144,7 @@ public class TestPgDepend extends BasePgSQLTest {
   }
 
   @Test
-  public void testTableWithViewDeletionWithCascade() throws SQLException {
+  public void testTableWithViewDeletionWithCascade() throws Exception {
     try (Statement statement = connection.createStatement()) {
       createSimpleTable(statement, "test");
 
@@ -176,6 +176,10 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Test dropping the table (with CASCADE).
       statement.execute("DROP TABLE test CASCADE");
+
+      // Since no DDLs are fired between DROP and CREATE test,
+      // allow cache invalidation to happen when Connection Manager is enabled.
+      waitForTServerHeartbeatIfConnMgrEnabled();
 
       // Check that we have deleted the view-table dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "

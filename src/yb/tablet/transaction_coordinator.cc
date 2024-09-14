@@ -1578,7 +1578,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       YB_LOG_EVERY_N(WARNING, 100)
           << "Received wait-for report at node with deadlock detection disabled. "
           << "This should only happen during rolling restart.";
-      callback(Status::OK());
+      return callback(Status::OK());
     }
 
     return deadlock_detector_.ProcessWaitFor(req, resp, std::move(callback));

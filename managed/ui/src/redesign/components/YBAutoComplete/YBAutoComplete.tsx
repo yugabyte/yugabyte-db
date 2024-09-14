@@ -32,6 +32,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   }
 }));
 
+// eslint-disable-next-line react/display-name
 export const YBAutoComplete: FC<YBAutoCompleteProps> = React.forwardRef(
   (
     { ybInputProps, options, getOptionLabel, autoCompleteDropdownID, ...rest }: YBAutoCompleteProps,

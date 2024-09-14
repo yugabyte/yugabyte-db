@@ -37,5 +37,6 @@ yba universe upgrade [flags]
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba universe upgrade gflags](yba_universe_upgrade_gflags.md)	 - Gflags upgrade for a YugabyteDB Anywhere Universe
+* [yba universe upgrade linux-os](yba_universe_upgrade_linux-os.md)	 - VM Linux OS patch for a YugabyteDB Anywhere Universe
 * [yba universe upgrade software](yba_universe_upgrade_software.md)	 - Software upgrade for a YugabyteDB Anywhere Universe
 

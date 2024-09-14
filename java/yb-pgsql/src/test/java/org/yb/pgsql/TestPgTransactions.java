@@ -1027,6 +1027,7 @@ public class TestPgTransactions extends BasePgSQLTest {
 
         s1.execute("COMMIT");
         s1.execute("DROP TABLE test");
+        waitForTServerHeartbeatIfConnMgrEnabled();
       } catch (Exception ex) {
         fail(ex.getMessage());
       }

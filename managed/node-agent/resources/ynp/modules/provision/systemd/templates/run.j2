@@ -2,7 +2,7 @@
 systemd_dir="/etc/systemd/system"
 {% if use_system_level_systemd == 'False' %}
     # Enable linger for yb_user
-    su - {{ yb_user }} -c "loginctl enable-linger {{ yb_user }}"
+    loginctl enable-linger {{ yb_user }}
     su - {{ yb_user }} -c "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})"
     echo "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})" >> {{yb_home_dir}}/.bashrc
     # Configure the systemd_dir as path for user level systemd

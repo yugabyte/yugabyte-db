@@ -133,6 +133,9 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
 
     Class<?> clazz = ybcGflags.getClass();
     for (Field field : clazz.getDeclaredFields()) {
+      if (field.getName().equalsIgnoreCase("ybcGflagsMetadata")) {
+        continue;
+      }
       field.setAccessible(true);
       String fieldName = field.getName();
       Object value = field.get(ybcGflags);

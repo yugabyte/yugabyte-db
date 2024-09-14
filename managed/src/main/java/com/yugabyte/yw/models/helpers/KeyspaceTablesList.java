@@ -1,6 +1,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import java.util.List;
 import java.util.UUID;
 import lombok.Builder;
@@ -16,4 +17,5 @@ public class KeyspaceTablesList {
   Long backupSizeInBytes;
   String defaultLocation;
   List<BackupUtil.RegionLocations> perRegionLocations;
+  BackupPointInTimeRestoreWindow backupPointInTimeRestoreWindow;
 }

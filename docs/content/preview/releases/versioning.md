@@ -20,11 +20,11 @@ YugabyteDB and YugabyteDB Anywhere have three kinds of releases:
 
 Additionally, individual features may also be designated as tech preview or early access, or generally available. These designations indicate the feature maturity level, and provide different levels of documentation and support as described in  [Feature maturity](#feature-maturity).
 
-## Release versioning convention for Stable releases
+## Stable releases
 
-YugabyteDB follows the below-described convention for numbering release versions.
+Features in stable releases are considered to be {{<badge/ga>}} unless marked otherwise.
 
-Release versions follow the versioning format of `YYYY.N.MAINTENANCE.PATCH` as follows:
+Stable release versions use the numbering format `YYYY.N.MAINTENANCE.PATCH` as follows:
 
 - `YYYY.N` - Includes substantial changes, such as new features and possibly incompatible API changes. `YYYY` is the year (for example, 2024). `N` is either 1 or 2 designating either the first release of the year, or the second. Such major releases occur roughly every 6 months. Generally, one of these releases (and its derivative maintenance and patch releases) per year is designated as LTS, and the other is designated as STS.
 
@@ -36,35 +36,31 @@ Release versions follow the versioning format of `YYYY.N.MAINTENANCE.PATCH` as f
 
 On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are for specific point issues, and usually offered only to specific customers. Hot fix releases append an additional number to the release versioning convention as `YYYY.N.MAINTENANCE.PATCH.HOTFIX`.
 
-Features in stable releases are considered to be {{<badge/ga>}} unless marked otherwise.
-
 {{< note title="Important" >}}
 
-- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
+- Yugabyte supports _production deployments_ on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
 - For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
 
 {{< /note >}}
 
-## Release versioning convention for Preview releases
+## Preview releases
+
+Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
 
 Preview releases, which include features under active development, are recommended for development and testing only.
-
-Preview release versions use the versioning format of `MAJOR.MINOR.PATCH.HOTFIX`, where non-negative integers are used as follows:
-
-- `MAJOR` — Includes substantial changes.
-- `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
-- `PATCH` - Patches in the preview release series (`MAJOR.ODD.PATCH`) focus on bug fixes that do not break backward compatibility. At the same time however, new features and changes may be are introduced that might break backward compatibility.
-- `HOTFIX` - On rare occasions, a hot fix is required to address an issue without delay.
-
-Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally (with each MINOR release) introduce new features and changes.
 
 Preview releases are the basis from which stable releases are derived. That is, the code base from a preview release is branched, and then hardened to become a stable release. The v2.21 preview release series, for example became the basis for the v2024.1 STS release series.
 
 Note that while most features in a preview release series do appear in the derivative stable release, this cannot be guaranteed; some features may remain internally _disabled_ in the derivative stable release series to allow more time for the feature to be completed.
 
-Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
+Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally (with each MINOR release) introduce new features and changes.
 
-Patch releases in the preview release series (`MAJOR.ODD.PATCH`) introduce new features, enhancements, and fixes.
+Preview releases use the numbering format `MAJOR.MINOR.PATCH.HOTFIX`, where non-negative integers indicate the following:
+
+- `MAJOR` — Includes substantial changes.
+- `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
+- `PATCH` - Patches in the preview release series (`MAJOR.ODD.PATCH`) focus on bug fixes that do not break backward compatibility. At the same time however, new features and changes may be introduced that might break backward compatibility.
+- `HOTFIX` - On rare occasions, a hot fix is required to address an issue without delay.
 
 {{< note title="Note" >}}
 
@@ -101,6 +97,10 @@ Features in Tech Preview (TP) are managed and supported by the Product Team and 
 TP features aren't supported by Customer Support and may change at any time during the preview.
 
 If you are interested in a TP feature, contact {{% support-general %}}.
+
+{{<tip title="Enabling preview features">}}
+Configuration of preview feature-specific flags is restricted to those listed in the [allowed_preview_flags_csv](../../reference/configuration/yb-master/#allowed-preview-flags-csv) flag. This measure acts as a safeguard, ensuring users are aware they are modifying settings for preview features.
+{{</tip>}}
 
 Participating customers agree to provide feedback to the Product Team. However, the timeline for addressing specific areas of feedback (including bugs) is at the discretion of Yugabyte.
 

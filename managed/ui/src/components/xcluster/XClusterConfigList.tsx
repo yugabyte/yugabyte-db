@@ -63,7 +63,6 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
-        !xClusterConfig.data?.usedForDr &&
         xClusterConfig.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
@@ -103,6 +102,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   const shownXClusterConfigQueries = shouldShowDrXClusterConfigs
     ? xClusterConfigQueries
     : xClusterConfigQueries.filter((xClusterConfigQuery) => !xClusterConfigQuery.data?.usedForDr);
+
   return (
     <>
       <ul className={styles.listContainer}>

@@ -34,7 +34,7 @@ The following criteria must be met:
 
 Add TLS certificates issued by the cert-manager as follows:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 

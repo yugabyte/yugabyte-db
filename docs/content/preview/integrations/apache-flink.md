@@ -18,7 +18,7 @@ Flink provides various DataStream connectors including one for JDBC to write dat
 
 The following example based on the [Flink documentation](https://nightlies.apache.org/flink/flink-docs-release-1.17/docs/connectors/datastream/jdbc) describes the Flink connectivity to a YugabyteDB cluster using a JDBC sink connector.
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 Note that the YugabyteDB cluster you are connecting to is running on localhost.
 
 Create a table named books using [YSQLSH](../../admin/ysqlsh/#starting-ysqlsh) as follows:

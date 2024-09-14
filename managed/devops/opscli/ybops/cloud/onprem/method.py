@@ -271,31 +271,6 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         self.parser.add_argument("--skip_ntp_check", action="store_true",
                                  help='Skip check for time synchronization.')
 
-    def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, connect_options,
-                            skip_cert_validation, results):
-        result_var = True
-        remote_shell = RemoteShell(connect_options)
-        if not self.test_file_readable(remote_shell, root_cert_path):
-            results["File {} is present and readable".format(root_cert_path)] = False
-            result_var = False
-        if not self.test_file_readable(remote_shell, cert_path):
-            results["File {} is present and readable".format(cert_path)] = False
-            result_var = False
-        if not self.test_file_readable(remote_shell, key_path):
-            results["File {} is present and readable".format(key_path)] = False
-            result_var = False
-        if result_var and skip_cert_validation != 'ALL':
-            try:
-                self.cloud.verify_certs(root_cert_path, cert_path, connect_options,
-                                        skip_cert_validation != 'HOSTNAME')
-            except YBOpsRuntimeError as e:
-                result_var = False
-                results["Check {} certificate".format(cert_type)] = str(e)
-
-        if result_var:
-            results["Check {} certificate".format(cert_type)] = True
-        return result_var
-
     def test_file_readable(self, remote_shell, path):
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
         return node_file_verify.exited == 0
@@ -326,39 +301,6 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'),
                                      remote_tmp_dir=args.remote_tmp_dir)
             results["SSH Connection"] = scp_result == 0
-
-        connect_options = {}
-        connect_options.update(self.extra_vars)
-        connect_options.update({
-            "ssh_user": "yugabyte",
-            "node_agent_user": "yugabyte"
-        })
-
-        if args.root_cert_path is not None:
-            self.verify_certificates("Server", args.root_cert_path,
-                                     args.server_cert_path,
-                                     args.server_key_path,
-                                     connect_options,
-                                     args.skip_cert_validation,
-                                     results)
-
-        if args.root_cert_path_client_to_server is not None:
-            self.verify_certificates("Server clientRootCA", args.root_cert_path_client_to_server,
-                                     args.server_cert_path_client_to_server,
-                                     args.server_key_path_client_to_server,
-                                     connect_options,
-                                     args.skip_cert_validation,
-                                     results)
-
-        if args.client_cert_path is not None:
-            root_cert_path = args.root_cert_path_client_to_server \
-                if args.root_cert_path_client_to_server is not None else args.root_cert_path
-            self.verify_certificates("Client", root_cert_path,
-                                     args.client_cert_path,
-                                     args.client_key_path,
-                                     connect_options,
-                                     'HOSTNAME',  # not checking hostname for that serts
-                                     results)
 
         sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
         self.extra_vars['sudo_pass_file'] = sudo_pass_file
@@ -651,3 +593,96 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
             remote_shell.run_command(service_cmd)
         finally:
             remote_shell.close()
+
+
+class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(OnPremVerifyCertificatesMethod, self).__init__(base_command, "verify_certs")
+
+    def add_extra_args(self):
+        super(OnPremVerifyCertificatesMethod, self).add_extra_args()
+        # NodeToNode certificates
+        self.parser.add_argument("--root_cert_path", type=str, required=False, default=None)
+        self.parser.add_argument("--yba_root_cert_checksum", type=str, required=False, default=None)
+        self.parser.add_argument("--node_server_cert_path", type=str, required=False, default=None)
+        self.parser.add_argument("--node_server_key_path", type=str, required=False, default=None)
+        # ClientToNode certificates
+        # client_rootCA and yba_client_root_cert_checksum are not required if
+        # they are same as rootCA
+        self.parser.add_argument("--client_root_cert_path", type=str, required=False,
+                                 default=None)
+        self.parser.add_argument("--yba_client_root_cert_checksum", type=str, required=False,
+                                 default=None)
+        self.parser.add_argument("--client_server_cert_path", type=str, required=False,
+                                 default=None)
+        self.parser.add_argument("--client_server_key_path", type=str, required=False, default=None)
+
+        self.parser.add_argument("--skip_hostname_check", action="store_true")
+
+    def verify_custom_certificate_checksum(self, root_cert_path, yba_cert_checksum,
+                                           connect_options):
+        remote_shell = RemoteShell(connect_options)
+        root_ca_checksum_response = remote_shell.run_command_raw("md5sum {}".format(root_cert_path))
+        if root_ca_checksum_response.exited != 0:
+            raise YBOpsRuntimeError("Failed to get checksum for root CA certificate")
+        root_ca_checksum = root_ca_checksum_response.stdout.split()[0]
+        if root_ca_checksum != yba_cert_checksum:
+            raise YBOpsRuntimeError(
+                "Root Certificate on the node doesn't match the certificate given to YBA.")
+
+    def verify_certificates(self, cert_type, root_cert_path, yba_cert_checksum, cert_path,
+                            key_path, connect_options, verify_hostname, results):
+        """
+            This validation is only used for onprem + customCertHostPath certs.
+            For more generic validation, use the verify_certs method in cloud.py
+            and in CertificateHelper.java class.
+        """
+        result_var = True
+        try:
+            # Do all the basic checks here
+            self.cloud.verify_certs(root_cert_path, cert_path, key_path, connect_options,
+                                    verify_hostname, perform_extended_validation=True)
+            # Do the CA checksum check here since its unique to onprem + customCertHostPath certs
+            self.verify_custom_certificate_checksum(root_cert_path, yba_cert_checksum,
+                                                    connect_options)
+        except YBOpsRuntimeError as e:
+            result_var = False
+            results["{} certificate".format(cert_type)] = str(e)
+        if result_var:
+            results["{} certificate".format(cert_type)] = True
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot verify certificates"
+                                    .format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        results = {}
+        # Verify NodeToNode certificates
+        if args.root_cert_path is not None:
+            self.verify_certificates("RootCA", args.root_cert_path,
+                                     args.yba_root_cert_checksum,
+                                     args.node_server_cert_path,
+                                     args.node_server_key_path,
+                                     self.extra_vars,
+                                     not args.skip_hostname_check,
+                                     results)
+
+        # Verify ClientToNode certificates
+        if args.client_root_cert_path is not None:
+            self.verify_certificates("ClientRootCA", args.client_root_cert_path,
+                                     args.yba_client_root_cert_checksum,
+                                     args.client_server_cert_path,
+                                     args.client_server_key_path,
+                                     self.extra_vars,
+                                     not args.skip_hostname_check,
+                                     results)
+
+        for key, value in results.items():
+            logging.debug("Certificate verification result: {}: {}".format(key, value))
+            if value is not True:
+                logging.error(json.dumps(results, indent=2))
+                raise YBOpsRuntimeError(
+                    "Certificate verification for {} on node - {} failed with error: {}".format(
+                        key, args.search_pattern, value))

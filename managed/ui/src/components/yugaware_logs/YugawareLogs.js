@@ -137,7 +137,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
   return (
     <div className="yugaware-logs">
       <h2 className="content-title">
-        <b>YugaWare logs</b>
+        <b>Platform logs</b>
       </h2>
       <Row>
         <Col lg={3}>

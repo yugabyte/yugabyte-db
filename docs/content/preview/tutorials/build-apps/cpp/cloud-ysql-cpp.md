@@ -14,15 +14,15 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) that connects to a YugabyteDB cluster using the [libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C++.
+The following tutorial shows a small [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) that connects to a YugabyteDB cluster using the [libpqxx driver](../../../../drivers-orms/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C++.
 
 ## Prerequisites
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq and libpqxx to establish secure SSL connections).
-- [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [libpqxx](../../../../reference/drivers/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
+- [libpq](../../../../drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpqxx](../../../../drivers-orms/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
 
 ### Clone the application from GitHub
 
@@ -179,6 +179,6 @@ try {
 
 ## Learn more
 
-[libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
+[libpq driver](../../../../drivers-orms/ysql-client-drivers/#libpq)
 
-[libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx)
+[libpqxx driver](../../../../drivers-orms/ysql-client-drivers/#libpqxx)

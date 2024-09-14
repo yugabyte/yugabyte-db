@@ -99,7 +99,7 @@ class XClusterClient {
   // complete.
   Status CreateOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceId>& namespace_ids);
+      const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode = false);
 
   Status IsBootstrapRequired(
       CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
@@ -197,6 +197,7 @@ class XClusterClient {
     std::string source_master_addrs;
     // Map of target namespace id to source namespace id. Only used in db scope replication.
     std::unordered_map<NamespaceId, NamespaceId> db_scope_namespace_id_map;
+    bool automatic_ddl_mode = false;
 
     struct XClusterInboundReplicationGroupTableInfo {
       TableId target_table_id;
@@ -215,7 +216,7 @@ class XClusterClient {
       const std::vector<NamespaceName>& namespace_names,
       const std::vector<NamespaceId>& source_namespace_ids,
       const std::vector<TableId>& source_table_ids,
-      const std::vector<xrepl::StreamId>& bootstrap_ids);
+      const std::vector<xrepl::StreamId>& bootstrap_ids, bool automatic_ddl_mode);
 
   virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id);

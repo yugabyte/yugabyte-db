@@ -363,6 +363,56 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Trigger AI Search on clicking custom button.
+   */
+  function kapaSearch() {
+    const aiSearch = document.getElementById('ai-search');
+    if (aiSearch) {
+      aiSearch.addEventListener('click', () => {
+        const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
+        if (kapaWidgetButton) {
+          kapaWidgetButton.click();
+
+          const aiSearchInput = new MutationObserver(() => {
+            const mantineTextInput = document.querySelector('.mantine-TextInput-input');
+            if (mantineTextInput) {
+              const event = new Event('input', {
+                bubbles: true,
+              });
+
+              // Add the original searched input.
+              mantineTextInput.setAttribute('value', searchInput.value.trim());
+
+              mantineTextInput.dispatchEvent(event);
+
+              aiSearchInput.disconnect();
+            }
+          });
+
+          const aiSearchTab = new MutationObserver(() => {
+            const mantineSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
+            if (mantineSearchTab) {
+              mantineSearchTab.click();
+
+              aiSearchTab.disconnect();
+            }
+          });
+
+          aiSearchInput.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+
+          aiSearchTab.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      });
+    }
+  }
+
+  /**
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
@@ -440,35 +490,7 @@ import algoliasearch from 'algoliasearch';
           }
         }
 
-        const aiSearch = document.getElementById('ai-search');
-        if (aiSearch) {
-          aiSearch.addEventListener('click', () => {
-            const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
-            if (kapaWidgetButton) {
-              kapaWidgetButton.click();
-              setTimeout(() => {
-                const aiSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
-                if (aiSearchTab) {
-                  aiSearchTab.click();
-                }
-
-                setTimeout(() => {
-                  const aiSearchInput = document.querySelector('.mantine-TextInput-input');
-                  if (aiSearchInput) {
-                    const event = new Event('input', {
-                      bubbles: true,
-                    });
-
-                    // Add the original searched input.
-                    aiSearchInput.setAttribute('value', searchInput.value.trim());
-
-                    document.querySelector('.mantine-TextInput-input').dispatchEvent(event);
-                  }
-                }, 10);
-              }, 5);
-            }
-          });
-        }
+        kapaSearch();
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
           pagerDetails = {

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -66,6 +67,9 @@ public class TlsToggle extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    if (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt) {
+      createCheckCertificateConfigTask();
+    }
   }
 
   @Override
@@ -309,5 +313,17 @@ public class TlsToggle extends UpgradeTaskBase {
     return getUserIntent().enableNodeToNodeEncrypt != taskParams().enableNodeToNodeEncrypt
         ? (taskParams().enableNodeToNodeEncrypt ? 1 : -1)
         : 0;
+  }
+
+  public void createCheckCertificateConfigTask() {
+    MastersAndTservers nodes = getNodesToBeRestarted();
+    Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
+    createCheckCertificateConfigTask(
+        taskParams().clusters,
+        allNodes,
+        taskParams().rootCA,
+        taskParams().getClientRootCA(),
+        taskParams().enableClientToNodeEncrypt,
+        NodeManager.YUGABYTE_USER);
   }
 }

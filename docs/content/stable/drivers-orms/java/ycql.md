@@ -8,6 +8,7 @@ menu:
     identifier: ycql-java-driver
     parent: java-drivers
     weight: 500
+badges: ycql
 type: docs
 ---
 

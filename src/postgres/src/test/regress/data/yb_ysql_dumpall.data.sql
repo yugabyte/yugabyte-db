@@ -149,10 +149,11 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -224,10 +225,11 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -297,10 +299,11 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -339,6 +342,7 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 \connect system_platform
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -403,10 +407,11 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -445,6 +450,7 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 \connect yugabyte
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -518,6 +524,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16386'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16385'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.oid);
+
 CREATE TABLE public.table1 (
     id integer
 )
@@ -544,6 +555,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16390'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16389'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16388'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16388'::pg_catalog.oid);
+
 CREATE TABLE public.table2 (
     name character varying
 )
@@ -569,6 +585,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16396'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16395'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16394'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16394'::pg_catalog.oid);
 
 CREATE TABLE public.tbl_with_grp_with_spc (
     a integer
@@ -613,6 +634,11 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16387'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
@@ -623,6 +649,11 @@ CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INT
 --
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16391'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16391'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
 

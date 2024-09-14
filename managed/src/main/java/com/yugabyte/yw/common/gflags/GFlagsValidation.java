@@ -24,11 +24,13 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -41,6 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
@@ -174,15 +178,33 @@ public class GFlagsValidation {
   public List<GFlagGroup> extractGFlagGroups(String version) throws IOException {
     InputStream flagStream = null;
     try {
-      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+      SortedSet<String> avaliableVersions = new TreeSet<>();
+      InputStream foldersStream = environment.resourceAsStream("gflag_groups");
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(foldersStream))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          avaliableVersions.add(inputLine);
+        }
+      }
+      SortedSet<String> head = avaliableVersions.headSet(version);
+      if (head.isEmpty()) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Failed to find gflags group version for " + version + " db");
+      }
+      String versionToUse = head.last();
+      LOG.debug(
+          "Found {} group versions, picked {} for current db version {}",
+          avaliableVersions,
+          versionToUse,
+          version);
       flagStream =
           environment.resourceAsStream(
-              "gflag_groups/" + majorVersion + "/" + Util.GFLAG_GROUPS_FILENAME);
+              "gflag_groups/" + versionToUse + "/" + Util.GFLAG_GROUPS_FILENAME);
       if (flagStream == null) {
-        LOG.error("GFlag groups metadata file for " + majorVersion + " is not present");
+        LOG.error("GFlag groups metadata file for " + versionToUse + " is not present");
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            "GFlag groups metadata file for " + majorVersion + " is not present");
+            "GFlag groups metadata file for " + versionToUse + " is not present");
       }
       ObjectMapper mapper = new ObjectMapper();
       List<GFlagGroup> data =

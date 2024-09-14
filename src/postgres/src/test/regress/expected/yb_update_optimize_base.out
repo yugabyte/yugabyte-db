@@ -1391,3 +1391,133 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent3' WHERE ke
  Storage Write Requests: 2
  Storage Flush Requests: 1
 (12 rows)
+
+DROP TABLE ancestry;
+---
+--- The following sections contains sanity test for prepared statements and plan caching
+---
+CREATE TABLE IF NOT EXISTS t_parent(k INT UNIQUE);
+CREATE TABLE IF NOT EXISTS t_simple(k INT PRIMARY KEY, v1 INT REFERENCES t_parent(k), v2 INT, v3 INT, v4 INT);
+CREATE INDEX NONCONCURRENTLY t_simple_v1 ON t_simple (v1);
+CREATE INDEX NONCONCURRENTLY t_simple_v2 ON t_simple (v2);
+INSERT INTO t_parent (SELECT i FROM generate_series(1, 100) AS i);
+INSERT INTO t_simple (SELECT i, i, i, i, i FROM generate_series(1, 10) AS i);
+-- Test that adding an index on a column updated by the query causes replanning
+-- and recomputation of columns to be compared.
+PREPARE updateplan1 (INT, INT, INT, INT, INT) AS UPDATE t_simple SET v1 = $2, v2 = $3, v3 = $4, v4 = $5 WHERE k = $1;
+-- Step 1: Execute query 5 times to ensure that the plan is cached.
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on t_simple (actual rows=0 loops=1)
+   ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
+         Index Cond: (k = $1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+-- Step 2: Add an index and do not update the column on which the index is defined.
+-- If the cached plan is used, additional index write requests will not be be
+-- optimized as v3 does not have any other entities on it.
+CREATE INDEX NONCONCURRENTLY t_simple_v3 ON t_simple (v3);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on t_simple (actual rows=0 loops=1)
+   ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
+         Index Cond: (k = $1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+-- Test that dropping an index on a column updated by the query causes replanning
+-- and recomputation of columns to be compared.
+-- Step 1: Cache the previous plan.
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+EXECUTE updateplan1 (1, 1, 1, 1, 1);
+-- Step 2: Drop the index and update the column on which the index was defined.
+-- If the cached plan is used, we will run out of budget to compare v3 resulting
+-- in additional index write requests.
+SET yb_update_num_cols_to_compare TO 2;
+DROP INDEX t_simple_v2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on t_simple (actual rows=0 loops=1)
+   ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
+         Index Cond: (k = $1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+SET yb_update_num_cols_to_compare TO 50;
+-- Similar to the above, test that adding a foreign key causes replanning.
+ALTER TABLE t_simple ADD CONSTRAINT fk_t_simple_v2 FOREIGN KEY (v2) REFERENCES t_parent(k);
+-- Updating v2 should not produce a foreign key check when the value of the column
+-- remains unchanged.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on t_simple (actual rows=0 loops=1)
+   ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
+         Index Cond: (k = $1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+EXECUTE updateplan1 (1, 1, 2, 1, 1);
+-- Similar to the above, test that dropping a foreign key causes replanning.
+SET yb_update_num_cols_to_compare TO 2;
+ALTER TABLE t_simple DROP CONSTRAINT fk_t_simple_v2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on t_simple (actual rows=0 loops=1)
+   ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
+         Index Cond: (k = $1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+DEALLOCATE updateplan1;
+DROP TABLE t_simple;
+DROP TABLE t_parent;

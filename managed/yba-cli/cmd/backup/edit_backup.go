@@ -25,36 +25,36 @@ var editBackupCmd = &cobra.Command{
 	Short: "Edit a YugabyteDB Anywhere universe backup",
 	Long:  "Edit an universe backup in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		backupUUID, err := cmd.Flags().GetString("backup-uuid")
+		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(backupUUID) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup uuid specified to edit backup\n", formatter.RedColor))
+				formatter.Colorize("No backup UUID specified to edit backup\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
-		backupUUID, err := cmd.Flags().GetString("backup-uuid")
+		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
+		requestBody := ybaclient.EditBackupParams{}
 
-		requestBody := ybaclient.EditBackupParams{
-			TimeBeforeDeleteFromPresentInMillis: util.GetInt64Pointer(int64(timeBeforeDeleteFromPresentInMillis)),
-			ExpiryTimeUnit:                      util.GetStringPointer("MILLISECONDS"),
+		if cmd.Flags().Changed("time-before-delete-in-ms") {
+			logrus.Debugf("Updating time-before-delete-in-ms")
+			timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+
+			requestBody.SetTimeBeforeDeleteFromPresentInMillis(timeBeforeDeleteFromPresentInMillis)
+			requestBody.SetExpiryTimeUnit("MILLISECONDS")
+
 		}
 
 		storageConfigName, err := cmd.Flags().GetString("storage-config-name")
@@ -68,7 +68,7 @@ var editBackupCmd = &cobra.Command{
 			r, response, err := storageConfigListRequest.Execute()
 			if err != nil {
 				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Storage Configuration", "Describe")
+					response, err, "Backup", "Edit - Get Storage Configuration")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
@@ -87,12 +87,22 @@ var editBackupCmd = &cobra.Command{
 			r = storageConfigsName
 
 			if len(r) < 1 {
-				fmt.Println("No storage configurations found")
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("No storage configurations with name: %s found\n",
+							storageConfigName),
+						formatter.RedColor,
+					))
+				return
 			}
 
 			if len(r) > 0 {
 				storageUUID = r[0].GetConfigUUID()
 				requestBody.SetStorageConfigUUID(storageUUID)
+				if len(backup.StorageConfigs) == 0 {
+					backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+				}
+				backup.StorageConfigs = append(backup.StorageConfigs, r[0])
 			}
 		}
 		editBackupRequest := authAPI.EditBackup(backupUUID).Backup(requestBody)
@@ -103,27 +113,27 @@ var editBackupCmd = &cobra.Command{
 		}
 
 		backupUUIDList := []string{backupUUID}
-		backupApiFilter := ybaclient.BackupApiFilter{
+		backupAPIFilter := ybaclient.BackupApiFilter{
 			BackupUUIDList: backupUUIDList,
 		}
 
 		var limit int32 = 10
 		var offset int32 = 0
-		backupApiDirection := "DESC"
-		backupApiSort := "createTime"
+		backupAPIDirection := "DESC"
+		backupAPISort := "createTime"
 
-		backupApiQuery := ybaclient.BackupPagedApiQuery{
-			Filter:    backupApiFilter,
-			Direction: backupApiDirection,
+		backupAPIQuery := ybaclient.BackupPagedApiQuery{
+			Filter:    backupAPIFilter,
+			Direction: backupAPIDirection,
 			Limit:     limit,
 			Offset:    offset,
-			SortBy:    backupApiSort,
+			SortBy:    backupAPISort,
 		}
 
-		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupApiQuery)
+		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe Backup")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Edit - Describe Backup")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -138,13 +148,12 @@ var editBackupCmd = &cobra.Command{
 
 func init() {
 	editBackupCmd.Flags().SortFlags = false
-	editBackupCmd.Flags().String("backup-uuid", "",
-		"[Required] The uuid of the backup to be described.")
-	editBackupCmd.MarkFlagRequired("backup-uuid")
+	editBackupCmd.Flags().String("uuid", "",
+		"[Required] The UUID of the backup to be edited.")
+	editBackupCmd.MarkFlagRequired("uuid")
 	editBackupCmd.Flags().Int64("time-before-delete-in-ms", 0,
-		"[Required] Time before delete from the current time in ms")
-	editBackupCmd.MarkFlagRequired("time-before-delete-in-ms")
+		"[Optional] Time before delete from the current time in ms.")
 	editBackupCmd.Flags().String("storage-config-name", "",
-		"[Optional] Change the storage config assigned to the backup")
+		"[Optional] Change the storage configuration assigned to the backup.")
 
 }

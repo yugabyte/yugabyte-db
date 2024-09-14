@@ -51,6 +51,9 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
       }
     };
 
+    //TODO(mkumar) GH##23761 This test is failing in asan build with
+    // warmup random mode in ysql connection manager.
+    disableWarmupRandomMode(builder);
     builder.addCommonTServerFlags(additionalTserverFlags);
   }
 

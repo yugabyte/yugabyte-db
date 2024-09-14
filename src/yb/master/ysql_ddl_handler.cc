@@ -117,7 +117,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
         << "Transaction " << txn << " is already complete, but received request to verify table "
         << table;
     LOG(INFO) << "Enqueuing table " << table->ToString()
-              << " to the list of tables being verified for transaction " << txn;
+              << " to the list of tables being verified for transaction " << txn
+              << ", txn_state: " << state->txn_state << ", state: " << state->state;
     state->tables.push_back(table);
     return false;
   }
@@ -139,7 +140,7 @@ Status CatalogManager::ScheduleVerifyTransaction(
             << " id: " << table->id() << " schema version: " << l->pb.version()
             << " for transaction " << txn;
   const string txn_id_pb = l->pb_transaction_id();
-  auto when_done = [this, table, txn_id_pb, epoch](Result<bool> is_committed) {
+  auto when_done = [this, table, txn_id_pb, epoch](Result<std::optional<bool>> is_committed) {
     WARN_NOT_OK(YsqlTableSchemaChecker(table, txn_id_pb, is_committed, epoch),
                 "YsqlTableSchemaChecker failed");
   };
@@ -151,7 +152,7 @@ Status CatalogManager::ScheduleVerifyTransaction(
 
 Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
                                               const string& pb_txn_id,
-                                              Result<bool> is_committed,
+                                              Result<std::optional<bool>> is_committed,
                                               const LeaderEpoch& epoch) {
   if (!is_committed.ok()) {
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
@@ -173,20 +174,23 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
         table->ToString(), txn, is_committed.status());
   }
 
-  return YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed.get(), epoch);
+  return YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
-                                                  bool is_committed,
-                                                  const LeaderEpoch& epoch) {
+                                                  std::optional<bool> is_committed,
+                                                  const LeaderEpoch& epoch,
+                                                  const std::string& debug_caller_info) {
   SCHECK(!pb_txn_id.empty(), IllegalState,
-      "YsqlDdlTxnCompleteCallback called without transaction id");
+      Format("YsqlDdlTxnCompleteCallback called without transaction id: $0", debug_caller_info));
   SleepFor(MonoDelta::FromMicroseconds(RandomUniformInt<int>(0,
     FLAGS_TEST_ysql_max_random_delay_before_ddl_verification_usecs)));
 
   auto txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
   LOG(INFO) << "YsqlDdlTxnCompleteCallback for transaction "
-            << txn << " is_committed: " << (is_committed ? "true" : "false");
+            << txn << " is_committed: "
+            << (is_committed.has_value() ? (*is_committed ? "true" : "false") : "nullopt")
+            << ", debug_caller_info " << debug_caller_info;
 
   vector<TableInfoPtr> tables;
   std::unordered_set<TableId> processed_tables;
@@ -199,7 +203,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
     }
 
     auto state = verifier_state->state;
-    auto txn_state = is_committed ? TxnState::kCommitted : TxnState::kAborted;
+    auto txn_state = is_committed.has_value() ?
+        (*is_committed ? TxnState::kCommitted : TxnState::kAborted) : TxnState::kNoChange;
     if (state == YsqlDdlVerificationState::kDdlPostProcessing) {
       // We used to return Status::OK() here on the grounds that the txn is
       // already being verified and we assumed verifier_state->tables represent
@@ -217,10 +222,18 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
       // to process t3. It is fine to reprocess t1 and t2, that will result in a
       // no-op, except for delete table operation for which we'll detect and avoid
       // reprocessing.
-      SCHECK_EQ(txn_state, verifier_state->txn_state, IllegalState,
-                Format("Mismatch in txn_state for transaction $0", txn));
+      // Some alter table DDL statements only increment table schema version and does not make
+      // any table schema change, this is represented by TxnState::kNoChange. In this case
+      // it does not matter whether the PG DDL transaction is committed or aborted.
+      if (txn_state != verifier_state->txn_state &&
+          txn_state != TxnState::kNoChange && verifier_state->txn_state != TxnState::kNoChange) {
+        return STATUS_FORMAT(IllegalState, "Mismatch in txn_state for transaction $0", txn);
+      }
     } else {
-      verifier_state->txn_state = txn_state;
+      if (verifier_state->txn_state != TxnState::kCommitted &&
+          verifier_state->txn_state != TxnState::kAborted) {
+        verifier_state->txn_state = txn_state;
+      }
       verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
     tables = verifier_state->tables;
@@ -287,7 +300,7 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
       "Received ReportYsqlDdlTxnStatus request without transaction id");
-  return YsqlDdlTxnCompleteCallback(req_txn, req->is_committed(), epoch);
+  return YsqlDdlTxnCompleteCallback(req_txn, req->is_committed(), epoch, __FUNCTION__);
 }
 
 struct YsqlTableDdlTxnState {
@@ -298,7 +311,8 @@ struct YsqlTableDdlTxnState {
 };
 
 Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
-    TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch) {
+    TableInfo* table, const TransactionId& txn_id,
+    std::optional<bool> success, const LeaderEpoch& epoch) {
 
   TEST_PAUSE_IF_FLAG(TEST_pause_ddl_rollback);
 
@@ -311,11 +325,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
             << " is already complete, ignoring";
     return Status::OK();
   }
-  LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
-            << " for transaction " << txn_id
-            << ": Success: " << (success ? "true" : "false")
-            << " ysql_ddl_txn_verifier_state: "
-            << l->ysql_ddl_txn_verifier_state().DebugString();
+  LOG_WITH_FUNC(INFO) << id << " for transaction " << txn_id
+                      << ": Success: "
+                      << (success.has_value() ? (*success ? "true" : "false") : "nullopt")
+                      << " ysql_ddl_txn_verifier_state: "
+                      << l->ysql_ddl_txn_verifier_state().DebugString();
 
   auto& metadata = l.mutable_data()->pb;
 
@@ -330,10 +344,17 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
     .ddl_txn_id = txn_id
   };
 
-  if (success) {
-    RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(txn_data));
+  if (success.has_value()) {
+    if (*success) {
+      RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(txn_data));
+    } else {
+      RETURN_NOT_OK(HandleAbortedYsqlDdlTxn(txn_data));
+    }
   } else {
-    RETURN_NOT_OK(HandleAbortedYsqlDdlTxn(txn_data));
+    // If success is nullopt, it represents a PG DDL statement that only increments the schema
+    // version of this table without any table schema change. There is nothing to do but to
+    // cleanup.
+    RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
   }
   return Status::OK();
 }
@@ -590,7 +611,8 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
     auto state = verifier_state->state;
     if (state != YsqlDdlVerificationState::kDdlPostProcessingFailed) {
       VLOG(3) << "Not triggering Ddl Verification as it is in progress " << txn
-              << ", state: " << state;
+              << ", txn_state: " << verifier_state->txn_state
+              << ", state: " << verifier_state->state;
       return Status::OK();
     }
 
@@ -638,8 +660,9 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
           continue;
         }
         return background_tasks_thread_pool_->SubmitFunc(
-          [this, table, pb_txn_id, is_committed, epoch]() {
-              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch),
+          [this, table, pb_txn_id, is_committed, epoch, debug_caller_info = __FUNCTION__]() {
+              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch,
+                                                     debug_caller_info),
                           Format("YsqlDdlTxnCompleteCallback failed, table: $0",
                                  table->id()));
           }
@@ -660,7 +683,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
             << " for transaction " << txn;
 
   const string txn_id_pb = l->pb_transaction_id();
-  auto when_done = [this, table, txn_id_pb, epoch](Result<bool> is_committed) {
+  auto when_done = [this, table, txn_id_pb, epoch](Result<std::optional<bool>> is_committed) {
     WARN_NOT_OK(YsqlTableSchemaChecker(table, txn_id_pb, is_committed, epoch),
                 "YsqlTableSchemaChecker failed");
   };

@@ -276,7 +276,7 @@ TEST_F(PgMiniTest, FollowerReads) {
   // Setting staleness to what we require for the test.
   // Sleep and then perform an update, such that follower reads should see the old value.
   // But current reads will see the new/updated value.
-  constexpr int32_t kStalenessMs = 4000;
+  constexpr int32_t kStalenessMs = 4000 * kTimeMultiplier;
   LOG(INFO) << "Sleeping for " << kStalenessMs << " ms";
   SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
   ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
@@ -383,7 +383,11 @@ TEST_F(PgMiniTest, FollowerReads) {
         ASSERT_OK(conn.Execute(
             yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
         value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-        ASSERT_EQ(value, local ? "NEW" : "old");
+        // If for some reason things are slow, follower reads may still see the NEW value.
+        const auto time_delta_ms = MonoTime::Now().GetDeltaSince(kUpdateTime).ToMilliseconds();
+        if (time_delta_ms < kStalenessMs) {
+          ASSERT_EQ(value, local ? "NEW" : "old");
+        }
         ASSERT_OK(conn.Execute("COMMIT"));
       }  // local
 
@@ -533,89 +537,6 @@ TEST_F(PgMiniTest, Simple) {
 
   auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
-}
-
-class PgMiniAshTest : public PgMiniTestSingleNode {
- public:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
-    // This test counts number of performed RPC calls, so turn off pg client shared memory.
-    FLAGS_pg_client_use_shared_memory = false;
-    PgMiniTestSingleNode::SetUp();
-  }
-};
-
-TEST_F_EX(PgMiniTest, Ash, PgMiniAshTest) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
-
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
-    }
-  });
-
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      auto values = ASSERT_RESULT(
-          conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
-    }
-  });
-
-  auto pg_proxy = std::make_unique<tserver::PgClientServiceProxy>(
-      &client_->proxy_cache(),
-      HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
-
-  int kNumCalls = 100;
-  tserver::PgActiveSessionHistoryRequestPB req;
-  req.set_fetch_tserver_states(true);
-  req.set_fetch_flush_and_compaction_states(true);
-  req.set_fetch_cql_states(true);
-  req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
-  tserver::PgActiveSessionHistoryResponsePB resp;
-  rpc::RpcController controller;
-  std::unordered_map<std::string, size_t> method_counts;
-  int calls_without_aux_info_details = 0;
-  for (int i = 0; i < kNumCalls; ++i) {
-    ASSERT_OK(pg_proxy->ActiveSessionHistory(req, &resp, &controller));
-    VLOG(0) << "Call " << i << " got " << yb::ToString(resp);
-    controller.Reset();
-    SleepFor(10ms);
-    int idx = 0;
-    for (auto& entry : resp.tserver_wait_states().wait_states()) {
-      VLOG(0) << "Entry " << ++idx << " : " << yb::ToString(entry);
-      if (entry.has_aux_info() && entry.aux_info().has_method()) {
-        ++method_counts[entry.aux_info().method()];
-      } else {
-        LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
-        // If an RPC does not have the aux/method information, it shouldn't have progressed much.
-        if (entry.has_wait_state_code_as_string()) {
-          ASSERT_EQ(entry.wait_state_code_as_string(), "OnCpu_Passive");
-        }
-        ++calls_without_aux_info_details;
-      }
-    }
-  }
-  thread_holder.Stop();
-
-  ASSERT_LE(method_counts["Read"], kNumCalls);
-  ASSERT_LE(method_counts["Write"], kNumCalls);
-  ASSERT_LE(method_counts["Perform"], 2 * kNumCalls);
-  // Given that we have explicitly slowed down the WriteRpc, we hope to catch it
-  // at least half the time.
-  constexpr float kProbCatchPerform = 0.5;
-  ASSERT_GE(method_counts["Write"], kNumCalls * kProbCatchPerform);
-  ASSERT_GE(method_counts["Perform"], kNumCalls * kProbCatchPerform);
-
-  // It is acceptable that some calls may not have populated their aux_info yet.
-  // This probability should be very low.
-  constexpr float kProbNoMethod = 0.1;
-  ASSERT_LE(calls_without_aux_info_details, 2 * kNumCalls * kProbNoMethod);
 }
 
 TEST_F(PgMiniTest, Tracing) {
@@ -2289,6 +2210,31 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
       (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
   ASSERT_GT(termination_duration, 0);
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
+}
+
+TEST_F(PgMiniTest, ReadHugeRow) {
+  constexpr size_t kNumColumns = 2;
+  constexpr size_t kColumnSize = 254000000;
+
+  std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    create_query += Format(", text$0 TEXT", i);
+  }
+  create_query += ")";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(create_query));
+  ASSERT_OK(conn.Execute("INSERT INTO test(pk) VALUES(0)"));
+
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test SET text$0 = repeat('0', $1) WHERE pk = 0",
+        i, kColumnSize));
+  }
+
+  const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
 }
 
 TEST_F_EX(

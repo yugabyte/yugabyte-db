@@ -23,13 +23,14 @@
 namespace yb::docdb {
 
 template <class CoordinateType>
-class VectorIndexUpdate {
+class VectorIndexUpdate : public VectorIndexFetcher<CoordinateType> {
  public:
   using Types = VectorIndexTypes<CoordinateType>;
   using IndexedVector = typename Types::IndexedVector;
 
-  explicit VectorIndexUpdate(HybridTime ht, rocksdb::WriteBatch& write_batch)
-      : doc_ht_(ht), write_batch_(write_batch) {}
+  explicit VectorIndexUpdate(HybridTime ht, rocksdb::WriteBatch& write_batch,
+                             VectorIndexFetcher<CoordinateType>& fetcher)
+      : doc_ht_(ht), write_batch_(write_batch), fetcher_(fetcher) {}
 
   void AddVector(VertexId id, IndexedVector v);
   void DeleteVector(VertexId id);
@@ -37,8 +38,14 @@ class VectorIndexUpdate {
   void AddDirectedEdge(VertexId a, VertexId b, VectorIndexLevel level);
   void DeleteDirectedEdge(VertexId a, VertexId b, VectorIndexLevel level);
 
+  Result<IndexedVector> GetVector(
+      const ReadOperationData& read_operation_data, VertexId id) override;
+  Result<VectorNodeNeighbors> GetNeighbors(
+      const ReadOperationData& read_operation_data, VertexId id, VectorIndexLevel level) override;
+
  private:
   struct IndexedVectorLevelInfo {
+    bool overwrite = false;
     VectorNodeNeighbors neighbors;
     VectorNodeNeighbors deleted_neighbors;
   };
@@ -56,6 +63,7 @@ class VectorIndexUpdate {
   DocHybridTime doc_ht_;
   std::unordered_map<VertexId, IndexedVectorInfo> nodes_;
   rocksdb::WriteBatch& write_batch_;
+  VectorIndexFetcher<CoordinateType>& fetcher_;
 };
 
 using FloatVectorIndexUpdate = VectorIndexUpdate<float>;

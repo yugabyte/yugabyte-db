@@ -65,7 +65,12 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
             <Typography className={classes.subText}>
               <Trans>
                 {t('universeForm.advancedConfig.pgTooltip')}
-                {/* <Link underline="always" className={classes.linkText}></Link> */}
+                <Link
+                  underline="always"
+                  href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                  className={classes.linkText}
+                  target="_blank"
+                ></Link>
               </Trans>
             </Typography>
           )
@@ -91,7 +96,12 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
           <Typography className={classes.subText}>
             <Trans>
               {t('universeForm.advancedConfig.pgSubText')}
-              {/* <Link underline="always" className={classes.linkText}></Link> */}
+              <Link
+                underline="always"
+                href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                className={classes.linkText}
+                target="_blank"
+              ></Link>
             </Trans>
           </Typography>
         </Box>

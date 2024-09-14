@@ -196,10 +196,7 @@ typedef enum TxnPriorityRequirement {
   kHighestPriority
 } TxnPriorityRequirement;
 
-// API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -396,6 +393,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     TEST_ysql_hide_catalog_version_increment_log;
   const bool*     TEST_generate_ybrowid_sequentially;
   const bool*     ysql_use_fast_backward_scan;
+  const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -742,6 +740,11 @@ typedef struct PgAshConfig {
   // length of host should be equal to INET6_ADDRSTRLEN
   char host[46];
 } YBCPgAshConfig;
+
+typedef struct WaitEventDescriptor {
+  uint32_t code;
+  const char *description;
+} YBCWaitEventDescriptor;
 
 typedef struct YBCBindColumn {
   int attr_num;

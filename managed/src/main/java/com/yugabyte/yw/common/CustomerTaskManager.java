@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -649,8 +651,20 @@ public class CustomerTaskManager {
       case CloudBootstrap:
         taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
         break;
+      case CloudProviderEdit:
+        taskParams = Json.fromJson(oldTaskParams, CloudProviderEdit.Params.class);
+        break;
       case ReadOnlyClusterDelete:
         taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
+        break;
+      case FailoverDrConfig:
+      case SwitchoverDrConfig:
+        taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
+        DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
+        drConfigTaskParams.refreshIfExists();
+        // Todo: we need to recompute other task param fields here to handle changes in the database
+        //  at the YBDB level, e.g., the user creates a table after the task has filed and before it
+        //  is retried.
         break;
       default:
         String errMsg =

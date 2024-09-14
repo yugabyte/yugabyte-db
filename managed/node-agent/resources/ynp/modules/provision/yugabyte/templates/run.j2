@@ -79,5 +79,5 @@ if [ -z {{ public_key_filepath }} ]; then
     fi
 fi
 
-# Ensure the permissions for yb_home_dir are 711
-chmod -R 711 "{{ yb_home_dir }}"
+# Ensure the permissions for yb_home_dir are 750
+chmod 750 "{{ yb_home_dir }}"

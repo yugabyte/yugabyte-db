@@ -3,6 +3,7 @@ package replflow
 import (
 	"fmt"
 	"strings"
+	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
@@ -24,6 +25,8 @@ var (
 		"/etc/sysconfig/replicated*", "/etc/systemd/system/multi-user.target.wants/replicated*",
 		"/etc/systemd/system/replicated*", "/run/replicated*", "/usr/local/bin/replicated*",
 		"/var/lib/replicated*", "/var/log/upstart/replicated*"}
+	replicatedDeleteDirs = []string{"postgresql", "prometheus_configs", "prometheusv2", "releases",
+		"ybc", "yugaware"}
 )
 
 func Uninstall() error {
@@ -85,8 +88,11 @@ func Uninstall() error {
 		return fmt.Errorf("uninstall failed to reload systemd: %w", err)
 	}
 
-	if err := common.RemoveAll(rootDir.Value); err != nil {
-		return fmt.Errorf("failed to delete replicated install directory %s: %w", rootDir.Value, err)
+	for _, dir := range replicatedDeleteDirs {
+		if err := common.RemoveAll(filepath.Join(rootDir.Value, dir)); err != nil {
+			return fmt.Errorf("failed to delete replicated install directory %s: %w",
+				filepath.Join(rootDir.Value, dir), err)
+		}
 	}
 	logging.Info("Uninstalled replicated")
 	return nil

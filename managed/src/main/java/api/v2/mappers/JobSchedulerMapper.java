@@ -88,6 +88,7 @@ public interface JobSchedulerMapper {
   default JobSchedule toJobSchedule(com.yugabyte.yw.models.JobSchedule jobSchedule) {
     JobSchedule v2JobSchedule = new JobSchedule();
     JobScheduleSpec spec = new JobScheduleSpec();
+    spec.setName(jobSchedule.getName());
     spec.setJobConfig(toJobConfigSpec(jobSchedule.getJobConfig()));
     spec.setScheduleConfig(toJobScheduleSpec(jobSchedule.getScheduleConfig()));
     v2JobSchedule.setSpec(spec);

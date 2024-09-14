@@ -37,6 +37,10 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 ./bin/yb-master --help
 ```
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-Master flags](../all-flags-yb-master/).
+
 ## General flags
 
 ##### --version
@@ -605,7 +609,7 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+For more details, see [clusters in colocated tables](../../../explore/colocation/#clusters).
 
 Default: `false`
 
@@ -978,6 +982,16 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 {{< /note >}}
 
 ## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+This is a comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning>}}
+Inclusion in this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You'll still need to configure the flag separately after adding it to this list.
+{{</warning>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 

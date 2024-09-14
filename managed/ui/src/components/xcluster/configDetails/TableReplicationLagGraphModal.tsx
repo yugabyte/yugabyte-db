@@ -137,9 +137,9 @@ export const TableReplicationLagGraphModal = ({
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
   const getUniqueTraceName = (_: MetricSettings, trace: MetricTrace) =>
-    `${i18next.t(`prometheusMetricTrace.${trace.name}`)} (${xClusterTable.keySpace}/${getTableName(
-      xClusterTable
-    )})`;
+    `${i18next.t(`prometheusMetricTrace.${trace.metricName}`)} (${
+      xClusterTable.keySpace
+    }/${getTableName(xClusterTable)})`;
 
   const menuItems = METRIC_TIME_RANGE_OPTIONS.map((option, idx) => {
     if (option.type === 'divider') {
@@ -204,6 +204,7 @@ export const TableReplicationLagGraphModal = ({
         metric={configReplicationLagMetrics}
         title={t('graphTitle.asyncReplicationSentLag')}
         metricSettings={replicationLagMetricSettings}
+        unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
         getUniqueTraceNameOverride={getUniqueTraceName}
         referenceLines={
           maxAcceptableLag && showAlertThresholdReferenceLine

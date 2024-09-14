@@ -28,6 +28,7 @@ import "yb/common/common.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
+  // For CDCSDK, table_id contains the qualified list of tables for the stream.
   repeated bytes table_id = 2;
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
@@ -47,6 +48,10 @@ message CDCStreamInfoPB {
   // This field controls if dynamic tables should automatically be added to the CDC stream or not.
   // If set to true, dynamic table wont get added to the CDC stream.
   optional bool cdcsdk_disable_dynamic_table_addition = 12;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 13;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -71,6 +76,9 @@ message CreateCDCStreamRequestPB {
   optional string cdcsdk_ysql_replication_slot_name = 8;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
   optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+  // cdcsdk_stream_create_options field should be used for adding more stream creation options
+  // related to CDCSDK in future.
+  optional CDCSDKStreamCreateOptionsPB cdcsdk_stream_create_options = 11;
 }
 
 message CreateCDCStreamResponsePB {
@@ -145,6 +153,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional MasterErrorPB error = 1;
   repeated TableInfo table_info = 2;
   optional bytes namespace_id = 3;
+  repeated TableInfo unqualified_table_info = 4;
 }
 
 message UpdateCDCStreamRequestPB {
@@ -282,6 +291,12 @@ message SetupUniverseReplicationRequestPB {
   // Used for DB Scoped replication. transactional must be set.
   // Both id and name must be set. Only YQL_DATABASE_PGSQL are allowed.
   repeated NamespaceIdentifierPB producer_namespaces = 6;
+
+  // Whether automatic DDL replication is enabled - Creates the
+  // yb_xcluster_ddl_replication extension and sequences_data table.
+  // Requires DB Scoped replication, transactional and producer_namespace to be
+  // set.
+  optional bool automatic_ddl_mode = 7; // [default = false]
 }
 
 message SetupUniverseReplicationResponsePB {
@@ -310,7 +325,7 @@ message AlterUniverseReplicationRequestPB {
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
-  optional string new_replication_group_id = 7;
+  optional string DEPRECATED_new_replication_group_id = 7;
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
@@ -546,6 +561,7 @@ message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
   repeated string namespace_ids = 2;
+  optional bool automatic_ddl_mode = 3; // [default = false]
 }
 
 message XClusterCreateOutboundReplicationGroupResponsePB {
@@ -715,6 +731,7 @@ message GetXClusterOutboundReplicationGroupInfoResponsePB {
     map<string, string> table_streams = 2;
   }
   repeated NamespaceInfoPB namespace_infos = 2;
+  optional bool automatic_ddl_mode = 4; // [default = false]
 }
 
 message GetUniverseReplicationsRequestPB {
@@ -749,6 +766,7 @@ message GetUniverseReplicationInfoResponsePB {
   }
 
   repeated DbScopedInfoPB db_scoped_infos = 5;
+  optional bool automatic_ddl_mode = 6; // [default = false]
 }
 
 message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {
@@ -775,6 +793,15 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB {
 message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
   repeated string updated_tablet_entries = 2;
+}
+
+message RemoveTablesFromCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+  repeated string table_ids = 2;
+}
+
+message RemoveTablesFromCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 service MasterReplication {
@@ -902,4 +929,7 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  // Introduced for bug (#22876, #22773)
+  rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
+      returns (RemoveTablesFromCDCSDKStreamResponsePB);
 }

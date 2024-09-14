@@ -249,7 +249,7 @@ UPDATE emp SET sal=sal+100
 
 ### Join
 
-A self-join is a regular [join](../../../explore/ysql-language-features/queries/#joining-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
+A self-join is a regular [join](../../../explore/ysql-language-features/queries/#join-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
 
 ```sql
 SELECT

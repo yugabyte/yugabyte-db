@@ -75,7 +75,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
 
 {{< note title="Note" >}}
 
@@ -85,7 +85,7 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql-flags).
+For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql).
 
 ### Use a hint plan
 
@@ -128,4 +128,3 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
 {{</index/block>}}
-

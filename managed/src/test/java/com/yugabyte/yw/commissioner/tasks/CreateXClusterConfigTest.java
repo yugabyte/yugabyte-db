@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -68,6 +69,7 @@ import org.yb.client.BootstrapUniverseResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
 import org.yb.client.YBClient;
@@ -160,6 +162,18 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+
+    try {
+      // Use reflection to access the package-private constructor.
+      Constructor<ListCDCStreamsResponse> constructor =
+          ListCDCStreamsResponse.class.getDeclaredConstructor(
+              long.class, String.class, MasterTypes.MasterErrorPB.class, List.class);
+      constructor.setAccessible(true);
+      ListCDCStreamsResponse listCDCStreamsResp =
+          constructor.newInstance(0, "", null, Collections.emptyList());
+      when(mockClient.listCDCStreams(null, null, null)).thenReturn(listCDCStreamsResp);
+    } catch (Exception ignored) {
+    }
 
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -347,7 +361,6 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
 
     try {
@@ -363,6 +376,12 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsSetupDoneResponse);
+      when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+          .thenAnswer(
+              invocation -> {
+                initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
+                return mockIsSetupDoneResponse;
+              });
     } catch (Exception ignore) {
     }
 
@@ -396,7 +415,6 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
     HighAvailabilityConfig.create("test-cluster-key");
 
@@ -412,7 +430,11 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
-          .thenReturn(mockIsSetupDoneResponse);
+          .thenAnswer(
+              invocation -> {
+                initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
+                return mockIsSetupDoneResponse;
+              });
     } catch (Exception ignore) {
     }
 
@@ -446,7 +468,6 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
 
     String setupErrMsg = "failed to run setup rpc";
@@ -465,7 +486,11 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", masterErrorBuilder.build());
       when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
-          .thenReturn(mockSetupResponse);
+          .thenAnswer(
+              invocation -> {
+                initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
+                return mockSetupResponse;
+              });
     } catch (Exception ignore) {
     }
 
@@ -503,7 +528,6 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
 
     String isSetupDoneErrMsg = "failed to run setup rpc";
@@ -523,7 +547,11 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
       IsSetupUniverseReplicationDoneResponse mockIsSetupDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, appStatusBuilder.build());
       when(mockClient.isSetupUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
-          .thenReturn(mockIsSetupDoneResponse);
+          .thenAnswer(
+              invocation -> {
+                initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
+                return mockIsSetupDoneResponse;
+              });
     } catch (Exception ignore) {
     }
 

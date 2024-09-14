@@ -25,6 +25,12 @@ export interface ErrorsAndSuggestionsDetails  {
    * @type {string}
    * @memberof ErrorsAndSuggestionsDetails
    */
+  issueType?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof ErrorsAndSuggestionsDetails
+   */
   objectType?: string;
   /**
    * 

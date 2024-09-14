@@ -124,7 +124,7 @@
 - name: Grant traverse permission on yb_home directory
   file:
     path: "{{ yb_home_dir }}"
-    mode: '0711'
+    mode: '0750'
   become: yes
   become_method: sudo
   when: (install_node_exporter is defined and install_node_exporter|bool) or

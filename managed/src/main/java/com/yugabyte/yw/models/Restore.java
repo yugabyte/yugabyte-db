@@ -277,6 +277,15 @@ public class Restore extends Model {
     return Optional.of(restore);
   }
 
+  public static Optional<Restore> maybeGet(UUID restoreUuid) {
+    Restore restore = find.byId(restoreUuid);
+    if (Objects.isNull(restore)) {
+      LOG.info("Cannot find Restore object with uuid {}", restoreUuid);
+      return Optional.empty();
+    }
+    return Optional.of(restore);
+  }
+
   public static RestoreResp toRestoreResp(Restore restore) {
     String targetUniverseName =
         BackupUtil.checkIfUniverseExists(restore.getUniverseUUID())

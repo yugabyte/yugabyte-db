@@ -132,8 +132,8 @@ void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion 
   std::lock_guard lock(lock_);
   if (schema_version != cdc::kInvalidSchemaVersion &&
       schema_version > last_compatible_consumer_schema_version_) {
-    LOG(INFO) << "Last compatible consumer schema version updated to  "
-              << schema_version;
+    LOG_WITH_PREFIX(INFO) << "Last compatible consumer schema version updated to  "
+                          << schema_version;
     last_compatible_consumer_schema_version_ = schema_version;
   }
 }
@@ -263,7 +263,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
     write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
-    LOG(WARNING) << "Expected to find a write_request but were unable to";
+    LOG_WITH_PREFIX(WARNING) << "Expected to find a write_request but were unable to";
     return STATUS(IllegalState, "Could not find a write request to send");
   }
   SendNextCDCWriteToTablet(std::move(write_request));
@@ -366,15 +366,17 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
   if (record.change_metadata_request().has_remove_table_id() ||
       !record.change_metadata_request().add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
-    LOG(INFO) << "Ignoring change metadata request to add multiple/remove tables to tablet : "
-              << producer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(INFO)
+        << "Ignoring change metadata request to add multiple/remove tables to tablet : "
+        << producer_tablet_info_.tablet_id;
     return true;
   }
 
   if (!record.change_metadata_request().has_schema() &&
       !record.change_metadata_request().has_add_table()) {
-    LOG(INFO) << "Ignoring change metadata request for tablet : " << producer_tablet_info_.tablet_id
-              << " as it does not contain any schema. ";
+    LOG_WITH_PREFIX(INFO) << "Ignoring change metadata request for tablet : "
+                          << producer_tablet_info_.tablet_id
+                          << " as it does not contain any schema. ";
     return true;
   }
 
@@ -396,7 +398,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
 
       if (cached_schema_versions &&
           cached_schema_versions->contains(record.change_metadata_request().schema_version())) {
-        LOG(INFO) << Format(
+        LOG_WITH_PREFIX(INFO) << Format(
             "Ignoring change metadata request with schema $0 for tablet $1 as mapping from"
             "producer-consumer schema version already exists",
             schema.DebugString(), producer_tablet_info_.tablet_id);
@@ -538,7 +540,7 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     auto msg = Format(
         "XCluster schema mismatch. No matching schema for producer schema $0 with version $1",
         req.schema().DebugString(), producer_schema_version);
-    LOG(WARNING) << msg << ": " << status;
+    LOG_WITH_PREFIX(WARNING) << msg << ": " << status;
     if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA) {
       ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
       xcluster_poller_->StoreReplicationError(replication_error);
@@ -651,11 +653,11 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
 
 void XClusterOutputClient::HandleError(const Status& s) {
   if (s.IsTryAgain()) {
-    LOG(WARNING) << "Retrying applying replicated record for consumer tablet: "
-                 << consumer_tablet_info_.tablet_id << ", reason: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Retrying applying replicated record for consumer tablet: "
+                             << consumer_tablet_info_.tablet_id << ", reason: " << s;
   } else {
-    LOG(ERROR) << "Error while applying replicated record: " << s
-               << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(ERROR) << "Error while applying replicated record: " << s
+                           << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;

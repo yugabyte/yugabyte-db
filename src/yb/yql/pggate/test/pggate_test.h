@@ -70,19 +70,13 @@ class PggateTest : public YBTest {
   Status Init(const char* test_name,
               int num_tablet_servers = kNumOfTablets,
               int replication_factor = 0,
-              const std::string& use_existing_db = "");
+              bool should_create_db = true);
 
   // Create simulated cluster. If 'replication_factor' is not explicitly passed in, it defaults to
   // the number of master nodes.
   Status CreateCluster(int num_tablet_servers, int replication_factor = 0);
 
   //------------------------------------------------------------------------------------------------
-  // Setup the database for testing.
-  void SetupDB(const std::string& db_name = kDefaultDatabase,
-               YBCPgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const std::string& db_name = kDefaultDatabase,
-                YBCPgOid db_oid = kDefaultDatabaseOid);
-  void ConnectDB(const std::string& db_name = kDefaultDatabase);
 
   virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
 
@@ -97,6 +91,9 @@ class PggateTest : public YBTest {
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
   tserver::TServerSharedObject tserver_shared_object_;
+
+ private:
+  void CreateDB();
 };
 
 //--------------------------------------------------------------------------------------------------

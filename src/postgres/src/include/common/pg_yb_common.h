@@ -135,6 +135,8 @@ extern bool YBIsCollationEnabled();
  */
 extern int YBGetMaxClockSkewUsec();
 
+extern int YBGetHeartbeatIntervalMs();
+
 extern int YBGetYsqlOutputBufferSize();
 
 /**

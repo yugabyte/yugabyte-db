@@ -188,6 +188,8 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
 
          // Drop table should now succeed.
         statement.execute(dropStmt);
+        // Wait for cache invalidation if connection manager is enabled.
+        waitForTServerHeartbeatIfConnMgrEnabled();
         // Create table should now succeed.
         statement.execute(createStmt);
 
@@ -422,6 +424,8 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
       // Now drop it correctly.
       statement.execute("DROP TABLE t1, t2, t3");
     }
+
+    waitForTServerHeartbeatIfConnMgrEnabled();
 
     // Check everything got cleaned up.
     assertNoRows(statement,"SELECT * FROM pg_class where relname IN ('t1', 't2', 't3')");

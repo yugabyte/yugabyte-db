@@ -30,7 +30,9 @@ import {
   isDedicatedNodePlacement
 } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { DBLbState } from '../../../redesign/features/universe/universe-overview/DBLbState';
 import { DBVersionWidget } from '../../../redesign/features/universe/universe-overview/DBVersionWidget';
+import { MasterFailover } from '../../../redesign/features/universe/universe-actions/master-failover/MasterFailover';
 import { PreFinalizeBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/PreFinalizeBanner';
 import { FailedBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/FailedBanner';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -46,7 +48,6 @@ import {
   getUniverseStatus,
   UniverseState
 } from '../helpers/universeHelpers';
-import { DBLbState } from '../../../redesign/features/universe/universe-overview/DBLbState';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -862,7 +863,12 @@ export default class UniverseOverviewNew extends Component {
 
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === 'yb.upgrade.enable_rollback_support'
+        (c) => c.key === RuntimeConfigKey.ENABLE_ROLLBACK_SUPPORT
+      )?.value === 'true';
+
+    const isMasterFailoverEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_AUTO_MASTER_FAILOVER
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
@@ -885,6 +891,11 @@ export default class UniverseOverviewNew extends Component {
               <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
           )}
+        {isMasterFailoverEnabled && (
+          <Row className="p-16">
+            <MasterFailover universeData={universeInfo} />
+          </Row>
+        )}
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}

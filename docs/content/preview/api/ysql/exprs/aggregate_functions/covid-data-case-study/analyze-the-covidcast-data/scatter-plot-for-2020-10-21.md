@@ -90,7 +90,7 @@ as $body$
 
 This code, and the remaining code below, needed to make the scatter-plot for synthetic data is included in [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/).
 
-It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
+It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../../explore/ysql-language-features/pg-extensions/extension-tablefunc) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
 
 It was then invoked like this:
 

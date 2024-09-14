@@ -21,6 +21,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_status.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
@@ -40,6 +41,10 @@ TAG_FLAG(disable_xcluster_db_scoped_new_table_processing, advanced);
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup");
+
+// This flag will be converted to a PREVIEW, and then a kExternal Auto flag as the feature matures.
+DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
+    "Enables xCluster automatic DDL replication.");
 
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
@@ -74,7 +79,33 @@ XClusterManager::XClusterManager(
 
 XClusterManager::~XClusterManager() {}
 
-void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
+void XClusterManager::StartShutdown() {
+  XClusterTargetManager::StartShutdown();
+
+  // Copy the tasks out since Abort will trigger UnRegister which needs the mutex.
+  decltype(monitored_tasks_) tasks;
+  {
+    std::lock_guard l(monitored_tasks_mutex_);
+    tasks = monitored_tasks_;
+  }
+  for (auto& task : tasks) {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+  }
+}
+
+void XClusterManager::CompleteShutdown() {
+  XClusterTargetManager::CompleteShutdown();
+
+  CHECK_OK(WaitFor(
+      [this]() {
+        std::lock_guard l(monitored_tasks_mutex_);
+        YB_LOG_EVERY_N_SECS(WARNING, 10)
+            << "Waiting for " << monitored_tasks_.size() << " monitored tasks to complete";
+        return monitored_tasks_.empty();
+      },
+      MonoDelta::kMax, "Waiting for monitored tasks to complete",
+      MonoDelta::FromMilliseconds(100)));
+}
 
 Status XClusterManager::Init() {
   RETURN_NOT_OK(XClusterSourceManager::Init());
@@ -253,15 +284,19 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
   SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
-  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
-  SCHECK(!req->namespace_ids().empty(), InvalidArgument, "Missing Namespace Ids");
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_ids);
+  SCHECK(
+      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_id : req->namespace_ids()) {
     namespace_ids.emplace_back(namespace_id);
   }
+
   RETURN_NOT_OK(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids, epoch));
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids,
+      req->automatic_ddl_mode(), epoch));
 
   return Status::OK();
 }
@@ -499,7 +534,9 @@ Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
   auto group_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
-  for (const auto& [namespace_id, table_streams] : group_info) {
+  resp->set_automatic_ddl_mode(group_info.automatic_ddl_mode);
+
+  for (const auto& [namespace_id, table_streams] : group_info.namespace_table_map) {
     auto* ns_info = resp->add_namespace_infos();
     ns_info->set_namespace_id(namespace_id);
     for (const auto& [table_id, stream_id] : table_streams) {
@@ -698,6 +735,9 @@ Status XClusterManager::SetupUniverseReplication(
     const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
+  SCHECK(
+      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
 }
@@ -715,12 +755,18 @@ Status XClusterManager::IsSetupUniverseReplicationDone(
 
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
-  auto is_operation_done = VERIFY_RESULT(XClusterTargetManager::IsSetupUniverseReplicationDone(
-      xcluster::ReplicationGroupId(req->replication_group_id())));
+  auto is_operation_done = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), /*skip_health_check=*/false));
 
   resp->set_done(is_operation_done.done());
   StatusToPB(is_operation_done.status(), resp->mutable_replication_error());
   return Status::OK();
+}
+
+Result<IsOperationDoneResult> XClusterManager::IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) {
+  return XClusterTargetManager::IsSetupUniverseReplicationDone(
+      replication_group_id, skip_health_check);
 }
 
 Status XClusterManager::SetupNamespaceReplicationWithBootstrap(
@@ -774,6 +820,19 @@ Status XClusterManager::DeleteUniverseReplication(
             << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  SCHECK_FORMAT(
+      monitored_tasks_.insert(task).second, AlreadyPresent, "Task $0 already registered",
+      task->description());
+  return Status::OK();
+}
+
+void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  monitored_tasks_.erase(task);
 }
 
 }  // namespace yb::master

@@ -149,7 +149,9 @@ const mapDispatchToProps = (dispatch) => {
     showPGCompatibilityModal: () => {
       dispatch(openDialog('enablePGCompatibility'));
     },
-
+    showConnectionPoolModal: () => {
+      dispatch(openDialog('enableConnectionPooling'));
+    },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {

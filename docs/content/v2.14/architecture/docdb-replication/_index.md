@@ -23,7 +23,7 @@ This section describes how replication works in DocDB. The data in a DocDB table
 
 There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
 
-* **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
+* **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (leader-follower) or  bidirectional replication across two clusters.
 * **Read replicas** The in-cluster asynchronous replicas are called read replicas.
 
 <div class="row">

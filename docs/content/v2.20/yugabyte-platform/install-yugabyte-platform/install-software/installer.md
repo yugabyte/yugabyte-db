@@ -253,7 +253,7 @@ To migrate your installation from Replicated, do the following:
 1. Start the migration, passing in your license file:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license && sudo /opt/yba-ctl/yba-ctl restart yb-platform
+    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
     The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.

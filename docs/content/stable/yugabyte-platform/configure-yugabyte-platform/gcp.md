@@ -57,7 +57,7 @@ For more information on setting up a GCP service account, refer to [Cloud permis
 
 ## Configure GCP
 
-Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list of all currently configured GCP providers.
+Navigate to **Integrations > Infrastructure > Google Cloud Platform** to see a list of all currently configured GCP providers.
 
 ### Create a provider
 
