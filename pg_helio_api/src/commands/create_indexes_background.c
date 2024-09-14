@@ -50,7 +50,7 @@
 #include "metadata/index.h"
 #include "planner/mongo_query_operator.h"
 #include "query/query_operator.h"
-#include "utils/mongo_errors.h"
+#include "utils/error_utils.h"
 #include "utils/guc_utils.h"
 #include "utils/list_utils.h"
 #include "utils/query_utils.h"
@@ -1002,7 +1002,7 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 {
 	if (targetErrorCode != -1)
 	{
-		if (EreportCodeIsMongoError(targetErrorCode) &&
+		if (EreportCodeIsHelioError(targetErrorCode) &&
 			targetErrorCode != ERRCODE_HELIO_INTERNALERROR &&
 			targetErrorCode != ERRCODE_HELIO_INTERNALERROR)
 		{

@@ -56,6 +56,9 @@ cat << EOF > $filePath
 
 #include <utils/elog.h>
 
+/* Represents a Helio error */
+typedef int HelioErrorEreportCode;
+
 EOF
 
 # Write the CSV header file.

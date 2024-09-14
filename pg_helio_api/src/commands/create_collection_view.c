@@ -23,8 +23,8 @@
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "utils/helio_errors.h"
-#include "utils/mongo_errors.h"
 #include "aggregation/bson_aggregation_pipeline.h"
+#include "utils/error_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 
@@ -506,7 +506,7 @@ ValidatePipelineForCreateView(Datum databaseDatum, const char *viewName,
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(savedMemoryContext);
-		RethrowPrependMongoError("Invalid pipeline for view caused by :: ");
+		RethrowPrependHelioError("Invalid pipeline for view caused by :: ");
 	}
 	PG_END_TRY();
 }

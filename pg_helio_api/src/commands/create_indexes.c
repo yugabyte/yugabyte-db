@@ -52,8 +52,8 @@
 #include "metadata/metadata_cache.h"
 #include "planner/mongo_query_operator.h"
 #include "query/query_operator.h"
+#include "utils/error_utils.h"
 #include "utils/guc_utils.h"
-#include "utils/mongo_errors.h"
 #include "utils/list_utils.h"
 #include "utils/helio_errors.h"
 #include "utils/query_utils.h"
@@ -1333,7 +1333,7 @@ ParseIndexDefDocument(const bson_iter_t *indexesArrayIter, bool ignoreUnknownInd
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(savedMemoryContext);
-		RethrowPrependMongoError(errorMessagePrefixStr->data);
+		RethrowPrependHelioError(errorMessagePrefixStr->data);
 	}
 	PG_END_TRY();
 
@@ -2774,7 +2774,7 @@ ParseIndexDefWildcardProjDoc(const bson_iter_t *indexDefDocIter)
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(savedMemoryContext);
-		RethrowPrependMongoError("Failed to parse: wildcardProjection :: "
+		RethrowPrependHelioError("Failed to parse: wildcardProjection :: "
 								 "caused by :: ");
 	}
 	PG_END_TRY();

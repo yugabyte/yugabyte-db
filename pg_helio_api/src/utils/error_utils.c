@@ -11,9 +11,12 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <utils/builtins.h>
-#include "utils/mongo_errors.h"
-
 #include "utils/helio_errors.h"
+#include "utils/version_utils.h"
+
+#define MONGO_LEGACY_ERRORS_PRIVATE
+#include "utils/mongo_errors.h"
+#undef MONGO_LEGACY_ERRORS_PRIVATE
 
 
 /* --------------------------------------------------------- */
@@ -35,29 +38,53 @@ PG_FUNCTION_INFO_V1(command_throw_mongo_error);
  * This function is useful in those scenarios and its UDF should be called as:
  *
  * PERFORM ApiInternalSchema.throw_mongo_error(118, 'Collection x.y is not sharded.');
+ *
+ * [Deprecated] : starting 1.22
+ * [Update] : starting 1.22, this function is deprecated and should not be used.
+ * and return the deprecated error.
  */
 Datum
 pg_attribute_noreturn()
 command_throw_mongo_error(PG_FUNCTION_ARGS)
 {
-	int mongoErrorCode = PG_GETARG_INT32(0);
-	text *msg = PG_GETARG_TEXT_P(1);
-	int apiErrorCode = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
-	Assert(EreportCodeIsMongoError(apiErrorCode) && msg != NULL);
+	if (IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+						errmsg("command_throw_mongo_error function is deprecated now")));
+	}
+	else
+	{
+		int mongoErrorCode = PG_GETARG_INT32(0);
+		text *msg = PG_GETARG_TEXT_P(1);
+		int apiErrorCode = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
+		Assert(EreportCodeIsMongoError(apiErrorCode) && msg != NULL);
 
-	ereport(ERROR, (errcode(apiErrorCode), errmsg("%s", text_to_cstring(msg))));
+		ereport(ERROR, (errcode(apiErrorCode), errmsg("%s", text_to_cstring(msg))));
+	}
 }
 
 
 /*
  * This method prints the 5 character Postgres error code for the given mongo error code.
+ *
+ * [Deprecated] : starting 1.22
+ * Update: now the 5 character for an error can be easily found from helio_errors.h
  */
 Datum
 command_convert_mongo_error_to_postgres(PG_FUNCTION_ARGS)
 {
-	int mongoErrorCode = PG_GETARG_INT32(0);
-	int result = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
+	if (IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+						errmsg(
+							"command_convert_mongo_error_to_postgres function is deprecated now")));
+	}
+	else
+	{
+		int mongoErrorCode = PG_GETARG_INT32(0);
+		int result = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
 
-	ereport(INFO, (errcode(result), errmsg("Converted mongo error code to PG")));
+		ereport(INFO, (errcode(result), errmsg("Converted mongo error code to PG")));
+	}
 	PG_RETURN_VOID();
 }

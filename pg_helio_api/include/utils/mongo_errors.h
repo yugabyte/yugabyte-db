@@ -4,12 +4,21 @@
  *
  * include/commands/mongo_errors.h
  *
- * Definitions for Mongo errors and the associated error codes.
+ * Definitions for Legacy Mongo errors and the associated error codes.
+ *
+ * Note: The error code from this files are not compatible with the Postgres error
+ * semantics. Now with the new Posgtgres basedh helio erros defined in helio_errors.h
+ * we don't use any of below error codes.
+ *
+ * TODO: The file is not deleted because of backward compatibility with the old code.
+ * Once we have clobbered the old versions of the extension, we can delete this file safely.
  *
  *-------------------------------------------------------------------------
  */
 
-#include "utils/helio_errors.h"
+#ifndef MONGO_LEGACY_ERRORS_PRIVATE
+#error Do not import this header file. Import utils/helio_errors.h instead
+#endif
 
 #ifndef MONGO_ERRORS_H
 #define MONGO_ERRORS_H
@@ -38,8 +47,7 @@ typedef int MongoErrorEreportCode;
  */
 #define EreportCodeIsMongoError(mongoErrorEreportCode) \
 	((mongoErrorEreportCode >= _ERRCODE_MONGO_ERROR_FIRST && \
-	  mongoErrorEreportCode <= _ERRCODE_MONGO_ERROR_LAST) || \
-	 PGUNSIXBIT(mongoErrorEreportCode) == 'M')
+	  mongoErrorEreportCode <= _ERRCODE_MONGO_ERROR_LAST))
 
 
 #define _DEFINE_MONGO_ERROR(mongoErrorCodeName, mongoErrorCode) \
@@ -533,42 +541,5 @@ _DEFINE_MONGO_ERROR(Location6050106, 6050106);
 
 /* do not expose helper macro unnecessarily  */
 #undef _DEFINE_MONGO_ERROR
-
-
-/*
- * Prepend error messages of Mongo errors within a PG_CATCH() block.
- * Example usage:
- *
- *   MemoryContext savedMemoryContext = CurrentMemoryContext;
- *   PG_TRY();
- *   {
- *     // perform the stuff that could result in throwing a Mongo error
- *   }
- *   PG_CATCH();
- *   {
- *     // Make sure to switch back to original memory context before
- *     // re-throwing the error.
- *     MemoryContextSwitchTo(savedMemoryContext);
- *
- *     RethrowPrependMongoError(errorPrefix);
- *   }
- *   PG_END_TRY();
- */
-static inline void
-RethrowPrependMongoError(char *errorPrefix)
-{
-	ErrorData *errorData = CopyErrorDataAndFlush();
-
-	if (EreportCodeIsMongoError(errorData->sqlerrcode))
-	{
-		StringInfo newErrorMessageStr = makeStringInfo();
-		appendStringInfo(newErrorMessageStr, "%s%s", errorPrefix,
-						 errorData->message);
-		errorData->message = newErrorMessageStr->data;
-	}
-
-	ThrowErrorData(errorData);
-}
-
 
 #endif

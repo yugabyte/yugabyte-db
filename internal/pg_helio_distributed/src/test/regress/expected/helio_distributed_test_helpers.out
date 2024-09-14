@@ -23,13 +23,8 @@ CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.convert_mongo_error_to
 RETURNS void LANGUAGE C STRICT AS 'pg_helio_api', $$command_convert_mongo_error_to_postgres$$;
 \set VERBOSITY verbose
 SELECT helio_distributed_test_helpers.convert_mongo_error_to_postgres(1);
-INFO:  1000Y: Converted mongo error code to PG
-LOCATION:  command_convert_mongo_error_to_postgres, error_utils.c:61
- convert_mongo_error_to_postgres 
----------------------------------------------------------------------
- 
-(1 row)
-
+ERROR:  01P01: command_convert_mongo_error_to_postgres function is deprecated now
+LOCATION:  command_convert_mongo_error_to_postgres, error_utils.c:78
 \set VERBOSITY default
 -- Returns the command (without "CONCURRENTLY" option) used to create given
 -- Mongo index on given collection.

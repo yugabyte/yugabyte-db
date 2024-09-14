@@ -40,12 +40,12 @@
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
 #include "metadata/metadata_cache.h"
+#include "utils/error_utils.h"
 #include "utils/version_utils.h"
 #include "utils/helio_errors.h"
 #include "api_hooks.h"
 #include "schema_validation/schema_validation.h"
 #include "operators/bson_expr_eval.h"
-#include "utils/mongo_errors.h"
 
 /*
  * BatchInsertionSpec describes a batch of insert operations.
@@ -629,13 +629,16 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 
 		int errorCode = errorData->sqlerrcode;
 		const char *errorCodeStr = unpack_sql_state(errorCode);
-		if (EreportCodeIsMongoError(errorCode))
+		if (EreportCodeIsHelioError(errorCode))
 		{
-			errorCode = errorCode - ERRCODE_HELIO_INTERNALERROR;
+			/*
+			 * TODO: Since there is no mapping from PG error to mongo error today in engine,
+			 * we can't deduce the mongo specific error code.
+			 */
 			ereport(LOG, (
 						errmsg(
-							"Optimistic Batch Insert failed. Retrying with single insert. mongoErrorCode %d - sqlstate %s",
-							errorCode, errorCodeStr)));
+							"Optimistic Batch Insert failed. Retrying with single insert. helio errorCode %s",
+							errorCodeStr)));
 		}
 		else
 		{

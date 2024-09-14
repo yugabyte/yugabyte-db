@@ -5347,7 +5347,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 		if (dateFromParts->isoWeekYear.value_type == BSON_TYPE_EOD)
 		{
 			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  MongoConversionFailure),
+																	  ERRCODE_HELIO_CONVERSIONFAILURE),
 																  errmsg(
 																	  "Error parsing date string '%s';The parsed date was invalid",
 																	  dateString),
@@ -5363,7 +5363,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 		if (dateFromParts->year.value_type == BSON_TYPE_EOD)
 		{
 			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  MongoConversionFailure),
+																	  ERRCODE_HELIO_CONVERSIONFAILURE),
 																  errmsg(
 																	  "Error Parsing date string %s;A 'day of year' can only come after a year has been found",
 																	  dateString),
@@ -5384,7 +5384,7 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 			dateFromParts->day.value_type == BSON_TYPE_EOD)
 		{
 			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  MongoConversionFailure),
+																	  ERRCODE_HELIO_CONVERSIONFAILURE),
 																  errmsg(
 																	  "an incomplete date/time string has been found, with elements missing: '%s'",
 																	  dateString),
@@ -5589,7 +5589,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 			if (prevIsoFormat != -1 && prevIsoFormat != isIsoWeekDateFmt)
 			{
 				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  MongoConversionFailure),
+																		  ERRCODE_HELIO_CONVERSIONFAILURE),
 																	  errmsg(
 																		  "Error parsing date string '%s'; %d: Mixing of ISO dates with natural dates is not allowed",
 																		  dateString,
@@ -5615,7 +5615,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 			if (elementAtIndex[0] != dateString[indexOfDateStringIter])
 			{
 				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  MongoConversionFailure),
+																		  ERRCODE_HELIO_CONVERSIONFAILURE),
 																	  errmsg(
 																		  "Error parsing date string '%s'; %d: Format literal not found '%c'",
 																		  dateString,
@@ -5641,7 +5641,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 													   sizeOfSplitFormat))
 	{
 		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  MongoConversionFailure),
+																  ERRCODE_HELIO_CONVERSIONFAILURE),
 															  errmsg(
 																  "Error parsing date string %s'; %d: Trailing data '%c'",
 																  dateString,
@@ -5665,7 +5665,7 @@ ParseDateStringWithFormat(StringView dateStringView, char **elements, int
 													 sizeOfDateString))
 	{
 		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  MongoConversionFailure),
+																  ERRCODE_HELIO_CONVERSIONFAILURE),
 															  errmsg(
 																  "Error parsing date string %s'; %d: Not enough data available to satisfy format ''",
 																  dateString,
@@ -6028,7 +6028,7 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 		if (dateElementValue < minRangeVal || dateElementValue > maxRangeVal)
 		{
 			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  MongoConversionFailure),
+																	  ERRCODE_HELIO_CONVERSIONFAILURE),
 																  errmsg(
 																	  "Error parsing date string '%s'; %d: Value %d is out of range",
 																	  dateString,
@@ -6132,7 +6132,7 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 			if (month == -1)
 			{
 				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  MongoConversionFailure),
+																		  ERRCODE_HELIO_CONVERSIONFAILURE),
 																	  errmsg(
 																		  "Error parsing date string '%s'; %d: Textual month cannot be found",
 																		  dateString,
@@ -6230,7 +6230,7 @@ ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateSt
 	if (dateFromParts->timezone.value_type != BSON_TYPE_EOD)
 	{
 		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  MongoConversionFailure),
+																  ERRCODE_HELIO_CONVERSIONFAILURE),
 															  errmsg(
 																  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
 
@@ -6356,14 +6356,14 @@ ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
 			if (hasUTCOffset)
 			{
 				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  MongoConversionFailure),
+																		  ERRCODE_HELIO_CONVERSIONFAILURE),
 																	  errmsg(
 																		  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
 			}
 			else
 			{
 				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  MongoConversionFailure),
+																		  ERRCODE_HELIO_CONVERSIONFAILURE),
 																	  errmsg(
 																		  "you cannot pass in a date/time string with time zone information ('%s') together with a timezone argument",
 																		  timezoneOffset),
@@ -6401,7 +6401,7 @@ ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
 		if (dateFromParts->timezone.value_type != BSON_TYPE_EOD)
 		{
 			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  MongoConversionFailure),
+																	  ERRCODE_HELIO_CONVERSIONFAILURE),
 																  errmsg(
 																	  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
 			*isInputValid = false;

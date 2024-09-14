@@ -15,8 +15,6 @@
 #include <catalog/namespace.h>
 #include <access/xact.h>
 
-#include "utils/helio_errors.h"
-#include "utils/mongo_errors.h"
 #include "metadata/collection.h"
 #include "metadata/index.h"
 #include "utils/query_utils.h"
@@ -26,6 +24,8 @@
 #include "utils/version_utils.h"
 #include "commands/parse_error.h"
 #include "commands/diagnostic_commands_common.h"
+#include "utils/error_utils.h"
+#include "utils/helio_errors.h"
 
 
 /*

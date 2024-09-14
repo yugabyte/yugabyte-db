@@ -40,7 +40,7 @@ _PG_init(void)
 	{
 		ereport(ERROR, (errmsg(
 							"pg_helio_api can only be loaded via shared_preload_libraries"),
-						errhint(
+						errdetail_log(
 							"Add pg_helio_api to shared_preload_libraries configuration "
 							"variable in postgresql.conf. ")));
 	}

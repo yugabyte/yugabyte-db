@@ -254,8 +254,8 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 	if (!BsonValueIsNumber(inputValue))
 	{
 		ereport(ERROR, (errcode(isSecondArg ?
-								MongoDollarSliceInvalidTypeSecondArg :
-								MongoDollarSliceInvalidTypeThirdArg),
+								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPESECONDARG :
+								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPETHIRDARG),
 						errmsg(
 							"%s argument to $slice must be numeric, but is of type: %s",
 							isSecondArg ? "Second" : "Third",
@@ -271,8 +271,8 @@ DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 	if (!IsBsonValue32BitInteger(inputValue, checkForFixedInteger))
 	{
 		ereport(ERROR, (errcode(isSecondArg ?
-								MongoDollarSliceInvalidValueSecondArg :
-								MongoDollarSliceInvalidValueThirdArg),
+								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUESECONDARG :
+								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUETHIRDARG),
 						errmsg(
 							"%s argument to $slice can't be represented as a 32-bit integer: %s",
 							isSecondArg ? "Second" : "Third",
@@ -936,7 +936,7 @@ ProcessDollarArrayToObjectElement(bson_value_t *result,
 
 			if (strlen(elementToWrite.path) < elementToWrite.pathLength)
 			{
-				MongoErrorEreportCode errorCode = expectObjectElements ?
+				HelioErrorEreportCode errorCode = expectObjectElements ?
 												  ERRCODE_HELIO_LOCATION4940401 :
 												  ERRCODE_HELIO_LOCATION4940400;
 

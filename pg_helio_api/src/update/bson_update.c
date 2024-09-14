@@ -378,8 +378,8 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
 		uint32_t size = PgbsonGetBsonSize(document);
 		if (size > BSON_MAX_ALLOWED_SIZE)
 		{
-			int errorCode = isUpsert ? MongoDocumentToUpsertLargerThanMaxSize :
-							MongoDocumentAfterUpdateLargerThanMaxSize;
+			int errorCode = isUpsert ? ERRCODE_HELIO_DOCUMENTTOUPSERTLARGERTHANMAXSIZE :
+							ERRCODE_HELIO_DOCUMENTAFTERUPDATELARGERTHANMAXSIZE;
 			ereport(ERROR, (errcode(errorCode),
 							errmsg("Size %u is larger than MaxDocumentSize %u",
 								   size, BSON_MAX_ALLOWED_SIZE)));
