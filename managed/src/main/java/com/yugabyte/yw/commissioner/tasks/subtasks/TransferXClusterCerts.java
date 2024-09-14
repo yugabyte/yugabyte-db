@@ -115,6 +115,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
         throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
       }
 
+      // Todo:sh Make sure the transfer is done even if the file exists.
+
       if (config.getBoolean(K8S_TLS_SUPPORT_CONFIG_KEY)) {
         transferXClusterCertUsingNodeUniverseManager();
       } else {

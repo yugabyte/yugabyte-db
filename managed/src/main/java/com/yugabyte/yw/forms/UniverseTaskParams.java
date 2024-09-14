@@ -71,6 +71,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
     @ApiModelProperty(value = "YSQL RPC port")
     public int ysqlServerRpcPort;
 
+    @ApiModelProperty(value = "Internal YSQL RPC port")
+    public int internalYsqlServerRpcPort;
+
     @ApiModelProperty(value = "Node exporter port")
     public int nodeExporterPort;
 
@@ -99,6 +102,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.yqlServerRpcPort = node.yqlServerRpcPort;
       portsObj.ysqlServerHttpPort = node.ysqlServerHttpPort;
       portsObj.ysqlServerRpcPort = node.ysqlServerRpcPort;
+      portsObj.internalYsqlServerRpcPort = node.internalYsqlServerRpcPort;
       portsObj.nodeExporterPort = node.nodeExporterPort;
       portsObj.otelCollectorMetricsPort = node.otelCollectorMetricsPort;
 
@@ -118,6 +122,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.yqlServerRpcPort = ports.yqlServerRpcPort;
       node.ysqlServerHttpPort = ports.ysqlServerHttpPort;
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
+      node.internalYsqlServerRpcPort = ports.internalYsqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
       node.otelCollectorMetricsPort = ports.otelCollectorMetricsPort;
     }
@@ -147,6 +152,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
           && yqlServerRpcPort == ports.yqlServerRpcPort
           && ysqlServerHttpPort == ports.ysqlServerHttpPort
           && ysqlServerRpcPort == ports.ysqlServerRpcPort
+          && internalYsqlServerRpcPort == ports.internalYsqlServerRpcPort
           && nodeExporterPort == ports.nodeExporterPort
           && otelCollectorMetricsPort == ports.otelCollectorMetricsPort;
     }

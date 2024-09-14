@@ -56,6 +56,18 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="/images/section_icons/introduction/benefits.png">}}
 
   {{<index/item
+    title="Export YSQL audit logs"
+    body="Export universe audit logs to third-party logging tools."
+    href="universe-logging/"
+    icon="/images/section_icons/explore/monitoring.png">}}
+
+  {{<index/item
+    title="Create export configurations"
+    body="Configure telemetry providers."
+    href="anywhere-export-configuration/"
+    icon="/images/section_icons/explore/monitoring.png">}}
+
+  {{<index/item
     title="Custom Prometheus"
     body="Use your own Prometheus server to scrape metrics."
     href="prometheus-custom/"

@@ -1,7 +1,7 @@
 ---
-title: Change data capture using Logical Replication in YugabyteDB
-headerTitle: CDC using Logical Replication
-linkTitle: CDC using Logical Replication
+title: Architecture for CDC using PostgreSQL protocol
+headerTitle: CDC using PostgreSQL protocol
+linkTitle: CDC using PostgreSQL protocol
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 badges: ea
@@ -15,7 +15,13 @@ type: docs
 
 Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools.
 
-CDC using Logical Replication in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
+CDC using PostgreSQL protocol in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
+
+{{<lead link="../../../explore/change-data-capture/">}}
+
+See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
+
+{{</lead>}}
 
 ## Architecture
 

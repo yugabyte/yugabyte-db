@@ -145,6 +145,9 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
     when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ddlAtomicityCheckEnabled)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ddlAtomicityIntervalSec)))
         .thenReturn(3600);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);

@@ -83,7 +83,7 @@ DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_group_replicate_batch_size);
-DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int32(retryable_request_timeout_secs);
 

@@ -11,6 +11,9 @@ import sys
 import glob
 import traceback
 import threading
+import re
+import random
+import string
 # Stop event to signal the background thread to stop.:
 bg_thread_stop_event = threading.Event()
 child_process = None
@@ -52,6 +55,10 @@ PG_UNIX_SOCKET_LOCK_FILE_PATH_GLOB = os.environ.get(
     "PG_UNIX_SOCKET_LOCK_FILE_PATH_GLOB",
     "/tmp/.yb.*/.s.PGSQL.*.lock")   # Default pattern
 MASTER_BINARY = "/home/yugabyte/bin/yb-master"
+GFLAGS_MASTER_TEMPLATE_FILE = "/opt/master/conf/server.conf.template"
+GFLAGS_MASTER_GENERATED_FILE = "/tmp/yugabyte/master/conf/server.conf"
+GFLAGS_TSERVER_TEMPLATE_FILE = "/opt/tserver/conf/server.conf.template"
+GFLAGS_TSERVER_GENERATED_FILE = "/tmp/yugabyte/tserver/conf/server.conf"
 
 
 def signal_handler(signum, frame):
@@ -113,6 +120,55 @@ def delete_pg_lock_files():
         logging.info(f"Trying to delete {file_path}")
         os.remove(file_path)
         logging.info(f"Deleted: {file_path}")
+
+
+def replace_var_env(match):
+    var = match.group(1)
+    if var in os.environ:
+        return os.environ[var]
+
+    return ""
+
+
+def random_string(length):
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
+
+
+def background_sub_env_gflags(sleep_time_seconds, command):
+    logging.info("Starting gflags file template substitution")
+    infile = GFLAGS_MASTER_TEMPLATE_FILE if is_master(command) else GFLAGS_TSERVER_TEMPLATE_FILE
+    outfile = GFLAGS_MASTER_GENERATED_FILE if is_master(command) else GFLAGS_TSERVER_GENERATED_FILE
+    tmp_outfile = outfile + '.' + random_string(8)
+    if not os.path.exists(infile):
+        logging.info("Template gflags file does not exist, ignoring substitution")
+        return
+    try:
+        os.makedirs(os.path.dirname(outfile), exist_ok=True)
+        os.makedirs(os.path.dirname(tmp_outfile), exist_ok=True)
+    except Exception as e:
+        logging.error("Error while creating gflag file: {}, traceback: {}"
+                      .format(e, traceback.format_exc()))
+    global bg_thread_stop_event
+    while not bg_thread_stop_event.is_set():
+        logging.info("Substituting env to gflag template")
+        try:
+            with open(infile, 'r') as instream:
+                content = instream.read()
+            content = re.sub("\\${(.*?)}", replace_var_env, content)
+            # Safe create the gflags file by creating tmp file and moving it
+            with open(tmp_outfile, 'w') as outstream:
+                outstream.write(content)
+            os.replace(tmp_outfile, outfile)
+            try:
+                os.remove(tmp_outfile)
+            except FileNotFoundError:
+                pass
+        except Exception as e:
+            logging.error(
+                "Error while substituting env to gflag template: {}, traceback: {}"
+                .format(e, traceback.format_exc()))
+        logging.info("Sleeping for {} seconds".format(sleep_time_seconds))
+        time.sleep(sleep_time_seconds)
 
 
 def background_copy_cores_wrapper(dst, sleep_time_seconds):
@@ -214,6 +270,7 @@ if __name__ == "__main__":
         level=logging.INFO,
     )
     core_collection_interval = 30  # Seconds
+    subs_env_gflags_interval = 20  # Seconds
     command = sys.argv[1:]
     if len(command) < 1:
         logging.critical("No command to run")
@@ -233,6 +290,11 @@ if __name__ == "__main__":
         target=background_copy_cores_wrapper, args=(cores_dir, core_collection_interval))
     copy_cores_thread.daemon = True
     copy_cores_thread.start()
+    # Substitute environment varibles to gflag template file once in 20s
+    subs_env_gflags_thread = threading.Thread(
+        target=background_sub_env_gflags, args=(subs_env_gflags_interval, command))
+    subs_env_gflags_thread.daemon = True
+    subs_env_gflags_thread.start()
     # Delete PG Unix Socket Lock files that can be left after a previous
     # ungraceful exit of the container.
     if not is_master(command):

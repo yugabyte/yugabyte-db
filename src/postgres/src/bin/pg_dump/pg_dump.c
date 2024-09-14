@@ -11365,8 +11365,7 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false, false);
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
+		binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
 	}
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
@@ -15512,7 +15511,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP VIEW %s;\n", qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
 
@@ -15614,10 +15613,21 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+			/*
+			 * We may create a primary key index as part of the CREATE TABLE
+			 * statement we generate here; accordingly, set things up so we
+			 * will set its OID correctly in binary update mode.
+			 */
+			if (tbinfo->primaryKeyIndex)
+			{
+				IndxInfo *index = tbinfo->primaryKeyIndex;
+				binary_upgrade_set_pg_class_oids(fout, q,
+												 index->dobj.catId.oid, true);
+			}
 		}
 
 		/* Get the table properties from YB, if relevant. */
@@ -16589,7 +16599,7 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 		int			nstatcols = 0;
 		int			nstatvals = 0;
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -16846,7 +16856,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			pg_fatal("missing index for constraint \"%s\"",
 					 coninfo->dobj.name);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -17319,9 +17329,8 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 
 	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, query,
-											 tbinfo->dobj.catId.oid, false);
+		binary_upgrade_set_pg_class_oids(fout, query,
+										 tbinfo->dobj.catId.oid, false);
 
 		/*
 		 * In older PG versions a sequence will have a pg_type entry, but v14

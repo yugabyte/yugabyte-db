@@ -19,7 +19,7 @@ Before installing yb-voyager, ensure that you have the [Docker](https://docs.doc
     ```
 
     {{< warning >}}
-Use yb-voyager docker script without `sudo` to run Voyager commands.
+Use yb-voyager docker script without `sudo` to run Voyager commands. To do this you need to reconfigure docker on your system to run without sudo. Refer to [Manage Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) in the Docker documentation.
     {{< /warning >}}
 
 1. Check that yb-voyager is installed using the following command:

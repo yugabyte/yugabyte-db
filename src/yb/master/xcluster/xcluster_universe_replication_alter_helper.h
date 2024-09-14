@@ -52,11 +52,6 @@ class AlterUniverseReplicationHelper {
       scoped_refptr<UniverseReplicationInfo> universe, const AlterUniverseReplicationRequestPB* req,
       AlterUniverseReplicationResponsePB* resp);
 
-  // Rename an existing Universe Replication.
-  Status RenameUniverseReplication(
-      scoped_refptr<UniverseReplicationInfo> universe,
-      const xcluster::ReplicationGroupId new_replication_group_id);
-
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

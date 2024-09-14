@@ -1,0 +1,190 @@
+'/customers/{cUUID}/auto-yba-backups':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: GetContinuousBackup
+    summary: Get Continuous Backup
+    description: Get details of the continuous backup configuration
+    tags:
+      - Continuous Backup
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  post:
+    operationId: CreateContinuousBackup
+    summary: Create Continous Backup
+    description: Create a continuous backup configuration
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupCreateReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: 'null'
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auto-yba-backups/restore':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: RestoreContinuousBackup
+    summary: Restore Continuous Backup
+    description: Restore a backup from a continuous backup configuration
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupRestoreReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: 'null'
+      auditActionType: Restore
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auto-yba-backups/{bUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bUUID
+      in: path
+      description: Continuous Backup UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  put:
+    operationId: EditContinuousBackup
+    summary: Edit Continuous Backup config
+    description: Edit continuous backup config
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupCreateReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: bUUID.toString()
+      auditActionType: Edit
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: DeleteContinuousBackup
+    summary: Delete Continuous Backup config
+    description: Delete continuous backup config
+    tags:
+      - Continuous Backup
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: bUUID.toString()
+      auditActionType: Edit
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview

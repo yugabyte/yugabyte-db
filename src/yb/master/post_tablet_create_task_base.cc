@@ -60,16 +60,15 @@ Status PostTabletCreateTaskBase::StartTasks(
     CatalogManager* catalog_manager, TableInfoPtr table_info, const LeaderEpoch& epoch) {
   SCHECK(!table_creation_tasks.empty(), IllegalState, "At least one task must be scheduled");
 
-  std::vector<MultiStepMonitoredTask*> tasks;
   for (const auto& task : table_creation_tasks) {
     SCHECK_EQ(
         task->table_info_->id(), table_info->id(), IllegalState,
         "All tasks in group must belong to the same table");
-    tasks.emplace_back(task.get());
   }
 
   return MultiStepMonitoredTask::StartTasks(
-      tasks, std::bind(&MarkTableAsRunningIfHealthy, catalog_manager, table_info, epoch, _1));
+      table_creation_tasks,
+      std::bind(&MarkTableAsRunningIfHealthy, catalog_manager, table_info, epoch, _1));
 }
 
 void PostTabletCreateTaskBase::TaskCompleted(const Status& status) {

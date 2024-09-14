@@ -62,7 +62,15 @@ public class TestPgYbStat extends BasePgSQLTest {
   private void executeQueryAndSendSignal(final String query,
     final Connection inputConnection, final String signal) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
-      final int pid = getPid(inputConnection);
+
+      int[] pids = new int[CONN_MGR_WARMUP_BACKEND_COUNT];
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++){
+          pids[i] = getPid(inputConnection);
+        }
+      } else {
+        pids[0] = getPid(inputConnection);
+      }
 
       final CountDownLatch startSignal = new CountDownLatch(1);
       final List<ThrowingRunnable> cmds = new ArrayList<>();
@@ -83,7 +91,13 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         Thread.sleep(100); // Allow the query execution a headstart before killing
-        ProcessUtil.signalProcess(pid, signal);
+        if (isConnMgrWarmupRoundRobinMode()) {
+          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+            ProcessUtil.signalProcess(pids[i], signal);
+          }
+        } else {
+          ProcessUtil.signalProcess(pids[0], signal);
+        }
       });
       MiscUtil.runInParallel(cmds, startSignal, 60);
     } catch (Throwable exception) {
@@ -146,6 +160,7 @@ public class TestPgYbStat extends BasePgSQLTest {
 
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.

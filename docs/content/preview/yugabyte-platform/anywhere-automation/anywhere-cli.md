@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB Anywhere CLI
+title: YugabyteDB Anywhere CLI (yba)
 headerTitle: YugabyteDB Anywhere CLI
-linkTitle: CLI
+linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
 badges: tp

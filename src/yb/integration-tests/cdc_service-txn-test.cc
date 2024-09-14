@@ -70,32 +70,9 @@ class CDCServiceTxnTest : public TransactionTestBase<MiniCluster> {
         &client_->proxy_cache(), HostPort::FromBoundEndpoint(mini_server->bound_rpc_addr()));
   }
 
-  Status GetChangesInitialSchema(GetChangesRequestPB const& change_req,
-                                 CDCCheckpointPB* mutable_checkpoint);
-
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
 };
 
-Status CDCServiceTxnTest::GetChangesInitialSchema(GetChangesRequestPB const& req_in,
-                                                  CDCCheckpointPB* mutable_checkpoint) {
-  GetChangesRequestPB change_req(req_in);
-  GetChangesResponsePB change_resp;
-  change_req.set_max_records(1);
-
-  // Consume the META_OP that has the original Schema.
-  {
-    RpcController rpc;
-    SCOPED_TRACE(change_req.DebugString());
-    RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
-    SCHECK(!change_resp.has_error(), IllegalState,
-           Format("Response Error: $0", change_resp.error().DebugString()));
-    SCHECK_EQ(change_resp.records_size(), 1, IllegalState, "Expected only 1 record");
-    SCHECK_EQ(change_resp.records(0).operation(), CDCRecordPB::CHANGE_METADATA,
-              IllegalState, "Expected the CHANGE_METADATA related to the initial schema");
-    mutable_checkpoint->CopyFrom(change_resp.checkpoint());
-  }
-  return Status::OK();
-}
 
 void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_t expected_value) {
   ASSERT_EQ(changes.size(), 1);
@@ -193,8 +170,8 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    // Expect total 8 records: 1 META OP, 5 WRITE_OP, and 2 UPDATE_TRANSACTION_OP records.
-    ASSERT_EQ(change_resp.records_size(), 8);
+    // Expect total 7 records: 5 WRITE_OP, and 2 UPDATE_TRANSACTION_OP records.
+    ASSERT_EQ(change_resp.records_size(), 7);
 
     struct Record {
       int32_t value; // 0 if apply record.
@@ -257,9 +234,6 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   GetChangesResponsePB change_resp;
   change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablet_id);
-
-  // Consume the META_OP that has the initial table Schema.
-  ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
 
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
@@ -348,8 +322,8 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    // 1 META_OP, 1 TXN, 1 WRITE
-    ASSERT_EQ(change_resp.records_size(), 3);
+    // 1 TXN, 1 WRITE
+    ASSERT_EQ(change_resp.records_size(), 2);
   }
 
     const auto& tserver = cluster_->mini_tablet_server(0)->server();

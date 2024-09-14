@@ -43,7 +43,7 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
       const client::YBTableName& table_name, MockTserverXClusterContext& xcluster_context)
       : XClusterDDLQueueHandler(
             /* local_client */ nullptr, table_name.namespace_name(), table_name.namespace_id(),
-            xcluster_context, /* connect_to_pg_func */ nullptr) {}
+            /* log_prefix */ "", xcluster_context, /* connect_to_pg_func */ nullptr) {}
 
   Status ProcessDDLQueueTable(
       const std::optional<HybridTime>& apply_safe_time, int num_records = 1) {

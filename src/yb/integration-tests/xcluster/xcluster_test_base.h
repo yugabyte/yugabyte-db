@@ -28,6 +28,7 @@
 
 #include "yb/master/master_replication.fwd.h"
 
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -228,6 +229,10 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
+  Result<IsOperationDoneResult> WaitForSetupUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      MiniCluster* consumer_cluster = nullptr, YBClient* consumer_client = nullptr);
 
   Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 

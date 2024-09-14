@@ -1,8 +1,9 @@
 ---
-title: Change data capture (CDC) gRPC Replication in YugabyteDB
-headerTitle: CDC using gRPC Replication
-linkTitle: CDC using gRPC Replication
+title: Architecture for CDC using gRPC protocol
+headerTitle: CDC using gRPC protocol
+linkTitle: CDC using gRPC protocol
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
+headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 badges: ea
 menu:
   stable:
@@ -12,6 +13,8 @@ menu:
 type: docs
 ---
 
+Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools.
+
 ## Architecture
 
 Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by the CDC service are the following:
@@ -20,6 +23,12 @@ Every YB-TServer has a `CDC service` that is stateless. The main APIs provided b
 - `getChangesCDCSDK` API that can be used by the client to get the latest set of changes.
 
 ![Stateless CDC Service](/images/architecture/stateless_cdc_service.png)
+
+{{<lead link="../../../explore/change-data-capture/">}}
+
+See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
+
+{{</lead>}}
 
 ## CDC streams
 
@@ -68,9 +77,3 @@ For example, a CDC client has received changes for a row at times `t1` and `t3`.
 ### No gaps in change stream
 
 When you have received a change for a row for timestamp `t`, you do not receive a previously unseen change for that row from an earlier timestamp. This guarantees that receiving any change implies that all earlier changes have been received for a row.
-
-{{< note title="Note" >}}
-
-See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
-
-{{< /note >}}

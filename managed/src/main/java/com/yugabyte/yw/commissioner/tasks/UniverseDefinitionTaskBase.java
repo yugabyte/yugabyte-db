@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -13,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -39,7 +42,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -47,6 +52,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -57,6 +63,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -67,6 +74,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -81,6 +89,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -455,6 +464,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
   }
 
+  protected void setCommunicationPortsForNodes(boolean isCreate) {
+    UniverseTaskParams.CommunicationPorts communicationPorts = taskParams().communicationPorts;
+    if (communicationPorts == null) {
+      communicationPorts = getUniverse().getUniverseDetails().communicationPorts;
+    }
+    for (NodeDetails nodeDetails : taskParams().nodeDetailsSet) {
+      if (isCreate || nodeDetails.state == NodeState.ToBeAdded) {
+        UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+            communicationPorts, nodeDetails);
+      }
+    }
+  }
+
   /**
    * Pick nodes from node-instance table, set the instance UUIDs to the nodes in task params and
    * reserve in memory or persist the changes to the table.
@@ -644,7 +666,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         stoppingNode,
         isStoppable,
         ignoreStopError,
-        false /*ignoreMasterAddrsUpdateError*/);
+        false /*ignoreMasterAddrsUpdateError*/,
+        false /* keepTserverRunning */);
   }
 
   public void createStartMasterOnNodeTasks(
@@ -653,7 +676,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable NodeDetails stoppingNode,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean ignoreMasterAddrsUpdateError) {
+      boolean ignoreMasterAddrsUpdateError,
+      boolean keepTserverRunning) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
     if (currentNode.masterState != MasterState.Configured) {
@@ -712,7 +736,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     // Update all server conf files because there was a master change.
-    createMasterInfoUpdateTask(universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError);
+    createMasterInfoUpdateTask(
+        universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
   }
 
   // Find a similar node on which a new master process can be started.
@@ -766,7 +791,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         replacementSupplier,
         isStoppable,
         ignoreStopError,
-        false /* ignoreMasterAddrsUpdateError */);
+        false /* ignoreMasterAddrsUpdateError */,
+        false /* keepTserverRunning */);
   }
 
   /**
@@ -778,8 +804,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param replacementSupplier the supplier for the replacement node.
    * @param isStoppable true if the current node can stopped.
    * @param ignoreStopError true if any error on stopping the current node is to be ignored.
-   * @param updateMasterAddrsOnStoppedNode true if the tserver on the stopped node is to be updated
-   *     with the new master addresses.
+   * @param ignoreMasterAddrsUpdateError true if master address update needs to be ignored.
+   * @param keepTserverRunning true to keep tserver running in the node where master is being
+   *     stopped.
    */
   public void createMasterReplacementTasks(
       Universe universe,
@@ -787,7 +814,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Supplier<NodeDetails> replacementSupplier,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean ignoreMasterAddrsUpdateError) {
+      boolean ignoreMasterAddrsUpdateError,
+      boolean keepTserverRunning) {
     if (currentNode.masterState != MasterState.ToStop) {
       log.info(
           "Current node {} is not a master to be stopped. Ignoring master replacement",
@@ -816,7 +844,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createUpdateNodeProcessTask(currentNode.getNodeName(), ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       // Now isTserver and isMaster are both false for this stopped node.
-      createMasterInfoUpdateTask(universe, null, currentNode, ignoreMasterAddrsUpdateError);
+      createMasterInfoUpdateTask(
+          universe, null, currentNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
     } else if (newMasterNode.masterState == MasterState.ToStart
         || newMasterNode.masterState == MasterState.Configured) {
       log.info(
@@ -834,7 +863,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           currentNode,
           isStoppable,
           ignoreStopError,
-          ignoreMasterAddrsUpdateError);
+          ignoreMasterAddrsUpdateError,
+          keepTserverRunning);
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
@@ -908,6 +938,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Sets the isMaster field
       params.isMaster = node.isMaster;
       params.enableYSQL = userIntent.enableYSQL;
+      params.enableConnectionPooling = userIntent.enableConnectionPooling;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -1363,6 +1394,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.placementUuid = node.placementUuid;
       // Sets the isMaster field
       params.enableYSQL = userIntent.enableYSQL;
+      params.enableConnectionPooling = userIntent.enableConnectionPooling;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -1426,6 +1458,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   universe.getUniverseDetails().clusters);
         }
       }
+      params.cgroupSize = getCGroupSize(node);
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
@@ -1513,8 +1546,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      // Verify kubernetes overrides.
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        if (opType == UniverseOpType.EDIT
+            && cluster.userIntent.deviceInfo != null
+            && cluster.userIntent.deviceInfo.volumeSize != null
+            && cluster.userIntent.deviceInfo.volumeSize
+                < univCluster.userIntent.deviceInfo.volumeSize) {
+          String errMsg =
+              String.format(
+                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                  univCluster.userIntent.deviceInfo.volumeSize,
+                  cluster.userIntent.deviceInfo.volumeSize);
+          throw new IllegalStateException(errMsg);
+        }
+        // Verify kubernetes overrides.
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
@@ -1524,17 +1569,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         } else {
           if (opType == UniverseOpType.EDIT) {
-            if (cluster.userIntent.deviceInfo != null
-                && cluster.userIntent.deviceInfo.volumeSize != null
-                && cluster.userIntent.deviceInfo.volumeSize
-                    < univCluster.userIntent.deviceInfo.volumeSize) {
-              String errMsg =
-                  String.format(
-                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                      univCluster.userIntent.deviceInfo.volumeSize,
-                      cluster.userIntent.deviceInfo.volumeSize);
-              throw new IllegalStateException(errMsg);
-            }
             // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
@@ -1611,6 +1645,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new IllegalArgumentException(
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
+      }
+    }
+    // Validate kubernetes overrides
+    if (universeDetails.getPrimaryCluster().userIntent.providerType == CloudType.kubernetes) {
+      try {
+        KubernetesUtil.validateServiceEndpoints(taskParams(), universe.getConfig());
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
       }
     }
   }
@@ -1771,33 +1813,42 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  protected void createMasterInfoUpdateTask(
+      Universe universe, @Nullable NodeDetails addedMasterNode, @Nullable NodeDetails stoppedNode) {
+    createMasterInfoUpdateTask(
+        universe,
+        addedMasterNode,
+        stoppedNode,
+        false /* ignoreError */,
+        false /* keepTserverRunning */);
+  }
+
   /*
    * Setup a configure task to update the masters list in the conf files of all
    * tservers and masters.
    */
   protected void createMasterInfoUpdateTask(
-      Universe universe, @Nullable NodeDetails addedMasterNode, @Nullable NodeDetails stoppedNode) {
-    createMasterInfoUpdateTask(universe, addedMasterNode, stoppedNode, false);
-  }
-
-  protected void createMasterInfoUpdateTask(
       Universe universe,
       @Nullable NodeDetails addedMasterNode,
       @Nullable NodeDetails stoppedNode,
-      boolean ignoreError) {
+      boolean ignoreError,
+      boolean keepTserverRunning) {
     Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
     Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
 
     if (addedMasterNode != null) {
       // Include this newly added master node which may not yet have isMaster set to true.
-      // New tservers are started later after AnsbibleConfigure to update
-      // the master addresses and isTserver can be false.
       masterNodes.add(addedMasterNode);
+      if (addedMasterNode.isTserver) {
+        // It is also a tserver.
+        tserverNodes.add(addedMasterNode);
+      }
     }
-
     // Remove the stopped node from the update.
     if (stoppedNode != null) {
-      tserverNodes.remove(stoppedNode);
+      if (!keepTserverRunning) {
+        tserverNodes.remove(stoppedNode);
+      }
       masterNodes.remove(stoppedNode);
     }
     createMasterAddressUpdateTask(universe, masterNodes, tserverNodes, ignoreError);
@@ -2043,6 +2094,125 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
         filteredNodes -> {
           createPreflightNodeCheckTasks(clusters, filteredNodes, null, null);
+        });
+  }
+
+  /**
+   * Create preflight node check to check certificateConfig for on-prem nodes in the universe
+   *
+   * @param clusters the clusters
+   * @param nodesToBeProvisioned the nodes to be provisioned
+   * @param rootCA the rootCA UUID (Null if not required)
+   * @param clientRootCA the clientRootCA UUID (Null if not required)
+   */
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt,
+      @Nullable String sshUserOverride) {
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    // simply return.
+    boolean rootCAisValidCustomCertHostPath =
+        (rootCA != null
+            && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomCertHostPath);
+    boolean clientRootCAisValidCustomCertHostPath =
+        (clientRootCA != null
+            && CertificateInfo.get(clientRootCA).getCertType()
+                == CertConfigType.CustomCertHostPath);
+    // If both certs are null, or not of type CustomCertHostPath, skip validation
+    if (!rootCAisValidCustomCertHostPath && !clientRootCAisValidCustomCertHostPath) {
+      return;
+    }
+    // Skip if yb.tls.skip_cert_validation is set to ALL
+    NodeManager.SkipCertValidationType skipType =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.tlsSkipCertValidation);
+    if (skipType == NodeManager.SkipCertValidationType.ALL) {
+      log.info(
+          "Skipping certificate validation as it is disabled."
+              + " Set yb.tls.skip_cert_validation"
+              + " to NONE OR HOSTNAME to enable it back.");
+      return;
+    }
+
+    boolean skipHostNameCheck = skipType == NodeManager.SkipCertValidationType.HOSTNAME;
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckCertificateConfig");
+    clusters.stream()
+        .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+        .forEach(
+            cluster -> {
+              nodes.stream()
+                  .filter(node -> cluster.uuid.equals(node.placementUuid))
+                  .forEach(
+                      node -> {
+                        CheckCertificateConfig task = createTask(CheckCertificateConfig.class);
+                        CheckCertificateConfig.Params params = new CheckCertificateConfig.Params();
+                        params.nodeName = node.nodeName;
+                        params.nodeUuid = node.nodeUuid;
+                        params.azUuid = node.azUuid; // Required for using getProvider() in task.
+                        params.placementUuid = node.placementUuid; // Required for getting gFlags.
+                        params.setUniverseUUID(taskParams().getUniverseUUID());
+                        params.rootAndClientRootCASame =
+                            enableClientToNodeEncrypt
+                                && taskParams()
+                                    .rootAndClientRootCASame; // Required till we fix PLAT-14979
+                        params.rootCA = rootCA;
+                        params.setClientRootCA(clientRootCA);
+                        params.SkipHostNameCheck = skipHostNameCheck;
+                        // If ssh user is passed, then always use that
+                        if (StringUtils.isNotBlank(sshUserOverride)) {
+                          params.sshUserOverride = sshUserOverride;
+                        }
+                        task.initialize(params);
+                        subTaskGroup.addSubTask(task);
+                      });
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  /**
+   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param clusters the clusters
+   */
+  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+    log.info("Checking certificate config for on-prem nodes in the universe.");
+    Set<Cluster> onPremClusters =
+        clusters.stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (onPremClusters.isEmpty()) {
+      log.info("No on-prem clusters found in the universe.");
+      return;
+    }
+    UUID rootCA =
+        EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null;
+    UUID clientRootCA =
+        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+            ? taskParams().getClientRootCA()
+            : null;
+    boolean enableClientToNodeEncrypt =
+        taskParams().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    if (rootCA == null && clientRootCA == null) {
+      return;
+    }
+
+    Set<NodeDetails> nodesToProvision =
+        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+    applyOnNodesWithStatus(
+        universe,
+        nodesToProvision,
+        false,
+        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+        filteredNodes -> {
+          createCheckCertificateConfigTask(
+              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
         });
   }
 
@@ -2650,6 +2820,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
+      if (processType == ServerType.MASTER || processType == ServerType.TSERVER) {
+        // GFlags groups may depend on software version, so need to calculate them using fresh one.
+        Universe universe = getUniverse();
+        universe
+            .getUniverseDetails()
+            .clusters
+            .forEach(cluster -> cluster.userIntent.ybSoftwareVersion = softwareVersion);
+        params.gflags =
+            GFlagsUtil.getGFlagsForNode(
+                node,
+                processType,
+                universe.getCluster(node.placementUuid),
+                universe.getUniverseDetails().clusters);
+      }
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
@@ -2751,6 +2935,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableYCQL = enableYCQL;
     params.enableYCQLAuth = enableYCQLAuth;
+    params.enableYSQL = enableYSQL;
+    params.enableYSQLAuth = enableYSQLAuth;
+    UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createUpdateDBApiDetailsTask(
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableConnectionPooling,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
+    UpdateClusterAPIDetails.Params params = new UpdateClusterAPIDetails.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.enableYCQL = enableYCQL;
+    params.enableYCQLAuth = enableYCQLAuth;
+    params.enableConnectionPooling = enableConnectionPooling;
     params.enableYSQL = enableYSQL;
     params.enableYSQLAuth = enableYSQLAuth;
     UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
@@ -3074,5 +3279,59 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         };
     return createRunNodeCommandTask(universe, nodes, command, consumer, null /* shell context */);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType,
+      boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subTaskGroupName, ignoreErrors);
+    vals.forEach(
+        value -> {
+          subTaskGroup.addSubTask(taskInitializer.apply(value));
+        });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+  }
+
+  protected RollMaxBatchSize getCurrentRollBatchSize(
+      Universe universe, RollMaxBatchSize rollMaxBatchSizeFromParams) {
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    if (rollMaxBatchSizeFromParams != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+      rollMaxBatchSize = rollMaxBatchSizeFromParams;
+    } else {
+      RollMaxBatchSize max = UpgradeTaskBase.getMaxNodesToRoll(universe);
+      int percent =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoPercent);
+      int number =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoNumber);
+      int numberToSet = 0;
+      if (percent > 0) {
+        numberToSet = max.getPrimaryBatchSize() * percent / 100;
+      } else if (number > 1) {
+        numberToSet = Math.min(number, max.getPrimaryBatchSize());
+      }
+      if (numberToSet > 1) {
+        rollMaxBatchSize.setPrimaryBatchSize(numberToSet);
+        rollMaxBatchSize.setReadReplicaBatchSize(numberToSet);
+      }
+    }
+    if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
+      RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);
+      // Setting this only for primary cluster, RR still can be rolled with any speed.
+      rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
+    }
+    return rollMaxBatchSize;
   }
 }

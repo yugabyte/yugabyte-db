@@ -86,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -1419,7 +1419,6 @@ class PgClientServiceImpl::Impl {
       tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
-      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
       return;
     }
 

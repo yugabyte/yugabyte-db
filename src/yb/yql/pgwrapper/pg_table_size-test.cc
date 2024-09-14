@@ -226,7 +226,7 @@ TEST_F(PgTableSizeTest, SharedTableSize) {
   ASSERT_OK(cluster_->CompactTablets());
 
   ASSERT_OK(VerifyTableSize(
-      cluster_.get(), &test_conn, "T", "pg_pltemplate", true /* relation_is_catalog_table */));
+      cluster_.get(), &test_conn, "T", "pg_authid", true /* relation_is_catalog_table */));
   ASSERT_OK(VerifyTableSize(
       cluster_.get(), &test_conn, "T", "pg_auth_members", true /* relation_is_catalog_table */));
 }

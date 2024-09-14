@@ -149,6 +149,7 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(FLAGS_update_min_cdc_indices_interval_secs);
 
 namespace yb {
 
@@ -650,8 +651,10 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer universe ID must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [replication_group_id, producer_master_addresses, "
+        "producer_table_ids]");
   }
 
   {
@@ -663,8 +666,9 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer master address must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [producer_master_addresses, producer_table_ids]");
   }
 
   {
@@ -677,13 +681,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
     setup_universe_req.add_producer_table_ids("a");
     setup_universe_req.add_producer_table_ids("b");
-    setup_universe_req.add_producer_bootstrap_ids("c");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Number of bootstrap ids must be equal to number of tables";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Number of bootstrap ids must be equal to number of tables");
   }
 
   {
@@ -699,14 +704,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string substring = "belongs to the target universe";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().find(substring) != string::npos);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(), "belongs to the target universe");
   }
 
   {
@@ -725,14 +730,15 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "The request UUID and cluster UUID are identical.";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Replication group Id cannot be the same as the cluster UUID");
   }
 }
 
@@ -2143,6 +2149,7 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
 
 TEST_P(XClusterTest, TestWalRetentionSet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 8 * 3600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
@@ -2531,10 +2538,12 @@ TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
 
   // Ensure that we just return an error and don't have a fatal.
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
-  ASSERT_TRUE(alter_resp.has_error());
+  auto is_done = ASSERT_RESULT(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+  ASSERT_FALSE(is_done.status().ok());
 }
 
-TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
+TEST_P(XClusterTest, TestFailedUniverseDeletion) {
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -2554,25 +2563,17 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  // Sleep to allow the universe to be marked as failed
-  std::this_thread::sleep_for(2s);
+
+  auto is_done = ASSERT_RESULT(WaitForSetupUniverseReplication());
+  ASSERT_TRUE(is_done.status().IsNotFound());
 
   master::GetUniverseReplicationRequestPB new_req;
   new_req.set_replication_group_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_TRUE(new_resp.entry().state() == master::SysUniverseReplicationEntryPB::FAILED);
-
-  // Restart the ENTIRE Consumer cluster.
-  ASSERT_OK(consumer_cluster()->RestartSync());
-
-  // Should delete on restart
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kReplicationGroupId));
-  rpc.Reset();
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
@@ -2656,26 +2657,24 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
 
+  ASSERT_OK(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+
   // Restart the ENTIRE Consumer cluster.
   ASSERT_OK(consumer_cluster()->RestartSync());
 
-  // Wait for alter universe to be deleted on start up
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(
-      xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
-
   // Change should not have gone through
-  new_req.set_replication_group_id(kReplicationGroupId.ToString());
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_NE(new_resp.entry().tables_size(), 2);
+  ASSERT_NE(new_resp.entry().tables_size(), 2) << new_resp.ShortDebugString();
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
   new_req.set_replication_group_id(
       xcluster::GetAlterReplicationGroupId(kReplicationGroupId).ToString());
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
@@ -3713,42 +3712,22 @@ TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial target Stats to populate"));
 
-  // Make sure stats on source and target match.
-  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
-  ASSERT_EQ(source_stats.size(), 1);
-  auto initial_index = source_stats[0].sent_index;
-  auto initial_records_sent = source_stats[0].records_sent;
-  auto initial_time = source_stats[0].last_poll_time;
-  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(source_stats[0].last_poll_time);
-  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
-  ASSERT_TRUE(source_stats[0].status.ok());
-
-  auto target_stats = target_xc_consumer->GetPollerStats();
-  ASSERT_EQ(target_stats.size(), 1);
-  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(target_stats[0].status.ok());
-
-  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
-  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
-  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
-
+  // Make sure stats on source and target match and data was sent and received.
   ASSERT_OK(InsertRowsInProducer(0, 100));
   ASSERT_OK(VerifyRowsMatch());
+  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
+  auto target_stats = target_xc_consumer->GetPollerStats();
 
-  // Make sure stats show data was sent and received.
-  source_stats = source_cdc_service->GetAllStreamTabletStats();
   ASSERT_EQ(source_stats.size(), 1);
   ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
   ASSERT_GT(source_stats[0].records_sent, 0);
   ASSERT_GT(source_stats[0].mbs_sent, 0);
-  ASSERT_GT(source_stats[0].sent_index, initial_index);
-  ASSERT_GT(source_stats[0].records_sent, initial_records_sent);
-  ASSERT_GT(source_stats[0].last_poll_time, initial_time);
+  ASSERT_GT(source_stats[0].sent_index, 0);
+  ASSERT_GT(source_stats[0].records_sent, 0);
+  ASSERT_GT(source_stats[0].last_poll_time, MonoTime::Min());
   ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
   ASSERT_TRUE(source_stats[0].status.ok());
 
-  target_stats = target_xc_consumer->GetPollerStats();
   ASSERT_EQ(target_stats.size(), 1);
   ASSERT_GT(target_stats[0].records_received, 0);
   ASSERT_GT(target_stats[0].mbs_received, 0);
@@ -4074,7 +4053,7 @@ TEST_F_EX(XClusterTest, FailedSetupStreamUpdate, XClusterTestNoParam) {
 
   ASSERT_NOK_STR_CONTAINS(
       SetupUniverseReplication(producer_tables_, bootstrap_ids),
-      "Unable to update xrepl stream options on source universe");
+      "Test flag to fail setup stream update is set");
 
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));

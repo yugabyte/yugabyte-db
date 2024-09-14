@@ -140,7 +140,7 @@ public class JobSchedulerControllerTest extends FakeDBApplication {
     JobSchedule jobSchedule =
         jobSchedulerApi.getJobSchedule(customer.getUuid(), jobSchedules.get(0).getUuid());
     assertEquals(jobSchedules.get(0).getUuid(), jobSchedule.getInfo().getUuid());
-    assertEquals(jobSchedules.get(0).getName(), jobSchedule.getInfo().getName());
+    assertEquals(jobSchedules.get(0).getName(), jobSchedule.getSpec().getName());
     assertEquals(
         jobSchedules.get(0).getScheduleConfig().getType().name(),
         jobSchedule.getSpec().getScheduleConfig().getType().getValue());
@@ -187,7 +187,7 @@ public class JobSchedulerControllerTest extends FakeDBApplication {
     List<com.yugabyte.yw.models.JobSchedule> jobSchedules = createJobSchedules(2);
     com.yugabyte.yw.models.JobSchedule jobSchedule = jobSchedules.get(0);
     JobScheduleSnoozeSpec snoozeForm = new JobScheduleSnoozeSpec();
-    snoozeForm.setSnoozeSecs(600L);
+    snoozeForm.setSnoozeSecs(605L);
     JobSchedule updatedJobSchedule =
         jobSchedulerApi.snoozeJobSchedule(customer.getUuid(), jobSchedule.getUuid(), snoozeForm);
     assertEquals(jobSchedule.getUuid(), jobSchedule.getUuid());

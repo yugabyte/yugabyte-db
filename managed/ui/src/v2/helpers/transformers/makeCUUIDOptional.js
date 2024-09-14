@@ -9,7 +9,7 @@ module.exports = (inputSchema) => {
           ...acc,
           [`${path}`]: {
             ...pathItem,
-            parameters: pathItem.parameters.map(param => ({
+            parameters: pathItem.parameters && pathItem.parameters.map(param => ({
               ...param,
               required: param.name !== 'cUUID' && param.required,
               schema: {

@@ -86,6 +86,8 @@ public class GFlagsUtil {
       "default_memory_limit_to_ram_ratio";
   public static final String ENABLE_YSQL = "enable_ysql";
   public static final String YSQL_ENABLE_AUTH = "ysql_enable_auth";
+  public static final String ENABLE_YSQL_CONN_MGR = "enable_ysql_conn_mgr";
+  public static final String YSQL_CONN_MGR_PORT = "ysql_conn_mgr_port";
   public static final String START_CQL_PROXY = "start_cql_proxy";
   public static final String USE_CASSANDRA_AUTHENTICATION = "use_cassandra_authentication";
   public static final String USE_NODE_TO_NODE_ENCRYPTION = "use_node_to_node_encryption";
@@ -447,7 +449,7 @@ public class GFlagsUtil {
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", Integer.toString(1));
+    ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
     ybcFlags.put(
         "server_port",
@@ -503,11 +505,6 @@ public class GFlagsUtil {
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
-    boolean enableVerbose =
-        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
-    if (enableVerbose) {
-      ybcFlags.put("v", "1");
-    }
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
@@ -538,7 +535,7 @@ public class GFlagsUtil {
             ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
             : node.cloudInfo.private_ip;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", Integer.toString(1));
+    ybcFlags.put("v", "1");
     ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
     ybcFlags.put("server_address", serverAddress);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
@@ -612,6 +609,8 @@ public class GFlagsUtil {
         taskParam.overrideNodePorts
             ? taskParam.communicationPorts.redisServerRpcPort
             : node.redisServerRpcPort;
+
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.TSERVER));
 
     if (useHostname) {
       gflags.put(SERVER_BROADCAST_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
@@ -723,14 +722,33 @@ public class GFlagsUtil {
 
     if (taskParam.enableYSQL) {
       gflags.put(ENABLE_YSQL, "true");
-      gflags.put(
-          PSQL_PROXY_BIND_ADDRESS,
-          String.format(
-              "%s:%s",
-              pgsqlProxyBindAddress,
-              taskParam.overrideNodePorts
-                  ? taskParam.communicationPorts.ysqlServerRpcPort
-                  : node.ysqlServerRpcPort));
+      if (taskParam.enableConnectionPooling) {
+        gflags.put(ENABLE_YSQL_CONN_MGR, "true");
+        gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
+        gflags.put(
+            PSQL_PROXY_BIND_ADDRESS,
+            String.format(
+                "%s:%s",
+                pgsqlProxyBindAddress,
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.internalYsqlServerRpcPort
+                    : node.internalYsqlServerRpcPort));
+        gflags.put(
+            YSQL_CONN_MGR_PORT,
+            String.valueOf(
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.ysqlServerRpcPort
+                    : node.ysqlServerRpcPort));
+      } else {
+        gflags.put(
+            PSQL_PROXY_BIND_ADDRESS,
+            String.format(
+                "%s:%s",
+                pgsqlProxyBindAddress,
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.ysqlServerRpcPort
+                    : node.ysqlServerRpcPort));
+      }
       gflags.put(
           PSQL_PROXY_WEBSERVER_PORT,
           Integer.toString(
@@ -946,6 +964,8 @@ public class GFlagsUtil {
             ? taskParam.communicationPorts.masterHttpPort
             : node.masterHttpPort;
 
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.MASTER));
+
     if (useHostname) {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
@@ -1098,6 +1118,7 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+    mergeCSVs(userGFlags, platformGFlags, ALLOWED_PREVIEW_FLAGS_CSV, true);
 
     // timestamp_hitory_retention_sec gflag should be max of platform and user values
     processTimestampHistoryRetentionSecGflagIfRequired(userGFlags, platformGFlags);

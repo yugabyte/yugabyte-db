@@ -21,7 +21,7 @@ Before you can start creating a universe, ensure that you performed steps applic
 
 ## Create a universe
 
-After you have configured a cloud provider, such as, for example [Google Cloud Provider](../../configure-yugabyte-platform/gcp/) (GCP), you can use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
+After you have configured a cloud provider, such as, for example [Google Cloud Provider](../../configure-yugabyte-platform/gcp/) (GCP), navigate to **Universes**, click **Create Universe**, and enter the following sample values:
 
 - In the **Name** field, enter **helloworld2**.
 

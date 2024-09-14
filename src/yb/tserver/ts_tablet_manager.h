@@ -159,7 +159,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
   // the first tablet whose bootstrap failed.
-  Status WaitForAllBootstrapsToFinish();
+  Status WaitForAllBootstrapsToFinish(MonoDelta timeout = MonoDelta());
 
   // Starts shutdown process.
   void StartShutdown();

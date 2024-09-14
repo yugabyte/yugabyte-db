@@ -34,5 +34,5 @@ yba backup list [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

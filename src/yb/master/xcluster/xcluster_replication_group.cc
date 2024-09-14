@@ -143,8 +143,9 @@ Result<bool> IsSafeTimeReady(
     const auto& namespace_id = namespace_info.consumer_namespace_id();
     auto* it = FindOrNull(safe_time_map, namespace_id);
     if (!it || it->is_special()) {
-      VLOG_WITH_FUNC(1) << "Safe time for namespace " << namespace_id
-                        << " is not yet ready: " << (it ? it->ToString() : "NA");
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+          << "xCluster safe time for namespace " << namespace_id
+          << " is not yet ready: " << (it ? it->ToString() : "NA");
       return false;
     }
   }
@@ -157,6 +158,8 @@ Result<bool> IsReplicationGroupReady(
   // The replication group must be in a healthy state.
   if (!FLAGS_xcluster_skip_health_check_on_replication_setup &&
       VERIFY_RESULT(xcluster_manager.HasReplicationGroupErrors(universe.ReplicationGroupId()))) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+        << "xCluster replication group " << universe.ReplicationGroupId() << " is not yet healthy";
     return false;
   }
 
@@ -178,26 +181,35 @@ Status ReturnErrorOrAddWarning(
   return s;
 }
 
-}  // namespace
-
 Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
-    UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config) {
-  auto master_addresses = replication_info.LockForRead()->pb.producer_master_addresses();
-  auto xcluster_rpc = VERIFY_RESULT(replication_info.GetOrCreateXClusterRpcTasks(master_addresses));
-  auto result = VERIFY_RESULT(
-      xcluster_rpc->client()->ValidateAutoFlagsConfig(local_config, AutoFlagClass::kExternal));
+    client::YBClient& client, const AutoFlagsConfigPB& local_config) {
+  auto result =
+      VERIFY_RESULT(client.ValidateAutoFlagsConfig(local_config, AutoFlagClass::kExternal));
 
   if (!result) {
     return std::nullopt;
   }
 
   auto& [is_valid, source_version] = *result;
-  VLOG(2) << "ValidateAutoFlagsConfig for replication group: "
-          << replication_info.ReplicationGroupId() << ", is_valid: " << is_valid
+  VLOG(2) << "ValidateAutoFlagsConfig is_valid: " << is_valid
           << ", source universe version: " << source_version
           << ", target universe version: " << local_config.config_version();
 
   return result;
+}
+
+}  // namespace
+
+Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+    UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config) {
+  auto master_addresses = replication_info.LockForRead()->pb.producer_master_addresses();
+  auto xcluster_rpc = VERIFY_RESULT(replication_info.GetOrCreateXClusterRpcTasks(master_addresses));
+  return ValidateAutoFlagsConfig(*xcluster_rpc->client(), local_config);
+}
+
+Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+    client::XClusterRemoteClientHolder& xcluster_client, const AutoFlagsConfigPB& local_config) {
+  return ValidateAutoFlagsConfig(xcluster_client.GetYbClient(), local_config);
 }
 
 Status RefreshAutoFlagConfigVersion(
@@ -439,7 +451,12 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
         VERIFY_RESULT(IsReplicationGroupReady(*universe, *catalog_manager.GetXClusterManager()));
   }
 
-  return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
+  if (is_done) {
+    LOG(INFO) << "xCluster replication group " << replication_group_id << " is ready";
+    return IsOperationDoneResult::Done();
+  }
+
+  return IsOperationDoneResult::NotDone();
 }
 
 Status RemoveNamespaceFromReplicationGroup(

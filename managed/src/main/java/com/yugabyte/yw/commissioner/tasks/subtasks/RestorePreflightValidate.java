@@ -10,8 +10,8 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -75,7 +75,9 @@ public class RestorePreflightValidate extends AbstractTaskBase {
   }
 
   private RestorePreflightResponse getRestorePreflightResponse() {
-    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    // Restore always uses storage locations, so advanced restore and general restore flow
+    // converges.
+    AdvancedRestorePreflightParams preflightParams = new AdvancedRestorePreflightParams();
     preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
     preflightParams.setStorageConfigUUID(taskParams().storageConfigUUID);
     Set<String> backupLocations =
@@ -83,6 +85,7 @@ public class RestorePreflightValidate extends AbstractTaskBase {
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     preflightParams.setBackupLocations(backupLocations);
+    preflightParams.setRestoreToPointInTimeMillis(taskParams().restoreToPointInTimeMillis);
 
     return backupHelper.restorePreflightWithoutBackupObject(
         taskParams().customerUUID, preflightParams, false);

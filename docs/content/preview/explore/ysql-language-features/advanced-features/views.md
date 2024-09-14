@@ -127,7 +127,7 @@ You can also remove more than one view by providing a comma-separated list of vi
 
 Some YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its `FROM` clause; and (2) cannot contain `DISTINCT`, `GROUP BY`, `HAVING`, `EXCEPT`, `INTERSECT`, or `LIMIT` clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
 
-The following example shows how to update the `employees` table with a new row via the `employees_view` defined in [Creating Views](#creating-views):
+The following example shows how to update the `employees` table with a new row via the `employees_view` defined in [Create Views](#create-views):
 
 ```sql
 INSERT INTO employees_view (employee_no, name)

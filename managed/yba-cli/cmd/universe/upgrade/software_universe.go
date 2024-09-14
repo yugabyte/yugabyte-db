@@ -163,7 +163,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 				universeUUID,
 				oldYBDBVersion, ybdbVersion))
 
-		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
 	},
 }
 

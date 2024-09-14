@@ -52,6 +52,7 @@ DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(TEST_stop_committed_op_id_updation);
 
 namespace yb {
 using client::YBClient;
@@ -217,12 +218,16 @@ class CDCSDKTestBase : public YBTest {
       CreateCDCStreamRequestPB* create_req,
       const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
       const CDCRecordType& record_type = CDCRecordType::CHANGE,
-      const std::string& namespace_name = kNamespaceName);
+      const std::string& namespace_name = kNamespaceName,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
 
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE,
-      std::string namespace_name = kNamespaceName);
+      std::string namespace_name = kNamespaceName,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
 
   // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.

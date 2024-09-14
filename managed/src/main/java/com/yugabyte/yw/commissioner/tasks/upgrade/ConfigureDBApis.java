@@ -69,6 +69,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           createUpdateDBApiDetailsTask(
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
+                  taskParams().enableConnectionPooling,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -86,6 +87,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       UserIntent userIntent = currentCluster.userIntent.clone();
       userIntent.enableYSQL = taskParams().enableYSQL;
       userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+      userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
       userIntent.enableYCQL = taskParams().enableYCQL;
       userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
       List<NodeDetails> masterNodes =

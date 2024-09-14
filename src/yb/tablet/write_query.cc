@@ -197,7 +197,7 @@ WriteQuery::WriteQuery(
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      start_time_(CoarseMonoClock::Now()),
+      start_time_(MonoTime::Now()),
       execute_mode_(ExecuteMode::kSimple) {
   IncrementActiveWriteQueryObjectsBy(1);
 }
@@ -308,7 +308,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+          make_unsigned(MonoDelta(MonoTime::Now() - start_time_).ToMicroseconds());
+
       metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
@@ -317,7 +318,20 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
 
   for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
     if (!status.IsAborted()) {
-      CHECK_LE(metadata.schema_version(), sv.schema_version()) << ", status: " << status;
+      auto schema_version = 0;
+      if (sv.table_id().empty()) {
+        schema_version = metadata.schema_version();
+      } else {
+        auto uuid = Uuid::FromSlice(sv.table_id());
+        CHECK(uuid.ok());
+        auto schema_version_result = metadata.schema_version(*uuid);
+        if (!schema_version_result.ok()) {
+          Complete(schema_version_result.status());
+          return;
+        }
+        schema_version = *schema_version_result;
+      }
+      CHECK_LE(schema_version, sv.schema_version()) << ", status: " << status;
     }
   }
 

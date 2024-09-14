@@ -13,6 +13,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
@@ -49,6 +50,25 @@ TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
       ASSERT_NOK(res);
       ASSERT_TRUE(res.status().message().Contains(
           "Tablet splitting is not supported for xCluster DDL Replication tables"));
+    }
+  }
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
+  // Ensure that xCluster DDL Replication system tables are not colocated.
+  ASSERT_OK(SetUpClusters(/* is_colocated */ true));
+  ASSERT_OK(EnableDDLReplicationExtension());
+
+  for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = ASSERT_RESULT(
+          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table));
+
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(cluster->client_->GetTabletsFromTableId(yb_table_name.table_id(), 0, &tablets));
+
+      ASSERT_EQ(tablets.size(), 1);
+      ASSERT_FALSE(IsColocationParentTableId(tablets[0].table_id()));
     }
   }
 }

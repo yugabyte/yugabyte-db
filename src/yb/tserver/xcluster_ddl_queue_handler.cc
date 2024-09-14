@@ -49,9 +49,6 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
 #define HAS_MEMBER_OF_TYPE(doc, member_name, is_type) \
   (doc.HasMember(member_name) && doc[member_name].is_type())
 
-#define LOG_QUERY(query) \
-  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) << "Running query: " << query;
-
 namespace yb::tserver {
 
 namespace {
@@ -103,11 +100,12 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
     client::YBClient* local_client, const NamespaceName& namespace_name,
-    const NamespaceId& namespace_id, TserverXClusterContextIf& xcluster_context,
-    ConnectToPostgresFunc connect_to_pg_func)
+    const NamespaceId& namespace_id, const std::string& log_prefix,
+    TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func)
     : local_client_(local_client),
       namespace_name_(namespace_name),
       namespace_id_(namespace_id),
+      log_prefix_(log_prefix),
       xcluster_context_(xcluster_context),
       connect_to_pg_func_(std::move(connect_to_pg_func)) {}
 
@@ -129,7 +127,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
   // We don't expect to get an invalid safe time, but it is possible in edge cases (see #21528).
   // Log an error and return for now, wait until a valid safe time does come in so we can continue.
   if (target_safe_ht.is_special()) {
-    LOG(WARNING) << "Received invalid safe time " << target_safe_ht;
+    LOG_WITH_PREFIX(WARNING) << "Received invalid safe time " << target_safe_ht;
     return Status::OK();
   }
 
@@ -160,7 +158,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
       continue;
     }
 
-    VLOG(1) << "ProcessDDLQueueTable: Processing entry " << query_info.ToString();
+    VLOG_WITH_PREFIX(1) << "ProcessDDLQueueTable: Processing entry " << query_info.ToString();
 
     SCHECK(
         kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
@@ -176,6 +174,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 
     RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations));
     RETURN_NOT_OK(ProcessDDLQuery(query_info));
+
+    VLOG_WITH_PREFIX(2) << "ProcessDDLQueueTable: Successfully processed entry "
+                        << query_info.ToString();
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) {
@@ -269,7 +270,7 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
 }
 
 Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
-  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries)
+  LOG_IF_WITH_PREFIX(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries)
       << "XClusterDDLQueueHandler: Running query: " << query;
   return pg_conn_->Execute(query);
 }

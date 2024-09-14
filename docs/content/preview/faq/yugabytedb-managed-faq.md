@@ -144,13 +144,13 @@ For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-
 
 ### What version of YugabyteDB does my cluster run on?
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
+In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#preview-releases) series.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
@@ -242,7 +242,7 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 --set=sslrootcert=<ROOT_CERT_PATH>
 ```
 
-For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+For detailed steps for configuring other popular third party tools, see [GUI clients](/preview/integrations/tools/).
 
   {{% /tab %}}
 

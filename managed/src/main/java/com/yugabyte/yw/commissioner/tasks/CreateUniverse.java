@@ -71,6 +71,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     setCloudNodeUuids(universe);
     // Update on-prem node UUIDs.
     updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
+    setCommunicationPortsForNodes(true);
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     for (Cluster cluster : taskParams().clusters) {
@@ -155,6 +156,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
+
+      // Create certificate config check tasks for on-prem nodes.
+      createCheckCertificateConfigTask(universe, taskParams().clusters);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.

@@ -21,6 +21,7 @@ const promOomConfgMV = 5
 const promTLSCipherSuites = 6
 const asRoot = 7
 const ybaWait = 8
+const initialized = 9
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -206,7 +207,7 @@ func migratePrometheusTLSCipherSuites(state *State) error {
 func migrateAsRootConfig(state *State) error {
 	if !viper.IsSet("as_root") {
 		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
-		err := common.SetYamlValue(common.InputFile(), "as_root", viper.GetBool("as_root"))
+		err := common.SetYamlValue(common.InputFile(), "as_root", common.HasSudoAccess())
 		if err != nil {
 			return fmt.Errorf("Error migrating as_root config: %s", err.Error())
 		}
@@ -234,6 +235,13 @@ func migrateYbaWait(state *State) error {
 	return nil
 }
 
+// migrateInitialized migrates the initialized flag - all previous installs
+// have been initialized so set to true
+func migrateInitialized(state *State) error {
+	state.Initialized = true
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -243,6 +251,7 @@ var migrations map[int]migrator = map[int]migrator{
 	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
 	asRoot:               migrateAsRootConfig,
 	ybaWait:              migrateYbaWait,
+	initialized:          migrateInitialized,
 }
 
 func getMigrationHandler(toSchema int) migrator {

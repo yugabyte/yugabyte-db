@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Migration Assessment Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .wrapper {
+            max-width: 960px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top; /* Vertically center content in table cells */
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even){background-color: #f9f9f9;}
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin: 5px 0;
+        }
+        .scrollable-div {
+            max-height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        #refer-p {
+            font-size: 0.8em; 
+            color: inherit; 
+        }
+
+        #refer-p a {
+            color: inherit; 
+        }
+        .list_item {
+            margin-bottom: 15px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <h1>Migration Assessment Report</h1>
+        <p><strong>Database Name:</strong> mig_assessment</p>
+        
+        
+        <p><strong>Database Version:</strong> 12.19</p>
+        
+
+         
+        <p><strong>Migration Complexity:</strong> MEDIUM</p>
+        
+
+        <h2>Database Objects</h2>
+        <p>Objects that will be created on the target YugabyteDB.</p>
+        <table>
+            <tr>
+                <th>Object Type</th>
+                <th>Total Count</th>
+                <th>Object Names</th>
+            </tr>
+            
+            <tr>
+                <td>SCHEMA</td>
+                <td>2</td>
+                <td>
+                    <div class="scrollable-div">
+                        
+                            partition<br>
+                        
+                             public<br>
+                        
+                    </div>
+                </td>
+            </tr>
+            
+            <tr>
+                <td>SEQUENCE</td>
+                <td>13</td>
+                <td>
+                    <div class="scrollable-div">
+                        
+                            partition.test_partitions_sequences_id_seq<br>
+                        
+                             public.another_table_id_seq<br>
+                        
+                             public.employees_id_seq<br>
+                        
+                             public.example_table_id_seq<br>
+                        
+                             public.example_table_with_tbsp_id_seq<br>
+                        
+                             public.geometricshapes_id_seq<br>
+                        
+                             public.locations_id_seq<br>
+                        
+                             public.mytable_event_id_seq<br>
+                        
+                             public.order_details_detail_id_seq<br>
+                        
+                             public.orders_order_id_seq<br>
+                        
+                             public.product_catalog_id_seq<br>
+                        
+                             public.product_sales_sale_id_seq<br>
+                        
+                             public.vehicles_vehicle_id_seq<br>
+                        
+                    </div>
+                </td>
+            </tr>
+            
+            <tr>
+                <td>TABLE</td>
+                <td>43</td>
+                <td>
+                    <div class="scrollable-div">
+                        
+                            partition.sales_region<br>
+                        
+                             partition.boston<br>
+                        
+                             partition.customers<br>
+                        
+                             partition.cust_active<br>
+                        
+                             partition.cust_arr_large<br>
+                        
+                             partition.cust_arr_small<br>
+                        
+                             partition.cust_other<br>
+                        
+                             partition.cust_part11<br>
+                        
+                             partition.cust_part12<br>
+                        
+                             partition.cust_part21<br>
+                        
+                             partition.cust_part22<br>
+                        
+                             partition.emp<br>
+                        
+                             partition.emp_0<br>
+                        
+                             partition.emp_1<br>
+                        
+                             partition.emp_2<br>
+                        
+                             partition.london<br>
+                        
+                             partition.range_columns_partition_test<br>
+                        
+                             partition.range_columns_partition_test_p0<br>
+                        
+                             partition.range_columns_partition_test_p1<br>
+                        
+                             partition.sales<br>
+                        
+                             partition.sales_2019_q4<br>
+                        
+                             partition.sales_2020_q1<br>
+                        
+                             partition.sales_2020_q2<br>
+                        
+                             partition.sydney<br>
+                        
+                             partition.test_partitions_sequences<br>
+                        
+                             partition.test_partitions_sequences_b<br>
+                        
+                             partition.test_partitions_sequences_l<br>
+                        
+                             partition.test_partitions_sequences_s<br>
+                        
+                             public.another_table<br>
+                        
+                             public.vehicles<br>
+                        
+                             public.cars<br>
+                        
+                             public.employees<br>
+                        
+                             public.example_table<br>
+                        
+                             public.example_table_with_tbsp<br>
+                        
+                             public.geometricshapes<br>
+                        
+                             public.locations<br>
+                        
+                             public.mytable<br>
+                        
+                             public.object_type_mapping<br>
+                        
+                             public.order_details<br>
+                        
+                             public.orders<br>
+                        
+                             public.product_catalog<br>
+                        
+                             public.product_sales<br>
+                        
+                             public.trucks<br>
+                        
+                    </div>
+                </td>
+            </tr>
+            
+            <tr>
+                <td>INDEX</td>
+                <td>3</td>
+                <td>
+                    <div class="scrollable-div">
+                        
+                            idx_locations_location<br>
+                        
+                             locations_id_idx<br>
+                        
+                             panother_table_idx<br>
+                        
+                    </div>
+                </td>
+            </tr>
+            
+            <tr>
+                <td>FUNCTION</td>
+                <td>1</td>
+                <td>
+                    <div class="scrollable-div">
+                        
+                            public.check_order_total<br>
+                        
+                    </div>
+                </td>
+            </tr>
+            
+        </table>
+
+        
+            <h2>Sharding Recommendations</h2>
+                
+                    
+                        <table>
+                            <tr>
+                                <th>Colocated Tables</th>
+                                <th>Sharded Tables</th>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="scrollable-div">
+                                        
+                                            public.order_details<br>
+                                        
+                                            public.orders<br>
+                                        
+                                            public.another_table<br>
+                                        
+                                            public.cars<br>
+                                        
+                                            public.vehicles<br>
+                                        
+                                            public.employees<br>
+                                        
+                                            public.example_table<br>
+                                        
+                                            public.example_table_with_tbsp<br>
+                                        
+                                            public.locations<br>
+                                        
+                                            public.object_type_mapping<br>
+                                        
+                                            public.product_catalog<br>
+                                        
+                                            public.product_sales<br>
+                                        
+                                            public.trucks<br>
+                                        
+                                            partition.test_partitions_sequences_s<br>
+                                        
+                                            partition.boston<br>
+                                        
+                                            partition.cust_other<br>
+                                        
+                                            partition.cust_part11<br>
+                                        
+                                            partition.range_columns_partition_test_p0<br>
+                                        
+                                            partition.cust_part21<br>
+                                        
+                                            partition.emp_0<br>
+                                        
+                                            partition.emp_2<br>
+                                        
+                                            partition.london<br>
+                                        
+                                            partition.sales_2019_q4<br>
+                                        
+                                            partition.sales_2020_q2<br>
+                                        
+                                            partition.test_partitions_sequences_b<br>
+                                        
+                                            partition.test_partitions_sequences_l<br>
+                                        
+                                            partition.cust_part12<br>
+                                        
+                                            partition.cust_part22<br>
+                                        
+                                            partition.emp_1<br>
+                                        
+                                            partition.range_columns_partition_test_p1<br>
+                                        
+                                            partition.sales_2020_q1<br>
+                                        
+                                            partition.sydney<br>
+                                        
+                                            public.geometricshapes<br>
+                                        
+                                            public.mytable<br>
+                                        
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="scrollable-div">
+                                        
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    <h2>Sizing Recommendations</h2>
+                        <table>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Recommendation</th>
+                            </tr>
+                            <tr><td>Num of Nodes</td><td>3</td></tr>
+                            <tr><td>vCPU per instance</td><td>4</td></tr>
+                            <tr><td>Memory per instance(GiB)</td><td>16</td></tr>
+                            <tr><td>Optimal select connections per node</td><td>8</td></tr>
+                            <tr><td>Optimal insert connections per node</td><td>12</td></tr>
+                            <tr><td>Parallel Voyager Jobs</td><td>1</td></tr>
+                            <tr><td>Estimated time taken for data import </td><td>0 min</td></tr>
+                        </table>
+                    <h3>Reasoning: </h3>
+                    <p>Recommended instance type with 4 vCPU and 16 GiB memory could fit 37 objects (34 tables and 3 explicit/implicit indexes) with 0.00 MB size and throughput requirement of 0 reads/sec and 0 writes/sec as colocated. Non leaf partition tables/indexes and unsupported tables/indexes were not considered.</p>
+                
+                
+        
+
+        <h2>Unsupported Data Types</h2>
+        <p>Data types of the source database that are not supported on the target YugabyteDB.</p>
+        
+            <div class="scrollable-div">
+                <table>
+                    <tr>
+                        <th>Schema</th>
+                        <th>Table</th>
+                        <th>Column</th>
+                        <th>Data Type</th>
+                    </tr>
+                    
+                    <tr>
+                        <td>public</td>
+                        <td>product_catalog</td>
+                        <td>product_data</td>
+                        <td>xml</td>
+                    </tr>
+                    
+                    <tr>
+                        <td>public</td>
+                        <td>mytable</td>
+                        <td>txid_snapshot</td>
+                        <td>txid_snapshot</td>
+                    </tr>
+                    
+                    <tr>
+                        <td>public</td>
+                        <td>mytable</td>
+                        <td>pg_lsn</td>
+                        <td>pg_lsn</td>
+                    </tr>
+                    
+                </table>
+            </div>
+        
+
+        <h2>Unsupported Features</h2>
+        <p>Features of the source database that are not supported on the target YugabyteDB.</p>
+        
+        
+             <!-- Check if Objects is not empty -->
+                
+                
+                    <h4>GIST indexes</h4>
+                    <div class="scrollable-div">
+                        <ul>
+                            
+                                <li class='list_item'>idx_locations_location ON public.locations</li>
+                            
+                        </ul>
+                    </div>
+                
+                 
+                    <p id="refer-p"><a href="https://docs.yugabyte.com/preview/yugabyte-voyager/known-issues/postgresql/#gist-index-type-is-not-supported" target="_blank">Details</a></p>
+                 
+            
+        
+            
+        
+             <!-- Check if Objects is not empty -->
+                
+                
+                    <h4>Inherited tables</h4>
+                    <div class="scrollable-div">
+                        <ul>
+                            
+                                <li class='list_item'>public.cars</li>
+                            
+                                <li class='list_item'>public.trucks</li>
+                            
+                        </ul>
+                    </div>
+                
+                 
+                    <p id="refer-p"><a href="https://docs.yugabyte.com/preview/yugabyte-voyager/known-issues/postgresql/#table-inheritance-is-not-supported" target="_blank">Details</a></p>
+                 
+            
+        
+             <!-- Check if Objects is not empty -->
+                
+                
+                    <h4>Tables with stored generated columns</h4>
+                    <div class="scrollable-div">
+                        <ul>
+                            
+                                <li class='list_item'>public.employees</li>
+                            
+                                <li class='list_item'>public.order_details</li>
+                            
+                                <li class='list_item'>public.product_sales</li>
+                            
+                        </ul>
+                    </div>
+                
+                 
+                    <p id="refer-p"><a href="https://docs.yugabyte.com/preview/yugabyte-voyager/known-issues/postgresql/#generated-always-as-stored-type-column-is-not-supported" target="_blank">Details</a></p>
+                 
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+        
+
+
+        
+
+        
+            <h2>Migration caveats</h2>
+            <p></p>
+            
+                 <!-- Check if Objects is not empty -->
+                     <!-- for these feature we are displaying the DDLs-->
+                        <h4>Alter partitioned tables to add Primary Key</h4>
+                        <p>After export schema, the ALTER table should be merged with CREATE table for partitioned tables as alter of partitioned tables to add primary key is not supported.</p>
+                        <div class="scrollable-div">
+                            <ul>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.sales_region
+    ADD CONSTRAINT sales_region_pkey PRIMARY KEY (id, region);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id, statuses, arr);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.cust_active
+    ADD CONSTRAINT cust_active_pkey PRIMARY KEY (id, statuses, arr);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.cust_arr_large
+    ADD CONSTRAINT cust_arr_large_pkey PRIMARY KEY (id, statuses, arr);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.cust_arr_small
+    ADD CONSTRAINT cust_arr_small_pkey PRIMARY KEY (id, statuses, arr);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.emp
+    ADD CONSTRAINT emp_pkey PRIMARY KEY (emp_id);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.range_columns_partition_test
+    ADD CONSTRAINT range_columns_partition_test_pkey PRIMARY KEY (a, b);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.sales
+    ADD CONSTRAINT sales_pkey PRIMARY KEY (id, sale_date);</li>
+                                
+                                    <li class='list_item'>ALTER TABLE ONLY partition.test_partitions_sequences
+    ADD CONSTRAINT test_partitions_sequences_pkey PRIMARY KEY (id, region);</li>
+                                
+                            </ul>
+                        </div>
+                    
+                    
+                        <p id="refer-p"><a href="https://docs.yugabyte.com/preview/yugabyte-voyager/known-issues/postgresql/#adding-primary-key-to-a-partitioned-table-results-in-an-error" target="_blank">Details</a></p>
+                     
+                
+            
+                
+            
+                
+            
+                 <!-- Check if Objects is not empty -->
+                    
+                        <h4>Unsupported Data Types for Live Migration</h4>
+                        <p>There are some data types in the schema that are not supported by live migration of data. These columns will be excluded when exporting and importing data in live migration workflows.</p>
+                        <div class="scrollable-div">
+                            <ul>
+                                
+                                    <li class='list_item'>public.geometricshapes.polygon_column (polygon)</li>
+                                
+                                    <li class='list_item'>public.geometricshapes.box_column (box)</li>
+                                
+                                    <li class='list_item'>public.geometricshapes.line_segment_column (lseg)</li>
+                                
+                                    <li class='list_item'>public.geometricshapes.circle_column (circle)</li>
+                                
+                                    <li class='list_item'>public.geometricshapes.point_column (point)</li>
+                                
+                                    <li class='list_item'>public.locations.location (point)</li>
+                                
+                                    <li class='list_item'>public.geometricshapes.path_column (path)</li>
+                                
+                            </ul>
+                        </div>
+                    
+                     
+                
+            
+        
+    </div>
+</body>
+</html>

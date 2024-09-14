@@ -57,7 +57,7 @@ The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`
 1. Start the migration, passing in your license file:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license && sudo /opt/yba-ctl/yba-ctl restart yb-platform
+    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
     The `start` command runs all [preflight checks](../../install-yugabyte-platform/install-software/installer/#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.

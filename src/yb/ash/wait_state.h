@@ -101,7 +101,7 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kTServerWait)
 
     // QL/YB Client classes
-    (kYCQLQueryProcessing)
+    (kYCQLQuery)
     (kClient)
 
     // Docdb related classes
@@ -131,15 +131,18 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
-    (kStorageRead)
+    (kTableRead)
     (kStorageFlush)
+    (kCatalogWrite)
+    (kIndexWrite)
+    (kTableWrite)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
     (kOnCpu_Passive)
     (kIdle)
     (kRpc_Done)
-    (kRpcs_WaitOnMutexInShutdown)
+    (kDeprecated_Rpcs_WaitOnMutexInShutdown)
     (kRetryableRequests_SaveToDisk)
 
     // Wait states related to tablet wait
@@ -176,7 +179,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_NewIterator)
 
     // Wait states related to YCQL
-    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
+    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQuery)))
     (kYCQL_Read)
     (kYCQL_Write)
     (kYCQL_Analyze)
@@ -206,6 +209,14 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kNetwork)
   (kWaitOnCondition)
 );
+
+struct WaitStatesDescription {
+  ash::WaitStateCode code;
+  std::string description;
+
+  WaitStatesDescription(ash::WaitStateCode code_, std::string&& description_)
+      : code(code_), description(std::move(description_)) {}
+};
 
 WaitStateType GetWaitStateType(WaitStateCode code);
 
@@ -418,6 +429,9 @@ class WaitStateInfo {
 
   void EnableConcurrentUpdates();
   bool IsConcurrentUpdatesEnabled();
+
+  static std::vector<WaitStatesDescription> GetWaitStatesDescription();
+  static int GetCircularBufferSizeInKiBs();
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);

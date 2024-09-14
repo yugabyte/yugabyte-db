@@ -2551,6 +2551,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ignore_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set pg_class OIDs in yb_binary_restore mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_pg_class_oids,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system "
 						 "catalogs to allow creating them."),
@@ -4695,12 +4706,12 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Size (in KiBs) of ASH circular buffer that stores the samples"),
-			NULL,
+			gettext_noop("If this is 0, the size will be calculated based on the number of cores"),
 			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
-		16 * 1024, 1, INT_MAX,
-		NULL, NULL, NULL
+		0, 0, INT_MAX,
+		yb_ash_circular_buffer_size_check_hook, NULL, NULL
 	},
 
 	{
@@ -4753,6 +4764,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_query_diagnostics_bg_worker_interval_ms,
 		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_query_diagnostics_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Size of query diagnostics circular buffer that stores statuses of bundles"),
+			gettext_noop("The circular buffer is filled sequentially until "
+									"it reaches this size, then it wraps around and "
+									"starts overwriting the oldest entries."),
+			GUC_UNIT_KB
+		},
+		&yb_query_diagnostics_circular_buffer_size,
+		64, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -6240,7 +6264,12 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&wal_level,
-		WAL_LEVEL_REPLICA, wal_level_options,
+		/*
+		 * YB NOTE: wal_level is not applicable to YB. So for user experience,
+		 * we set the default to logical, so that any logical replication
+		 * client doesn't throw any errors based on the value of the wal_level.
+		 */
+		WAL_LEVEL_LOGICAL, wal_level_options,
 		NULL, NULL, NULL
 	},
 
@@ -13131,6 +13160,12 @@ read_gucstate_binary(char **srcptr, char *srcend, void *dest, Size size)
 
 	memcpy(dest, *srcptr, size);
 	*srcptr += size;
+}
+
+void YbSetParallelWorker()
+{
+	yb_is_parallel_worker = true;
+	elog(LOG, "yb_is_parallel_worker has been set to true");
 }
 
 /*

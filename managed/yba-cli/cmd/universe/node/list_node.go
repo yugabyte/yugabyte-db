@@ -62,11 +62,12 @@ var listNodeCmd = &cobra.Command{
 		nodes := details.GetNodeDetailsSet()
 
 		NodeCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewNodesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  universe.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(nodes) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No universe node instances found\n")
 			} else {
 				logrus.Infoln("[]\n")

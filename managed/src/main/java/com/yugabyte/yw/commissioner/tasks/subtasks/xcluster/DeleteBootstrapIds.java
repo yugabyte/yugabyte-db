@@ -83,7 +83,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId.stream()
-            .map(tableConfig -> tableConfig.getStreamId())
+            .map(XClusterTableConfig::getStreamId)
             .collect(Collectors.toSet());
 
     Universe sourceUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());

@@ -232,28 +232,28 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 // expected and actual values without any escaping. We're also printing a stack trace to allow
 // easier debugging.
 #define _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
-    const auto expected_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(expected)); \
-    const auto actual_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(actual));
+    const auto _expected_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(expected)); \
+    const auto _actual_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(actual));
 
 #define _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG \
-    "\nActual (trimmed):\n" << actual_tmp \
-        << "\n\nExpected (trimmed):\n" << expected_tmp;
+    "\nActual (trimmed):\n" << _actual_tmp \
+        << "\n\nExpected (trimmed):\n" << _expected_tmp;
 
 #define ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \
     _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
-    ASSERT_EQ(expected_tmp, actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
+    ASSERT_EQ(_expected_tmp, _actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
   } while(0)
 
 #define ASSERT_SETS_EQ(expected_set, actual_set) \
   do { \
-    auto&& expected_set_computed = (expected_set); \
-    auto&& actual_set_computed = (actual_set); \
-    if (expected_set_computed != actual_set_computed) { \
+    auto&& _expected_set_computed = (expected_set); \
+    auto&& _actual_set_computed = (actual_set); \
+    if (_expected_set_computed != _actual_set_computed) { \
       FAIL() << "Expected " \
              << BOOST_PP_STRINGIZE(actual_set) << " to be equal to " \
              << BOOST_PP_STRINGIZE(expected_set) << ". Differences: " \
-             << ::yb::util::TEST_SetDifferenceStr(expected_set_computed, actual_set_computed); \
+             << ::yb::util::TEST_SetDifferenceStr(_expected_set_computed, _actual_set_computed); \
     } \
   } while (0)
 
@@ -274,16 +274,16 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 // ASSERT_EQ -> GTEST_ASSERT_EQ -> ASSERT_PRED_FORMAT2 -> GTEST_PRED_FORMAT2_ -> GTEST_ASSERT_
 #define ASSERT_VECTORS_EQ(expected_vector, actual_vector) \
   do { \
-    auto&& expected_vector_computed = (expected_vector); \
-    auto&& actual_vector_computed = (actual_vector); \
-    auto expected_set = ::yb::VectorToSet(expected_vector_computed); \
-    auto actual_set = ::yb::VectorToSet(actual_vector_computed); \
+    auto&& _expected_vector_computed = (expected_vector); \
+    auto&& _actual_vector_computed = (actual_vector); \
+    auto expected_set = ::yb::VectorToSet(_expected_vector_computed); \
+    auto actual_set = ::yb::VectorToSet(_actual_vector_computed); \
     GTEST_ASSERT_( \
         ::testing::internal::EqHelper::Compare( \
             BOOST_PP_STRINGIZE(expected_vector), \
             BOOST_PP_STRINGIZE(actual_vector), \
-            expected_vector_computed, \
-            actual_vector_computed), \
+            _expected_vector_computed, \
+            _actual_vector_computed), \
         GTEST_FATAL_FAILURE_) \
         << "Differences (as sets): " \
         << ::yb::util::TEST_SetDifferenceStr(expected_set, actual_set); \
@@ -294,7 +294,7 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define EXPECT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \
     _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
-    EXPECT_EQ(expected_tmp, actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
+    EXPECT_EQ(_expected_tmp, _actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
   } while(0)
 
 #define YB_ASSERT_TRUE(condition) \
@@ -303,14 +303,14 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 
 #define VERIFY_EQ(expected_expr, actual_expr) \
   do { \
-    auto&& expected = (expected_expr); \
-    auto&& actual = (actual_expr); \
-    if (expected != actual) { \
+    auto&& _expected = (expected_expr); \
+    auto&& _actual = (actual_expr); \
+    if (_expected != _actual) { \
       return ::testing::internal::EqFailure( \
           BOOST_PP_STRINGIZE(expected_expr), \
           BOOST_PP_STRINGIZE(actual_expr), \
-          ::testing::internal::FormatForComparisonFailureMessage(expected, actual), \
-          ::testing::internal::FormatForComparisonFailureMessage(actual, expected), \
+          ::testing::internal::FormatForComparisonFailureMessage(_expected, _actual), \
+          ::testing::internal::FormatForComparisonFailureMessage(_actual, _expected), \
           false); \
     } \
   } while (false) \
@@ -318,9 +318,9 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 
 #define ASSERT_VERIFY(expr) \
   do { \
-    auto&& result = (expr); \
-    if (!result) { \
-      FAIL() << result.message(); \
+    auto&& _result = (expr); \
+    if (!_result) { \
+      FAIL() << _result.message(); \
     } \
   } while (false) \
   /**/
@@ -328,19 +328,19 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 // Asserts that expr is not null, returns expr in case of success.
 #define ASSERT_NOTNULL(expr) \
   __extension__ ({ \
-    auto&& result = (expr); \
-    if (result == nullptr) { \
+    auto&& _result = (expr); \
+    if (_result == nullptr) { \
       FAIL() << "Unexpected nullptr"; \
     } \
-    std::move(result); \
+    std::move(_result); \
   }) \
   /**/
 
 // Similar to ASSERT_NOTNULL but does not return anything.
 #define ASSERT_ONLY_NOTNULL(expr) \
   do { \
-    auto&& result = (expr); \
-    if (result == nullptr) { \
+    auto&& _result = (expr); \
+    if (_result == nullptr) { \
       FAIL() << "Unexpected nullptr"; \
     } \
   } while (false)
@@ -348,9 +348,9 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 
 #define ASSERT_NOK_STR_CONTAINS(expr, expected_failure_substr) \
   do { \
-    auto&& result = (expr); \
-    ASSERT_NOK(result); \
-    ASSERT_STR_CONTAINS(StatusToString(result), expected_failure_substr); \
+    auto&& _result = (expr); \
+    ASSERT_NOK(_result); \
+    ASSERT_STR_CONTAINS(StatusToString(_result), expected_failure_substr); \
   } while (false)
 
 #define CURRENT_TEST_NAME() \

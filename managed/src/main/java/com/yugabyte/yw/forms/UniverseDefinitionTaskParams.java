@@ -298,6 +298,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public boolean skipMatchWithUserIntent = false;
 
+  @ApiModelProperty(value = "YbaApi Internal. Disable node agent if it is set to true")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
+  public boolean disableNodeAgent = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -825,6 +829,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableYSQL = true;
 
+    @ApiModelProperty() public boolean enableConnectionPooling = false;
+
     @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
 
@@ -847,6 +853,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Setting at user intent level since it can be unique across types of clusters.
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Default service scope for Kubernetes universes")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
 
@@ -990,6 +1002,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableConnectionPooling = enableConnectionPooling;
       newUserIntent.enableYCQL = enableYCQL;
       newUserIntent.enableYSQLAuth = enableYSQLAuth;
       newUserIntent.enableYCQLAuth = enableYCQLAuth;
@@ -1532,13 +1545,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public T convert(T taskParams) {
-      // If there is universe level communication port set then push it down to node level
-      if (taskParams.communicationPorts != null && taskParams.nodeDetailsSet != null) {
-        taskParams.nodeDetailsSet.forEach(
-            nodeDetails ->
-                CommunicationPorts.setCommunicationPorts(
-                    taskParams.communicationPorts, nodeDetails));
-      }
       if (taskParams.expectedUniverseVersion == null) {
         taskParams.expectedUniverseVersion = -1;
       }

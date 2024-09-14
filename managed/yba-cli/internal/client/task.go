@@ -112,8 +112,8 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 				logrus.Debugln(fmt.Sprintf("Subtasks: %s\n", subtasksStatus))
 			}
 
-			if slices.Contains(util.CompletedStates(), currentStatus) {
-				if !slices.Contains(util.ErrorStates(), currentStatus) {
+			if slices.Contains(util.CompletedTaskStates(), currentStatus) {
+				if !slices.Contains(util.ErrorTaskStates(), currentStatus) {
 					return nil
 				}
 				allowed, _, errV := a.failureSubTaskListYBAVersionCheck()
@@ -211,8 +211,8 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 				output,
 				taskProgressString)
 
-			if slices.Contains(util.CompletedStates(), currentStatus) {
-				if !slices.Contains(util.ErrorStates(), currentStatus) {
+			if slices.Contains(util.CompletedTaskStates(), currentStatus) {
+				if !slices.Contains(util.ErrorTaskStates(), currentStatus) {
 					return nil
 				}
 				allowed, _, errV := a.failureSubTaskListYBAVersionCheck()

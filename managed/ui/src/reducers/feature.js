@@ -66,7 +66,8 @@ const initialStateFeatureReleased = {
   enableNotificationTemplates: false,
   enableRestore: true,
   enablePrefillKubeConfig: true,
-  enableCustomEmailTemplates: true
+  enableCustomEmailTemplates: true,
+  enableBackupPITR: false
   // enableRRGflags: true
 };
 

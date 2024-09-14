@@ -69,6 +69,7 @@ public class CertsRotate extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    createCheckCertificateConfigTask(universe);
   }
 
   @Override
@@ -325,5 +326,17 @@ public class CertsRotate extends UpgradeTaskBase {
     subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void createCheckCertificateConfigTask(Universe universe) {
+    MastersAndTservers nodes = getNodesToBeRestarted();
+    Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
+    createCheckCertificateConfigTask(
+        taskParams().clusters,
+        allNodes,
+        taskParams().rootCA,
+        taskParams().getClientRootCA(),
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt,
+        NodeManager.YUGABYTE_USER);
   }
 }

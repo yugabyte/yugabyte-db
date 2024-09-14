@@ -121,10 +121,12 @@ DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
-DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
 DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
+DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
+DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
+DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 
 namespace yb {
 
@@ -582,7 +584,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyTablesInStreamMetadata(
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
-      const std::string& timeout_msg);
+      const std::string& timeout_msg,
+      const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
+          std::nullopt);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -629,9 +633,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int expected_num_tablets = 2);
 
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId> expected_tablet_ids,
-      client::YBClient* client,
-      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil());
+      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
+      const std::string timeout_msg =
+          "Tablets in cdc_state for the stream doesnt match the expected set");
+
+  Result<int> GetStateTableRowCount();
+
+  Status VerifyStateTableAndStreamMetadataEntriesCount(
+      const xrepl::StreamId& stream_id, const size_t& state_table_entries,
+      const size_t& qualified_table_ids_count, const size_t& unqualified_table_ids_count,
+      const double& timeout, const std::string& timeout_msg);
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
@@ -814,6 +826,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
       bool use_consistent_snapshot_stream);
+
+  void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
+
+  Status CreateTables(
+      const size_t num_tables, std::vector<YBTableName>* tables,
+      vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
+      std::optional<std::unordered_set<TableId>*> expected_tables = std::nullopt,
+      std::optional<std::unordered_set<TabletId>*> expected_tablets = std::nullopt);
 };
 
 }  // namespace cdc

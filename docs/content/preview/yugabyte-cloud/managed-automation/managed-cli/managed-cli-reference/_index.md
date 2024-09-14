@@ -69,8 +69,8 @@ You can manage the following resources using ybm:
 | [cluster](managed-cli-cluster/) | cert download, create, delete, describe,</br>encryption list, encryption update,</br>list, node list, pause, resume, update |
 | [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign,</br>endpoint create, endpoint delete , endpoint describe,</br>endpoint list, endpoint update |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
-| [integration](managed-cli-integration/) | create, delete, list, update |
-| [metrics-exporter](managed-cli-metrics-exporter/) [deprecated] | attach, create, delete, list, pause, remove, resume, update |
+| [integration](managed-cli-integration/) | create, delete, list |
+| [metrics-exporter](managed-cli-metrics-exporter/) [deprecated] | assign, create, delete, describe, list, pause, unassign, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
 | [permission](managed-cli-permission/) | list |
 | [region](managed-cli-region/) | list, instance list |

@@ -567,6 +567,7 @@ class ExternalMiniCluster : public MiniClusterBase {
       MonoDelta timeout = MonoDelta::kMin);
 
  protected:
+  friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
@@ -578,7 +579,6 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::string GetBinaryPath(const std::string& binary) const;
   std::string GetDataPath(const std::string& daemon_id) const;
 
-  Status DeduceBinRoot(std::string* ret);
   Status HandleOptions();
 
   std::string GetClusterDataDirName() const;
@@ -590,8 +590,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status AddMaster(const ExternalMasterPtr& master);
   Status RemoveMaster(const ExternalMasterPtr& master);
 
-  // Get the index of this master in the vector of masters. This might not be the insertion order as
-  // we might have removed some masters within the vector.
+  // Get the index of this master in the vector of masters. This might not be the insertion order
+  // as we might have removed some masters within the vector.
   int GetIndexOfMaster(const ExternalMaster* master) const;
 
   // Checks that the masters_ list and opts_ match in terms of the number of elements.
@@ -599,13 +599,17 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return the list of opid's for all master's in this cluster.
   Status GetLastOpIdForMasterPeers(
-      const MonoDelta& timeout,
-      consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids,
+      const MonoDelta& timeout, consensus::OpIdType opid_type, std::vector<OpIdPB>* op_ids,
       const std::vector<ExternalMaster*>& masters);
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;
+
+  Status DeduceBinRoot(std::string* ret);
+  std::string GetDaemonBinPath() const { return daemon_bin_path_; }
+  void SetDaemonBinPath(const std::string& bin_path);
+  std::string GetMasterBinaryPath() const;
+  std::string GetTServerBinaryPath() const;
 
   ExternalMiniClusterOptions opts_;
 
@@ -614,12 +618,13 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::string data_root_;
 
-  // This variable is incremented every time a new master is spawned (either in shell mode or create
-  // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
+  // This variable is incremented every time a new master is spawned (either in shell mode or
+  // create mode). Avoids reusing an index of a killed/removed master. Useful for master side
+  // logging.
   size_t add_new_master_at_ = 0;
 
-  std::vector<scoped_refptr<ExternalMaster> > masters_;
-  std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
+  std::vector<scoped_refptr<ExternalMaster>> masters_;
+  std::vector<scoped_refptr<ExternalTabletServer>> tablet_servers_;
 
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 

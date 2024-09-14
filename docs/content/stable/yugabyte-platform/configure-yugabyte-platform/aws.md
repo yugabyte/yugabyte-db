@@ -57,7 +57,7 @@ For more information on setting up an AWS service account and security groups, r
 
 ## Configure AWS
 
-Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of all currently configured AWS providers.
+Navigate to **Integrations > Infrastructure > Amazon Web Services** to see a list of all currently configured AWS providers.
 
 ### Create a provider
 

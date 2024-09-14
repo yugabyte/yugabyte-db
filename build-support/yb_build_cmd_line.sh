@@ -270,6 +270,8 @@ Test options:
   --enable-ysql-conn-mgr-test
     Use YSQL Connection Manager as an endpoint when running unit tests. Could also be set using
     the YB_ENABLE_YSQL_CONN_MGR_IN_TESTS env variable.
+  --no-ybc
+    Run backup tests without YB Controller (same as env var YB_TEST_YB_CONTROLLER=0)
 
   --validate-args-only
     Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
@@ -358,6 +360,15 @@ set_default_yb_build_args() {
   java_lint=false
   collect_java_tests=false
   should_use_packaged_targets=false
+
+  test_ybc=true
+  if is_linux; then
+    ybc_default=1
+  else
+    ybc_default=0
+  fi
+  export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-$ybc_default}
+  export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=${YB_DISABLE_MINICLUSTER_BACKUP_TESTS:-$ybc_default}
 
   # The default value of this parameter will be set based on whether we're running on Jenkins.
   reduce_log_output=""
@@ -929,6 +940,11 @@ parse_yb_build_cmd_line() {
       ;;
       --validate-args-only)
         validate_args_only=true
+      ;;
+      --no-ybc)
+        test_ybc=false
+        YB_TEST_YB_CONTROLLER=0
+        YB_DISABLE_MINICLUSTER_BACKUP_TESTS=0
       ;;
       *)
         if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then

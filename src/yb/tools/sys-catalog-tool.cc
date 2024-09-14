@@ -273,12 +273,6 @@ Result<SysRowEntryType> Parse_SysRowEntryType(const string& type_name) {
   return type;
 }
 
-template<typename Visitor, typename... Args>
-Status CallVisitor(int8_t entry_type, Visitor* v, Args... args) {
-  RETURN_NOT_OK(IsValid_SysRowEntryType(entry_type));
-  return v->Visit(static_cast<SysRowEntryType>(entry_type), args...);
-}
-
 // ------------------------------------------------------------------------------------------------
 // Flags and filtering helpers.
 // ------------------------------------------------------------------------------------------------
@@ -414,24 +408,12 @@ class SysRowJsonWriter : public JsonWriter {
  public:
   // Stream 'out' and 'filters' must be alive during the object life-time.
   SysRowJsonWriter(std::stringstream* out, Mode mode, const ReadFilters& filters) :
-      JsonWriter(out, mode), filters_(filters), visitor_(this) {}
+      JsonWriter(out, mode), filters_(filters) {}
   virtual ~SysRowJsonWriter() = default;
 
   Status WriteEntryPB(SysRowEntryType type, const Slice& id, const Slice& data);
 
   Status WritePB(const Message& data);
-
-  struct WriteEntryPBVisitor {
-    explicit WriteEntryPBVisitor(SysRowJsonWriter* writer) : writer_(DCHECK_NOTNULL(writer)) {}
-
-    Status Visit(SysRowEntryType type, const Slice& id, const Slice& data) {
-      return writer_->WriteEntryPB(type, id, data);
-    }
-
-    SysRowJsonWriter* writer_;
-  };
-
-  WriteEntryPBVisitor* GetWriteEntryPBVisitor() { return &visitor_; }
 
  protected:
   void ProtobufRepeatedField(const Message& pb, const FieldDescriptor* field, int index) override;
@@ -447,7 +429,6 @@ class SysRowJsonWriter : public JsonWriter {
 
  private:
   const ReadFilters& filters_;
-  WriteEntryPBVisitor visitor_;
 };
 
 void SysRowJsonWriter::ProtobufRepeatedField(
@@ -468,8 +449,7 @@ void SysRowJsonWriter::SysRow(const Message& message) {
     return; // Hide this entry.
   }
 
-  const Status s = CallVisitor(
-      entry.type(), GetWriteEntryPBVisitor(), Slice(entry.id()), Slice(entry.data()));
+  const Status s = WriteEntryPB(entry.type(), Slice(entry.id()), Slice(entry.data()));
   if (!s.ok()) {
     LOG_WITH_FUNC(WARNING) << s;
     // Raise exception as JsonWriter methods do not return status.
@@ -671,9 +651,6 @@ class SysRowHandler : public SysRowHandlerIf {
     return DCHECK_NOTNULL(entry_)->type();
   }
 
-  // Implement Visitor API for CallVisitor() function.
-  Status Visit(SysRowEntryType type) { return ReadSysRowPB(type); }
-
  protected:
   Status ReadSysRowPB(SysRowEntryType type);
 
@@ -704,15 +681,10 @@ Status SysRowHandler::ReadAndProcess() {
   DCHECK_NOTNULL(entry_)->set_type(type);
   entry_->set_id(id_str);
 
-  Status s = PreProcess();
-  if (s.ok()) {
-    // Fill this SysRowEntry 'data' via SysRowHandler::ReadSysRowPB().
-    s = CallVisitor<SysRowHandler>(type, this);
-  }
-  if (s.ok()) {
-    s = PostProcess();
-  }
-  return s;
+  RETURN_NOT_OK(PreProcess());
+  // Fill this SysRowEntry 'data' via SysRowHandler::ReadSysRowPB().
+  RETURN_NOT_OK(ReadSysRowPB(type));
+  return PostProcess();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -725,9 +697,6 @@ class SysCatalogTool {
   Result<string> ReadIntoString(const ReadFilters& filters);
 
   Status ShowChangesIn(const string& file_name, const ReadFilters& filters);
-
-  // Implement Visitor API for CallVisitor() function.
-  Status Visit(SysRowEntryType type) { return WriteEntryDescriptor(type); }
 
  protected:
   Status InitFsManager();
@@ -848,7 +817,7 @@ Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
 
       for (int type = master::SysRowEntryType_MIN; type <= master::SysRowEntryType_MAX; ++type) {
         if (type != SysRowEntryType::UNKNOWN) {
-          RETURN_NOT_OK(CallVisitor(type, this));  // Calling WriteEntryDescriptor().
+          RETURN_NOT_OK(WriteEntryDescriptor(static_cast<SysRowEntryType>(type)));
         }
       }
       writer_->EndObject(); // proto-buffers
@@ -889,7 +858,8 @@ Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
           int8_t entry_type, const Slice& id, const Slice& data) -> Status {
         if (filters.IsNotSet(OptionFlag::kNoSysCatalog) &&
             VERIFY_RESULT(filters.NeedToShow(entry_type, id))) {
-          RETURN_NOT_OK(CallVisitor(entry_type, writer_->GetWriteEntryPBVisitor(), id, data));
+          RETURN_NOT_OK(IsValid_SysRowEntryType(entry_type));
+          RETURN_NOT_OK(writer_->WriteEntryPB(static_cast<SysRowEntryType>(entry_type), id, data));
           ++filtered_entries;
         }
 
@@ -961,9 +931,6 @@ class ShowChangesCmdSysRowHandler : public SysRowHandler {
   Status PreProcess() override;
 
   Status PostProcess() override;
-
-  // Implement Visitor API for CallVisitor() function.
-  Status Visit(SysRowEntryType type) { return ReadAndCheckPB(type); }
 
  protected:
   Status ReadAndCheckPB(SysRowEntryType type);
@@ -1055,8 +1022,7 @@ Status ShowChangesCmdSysRowHandler::ReadAndCheckPB(SysRowEntryType type) {
 }
 
 Status ShowChangesCmdSysRowHandler::PostProcess() {
-  // Calling ReadAndCheckPB().
-  const Status s = CallVisitor<ShowChangesCmdSysRowHandler>(GetEntryType(), this);
+  const Status s = ReadAndCheckPB(GetEntryType());
 
   if (act_ != kNO_OP) {
     sinfo << kSectionSeparator << endl;

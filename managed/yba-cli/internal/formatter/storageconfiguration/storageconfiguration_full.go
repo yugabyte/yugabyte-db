@@ -40,7 +40,7 @@ func (fs *FullStorageConfigContext) SetFullStorageConfig(storageConfig ybaclient
 // NewFullStorageConfigFormat for formatting output
 func NewFullStorageConfigFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultStorageConfigListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

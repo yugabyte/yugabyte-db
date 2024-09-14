@@ -7,8 +7,10 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -97,6 +99,11 @@ public class DrConfigGetResp {
     return xClusterConfig.getTableType();
   }
 
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
+  public ConfigType getType() {
+    return xClusterConfig.getType();
+  }
+
   @ApiModelProperty(value = "Whether the underlying xCluster config is paused")
   public boolean isPaused() {
     return xClusterConfig.isPaused();
@@ -117,6 +124,20 @@ public class DrConfigGetResp {
   @ApiModelProperty(value = "Bootstrap backup params for DR config")
   public XClusterConfigRestartFormData.RestartBootstrapParams getBootstrapParams() {
     return drConfig.getBootstrapBackupParams();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
+  public Long getPitrRetentionPeriodSec() {
+    return drConfig.getPitrRetentionPeriodSec();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. PITR Retention Period in seconds")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
+  public Long getPitrSnapshotIntervalSec() {
+    return drConfig.getPitrSnapshotIntervalSec();
   }
 
   @ApiModelProperty(value = "Replication group name in the dr replica universe cluster config")
@@ -158,6 +179,13 @@ public class DrConfigGetResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   public Set<String> getDbs() {
     return xClusterConfig.getDbIds();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. List of db details in replication")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Set<XClusterNamespaceConfig> getDbDetails() {
+    return xClusterConfig.getNamespaceDetails();
   }
 
   @ApiModelProperty(

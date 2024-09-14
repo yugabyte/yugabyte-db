@@ -17,6 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -344,7 +345,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
     } catch (Exception e) {
     }
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean(), anyInt()))
         .thenReturn(
             ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "Command output: CREATE TABLE"));
     // WaitForServer mock.

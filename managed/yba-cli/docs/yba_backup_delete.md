@@ -13,7 +13,7 @@ yba backup delete [flags]
 ### Options
 
 ```
-      --backup-info stringArray   [Required] The info of the backups to be described. The backup-info is of the format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. The attribute backup-uuid is required.
+      --backup-info stringArray   [Required] The info of the backups to be described. The backup-info is of the format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. Backup UUID is required..
   -h, --help                      help for delete
 ```
 
@@ -33,5 +33,5 @@ yba backup delete [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

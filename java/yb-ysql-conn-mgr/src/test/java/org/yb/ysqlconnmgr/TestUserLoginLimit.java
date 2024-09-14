@@ -49,7 +49,9 @@ public class TestUserLoginLimit extends BaseYsqlConnMgr {
                     .connect();
             Statement statement = connection.createStatement()) {
 
-            statement.execute("CREATE ROLE limit_role LOGIN CONNECTION LIMIT 2");
+            // By default minimum 3 physical connections will be created in
+            // random warmup mode
+            statement.execute("CREATE ROLE limit_role LOGIN CONNECTION LIMIT 3");
 
             ConnectionBuilder limitRoleUserConnBldr =
                                 getConnectionBuilder()
@@ -59,15 +61,18 @@ public class TestUserLoginLimit extends BaseYsqlConnMgr {
                 BasePgSQLTest.waitForStatsToGetUpdated();
                 try (Connection connection2 = limitRoleUserConnBldr.connect()) {
                     BasePgSQLTest.waitForStatsToGetUpdated();
-                    // Third concurrent connection causes error.
                     try (Connection ignored3 = limitRoleUserConnBldr.connect()) {
-                        fail("Expected third login attempt to fail");
-                    } catch (SQLException sqle) {
-                        assertThat(
-                            sqle.getMessage(),
-                            CoreMatchers.containsString("too many connections for " +
-                                    "role \"limit_role\"")
-                        );
+                        BasePgSQLTest.waitForStatsToGetUpdated();
+                        // Fourth concurrent connection causes error.
+                        try (Connection ignored4 = limitRoleUserConnBldr.connect()) {
+                            fail("Expected fourth login attempt to fail");
+                        } catch (SQLException sqle) {
+                            assertThat(
+                                sqle.getMessage(),
+                                CoreMatchers.containsString("too many connections for " +
+                                        "role \"limit_role\"")
+                            );
+                        }
                     }
 
                     // Close second connection.

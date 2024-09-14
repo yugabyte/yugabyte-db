@@ -1301,7 +1301,8 @@ CheckSlotRequirements(void)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("replication slots can only be used if max_replication_slots > 0")));
 
-	if (wal_level < WAL_LEVEL_REPLICA)
+	/* YB NOTE: wal_level is not applicable to YSQL. */
+	if (!IsYugaByteEnabled() && wal_level < WAL_LEVEL_REPLICA)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("replication slots can only be used if wal_level >= replica")));
@@ -1950,6 +1951,10 @@ RestoreSlotFromDisk(const char *name)
 	bool		restored = false;
 	int			readBytes;
 	pg_crc32c	checksum;
+
+	/* Should never be called in YSQL. */
+	if (IsYugaByteEnabled())
+		Assert(false);
 
 	/* no need to lock here, no concurrent access allowed yet */
 

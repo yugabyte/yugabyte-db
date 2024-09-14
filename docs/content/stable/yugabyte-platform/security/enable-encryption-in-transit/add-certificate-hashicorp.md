@@ -168,7 +168,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
 When you create a universe, you can enable TLS using certificates provided by HashiCorp Vault, as follows:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
@@ -187,3 +187,5 @@ When you create a universe, you can enable TLS using certificates provided by Ha
 1. Optionally, provide the secret engine path on which the PKI is mounted. If you do not supply this information, `pki/` will be used.
 
 1. Click **Add** to make the certificate available.
+
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.

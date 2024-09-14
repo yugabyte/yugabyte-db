@@ -48,10 +48,15 @@ const PanelBody = ({
   const runtimeConfigs = customer?.runtimeConfigs;
   const isGranularMetricsEnabled =
     runtimeConfigs?.data?.configEntries?.find(
-      (c) => c.key === 'yb.ui.feature_flags.granular_metrics'
+      (c) => c.key === RuntimeConfigKey.GRANULAR_METRICS_FEATURE_FLAG
+    )?.value === 'true';
+  const isPerProcessMetricsEnabled =
+    runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === RuntimeConfigKey.PER_PROCESS_METRICS_FEATURE_FLAG
     )?.value === 'true';
   const invalidTabType = [];
   const isYSQLOpsEnabled = selectedUniverse?.universeDetails?.clusters?.[0]?.userIntent.enableYSQL;
+
   // List of default tabs to display based on metrics origin
   let defaultTabToDisplay = isYSQLOpsEnabled ? MetricTypes.YSQL_OPS : MetricTypes.YCQL_OPS;
 
@@ -63,6 +68,11 @@ const PanelBody = ({
     } else {
       defaultTabToDisplay = MetricTypes.SERVER;
     }
+  }
+
+  // Handle invalid tabs based on per-process metrics feature flag
+  if (!isPerProcessMetricsEnabled) {
+    invalidTabType.push(MetricTypes.PER_PROCESS);
   }
 
   const metricMeasure = graph?.graphFilter?.metricMeasure;
@@ -77,7 +87,7 @@ const PanelBody = ({
 
   if (!(selectedUniverse === MetricConsts.ALL)) {
     selectedUniverse && isKubernetesUniverse(selectedUniverse)
-      ? invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO)
+      ? invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO, MetricTypes.PER_PROCESS)
       : invalidTabType.push(MetricTypes.CONTAINER);
   }
 

@@ -187,6 +187,15 @@ int YBGetMaxClockSkewUsec() {
 	return kDefaultClockSkewUsec;
 }
 
+int YBGetHeartbeatIntervalMs() {
+	const int kDefaultHeartbeatIntervalMs = 1000;  // from heartbeater.cc
+	const char *yb_heartbeat_interval_ms_str = getenv("FLAGS_heartbeat_interval_ms");
+	if (yb_heartbeat_interval_ms_str) {
+		return atoi(yb_heartbeat_interval_ms_str);
+	}
+	return kDefaultHeartbeatIntervalMs;
+}
+
 int YBGetYsqlOutputBufferSize() {
 	const char *output_buffer_size_str = getenv("FLAGS_ysql_output_buffer_size");
 	if (output_buffer_size_str) {

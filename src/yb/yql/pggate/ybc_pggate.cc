@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -90,6 +90,15 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "File access can be re-enabled if set to false.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
+
+DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
+  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
+  "choose the mode of attachment of idle server connections to clients to serve their queries. "
+  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
+  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
+  "manager process. This flag will create max(ysql_conn_mgr_min_conns_per_db, "
+  "3) number of server connections in any pool whenever there is a requirement to create the "
+  "first backend process in that particular pool.");
 
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
@@ -217,10 +226,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(const char* database_name, YBCPgExecStatsState* session_stats) {
-  const std::string db_name(database_name ? database_name : "");
-  return WithMaskedYsqlSignals(
-      [&db_name, session_stats] { return pgapi->InitSession(db_name, session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
+  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
 }
 
 // ql_value is modified in-place.
@@ -558,8 +565,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(database_name, session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
+  return ToYBCStatus(PgInitSessionImpl(*session_stats));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -592,34 +599,12 @@ const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
   return pgapi->FindTypeEntity(type_oid);
 }
 
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->yb_type;
-  }
-  return YB_YQL_DATA_TYPE_UNKNOWN_DATA;
+int64_t YBCGetPgggateCurrentAllocatedBytes() {
+  return GetTCMallocCurrentAllocatedBytes();
 }
 
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->allow_for_primary_key;
-  }
-  return false;
-}
-
-YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  *consumption = GetTCMallocCurrentAllocatedBytes();
-  return YBCStatusOK();
-}
-
-YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef YB_TCMALLOC_ENABLED
-    // Use GetRootMemTrackerConsumption instead of directly accessing TCMalloc to avoid excess
-    // calls to TCMalloc on every memory allocation.
-    *consumption = pgapi ? pgapi->GetRootMemTrackerConsumption() : 0;
-#else
-    *consumption = 0;
-#endif
-    return YBCStatusOK();
+int64_t YBCGetActualHeapSizeBytes() {
+  return pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -781,10 +766,6 @@ size_t YBCBitmapGetVectorSize(ConstSliceVector vec) {
 //--------------------------------------------------------------------------------------------------
 // Database Operations -----------------------------------------------------------------------------
 
-YBCStatus YBCPgConnectDatabase(const char *database_name) {
-  return ToYBCStatus(pgapi->ConnectDatabase(database_name));
-}
-
 YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
                                    bool *legacy_colocated_database) {
   return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated,
@@ -854,11 +835,6 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   const PgObjectId pg_object_id(table_id_str);
   pgapi->InvalidateTableCache(pg_object_id);
   return YBCStatusOK();
-}
-
-void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
-                                              const YBCPgOid table_oid) {
-  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
@@ -1987,6 +1963,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_generate_ybrowid_sequentially =
           &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
+      .TEST_ysql_conn_mgr_dowarmup_all_pools_mode =
+          FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
   };
   // clang-format on
   return &accessor;

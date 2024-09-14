@@ -40,6 +40,7 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     public UUID sourceUniverseUUID;
     public UUID targetUniverseUUID;
+    public boolean checkAutoFlagsEqualityOnBothUniverses = false;
   }
 
   @Override
@@ -67,10 +68,13 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
     }
     try {
       // Check the existence of promoted auto flags on the other universe.
-      checkPromotedAutoFlagsOnTargetUniverse(sourceUniverse, targetUniverse, ServerType.MASTER);
-      checkPromotedAutoFlagsOnTargetUniverse(sourceUniverse, targetUniverse, ServerType.TSERVER);
-      checkPromotedAutoFlagsOnTargetUniverse(targetUniverse, sourceUniverse, ServerType.MASTER);
-      checkPromotedAutoFlagsOnTargetUniverse(targetUniverse, sourceUniverse, ServerType.TSERVER);
+      checkPromotedAutoFlags(sourceUniverse, targetUniverse, ServerType.MASTER);
+      checkPromotedAutoFlags(sourceUniverse, targetUniverse, ServerType.TSERVER);
+      if (taskParams().checkAutoFlagsEqualityOnBothUniverses) {
+        checkPromotedAutoFlags(targetUniverse, sourceUniverse, ServerType.MASTER);
+        checkPromotedAutoFlags(targetUniverse, sourceUniverse, ServerType.TSERVER);
+      }
+
     } catch (PlatformServiceException pe) {
       log.error("Error checking auto flags: ", pe);
       throw pe;
@@ -89,7 +93,7 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
    * @param serverType
    * @throws IOException
    */
-  private void checkPromotedAutoFlagsOnTargetUniverse(
+  private void checkPromotedAutoFlags(
       Universe sourceUniverse, Universe targetUniverse, ServerType serverType) throws IOException {
     // Prepare map of promoted auto flags.
     Set<String> promotedAndModifiedAutoFlags =

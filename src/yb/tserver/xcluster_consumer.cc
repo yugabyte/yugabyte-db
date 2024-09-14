@@ -95,9 +95,6 @@ DEFINE_validator(xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeT
 DEFINE_test_flag(bool, xcluster_disable_delete_old_pollers, false,
     "Disables the deleting of old xcluster pollers that are no longer needed.");
 
-DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
-    "Enables xCluster automatic DDL replication.");
-
 using namespace std::chrono_literals;
 
 #define ACQUIRE_SHARED_LOCK_IF_ONLINE \
@@ -530,8 +527,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
             this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_);
 
-        if (FLAGS_TEST_xcluster_enable_ddl_replication &&
-            ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
+        if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           xcluster_poller->InitDDLQueuePoller(
               use_local_tserver, rate_limiter_.get(), namespace_name, xcluster_context_,
               connect_to_pg_func_);

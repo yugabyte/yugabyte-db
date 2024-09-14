@@ -76,6 +76,7 @@
 static CatCacheHeader *CacheHdr = NULL;
 static long YbNumCatalogCacheMisses;
 static long YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
+static long YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 											   int nkeys,
@@ -1806,6 +1807,7 @@ SearchCatCacheMiss(CatCache *cache,
 		{
 			YbNumCatalogCacheMisses++;
 			YbNumCatalogCacheIdMisses[cache->id]++;
+			YbNumCatalogCacheTableMisses[YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
 		}
 
 		if (yb_debug_log_catcache_events)
@@ -2656,6 +2658,12 @@ long*
 YbGetCatCacheIdMisses()
 {
 	return YbNumCatalogCacheIdMisses;
+}
+
+long *
+YbGetCatCacheTableMisses()
+{
+	return YbNumCatalogCacheTableMisses;
 }
 
 YbCatCListIterator

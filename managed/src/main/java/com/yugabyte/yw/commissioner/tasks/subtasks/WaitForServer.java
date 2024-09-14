@@ -117,6 +117,15 @@ public class WaitForServer extends ServerSubTaskBase {
     if (userIntent == null) {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     }
+    int internalYsqlServerRpcPort;
+    if (taskParams().customCommunicationPorts != null) {
+      // Other flows like configure YSQL flow.
+      internalYsqlServerRpcPort = taskParams().customCommunicationPorts.internalYsqlServerRpcPort;
+    } else {
+      // Create universe flow.
+      internalYsqlServerRpcPort =
+          universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort;
+    }
     NodeDetails node = universe.getNode(taskParams().nodeName);
     if (taskParams().customCommunicationPorts != null) {
       UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
@@ -124,7 +133,12 @@ public class WaitForServer extends ServerSubTaskBase {
     }
     JsonNode ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
-            universe, runQueryFormData, node, userIntent.isYSQLAuthEnabled());
+            universe,
+            runQueryFormData,
+            node,
+            userIntent.isYSQLAuthEnabled(),
+            userIntent.enableConnectionPooling,
+            internalYsqlServerRpcPort);
     return !ysqlResponse.has("error");
   }
 }

@@ -129,7 +129,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
-          TaskType.ReprovisionNode);
+          TaskType.ReprovisionNode,
+          TaskType.CloudProviderEdit,
+          TaskType.SwitchoverDrConfig,
+          TaskType.FailoverDrConfig);
 
   @Override
   protected Application provideApplication() {

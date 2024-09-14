@@ -258,6 +258,11 @@ Status PgCreateTable::SetVectorOptions(YbPgVectorIdxOptions *options) {
   options_pb->set_dimensions(options->dimensions);
 
   req_.set_is_unique_index(false);
+
+  if (options->idx_type == YbPgVectorIdxType::YB_VEC_DUMMY) {
+    // Disable multi-tablet for this for now.
+    RETURN_NOT_OK(SetNumTablets(1));
+  }
   return Status::OK();
 }
 

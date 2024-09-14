@@ -54,7 +54,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
       // Create the test table
       getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
           .createStatement().execute(
-              "CREATE TABLE IF NOT EXISTS TEST_TABLE_INSERT (id SERIAL PRIMARY KEY, name TEXT)");
+              "CREATE TABLE IF NOT EXISTS TEST_TABLE_INSERT (name TEXT)");
 
       for (int i = 0; i < NUMBER_OF_CLIENTS; i++) {
         connection[i] = getConnectionBuilder()
@@ -98,7 +98,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
       // Create the test table
       getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
           .createStatement().execute(
-              "CREATE TABLE IF NOT EXISTS TEST_TABLE_UPDATE (id SERIAL PRIMARY KEY, name TEXT)");
+              "CREATE TABLE IF NOT EXISTS TEST_TABLE_UPDATE (name TEXT)");
 
       for (int i = 0; i < NUMBER_OF_CLIENTS; i++) {
         connection[i] = getConnectionBuilder()
@@ -147,7 +147,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
       // Create the test table
       getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
           .createStatement().execute(
-              "CREATE TABLE IF NOT EXISTS TEST_TABLE_DELETE (id SERIAL PRIMARY KEY, name TEXT)");
+              "CREATE TABLE IF NOT EXISTS TEST_TABLE_DELETE (name TEXT)");
 
       for (int i = 0; i < NUMBER_OF_CLIENTS; i++) {
         connection[i] = getConnectionBuilder()

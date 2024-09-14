@@ -202,13 +202,14 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             Class<? extends Model> modelClass = resource.dbClass();
             Finder<UUID, Model> find = new Finder(modelClass);
 
-            Model modelEntity =
-                find.query().where().eq(resource.columnName(), resourceUUID).findOne();
+            List<Model> modelEntityList =
+                find.query().where().eq(resource.columnName(), resourceUUID).findList();
             ObjectMapper mapper = new ObjectMapper();
-            if (modelEntity == null) {
+            if (modelEntityList == null || modelEntityList.isEmpty()) {
               return CompletableFuture.completedFuture(
                   Results.unauthorized("Unable to authorize user"));
             }
+            Model modelEntity = modelEntityList.get(0);
             JsonNode requestBody = mapper.convertValue(modelEntity, JsonNode.class);
 
             String[] pathList = resource.path().split("\\.");
