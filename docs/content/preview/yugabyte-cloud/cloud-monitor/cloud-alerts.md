@@ -74,7 +74,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 
 | Alert | Metric |
 | :--- | :--- |
-| [Tablet Peers](#fix-tablet-alerts) | Tablets |
+| [Tablet Peers](#fix-tablet-peer-alerts) | Tablets |
 | [Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
 | [Disk IOPS](#fix-iops-alerts) | Disk IOPS |
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
@@ -94,7 +94,7 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 {{< /note >}}
 
-#### Fix tablet alerts
+#### Fix tablet peer alerts
 
 YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
 
