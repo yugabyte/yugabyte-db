@@ -2068,12 +2068,12 @@ bson_maxminn_final(PG_FUNCTION_ARGS)
 			PgbsonArrayWriterWriteValue(&arrayWriter, &valueArray[i]);
 		}
 
-		PgbsonWriterEndArray(&writer, &arrayWriter);
-		finalPgbson = PgbsonWriterGetPgbson(&writer);
-
 		pfree(valueArray);
 		FreeHeap(maxNState->heap);
 	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	finalPgbson = PgbsonWriterGetPgbson(&writer);
 
 	PG_RETURN_POINTER(finalPgbson);
 }

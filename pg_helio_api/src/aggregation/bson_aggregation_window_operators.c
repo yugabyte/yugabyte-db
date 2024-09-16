@@ -216,6 +216,10 @@ static WindowFunc * HandleDollarStdDevPopWindowOperator(const bson_value_t *opVa
 														WindowOperatorContext *context);
 static WindowFunc * HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 														 WindowOperatorContext *context);
+static WindowFunc * HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarMinNWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -306,7 +310,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$maxN",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarMaxNWindowOperator
 	},
 	{
 		.operatorName = "$median",
@@ -318,7 +322,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$minN",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarMinNWindowOperator
 	},
 	{
 		.operatorName = "$percentile",
@@ -2575,4 +2579,109 @@ HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 
 	windowFunc->args = ParseStdDevWindowOperator(opValue, context);
 	return windowFunc;
+}
+
+
+/**
+ * Function that check the syntax of MaxN/MinN.
+ * @param opValue: input document for the $MaxN/$MinN accumulator.
+ * @param opName: "maxN" or "minN".
+ */
+static void
+ValidteForMaxNMinNNAccumulators(const bson_value_t *opValue, const char *opName)
+{
+	if (opValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900),
+						errmsg("specification must be an object; found %s: %s", opName,
+							   BsonValueToJsonForLogging(opValue)),
+						errdetail_log(
+							"specification must be an object; opname: %s type found: %s",
+							opName,
+							BsonTypeName(opValue->value_type))));
+	}
+	bson_iter_t docIter;
+	BsonValueInitIterator(opValue, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t elementsToFetch = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			elementsToFetch = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901),
+							errmsg("%s found an unknown argument: %s", opName, key),
+							errdetail_log("%s found an unknown argument", opName)));
+		}
+	}
+
+	/**
+	 * Validation check to see if input and elements to fetch are present otherwise throw error.
+	 */
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907),
+						errmsg("%s requires an 'input' field", opName),
+						errdetail_log("%s requires an 'input' field", opName)));
+	}
+
+	if (elementsToFetch.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906),
+						errmsg("%s requires an 'n' field", opName),
+						errdetail_log("%s requires an 'n' field", opName)));
+	}
+}
+
+
+/*
+ * Handle for $MaxN window aggregation operator.
+ */
+static WindowFunc *
+HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
+							   WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("Window operator $maxN is not supported yet")));
+	}
+
+	/*check the syntax of maxN/minN */
+	ValidteForMaxNMinNNAccumulators(opValue, "maxN");
+
+	/*reuse the logic of maxN in the group stage.*/
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonMaxNAggregateFunctionOid());
+}
+
+
+/*
+ * Handle for $MinN window aggregation operator.
+ */
+static WindowFunc *
+HandleDollarMinNWindowOperator(const bson_value_t *opValue,
+							   WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("Window operator $minN is not supported yet")));
+	}
+
+	/*check the syntax of maxN/minN */
+	ValidteForMaxNMinNNAccumulators(opValue, "minN");
+
+	/*reuse the logic of minN in the group stage.*/
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonMinNAggregateFunctionOid());
 }
