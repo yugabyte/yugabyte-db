@@ -546,6 +546,26 @@ class AzureCloudAdmin():
     def delete_disk(self, disk_name):
         return self.compute_client.disks.begin_delete(RESOURCE_GROUP, os.path.basename(disk_name))
 
+    def delete_disks(self, tags):
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        disk_list = self.compute_client.disks.list_by_resource_group(RESOURCE_GROUP)
+        if disk_list:
+            for disk in disk_list:
+                if (disk.disk_state == "Unattached" and disk.tags
+                        and disk.tags.get('universe-uuid') == universe_uuid
+                        and disk.tags.get('node-uuid') == node_uuid):
+                    logging.info("[app] Deleting disk {}".format(disk.name))
+                    disk_del = self.delete_disk(disk.name)
+                    disk_del.wait()
+                    logging.info("[app] Deleted disk {}".format(disk.name))
+
     def tag_disks(self, vm, tags):
         # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
         disk = self.compute_client.disks.get(

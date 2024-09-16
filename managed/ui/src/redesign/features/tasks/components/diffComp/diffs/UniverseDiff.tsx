@@ -25,7 +25,7 @@ import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import DiffCard, { DiffCardRef } from '../DiffCard';
 import { DiffCardWrapper } from '../DiffCardWrapper';
-import { isAZEqual } from '../DiffUtils';
+import { FieldOperations, getFieldOpertions, isAZEqual } from '../DiffUtils';
 import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
 import { BaseDiff } from './BaseDiff';
 
@@ -167,7 +167,6 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     if (!beforeRegion && !afterRegion) {
       throw new Error('Both before and after regions are null');
     }
-
     const atttributeCompList = [<span>Region</span>];
     const beforeCompList = [<div>{beforeRegion ? beforeRegion.name : '---'}</div>];
     const afterCompList = [<div>{afterRegion ? afterRegion.name : '---'}</div>];
@@ -205,12 +204,12 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       const azListAdded = differenceWith(
         afterRegion.azList,
         beforeRegion.azList,
-        (a, b) => a.name === b.name && !isAZEqual(a, b)
+        (a, b) => a.name === b.name
       );
       const azListRemoved = differenceWith(
         beforeRegion.azList,
         afterRegion.azList,
-        (a, b) => a.name === b.name && !isAZEqual(a, b)
+        (a, b) => a.name === b.name
       );
 
       // Create diff cards for the added and removed placement AZs.
@@ -292,14 +291,23 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     if (!beforePlacementAZ && !afterPlacementAZ) {
       throw new Error('Both before and after placement AZs are null');
     }
+    const fieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!);
+    const afterFieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!, true);
 
     return [
       <PlacementAzComponent
         key={beforePlacementAZ?.uuid}
         placementAz={beforePlacementAZ!}
-        operation={DiffOperation.REMOVED}
+        operation={
+          beforePlacementAZ
+            ? afterPlacementAZ
+              ? DiffOperation.CHANGED
+              : DiffOperation.REMOVED
+            : DiffOperation.ADDED
+        }
         // If the placement AZ is added(new), display the empty values.
         displayEmpty={!beforePlacementAZ}
+        fieldOperations={fieldOperations}
       />,
       <PlacementAzComponent
         key={afterPlacementAZ?.uuid}
@@ -307,6 +315,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
         operation={DiffOperation.ADDED}
         // If the placement AZ is removed(existing), display the empty values.
         displayEmpty={!afterPlacementAZ}
+        fieldOperations={afterFieldOperations}
       />
     ];
   }
@@ -328,9 +337,9 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     return (
       <DiffCardWrapper>
         <DiffActions
-          onExpandAll={() => {
+          onExpandAll={(flag) => {
             this.cardRefs.forEach((ref) => {
-              ref?.current?.onExpand(true);
+              ref?.current?.onExpand(flag);
             });
           }}
           changesCount={
@@ -393,50 +402,51 @@ const useStylePlacementAzComponent = makeStyles((theme) => ({
     fontSize: '13px',
     '& > span': {
       width: 'fit-content'
-    }
-  },
-  strikeOutRed: {
-    '& > span': {
-      backgroundColor: '#FEEDED',
-      mixBlendMode: 'darken'
-    }
-  },
-  strikeOutGreen: {
-    '& > span': {
+    },
+    '& > .Changed': {
+      backgroundColor: '#FDE5E5',
+      mixBlendMode: 'darken',
+      textDecoration: 'line-through'
+    },
+    '& > .Added': {
       backgroundColor: '#CDEFE1',
       mixBlendMode: 'darken'
+    },
+    '& > .Removed': {
+      backgroundColor: '#FEEDED',
+      mixBlendMode: 'darken',
+      textDecoration: 'line-through'
     }
   }
 }));
 
 // Component for displaying the placement AZ.
+
 const PlacementAzComponent = ({
   placementAz,
   displayEmpty,
-  operation
+  fieldOperations
 }: {
   placementAz: PlacementAZ;
   operation: DiffOperation;
   displayEmpty?: boolean;
+  fieldOperations?: FieldOperations;
 }) => {
   const classes = useStylePlacementAzComponent();
 
   return (
-    <div
-      className={clsx(
-        classes.root,
-        !displayEmpty
-          ? operation === DiffOperation.ADDED
-            ? classes.strikeOutGreen
-            : classes.strikeOutRed
-          : ''
-      )}
-    >
-      <span>{displayEmpty ? '---' : placementAz.name}</span>
+    <div className={clsx(classes.root)}>
+      <span className={clsx(!displayEmpty && fieldOperations?.name)}>
+        {displayEmpty ? '---' : placementAz.name}
+      </span>
       <br />
-      <span>{displayEmpty ? '---' : placementAz.numNodesInAZ}</span>
+      <span className={clsx(!displayEmpty && fieldOperations?.numNodesInAZ)}>
+        {displayEmpty ? '---' : placementAz.numNodesInAZ}
+      </span>
       <br />
-      <span>{displayEmpty ? '---' : placementAz.isAffinitized + ''}</span>
+      <span className={clsx(!displayEmpty && fieldOperations?.isAffinitized)}>
+        {displayEmpty ? '---' : placementAz.isAffinitized + ''}
+      </span>
       <br />
     </div>
   );

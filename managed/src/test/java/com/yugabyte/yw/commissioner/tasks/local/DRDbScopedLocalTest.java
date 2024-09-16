@@ -462,6 +462,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
 
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -538,6 +543,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
+
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();

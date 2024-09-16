@@ -739,7 +739,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+  // TODO(asrivastava): This does not correctly handle colocated tables.
+  const uint32_t our_schema_version =
+      tablet.peer->tablet_metadata()->primary_table_schema_version();
   const uint32_t their_schema_version = req->schema_version();
   bool all_at_backfill = true;
   bool all_past_backfill = true;

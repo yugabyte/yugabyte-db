@@ -6998,6 +6998,13 @@
           },
           "type" : "array"
         },
+        "groupsToSync" : {
+          "description" : "LDAP groups to sync. In case user belongs to multiple groups & we don't want to sync all of them to DB",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "ldapBasedn" : {
           "description" : "Dn of the search starting point.",
           "example" : "dc=example,dc=org",
@@ -7017,7 +7024,7 @@
           "type" : "string"
         },
         "ldapGroupfield" : {
-          "description" : "Group dn field to get the group's name from",
+          "description" : "LDAP field to get the group information",
           "example" : "cn",
           "type" : "string"
         },
@@ -7027,8 +7034,8 @@
           "type" : "integer"
         },
         "ldapSearchFilter" : {
-          "description" : "LDAP search filter to get the user entries. This filter can also be used to search for the users based on their group memberships.",
-          "example" : "(objectclass=person), (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)(groupName=CN=group2,CN=Groups,DC=example,DC=com)))",
+          "description" : "LDAP search filter to get the user entries",
+          "example" : "(objectclass=person)",
           "type" : "string"
         },
         "ldapServer" : {

@@ -751,7 +751,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
 : If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
 
---enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
+--enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
 
 #### Advanced flags
@@ -1240,7 +1240,7 @@ To create a secure multi-zone cluster:
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
         --cloud_location=aws.us-east-1.us-east-1a \
-        --fault_tolerance=zone 
+        --fault_tolerance=zone
     ```
 
 1. Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
@@ -1614,7 +1614,7 @@ To create the read replica cluster, do the following:
         --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
         --cloud_location=aws.us-east-1.us-east-1e \
         --read_replica
-    
+
     ./bin/yugabyted start \
         --advertise_address=127.0.0.7 \
         --join=127.0.0.1 \

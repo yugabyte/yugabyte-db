@@ -19,6 +19,8 @@
 DEFINE_test_flag(bool, block_xcluster_checkpoint_namespace_task, false,
     "When enabled XClusterCheckpointNamespaceTask will be blocked");
 
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
+
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -63,6 +65,21 @@ std::string XClusterCheckpointNamespaceTask::description() const {
 }
 
 Status XClusterCheckpointNamespaceTask::FirstStep() {
+  if (outbound_replication_group_.AutomaticDDLMode() &&
+      FLAGS_TEST_xcluster_enable_sequence_replication) {
+    // Ensure sequences_data table has been created and added to our tables to checkpoint.
+    // TODO: Consider making this async  so we don't have to burn a thread waiting.
+    RETURN_NOT_OK(outbound_replication_group_.helper_functions_.create_sequences_data_table_func());
+    RETURN_NOT_OK(outbound_replication_group_.AddTableToInitialBootstrapMapping(
+        namespace_id_, kPgSequencesDataTableId, epoch_));
+  }
+
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
+  return Status::OK();
+}
+
+Status XClusterCheckpointNamespaceTask::CreateStreams() {
   RETURN_NOT_OK(
       outbound_replication_group_.CreateStreamsForInitialBootstrap(namespace_id_, epoch_));
   ScheduleNextStep(

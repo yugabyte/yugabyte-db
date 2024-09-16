@@ -1000,20 +1000,25 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CreateTabl
   ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (1, 1)"));
 
   auto clone_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
-  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2 (k int, v1 int)"));
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2 (k int, value int)"));
+  ASSERT_OK(source_conn_->Execute("CREATE INDEX i2 on t2(value)"));
 
-  // Clone before t2 was created and test that we can recreate t2.
+  // Clone before t2 and i2 were created.
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       clone_time));
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
 
-  // Should be able to create new tables and indexes and insert into all tables.
+  // Test that we can recreate dropped tables and create brand new tables, with indexes.
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, value int)"));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t3 (k int, value int)"));
   ASSERT_OK(target_conn.Execute("CREATE INDEX i1 on t1(value)"));
+  ASSERT_OK(target_conn.Execute("CREATE INDEX i2 on t2(value)"));
+  ASSERT_OK(target_conn.Execute("CREATE INDEX i3 on t3(value)"));
+
+  // Test that we can insert into all tables.
   ASSERT_OK(target_conn.Execute("INSERT INTO t1 VALUES (2, 2)"));
   ASSERT_OK(target_conn.Execute("INSERT INTO t2 VALUES (1, 1)"));
-  ASSERT_OK(target_conn.Execute("CREATE TABLE t3 (k int, v1 int)"));
   ASSERT_OK(target_conn.Execute("INSERT INTO t3 VALUES (1, 1)"));
 }
 

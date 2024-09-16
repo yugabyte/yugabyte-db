@@ -2627,7 +2627,8 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
     AppStatusPB* error_status = reported_tablet->mutable_error();
     StatusToPB(tablet_peer->error(), error_status);
   }
-  reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
+  reported_tablet->set_schema_version(
+      tablet_peer->tablet_metadata()->primary_table_schema_version());
 
   tablet_peer->tablet_metadata()->GetTableIdToSchemaVersionMap(
       reported_tablet->mutable_table_to_version());

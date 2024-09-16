@@ -635,7 +635,7 @@ Tablet::Tablet(const TabletInitData& data)
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
-                        << metadata_->schema_version();
+                        << metadata_->primary_table_schema_version();
 
   if (data.metric_registry) {
     MetricEntity::AttributeMap attrs;
@@ -1724,7 +1724,7 @@ Status Tablet::HandleQLReadRequest(
   docdb::QLRocksDBStorage storage{doc_db(metrics_scope.metrics())};
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
-      metadata()->schema_version(), ql_read_request.schema_version(),
+      metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
       ql_read_request.is_compatible_with_previous_version());
 
   Status status;
@@ -1737,7 +1737,7 @@ Status Tablet::HandleQLReadRequest(
         *txn_op_ctx, storage, scoped_read_operation, result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
-        metadata()->schema_version(), ql_read_request.schema_version(),
+        metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
         ql_read_request.is_compatible_with_previous_version());
   }
 
@@ -1748,7 +1748,7 @@ Status Tablet::HandleQLReadRequest(
     result->response.set_error_message(Format(
         "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
         metadata()->table_id(),
-        metadata()->schema_version(),
+        metadata()->primary_table_schema_version(),
         ql_read_request.schema_version(),
         ql_read_request.is_compatible_with_previous_version()));
     return Status::OK();

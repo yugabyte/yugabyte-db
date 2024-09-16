@@ -17,24 +17,29 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/xcluster_client.h"
 #include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster/xcluster_status.h"
-#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+#include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/tserver/pg_create_table.h"
+
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
+DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
@@ -185,13 +190,22 @@ XClusterSourceManager::InitOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
+      .create_sequences_data_table_func =
+          [client = master_.client_future()]() {
+            return tserver::CreateSequencesDataTable(
+                client.get(),
+                CoarseMonoClock::now() +
+                    MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms));
+          },
       .get_namespace_func =
           [&catalog_manager = catalog_manager_](const NamespaceIdentifierPB& ns_identifier) {
             return catalog_manager.FindNamespace(ns_identifier);
           },
       .get_tables_func =
-          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
-            return GetTablesEligibleForXClusterReplication(catalog_manager, namespace_id);
+          [&catalog_manager = catalog_manager_](
+              const NamespaceId& namespace_id, bool include_sequences_data) {
+            return GetTablesEligibleForXClusterReplication(
+                catalog_manager, namespace_id, include_sequences_data);
           },
       .create_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
@@ -1158,7 +1172,7 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     }
     result.namespace_table_map[namespace_id] = std::move(ns_info);
   }
-  result.automatic_ddl_mode = VERIFY_RESULT(outbound_replication_group->AutomaticDDLMode());
+  result.automatic_ddl_mode = outbound_replication_group->AutomaticDDLMode();
 
   return result;
 }

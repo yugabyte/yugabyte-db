@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,8 +17,8 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertThrows;
 import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
 
 import com.yugabyte.util.PSQLException;
 import java.sql.BatchUpdateException;
@@ -166,18 +166,13 @@ public class TestPgBatch extends BasePgSQLTest {
       // Execute ALTER in a different session c2 so as not to invalidate
       // the catalog cache of c1 until the next heartbeat with the master.
       s2.execute("ALTER TABLE t ALTER COLUMN v SET NOT NULL");
-      try {
-        // This uses the cached catalog version but the schema is changed
-        // by the ALTER TABLE statement above. This should cause a schema
-        // mismatch error. The schema mismatch error is not retried internally
-        // in batched execution mode.
-        s1.executeBatch();
-        // Should not reach here since we do not support retries in batched
-        // execution mode for schema mismatch errors.
-        fail("Internal retries are not supported in batched execution mode");
-      } catch (BatchUpdateException e) {
-        LOG.info(e.toString());
-      }
+
+      // The s1 statement uses the cached catalog version but the schema is changed by the
+      // ALTER TABLE statement above. The s1 statement execution should cause the schema mismatch
+      // error. The schema mismatch error is not retried internally in batched execution mode.
+      assertThrows(
+          "Internal retries are not supported in batched execution mode",
+           BatchUpdateException.class, () -> s1.executeBatch());
     }
   }
 

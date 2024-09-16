@@ -196,7 +196,7 @@ installer_dir="{{ ynp_dir }}/../../bin"
 su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
 -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
 --instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} \
---node_name {{ node_name }} --node_ip {{ node_external_fqdn }} \
+--node_name {{ node_name }} --region_name {{ provider_region_name }} --node_ip {{ node_external_fqdn }} \
 --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
 
 loginctl enable-linger {{ yb_user }}
