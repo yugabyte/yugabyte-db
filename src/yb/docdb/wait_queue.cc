@@ -1385,7 +1385,7 @@ class WaitQueue::Impl {
     for (auto [blocker, _] : waiter_data->blockers) {
       blocker->AddWaiter(waiter_data);
     }
-    DEBUG_ONLY_TEST_SYNC_POINT("WaitQueue::Impl::SetupWaiterUnlocked:1");
+    TEST_SYNC_POINT("WaitQueue::Impl::SetupWaiterUnlocked:1");
     return Status::OK();
   }
 
