@@ -53,6 +53,10 @@ export type JSONCodeBlock = {
   children: Descendant[];
 };
 
+export const LINE_BREAK_REGEX = /\n|\\n|<br\/>/;
+export const BR_TAG = '<br/>';
+export const NEW_LINE = '\n';
+
 export type IYBEditor = BaseEditor & ReactEditor & HistoryEditor;
 
 export type CustomElement =
