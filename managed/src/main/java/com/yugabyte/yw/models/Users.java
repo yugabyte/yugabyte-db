@@ -485,9 +485,13 @@ public class Users extends Model {
     save();
   }
 
-  public static String getAllEmailsForCustomer(UUID customerUUID) {
+  public static String getAllEmailDomainsForCustomer(UUID customerUUID) {
     List<Users> users = Users.getAll(customerUUID);
-    return users.stream().map(user -> user.getEmail()).collect(Collectors.joining(","));
+    return users.stream()
+        .map(user -> user.getEmail().substring(user.getEmail().indexOf("@") + 1))
+        .collect(Collectors.toSet())
+        .stream()
+        .collect(Collectors.joining(","));
   }
 
   public static List<Users> getAllReadOnly() {

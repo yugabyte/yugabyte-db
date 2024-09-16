@@ -57,7 +57,7 @@ public class CallHomeManager {
     this.configHelper = configHelper;
   }
   // Email address from YugaByte to which to send diagnostics, if enabled.
-  private final String YB_CALLHOME_URL = "https://yw-diagnostics.yugabyte.com";
+  private final String YB_CALLHOME_URL = "https://diagnostics.yugabyte.com";
 
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
@@ -66,7 +66,11 @@ public class CallHomeManager {
     if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
       JsonNode payload = CollectDiagnostics(c, callhomeLevel);
-      LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
+      LOG.trace(
+          "Sending collected diagnostics to "
+              + YB_CALLHOME_URL
+              + " with payload "
+              + payload.toPrettyString());
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
       headers.put(
@@ -82,7 +86,7 @@ public class CallHomeManager {
     // Build customer details json
     payload.put("customer_uuid", c.getUuid().toString());
     payload.put("code", c.getCode());
-    payload.put("email", Users.getAllEmailsForCustomer(c.getUuid()));
+    payload.put("email", Users.getAllEmailDomainsForCustomer(c.getUuid()));
     payload.put("creation_date", c.getCreationDate().toString());
     ArrayNode errors = Json.newArray();
 

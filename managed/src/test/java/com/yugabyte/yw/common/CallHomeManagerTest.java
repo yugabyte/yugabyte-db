@@ -63,7 +63,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ObjectNode expectedPayload = Json.newObject();
     expectedPayload.put("customer_uuid", defaultCustomer.getUuid().toString());
     expectedPayload.put("code", defaultCustomer.getCode());
-    expectedPayload.put("email", defaultUser.getEmail());
+    expectedPayload.put(
+        "email", defaultUser.getEmail().substring(defaultUser.getEmail().indexOf("@") + 1));
     expectedPayload.put("creation_date", defaultCustomer.getCreationDate().toString());
     List<UniverseResp> universes = new ArrayList<>();
     if (universe != null) {
@@ -115,7 +116,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     String expectedToken =
         Base64.getEncoder().encodeToString(defaultCustomer.getUuid().toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
-    assertEquals("https://yw-diagnostics.yugabyte.com", url.getValue());
+    assertEquals("https://diagnostics.yugabyte.com", url.getValue());
   }
 
   @Test
