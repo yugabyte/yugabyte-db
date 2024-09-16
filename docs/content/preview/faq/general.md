@@ -100,7 +100,7 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 - **Increased Query Latency**: Transactions and JOINs that span multiple nodes experience inter-node latency, making queries slower than in single-node databases like PostgreSQL.
 
 {{<note>}}
-[Many projects](https://github.com/yugabyte/yugabyte-db?tab=readme-ov-file#current-roadmap) are underway to bring performance in line with that of a single-node database.
+[Many projects](https://github.com/yugabyte/yugabyte-db?tab=readme-ov-file#current-roadmap) are currently in progress to match the performance of a single-node database.
 {{</note>}}
 
 - **Cross-Region Latency**: In multi-region or globally distributed setups, YugabyteDB replicates data across regions to ensure availability and resilience. However, this can lead to higher write latency due to cross-region coordination.
