@@ -81,6 +81,12 @@ public class LdapUnivSyncFormData {
   @ApiModelProperty(value = "TLS versions for LDAPS : TLSv1, TLSv1_1, TLSv1_2")
   private TlsProtocol ldapTlsProtocol = TlsProtocol.TLSv1_2;
 
+  @ApiModelProperty(
+      value =
+          "LDAP groups to sync. In case user belongs to multiple groups &"
+              + " we don't want to sync all of them to DB")
+  private List<String> groupsToSync = new ArrayList<>();
+
   public String getDbUser() {
     if (this.dbUser.isEmpty() && this.targetApi.equals(TargetApi.ycql)) {
       return Util.DEFAULT_YCQL_USERNAME;

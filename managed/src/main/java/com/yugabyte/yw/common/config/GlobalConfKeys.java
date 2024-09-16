@@ -628,6 +628,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enforce server certificate verification for LDAPs/LDAP-TLS",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static ConfKeyInfo<Integer> ldapPageQuerySize =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.page_query_size",
+          ScopeType.GLOBAL,
+          "Pagination query size for LDAP server",
+          "Pagination query size for LDAP server",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
