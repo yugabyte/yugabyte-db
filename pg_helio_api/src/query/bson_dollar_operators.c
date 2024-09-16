@@ -1383,67 +1383,7 @@ bson_dollar_lookup_join_filter(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 {
-	if (IsClusterVersionAtleastThis(1, 20, 0))
-	{
-		return bson_dollar_eq(fcinfo);
-	}
-
-	/*TODO : Remove below code once we deploy 1.20 in production */
-	pgbson *targetDocument = PG_GETARG_PGBSON(0);
-	pgbson *sourceDocument = PG_GETARG_PGBSON(1);
-
-	char *joinField = text_to_cstring(PG_GETARG_TEXT_P(2));
-
-	bson_iter_t sourceIter;
-	if (!PgbsonInitIteratorAtPath(sourceDocument, joinField, &sourceIter))
-	{
-		/* If the source lacks an object ID, we return false and generate a new one during the document's insertion into the target. */
-		if (strcmp(joinField, "_id") == 0)
-		{
-			PG_RETURN_BOOL(false);
-		}
-
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
-						errmsg(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errdetail_log(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
-	}
-
-	pgbsonelement filterElement;
-	filterElement.path = joinField;
-	filterElement.pathLength = strlen(joinField);
-	filterElement.bsonValue = *bson_iter_value(&sourceIter);
-
-	if (filterElement.bsonValue.value_type == BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51185),
-						errmsg(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errdetail_log(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
-	}
-	else if (filterElement.bsonValue.value_type == BSON_TYPE_NULL ||
-			 filterElement.bsonValue.value_type == BSON_TYPE_UNDEFINED)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51132),
-						errmsg(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
-						errdetail_log(
-							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
-	}
-
-	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
-	bson_iter_t targetIter;
-
-	TraverseElementValidateState state = { 0 };
-	PgbsonInitIterator(targetDocument, &targetIter);
-	state.filter = &filterElement;
-	state.traverseState.matchFunc = CompareEqualMatch;
-	TraverseBson(&targetIter, filterElement.path, &state.traverseState,
-				 &CompareExecutionFuncs);
-	PG_RETURN_BOOL(ProcessQueryResultAndGetMatch(isNullFilterEquality,
-												 &state.traverseState));
+	return bson_dollar_eq(fcinfo);
 }
 
 

@@ -179,11 +179,6 @@ static inline Expr * CreateSingleJoinExpr(const char *joinField,
 static inline TargetEntry * MakeExtractFuncExprForMergeTE(const char *onField, uint32
 														  length, Var *sourceDocument,
 														  const int resNum);
-static void WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *sourceDocVar,
-													   Var *targetDocVar,
-													   Var *sourceShardKeyValueVar,
-													   Var *targetShardKeyValueVar,
-													   MergeArgs mergeArgs);
 static void TruncateDataTable(int collectionId);
 
 PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
@@ -442,7 +437,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 							"collation is not supported with $merge yet")));
 	}
 
-	if (!(IsClusterVersionAtleastThis(1, 19, 0) && EnableMergeStage))
+	if (!EnableMergeStage)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Stage $merge is not supported yet in native pipeline"),
@@ -575,25 +570,13 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 																 generatedObjectIdVar,
 																 sourceShardKeyValueVar,
 																 targetCollection));
-
-	if (IsClusterVersionAtleastThis(1, 20, 0))
-	{
-		WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
-											 sourceShardKeyValueVar,
-											 targetShardKeyValueVar,
-											 targetObjectIdVar,
-											 sourceExtractedOnFieldsInitIndex,
-											 sourceCollectionVarNo,
-											 mergeArgs);
-	}
-	else
-	{
-		WriteJoinConditionToQueryDollarMergeLegacy(query, sourceDocVar,
-												   targetDocVar,
-												   sourceShardKeyValueVar,
-												   targetShardKeyValueVar, mergeArgs);
-	}
-
+	WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
+										 sourceShardKeyValueVar,
+										 targetShardKeyValueVar,
+										 targetObjectIdVar,
+										 sourceExtractedOnFieldsInitIndex,
+										 sourceCollectionVarNo,
+										 mergeArgs);
 	return query;
 }
 
@@ -1089,8 +1072,11 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 	newTargetList = lappend(newTargetList, generatedObjectIdTE);
 
 
-	/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition */
-	if (onValues && IsClusterVersionAtleastThis(1, 20, 0))
+	/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition.
+	 *    For the $out stage, we will have 'on' values, so this step will be skipped for $out.
+	 */
+
+	if (onValues)
 	{
 		if (onValues->value_type == BSON_TYPE_UTF8)
 		{
@@ -1677,90 +1663,6 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
 	/* Everything looks good, we can write the `_id` field to the writer */
 	PgbsonWriterInit(writer);
 	PgbsonWriterAppendValue(writer, "_id", 3, &objectIdFromTargetDocument.bsonValue);
-}
-
-
-/*
- * write join condition to the query Tree for $merge aggregation stage.
- *
- * let's say `on` field is array : ["a", "b", "c"]
- * join condition in sql :
- *
- * ON target.shard_key_value OPERATOR(pg_catalog.=) source.target_shard_key_value
- * AND bson_dollar_merge_join(target.document, source.docuemnt, 'a'::text)
- * AND bson_dollar_merge_join(target.document, source.docuemnt, 'b'::text)
- *
- * TODO : Remove this after release 1.20
- */
-static void
-WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *sourceDocVar,
-										   Var *targetDocVar,
-										   Var *sourceShardKeyValueVar,
-										   Var *targetShardKeyValueVar, MergeArgs
-										   mergeArgs)
-{
-	Expr *opexpr = make_opclause(PostgresInt4EqualOperatorOid(),
-								 BOOLOID, false,
-								 (Expr *) targetShardKeyValueVar,
-								 (Expr *) sourceShardKeyValueVar,
-								 InvalidOid,
-								 InvalidOid);
-
-	RangeTblRef *rtr = makeNode(RangeTblRef);
-	rtr->rtindex = 2;
-	query->jointree = makeFromExpr(list_make1(rtr), NULL);
-
-	List *joinFilterList = NIL;
-	joinFilterList = lappend(joinFilterList, opexpr);
-
-	if (mergeArgs.on.value_type == BSON_TYPE_UTF8)
-	{
-		const char *onField = mergeArgs.on.value.v_utf8.str;
-		StringView onFieldStringView = CreateStringViewFromString(onField);
-		Const *onCondition = MakeTextConst(onFieldStringView.string,
-										   onFieldStringView.length);
-
-		List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
-		FuncExpr *onConditionExpr = makeFuncExpr(
-			BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
-			InvalidOid, COERCE_EXPLICIT_CALL);
-
-		joinFilterList = lappend(joinFilterList, onConditionExpr);
-	}
-	else if (mergeArgs.on.value_type == BSON_TYPE_ARRAY)
-	{
-		bson_iter_t onValuesIter;
-		BsonValueInitIterator(&mergeArgs.on, &onValuesIter);
-
-		while (bson_iter_next(&onValuesIter))
-		{
-			const bson_value_t *onValuesElement = bson_iter_value(&onValuesIter);
-
-			const char *onField = onValuesElement->value.v_utf8.str;
-			StringView onFieldStringView = CreateStringViewFromString(onField);
-			Const *onCondition = MakeTextConst(onFieldStringView.string,
-											   onFieldStringView.length);
-
-			List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
-			FuncExpr *onConditionExpr = makeFuncExpr(
-				BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
-				InvalidOid, COERCE_EXPLICIT_CALL);
-
-			joinFilterList = lappend(joinFilterList, onConditionExpr);
-		}
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
-						errmsg(
-							"on field in $merge stage must be either a string or an array of strings, but found %s",
-							BsonTypeName(mergeArgs.on.value_type)),
-						errdetail_log(
-							"on field in $merge stage must be either a string or an array of strings, but found %s",
-							BsonTypeName(mergeArgs.on.value_type))));
-	}
-
-	query->jointree->quals = (Node *) make_ands_explicit(joinFilterList);
 }
 
 
