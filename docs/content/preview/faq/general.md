@@ -91,7 +91,27 @@ YugabyteDB is a good fit for fast-growing, cloud-native applications that need t
 
 YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
 
-### What is a YugabyteDB universe?
+### What are the trade-offs of using YugabyteDB?
+
+Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full compatibility with the PostgreSQL API presents challenges in a distributed environment. The trade-offs can also vary depending on the database you're comparing it to. Here are a few key considerations when switching to YugabyteDB:
+
+- **Consistency vs. Latency**: YugabyteDB uses the [Raft](../../architecture/docdb-replication/raft) consensus algorithm for strong consistency in distributed systems. While this guarantees data integrity, it can result in higher write latency compared to eventually consistent databases like Cassandra.
+
+- **Increased Query Latency**: Transactions and JOINs that span multiple nodes experience inter-node latency, making queries slower than in single-node databases like PostgreSQL.
+
+{{<note>}}
+[Many projects](https://github.com/yugabyte/yugabyte-db?tab=readme-ov-file#current-roadmap) are underway to bring performance in line with that of a single-node database.
+{{</note>}}
+
+- **Cross-Region Latency**: In multi-region or globally distributed setups, YugabyteDB replicates data across regions to ensure availability and resilience. However, this can lead to higher write latency due to cross-region coordination.
+
+- **Resource Requirements**: Being a distributed database, YugabyteDB demands more hardware and networking resources to maintain high availability and fault tolerance compared to traditional monolithic databases that run on a single machine.
+
+- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
+
+{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
+
+### What is a YugabyteDB universe
 
 A YugabyteDB [universe](/preview/architecture/key-concepts/#universe) comprises one [primary cluster](/preview/architecture/key-concepts/#primary-cluster) and zero or more [read replica clusters](/preview/architecture/key-concepts/#read-replica-cluster) that collectively function as a resilient and scalable distributed database. It is common to have just a primary cluster and hence the terms cluster and universe are sometimes used interchangeably but it is worthwhile to note that they are different.
 
