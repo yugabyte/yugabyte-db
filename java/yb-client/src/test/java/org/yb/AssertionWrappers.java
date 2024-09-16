@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,6 +14,7 @@ package org.yb;
 
 import org.hamcrest.Matcher;
 import org.junit.Assert;
+import org.junit.function.ThrowingRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -822,5 +823,16 @@ public class AssertionWrappers {
    */
   public static <T> void assertLessThanOrEqualTo(String message, Comparable<T> a, T b) {
     wrapAssertion(() -> Assert.assertTrue(message, a.compareTo(b) <= 0));
+  }
+
+  public static <T extends Throwable> void assertThrows(
+      String message, Class<T> expectedType, ThrowingRunnable runnable) {
+    wrapAssertion(() -> LOG.info(
+        "Expected exception: " + Assert.assertThrows(message, expectedType, runnable).toString()));
+  }
+
+  public static <T extends Throwable> void assertThrows(
+      Class<T> expectedType, ThrowingRunnable runnable) {
+    assertThrows(null, expectedType, runnable);
   }
 }
