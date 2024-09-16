@@ -7453,6 +7453,7 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		IndexPath  *ipath = (IndexPath *) bitmapqual;
 		IndexScan  *iscan;
 		List	   *indexqual;
+		ListCell   *l;
 
 		/* Use the regular indexscan plan build machinery... */
 		iscan = castNode(IndexScan,
@@ -7466,6 +7467,21 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		if (iscan->yb_idx_pushdown.quals)
 			indexqual = lappend(indexqual,
 								make_ands_explicit(iscan->yb_idx_pushdown.quals));
+
+		/* We can add any index predicate conditions, too */
+		foreach(l, ipath->indexinfo->indpred)
+		{
+			Expr	   *pred = (Expr *) lfirst(l);
+
+			/*
+			 * We know that the index predicate must have been implied by the
+			 * query condition as a whole, but it may or may not be implied by
+			 * the conditions that got pushed into the bitmapqual.  Avoid
+			 * generating redundant conditions.
+			 */
+			if (!predicate_implied_by(list_make1(pred), indexqual, false))
+				indexqual = lappend(indexqual, pred);
+		}
 
 		pfree(iscan);
 
