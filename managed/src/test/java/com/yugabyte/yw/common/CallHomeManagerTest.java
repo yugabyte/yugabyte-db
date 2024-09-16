@@ -127,7 +127,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     String expectedToken =
         Base64.getEncoder().encodeToString(defaultCustomer.getUuid().toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
-    assertEquals("https://yw-diagnostics.yugabyte.com", url.getValue());
+    assertEquals("https://diagnostics.yugabyte.com", url.getValue());
   }
 
   @Test
