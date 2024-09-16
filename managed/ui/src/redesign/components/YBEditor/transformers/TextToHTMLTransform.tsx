@@ -12,6 +12,7 @@ import {
   ALERT_VARIABLE_ELEMENT_TYPE,
   ALERT_VARIABLE_END_TAG,
   ALERT_VARIABLE_START_TAG,
+  LINE_BREAK_REGEX,
   MATCH_ALL_BETWEEN_BRACKET_REGEX
 } from '../plugins';
 import { IAlertVariablesList } from '../../../features/alerts/TemplateComposer/ICustomVariables';
@@ -52,7 +53,7 @@ export function TextToHTMLTransform(text: string, alertVariables: IAlertVariable
 
     // split the text by \n and parse each line.
     // each line contains a list of elements
-    const domElementsByLine = text.split('\n').map((line) => {
+    const domElementsByLine = text.split(LINE_BREAK_REGEX).map((line) => {
       return Array.from(new DOMParser().parseFromString(line, 'text/html').body.childNodes);
     });
 
@@ -65,7 +66,7 @@ export function TextToHTMLTransform(text: string, alertVariables: IAlertVariable
         if (element.tagName) {
           // element is not text, it has tags like P, SPAN etc
 
-          if (element.tagName === 'P') {
+          if (element.tagName === 'P' || element.tagName === 'BR') {
             const align = element.getAttribute('align');
 
             if (align) {
