@@ -98,7 +98,7 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
 
-- Number of tablet peers is 80% of the cluster limit (Warning).
+- Number of tablet peers is 85% of the cluster limit (Warning).
 - Number of tablet peers is 100% of the cluster limit (Severe).
 
 If the number of tablet peers in the cluster approaches the limit for the cluster, consider scaling the cluster horizontally by adding nodes, or vertically by adding vCPUs.
