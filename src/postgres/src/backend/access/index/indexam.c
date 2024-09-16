@@ -265,6 +265,23 @@ index_delete(Relation indexRelation,
 											 indexInfo);
 }
 
+void
+yb_index_update(Relation indexRelation,
+				Datum *values,
+				bool *isnull,
+				Datum oldYbctid,
+				Datum newYbctid,
+				Relation heapRelation,
+				struct IndexInfo *indexInfo)
+{
+	RELATION_CHECKS;
+	CHECK_REL_PROCEDURE(yb_amupdate);
+
+	indexRelation->rd_amroutine->yb_amupdate(indexRelation, values, isnull,
+											 oldYbctid, newYbctid,
+											 heapRelation, indexInfo);
+}
+
 /*
  * index_beginscan - start a scan of an index with amgettuple
  *

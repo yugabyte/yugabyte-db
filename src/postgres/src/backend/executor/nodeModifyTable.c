@@ -1562,14 +1562,9 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 			mtstate->yb_fetch_target_tuple)
 		{
-			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
-
-			/* Delete index entries of the old tuple */
-			ExecDeleteIndexTuplesOptimized(ybctid, oldtuple, estate);
-
-			/* Insert new index entries for tuple */
-			recheckIndexes = ExecInsertIndexTuplesOptimized(
-				slot, tuple, estate, false, NULL, NIL);
+			recheckIndexes =  YbExecUpdateIndexTuples(
+				slot, YBCGetYBTupleIdFromSlot(planSlot), oldtuple, tuple,
+				estate, cols_marked_for_update, is_pk_updated);
 		}
 
 		bms_free(cols_marked_for_update);

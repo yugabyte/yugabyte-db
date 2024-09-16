@@ -69,6 +69,10 @@ extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 											   AttrNumber attr_offset);
 extern bool CheckIndexForUpdate(Oid indexoid,
 						   const Bitmapset *updated_attrs, AttrNumber attr_offset);
+extern bool CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
+								  Relation indexDesc,
+								  const int Anum_pg_index,
+								  AttrNumber attr_offset);
 
 extern void RelationGetExclusionInfo(Relation indexRelation,
 						 Oid **operators,

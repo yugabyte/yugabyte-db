@@ -60,6 +60,7 @@ makeBaseYbVectorHandler()
 	amroutine->ampredlocks = true; /* TODO(tanuj): check what this is */
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->ybamcanupdatetupleinplace = false;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ybvectorbuild;
@@ -85,6 +86,7 @@ makeBaseYbVectorHandler()
 	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybvectorinsert;
 	amroutine->yb_amdelete = ybvectordelete;
+	amroutine->yb_amupdate = NULL;
 	amroutine->yb_ambackfill = ybvectorbackfill;
 	amroutine->yb_ammightrecheck = ybvectormightrecheck;
 	amroutine->yb_ambindschema = NULL;
