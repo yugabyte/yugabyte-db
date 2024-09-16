@@ -3213,6 +3213,7 @@ class ControlScript(object):
             "--placement_cloud={}".format(self.configs.saved_data.get("cloud_provider")),
             "--placement_region={}".format(self.configs.saved_data.get("cloud_region")),
             "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
+            "--use_memory_defaults_optimized_for_ysql=true",
         ]
 
         if fault_tolerance == "region":
@@ -3244,8 +3245,9 @@ class ControlScript(object):
                 os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
             "--master_enable_metrics_snapshotter=true",
             "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
-            "--default_memory_limit_to_ram_ratio=0.35",
             "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
+            "--enforce_tablet_replica_limits=true",
+            "--split_respects_tablet_replica_limits=true",
         ]
 
         if self.configs.saved_data.get("secure"):
@@ -3340,7 +3342,6 @@ class ControlScript(object):
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.6",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
                 "--start_redis_proxy=false",
                 "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
