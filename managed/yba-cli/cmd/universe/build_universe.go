@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
@@ -20,8 +19,9 @@ import (
 )
 
 var checkInterfaceType []interface{}
+var checkStringType string
 
-func buildCommunicationPorts(cmd *cobra.Command) *ybaclient.CommunicationPorts {
+func buildCommunicationPorts() *ybaclient.CommunicationPorts {
 	masterHTTPPort := v1.GetInt("master-http-port")
 	masterRPCPort := v1.GetInt("master-rpc-port")
 	nodeExporterPort := v1.GetInt("node-exporter-port")
@@ -50,7 +50,6 @@ func buildCommunicationPorts(cmd *cobra.Command) *ybaclient.CommunicationPorts {
 }
 
 func buildClusters(
-	cmd *cobra.Command,
 	authAPI *ybaAuthClient.AuthAPIClient,
 	universeName string,
 ) (
@@ -107,7 +106,7 @@ func buildClusters(
 	}
 
 	imageBundlesInProvider := providerUsed.GetImageBundles()
-	if len(imageBundlesInProvider) == 0 {
+	if len(imageBundlesInProvider) == 0 && util.IsCloudBasedProvider(providerType) {
 		return nil, fmt.Errorf("no image bundles found for provider %s", providerName)
 	}
 
@@ -139,7 +138,7 @@ func buildClusters(
 	}
 
 	if len(imageBundleUUIDs) != len(linuxVersionsInput) {
-		fmt.Errorf("the provided linux version name cannot be found")
+		return nil, fmt.Errorf("the provided linux version name cannot be found")
 	}
 
 	imageBundleLen := len(imageBundleUUIDs)
@@ -165,6 +164,12 @@ func buildClusters(
 		k8sTserverMemSizeInterface := v1.Get("k8s-tserver-mem-size")
 		if reflect.TypeOf(k8sTserverMemSizeInterface) == reflect.TypeOf(checkInterfaceType) {
 			k8sTserverMemSize = *util.Float64Slice(k8sTserverMemSizeInterface.([]interface{}))
+		} else if reflect.TypeOf(k8sTserverMemSizeInterface) == reflect.TypeOf(checkStringType) {
+			k8sTserverMemSize, err = util.GetFloat64SliceFromString(
+				k8sTserverMemSizeInterface.(string))
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
 		} else {
 			k8sTserverMemSize = k8sTserverMemSizeInterface.([]float64)
 		}
@@ -172,6 +177,12 @@ func buildClusters(
 		k8sTserverCPUCoreCountInterface := v1.Get("k8s-tserver-cpu-core-count")
 		if reflect.TypeOf(k8sTserverCPUCoreCountInterface) == reflect.TypeOf(checkInterfaceType) {
 			k8sTserverCPUCoreCount = *util.Float64Slice(k8sTserverCPUCoreCountInterface.([]interface{}))
+		} else if reflect.TypeOf(k8sTserverCPUCoreCountInterface) == reflect.TypeOf(checkStringType) {
+			k8sTserverCPUCoreCount, err = util.GetFloat64SliceFromString(
+				k8sTserverCPUCoreCountInterface.(string))
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
 		} else {
 			k8sTserverCPUCoreCount = k8sTserverCPUCoreCountInterface.([]float64)
 		}
@@ -179,6 +190,12 @@ func buildClusters(
 		k8sMasterMemSizeInterface := v1.Get("k8s-master-mem-size")
 		if reflect.TypeOf(k8sMasterMemSizeInterface) == reflect.TypeOf(checkInterfaceType) {
 			k8sMasterMemSize = *util.Float64Slice(k8sMasterMemSizeInterface.([]interface{}))
+		} else if reflect.TypeOf(k8sMasterMemSizeInterface) == reflect.TypeOf(checkStringType) {
+			k8sMasterMemSize, err = util.GetFloat64SliceFromString(
+				k8sMasterMemSizeInterface.(string))
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
 		} else {
 			k8sMasterMemSize = k8sMasterMemSizeInterface.([]float64)
 		}
@@ -186,6 +203,12 @@ func buildClusters(
 		k8sMasterCPUCoreCountInterface := v1.Get("k8s-master-cpu-core-count")
 		if reflect.TypeOf(k8sMasterCPUCoreCountInterface) == reflect.TypeOf(checkInterfaceType) {
 			k8sMasterCPUCoreCount = *util.Float64Slice(k8sMasterCPUCoreCountInterface.([]interface{}))
+		} else if reflect.TypeOf(k8sMasterCPUCoreCountInterface) == reflect.TypeOf(checkStringType) {
+			k8sMasterCPUCoreCount, err = util.GetFloat64SliceFromString(
+				k8sMasterCPUCoreCountInterface.(string))
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
 		} else {
 			k8sMasterCPUCoreCount = k8sMasterCPUCoreCountInterface.([]float64)
 		}
@@ -204,7 +227,10 @@ func buildClusters(
 		if len(masterInstanceTypeList) > 0 {
 			masterInstanceType = masterInstanceTypeList[0]
 		}
-		masterDeviceInfo, err = buildMasterDeviceInfo(cmd, providerType, masterInstanceType, onpremInstanceTypeDefault)
+		masterDeviceInfo, err = buildMasterDeviceInfo(
+			providerType,
+			masterInstanceType,
+			onpremInstanceTypeDefault)
 		if err != nil {
 			return nil, err
 		}
@@ -315,7 +341,11 @@ func buildClusters(
 
 	logrus.Info("Using preferred regions: ", preferredRegions, "\n")
 
-	deviceInfo, err := buildDeviceInfo(cmd, providerType, noOfClusters, instanceTypes, onpremInstanceTypeDefault)
+	deviceInfo, err := buildDeviceInfo(
+		providerType,
+		noOfClusters,
+		instanceTypes,
+		onpremInstanceTypeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -517,9 +547,8 @@ func buildClusters(
 				Provider:       util.GetStringPointer(providerUUID),
 				DedicatedNodes: util.GetBoolPointer(dedicatedNodes),
 
-				InstanceType:    util.GetStringPointer(instanceTypes[i]),
-				ImageBundleUUID: util.GetStringPointer(imageBundleUUIDs[i]),
-				DeviceInfo:      deviceInfo[i],
+				InstanceType: util.GetStringPointer(instanceTypes[i]),
+				DeviceInfo:   deviceInfo[i],
 
 				MasterInstanceType: util.GetStringPointer(masterInstanceType),
 				MasterDeviceInfo:   masterDeviceInfo,
@@ -562,19 +591,15 @@ func buildClusters(
 			k8sMasterCPUCoreCountLen := len(k8sMasterCPUCoreCount)
 			if i == k8sTserverMemSizeLen {
 				k8sTserverMemSize = append(k8sTserverMemSize, 4)
-				k8sTserverMemSizeLen = k8sTserverMemSizeLen + 1
 			}
 			if i == k8sMasterMemSizeLen {
 				k8sMasterMemSize = append(k8sMasterMemSize, 4)
-				k8sMasterMemSizeLen = k8sMasterMemSizeLen + 1
 			}
 			if i == k8sTserverCPUCoreCountLen {
 				k8sTserverCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
-				k8sTserverCPUCoreCountLen = k8sTserverCPUCoreCountLen + 1
 			}
 			if i == k8sMasterCPUCoreCountLen {
 				k8sMasterCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
-				k8sMasterCPUCoreCountLen = k8sMasterCPUCoreCountLen + 1
 			}
 			userIntent := c.GetUserIntent()
 			userIntent.SetTserverK8SNodeResourceSpec(ybaclient.K8SNodeResourceSpec{
@@ -587,6 +612,11 @@ func buildClusters(
 			})
 			c.SetUserIntent(userIntent)
 		}
+		if util.IsCloudBasedProvider(providerType) {
+			userIntent := c.GetUserIntent()
+			userIntent.SetImageBundleUUID(imageBundleUUIDs[i])
+			c.SetUserIntent(userIntent)
+		}
 		res = append(res, c)
 	}
 
@@ -594,7 +624,6 @@ func buildClusters(
 }
 
 func buildDeviceInfo(
-	cmd *cobra.Command,
 	providerType string,
 	noOfClusters int,
 	instanceTypes []string,
@@ -711,7 +740,7 @@ func buildDeviceInfo(
 			volumeSizeLen = volumeSizeLen + 1
 		}
 		if i == storageTypeLen {
-			storageTypeDefault := setDefaultStorageTypes(providerType, onpremVolumeDefault)
+			storageTypeDefault := setDefaultStorageTypes(providerType)
 			if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceTypes[i]) {
 				storageTypeDefault = ""
 			}
@@ -733,7 +762,6 @@ func buildDeviceInfo(
 }
 
 func buildMasterDeviceInfo(
-	cmd *cobra.Command,
 	providerType string,
 	instanceType string,
 	onpremInstanceTypeDefault ybaclient.InstanceTypeResp) (
@@ -772,7 +800,7 @@ func buildMasterDeviceInfo(
 	}
 
 	if len(storageType) == 0 {
-		storageType = setDefaultStorageTypes(providerType, onpremVolumeDefault)
+		storageType = setDefaultStorageTypes(providerType)
 		if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceType) {
 			storageType = ""
 		}
@@ -823,7 +851,6 @@ func setDefaultInstanceTypes(
 
 func setDefaultStorageTypes(
 	providerType string,
-	onpremVolumeDefault ybaclient.VolumeDetails,
 ) (
 	storageType string,
 ) {
