@@ -6660,6 +6660,13 @@
           },
           "type" : "array"
         },
+        "groupsToSync" : {
+          "description" : "LDAP groups to sync. In case user belongs to multiple groups & we don't want to sync all of them to DB",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "ldapBasedn" : {
           "description" : "Dn of the search starting point.",
           "example" : "dc=example,dc=org",
