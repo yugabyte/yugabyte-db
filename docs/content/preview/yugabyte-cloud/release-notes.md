@@ -24,6 +24,8 @@ On this page:
 **New features**
 
 - Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS to [Prometheus](https://prometheus.io/docs/introduction/overview/) and [VictoriaMetrics](https://docs.victoriametrics.com/). These integrations are available as a [tech preview](/preview/releases/versioning/#feature-maturity). To try them out, send a request to {{% support-cloud %}}.
+- Ability to set [alerts](../cloud-monitor/cloud-alerts/) for when a cluster reaches its limit for the allowed number of tablet peers.
+- New Azure regions: Netherlands, Stockholm, and Doha.
 
 ### August 15, 2024
 
