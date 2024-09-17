@@ -224,6 +224,7 @@ export interface NodeAgentEntities {
 export enum NodeAgentStatusList {
   READY = 'READY',
   REGISTERING = 'REGISTERING',
+  REGISTERED = 'REGISTERED',
   UPGRADE = 'UPGRADE',
   UPGRADED = 'UPGRADED'
 }

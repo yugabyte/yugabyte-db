@@ -26,6 +26,7 @@ import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import CustomerMetricsPanel from '../CustomerMetricsPanel/CustomerMetricsPanel';
+import { YBModal, YBProgress } from '../../../redesign/components';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -37,8 +38,8 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import './GraphPanelHeader.scss';
-import { YBModal, YBProgress } from '../../../redesign/components';
 
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -562,7 +563,8 @@ class GraphPanelHeader extends Component {
       closeModal,
       visibleModal,
       enableNodeComparisonModal,
-      printMode
+      printMode,
+      customer: { customerRuntimeConfigs }
     } = this.props;
     const {
       filterType,
@@ -588,6 +590,11 @@ class GraphPanelHeader extends Component {
         />
       );
     }
+
+    const isDownloadMetricsAllowed =
+      customerRuntimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.DOWNLOAD_METRICS_PDF
+      )?.value === 'true';
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
@@ -738,16 +745,18 @@ class GraphPanelHeader extends Component {
                             onClick={this.refreshGraphQuery}
                           />
                           &nbsp;
-                          <YBButton
-                            btnText="Download Metrics"
-                            onClick={() => {
-                              this.setState({
-                                openPreviewMetricsModal: true,
-                                pdfDownloadInProgress: false,
-                                downloadPercent: 0
-                              });
-                            }}
-                          />
+                          {isDownloadMetricsAllowed && (
+                            <YBButton
+                              btnText="Download Metrics"
+                              onClick={() => {
+                                this.setState({
+                                  openPreviewMetricsModal: true,
+                                  pdfDownloadInProgress: false,
+                                  downloadPercent: 0
+                                });
+                              }}
+                            />
+                          )}
                         </div>
                         <Dropdown
                           id="graphSettingDropdown"

@@ -124,14 +124,14 @@ std::string SnapshotState::ToString() const {
 }
 
 Status SnapshotState::ToPB(
-    SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const {
+    SnapshotInfoPB* out, const ListSnapshotsDetailOptionsPB& options) const {
   out->set_id(id_.data(), id_.size());
   return ToEntryPB(out->mutable_entry(), ForClient::kTrue, options);
 }
 
 Status SnapshotState::ToEntryPB(
     SysSnapshotEntryPB* out, ForClient for_client,
-    ListSnapshotsDetailOptionsPB options) const {
+    const ListSnapshotsDetailOptionsPB& options) const {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   if (previous_snapshot_hybrid_time_) {
@@ -292,6 +292,15 @@ bool SnapshotState::HasExpired(HybridTime now) const {
       MonoDelta::FromHours(*retention_duration_hours_);
   HybridTime expiry_time = snapshot_hybrid_time_.AddDelta(delta);
   return now > expiry_time;
+}
+
+ListSnapshotsDetailOptionsPB ListSnapshotsDetailOptionsFactory::CreateWithNoDetails() {
+  auto result = ListSnapshotsDetailOptionsPB();
+  result.set_show_namespace_details(false);
+  result.set_show_udtype_details(false);
+  result.set_show_table_details(false);
+  result.set_show_tablet_details(false);
+  return result;
 }
 
 } // namespace master

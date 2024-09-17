@@ -53,8 +53,6 @@ You can restore YugabyteDB universe data from a backup as follows:
 
     If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
 
-1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
-
 1. If you are restoring data from a universe that has tablespaces, select the **Restore tablespaces and data to their respective regions** option.
 
     To restore tablespaces, the target universe must have a topology that matches the source.
@@ -148,7 +146,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. On the **Backups** tab of the universe to which you want to restore, click **Advanced** and choose **Advanced Restore** to display the **Advanced Restore** dialog.
 
-    ![Restore advanced](/images/yp/restore-advanced-ycql.png)
+    ![Restore advanced](/images/yp/restore-advanced-ycql-2.20.png)
 
 1. Choose the type of API.
 
@@ -158,11 +156,11 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
     ```
 
-1. Select the **Backup config** that corresponds to the location of the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+1. Select the **Backup config** that corresponds to the storage configuration that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 
-    Note that the backup config bucket takes precedence over the bucket specified in the backup location.
+    Note that the storage configuration bucket takes precedence over the bucket specified in the backup location.
 
-    For example, if the backup config you provide is for the following S3 Bucket:
+    For example, if the storage configuration you select is for the following S3 Bucket:
 
     ```output
     s3://test_bucket/test
@@ -181,8 +179,6 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 1. To rename databases (YSQL) or keyspaces (YCQL) in the backup before restoring, select the rename option.
 
 1. If the backup involved universes that had [encryption at rest enabled](../../security/enable-encryption-at-rest), then select the KMS configuration to use.
-
-1. If you are using YugabyteDB Anywhere version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
 1. If you chose to rename databases/keyspaces, click **Next**, then enter new names for the databases/keyspaces that you want to rename.
 

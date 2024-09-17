@@ -31,7 +31,7 @@ type Context struct {
 // NewInstanceTypesFormat for formatting output
 func NewInstanceTypesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultInstanceTypesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -42,7 +42,7 @@ func NewInstanceTypesFormat(source string) formatter.Format {
 // Write renders the context for a list of InstanceTypess
 func Write(ctx formatter.Context, instanceTypes []ybaclient.InstanceTypeResp) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of instance types into JSON
 		var output []byte
 		var err error

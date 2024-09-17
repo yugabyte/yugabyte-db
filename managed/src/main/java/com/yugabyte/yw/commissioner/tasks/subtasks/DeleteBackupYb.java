@@ -55,7 +55,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
         }
         backupsToDelete.addAll(
             Backup.fetchAllBackupsByBaseBackupUUID(
-                backup.getCustomerUUID(), backup.getBackupUUID()));
+                backup.getCustomerUUID(), backup.getBackupUUID(), null /* state */));
       }
       backupsToDelete.add(backup);
       backupsToDelete.forEach(

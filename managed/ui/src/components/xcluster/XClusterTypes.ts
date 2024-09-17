@@ -1,6 +1,7 @@
 import moment from 'moment';
 
 import {
+  BootstrapCategory,
   CUSTOM_METRIC_TIME_RANGE_OPTION,
   DROPDOWN_DIVIDER,
   MetricName,
@@ -11,7 +12,7 @@ import {
 } from './constants';
 
 import { MetricTrace, YBTable } from '../../redesign/helpers/dtos';
-import { XClusterTableDetails } from './dtos';
+import { XClusterConfigNeedBootstrapPerTableResponse, XClusterTableDetails } from './dtos';
 
 /**
  * XCluster supported table type.
@@ -115,6 +116,22 @@ export type ReplicationItems = {
   searchMatchingTableUuids: Set<string>;
   searchMatchingNamespaceUuids: Set<string>;
 };
+
+export interface CategoryNeedBootstrapResponse {
+  bootstrapCategory: BootstrapCategory;
+  tableCount: number;
+  tables: XClusterConfigNeedBootstrapPerTableResponse;
+}
+
+export interface CategorizedNeedBootstrapPerTableResponse {
+  bootstrapTableUuids: string[];
+  noBootstrapRequired: CategoryNeedBootstrapResponse;
+  tableHasDataBidirectional: CategoryNeedBootstrapResponse;
+  targetTableMissingBidirectional: CategoryNeedBootstrapResponse;
+  tableHasData: CategoryNeedBootstrapResponse;
+  targetTableMissing: CategoryNeedBootstrapResponse;
+}
+
 //------------------------------------------------------------------------------------
 
 export type Metrics<MetricNameType extends MetricName> = {

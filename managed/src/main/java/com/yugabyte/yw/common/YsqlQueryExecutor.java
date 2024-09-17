@@ -214,6 +214,41 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        authEnabled,
+        enableConnectionPooling,
+        internalYsqlServerRpcPort);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -224,7 +259,14 @@ public class YsqlQueryExecutor {
       shellResponse =
           nodeUniverseManager
               .runYsqlCommand(
-                  node, universe, queryParams.getDbName(), queryString, timeoutSec, authEnabled)
+                  node,
+                  universe,
+                  queryParams.getDbName(),
+                  queryString,
+                  timeoutSec,
+                  authEnabled,
+                  enableConnectionPooling,
+                  internalYsqlServerRpcPort)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));

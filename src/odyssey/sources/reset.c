@@ -48,7 +48,9 @@ int od_reset(od_server_t *server)
 	 *
 	 * 3. Continue with (1)
 	 */
-	int wait_timeout = 5000;
+
+	/* With tsan larger time is taken to read from the sockets */
+	int wait_timeout = 10000;
 	int wait_try = 0;
 	int wait_try_cancel = 0;
 	int wait_cancel_limit = 1;

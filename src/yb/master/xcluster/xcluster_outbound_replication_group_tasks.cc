@@ -23,6 +23,15 @@ using namespace std::placeholders;
 
 namespace yb::master {
 
+namespace {
+
+bool IsRetryableError(const Status& status) {
+  return status.IsTryAgain() || status.IsServiceUnavailable() || status.IsNetworkError() ||
+         status.IsLeaderNotReadyToServe() || status.IsLeaderHasNoLease();
+}
+
+}  // namespace
+
 XClusterOutboundReplicationGroupTaskFactory::XClusterOutboundReplicationGroupTaskFactory(
     std::function<Status(const LeaderEpoch& epoch)> validate_epoch_func,
     ThreadPool& async_task_pool, rpc::Messenger& messenger)
@@ -66,6 +75,8 @@ Status XClusterCheckpointNamespaceTask::CheckpointStreams() {
       namespace_id_, epoch_,
       std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreamsCallback, this, _1));
 
+  // CheckpointStreamsForInitialBootstrap can fail with TryAgain if it cannot find the tablet
+  // leaders to send the rpc to.
   if (!status.ok() && status.IsTryAgain()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to checkpoint streams: " << status << ". Scheduling retry";
     ScheduleNextStepWithDelay(
@@ -92,6 +103,15 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
         std::bind(
             &XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed, this, std::move(result)),
         "MarkTablesAsCheckpointed", MonoDelta::FromMilliseconds(100));
+    return Status::OK();
+  }
+
+  if (!result && IsRetryableError(result.status())) {
+    LOG_WITH_PREFIX(INFO) << "Failed to checkpoint streams with retryable error: "
+                          << result.status() << ". Scheduling retry";
+    ScheduleNextStepWithDelay(
+        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams",
+        GetDelayWithBackoff());
     return Status::OK();
   }
 

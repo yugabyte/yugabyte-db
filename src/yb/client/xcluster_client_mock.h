@@ -30,7 +30,7 @@ class MockXClusterClient : public XClusterClient {
       Result<UniverseUuid>, SetupDbScopedUniverseReplication,
       (const xcluster::ReplicationGroupId&, const std::vector<HostPort>&,
        const std::vector<NamespaceName>&, const std::vector<NamespaceId>&,
-       const std::vector<TableId>&, const std::vector<xrepl::StreamId>&),
+       const std::vector<TableId>&, const std::vector<xrepl::StreamId>&, bool),
       (override));
 
   MOCK_METHOD(

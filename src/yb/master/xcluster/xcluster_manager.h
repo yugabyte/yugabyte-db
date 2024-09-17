@@ -50,7 +50,8 @@ class XClusterManager : public XClusterManagerIf,
 
   Status Init();
 
-  void Shutdown();
+  void StartShutdown() EXCLUDES(monitored_tasks_mutex_);
+  void CompleteShutdown() EXCLUDES(monitored_tasks_mutex_);
 
   void Clear();
 
@@ -108,6 +109,9 @@ class XClusterManager : public XClusterManagerIf,
   Status IsSetupUniverseReplicationDone(
       const IsSetupUniverseReplicationDoneRequestPB* req,
       IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) override;
 
   Status SetupNamespaceReplicationWithBootstrap(
       const SetupNamespaceReplicationWithBootstrapRequestPB* req,
@@ -248,6 +252,9 @@ class XClusterManager : public XClusterManagerIf,
   Status HandleTabletSchemaVersionReport(
       const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch);
 
+  Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+  void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -255,6 +262,9 @@ class XClusterManager : public XClusterManagerIf,
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  std::mutex monitored_tasks_mutex_;
+  std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
 }  // namespace master

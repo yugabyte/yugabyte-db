@@ -78,13 +78,14 @@ public class AutoMasterFailoverScheduler {
   /** Type of failover scheduled job to be created. */
   public enum FailoverJobType {
     DETECT_MASTER_FAILURE,
-    MASTER_FAILOVER
+    MASTER_FAILOVER,
+    SYNC_MASTER_ADDRS
   }
 
   /** Implementation of the schedule job config for failover. */
   @SuppressWarnings("serial")
   @Getter
-  @Builder
+  @Builder(toBuilder = true)
   @Jacksonized
   public static class FailoverJobConfig implements JobConfig {
     private UUID customerUuid;
@@ -113,6 +114,7 @@ public class AutoMasterFailoverScheduler {
                 scheduler.detectMasterFailure(customer, universe, runtime);
                 break;
               case MASTER_FAILOVER:
+              case SYNC_MASTER_ADDRS:
                 try {
                   log.debug(
                       "Running auto master failover for universe {}", universe.getUniverseUUID());
@@ -210,12 +212,6 @@ public class AutoMasterFailoverScheduler {
                                 u.getUniverseUUID());
                             return;
                           }
-                          if (u.getUniverseDetails().universePaused) {
-                            log.debug(
-                                "Automated master failover for universe {} is paused",
-                                u.getUniverseUUID());
-                            return;
-                          }
                           String ybDbVersion = userIntent.ybSoftwareVersion;
                           if (Util.compareYBVersions(
                                   ybDbVersion,
@@ -233,11 +229,12 @@ public class AutoMasterFailoverScheduler {
                             return;
                           }
                           try {
-                            createDetectMasterFailureSchedule(c, u);
+                            // Create both schedules up front.
+                            createMasterFailoverDetectionSchedule(c, u);
+                            createMasterFailoverSchedule(c, u);
                           } catch (Exception e) {
                             log.error(
-                                "Error in creating master failure detection schedule for universe"
-                                    + " {} - {}",
+                                "Error in creating master failover schedules for universe {} - {}",
                                 u.getUniverseUUID(),
                                 e.getMessage());
                           } finally {
@@ -253,35 +250,35 @@ public class AutoMasterFailoverScheduler {
             return !universeUuids.contains(jobConfig.getUniverseUuid());
           });
     } catch (Exception e) {
-      log.error("Error in deleting schedules {}", e.getMessage());
+      log.error("Error in deleting master failover schedules {}", e.getMessage());
     }
   }
 
-  /** Create a schedule to detect master failure for the given universe */
-  private void createDetectMasterFailureSchedule(Customer customer, Universe universe) {
-    log.trace(
-        "Creating master failure detection schedule for universe {} if it is absent",
-        universe.getUniverseUUID());
+  private void createMasterFailoverDetectionSchedule(Customer customer, Universe universe) {
     Duration detectionInterval =
         confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverDetectionInterval);
-    log.debug(
+    log.trace(
         "Master failover detection interval is set to {} seconds for universe {}",
         detectionInterval.getSeconds(),
         universe.getUniverseUUID());
-    String scheduleName = getDetectMasterFailureScheduleName(universe);
+    String detectScheduleName = getDetectMasterFailureScheduleName(universe);
+    boolean shouldDisable = universe.getUniverseDetails().universePaused;
     Optional<JobSchedule> optional =
-        jobScheduler.maybeGetSchedule(customer.getUuid(), scheduleName);
+        jobScheduler.maybeGetSchedule(customer.getUuid(), detectScheduleName);
     if (optional.isPresent()) {
       ScheduleConfig scheduleConfig = optional.get().getScheduleConfig();
-      if (scheduleConfig.isDisabled()) {
-        log.debug(
-            "Master failover detection schedule is disabled for universe {}",
-            universe.getUniverseUUID());
-        // Disable the existing failover if the detection is disabled.
-        disableSchedule(customer, getAutoMasterFailoverScheduleName(universe));
-      } else if (detectionInterval.getSeconds() != scheduleConfig.getIntervalSecs()) {
+      if (shouldDisable ^ scheduleConfig.isDisabled()) {
         log.info(
-            "Failover detection schedule has changed from {} secs to {} secs",
+            "Master failover detection schedule has changed from disabled = {} to {} for universe"
+                + " {}",
+            scheduleConfig.isDisabled(),
+            shouldDisable,
+            universe.getUniverseUUID());
+        disableSchedule(customer, detectScheduleName, shouldDisable);
+      }
+      if (detectionInterval.getSeconds() != scheduleConfig.getIntervalSecs()) {
+        log.info(
+            "Master failover detection schedule has changed from {} secs to {} secs",
             scheduleConfig.getIntervalSecs(),
             detectionInterval.getSeconds());
         jobScheduler.updateSchedule(
@@ -290,19 +287,60 @@ public class AutoMasterFailoverScheduler {
       }
     } else {
       log.info(
-          "Creating master failure detection schedule for universe {}", universe.getUniverseUUID());
-      JobSchedule jobSchedule = new JobSchedule();
-      jobSchedule.setCustomerUuid(customer.getUuid());
-      jobSchedule.setName(scheduleName);
-      jobSchedule.setScheduleConfig(
-          ScheduleConfig.builder().intervalSecs(detectionInterval.getSeconds()).build());
-      jobSchedule.setJobConfig(
+          "Creating master failure detection schedule at {} secs for universe {}",
+          detectionInterval.getSeconds(),
+          universe.getUniverseUUID());
+      JobSchedule detectJobSchedule = new JobSchedule();
+      detectJobSchedule.setCustomerUuid(customer.getUuid());
+      detectJobSchedule.setName(detectScheduleName);
+      detectJobSchedule.setScheduleConfig(
+          ScheduleConfig.builder()
+              .disabled(shouldDisable)
+              .intervalSecs(detectionInterval.getSeconds())
+              .build());
+      detectJobSchedule.setJobConfig(
           FailoverJobConfig.builder()
               .customerUuid(customer.getUuid())
               .universeUuid(universe.getUniverseUUID())
               .failoverJobType(FailoverJobType.DETECT_MASTER_FAILURE)
               .build());
-      jobScheduler.submitSchedule(jobSchedule);
+      jobScheduler.submitSchedule(detectJobSchedule);
+    }
+  }
+
+  private void createMasterFailoverSchedule(Customer customer, Universe universe) {
+    String failoverScheduleName = getAutoMasterFailoverScheduleName(universe);
+    Optional<JobSchedule> optional =
+        jobScheduler.maybeGetSchedule(customer.getUuid(), failoverScheduleName);
+    if (optional.isPresent()) {
+      boolean shouldDisable = universe.getUniverseDetails().universePaused;
+      ScheduleConfig scheduleConfig = optional.get().getScheduleConfig();
+      if (shouldDisable && !scheduleConfig.isDisabled()) {
+        log.info(
+            "Master failover schedule has changed from disabled = {} to {} for universe {}",
+            scheduleConfig.isDisabled(),
+            shouldDisable,
+            universe.getUniverseUUID());
+        log.info("Disabling master failover schedule for universe {}", universe.getUniverseUUID());
+        disableSchedule(customer, failoverScheduleName, shouldDisable);
+      }
+    } else {
+      JobSchedule failoverJobSchedule = new JobSchedule();
+      failoverJobSchedule.setCustomerUuid(customer.getUuid());
+      failoverJobSchedule.setName(failoverScheduleName);
+      // Schedule is disabled, add a dummy time.
+      failoverJobSchedule.setScheduleConfig(
+          ScheduleConfig.builder()
+              .disabled(true)
+              .intervalSecs(Duration.ofDays(1).getSeconds())
+              .build());
+      failoverJobSchedule.setJobConfig(
+          FailoverJobConfig.builder()
+              .customerUuid(customer.getUuid())
+              .universeUuid(universe.getUniverseUUID())
+              .failoverJobType(FailoverJobType.MASTER_FAILOVER)
+              .build());
+      jobScheduler.submitSchedule(failoverJobSchedule);
     }
   }
 
@@ -311,7 +349,7 @@ public class AutoMasterFailoverScheduler {
         CustomerTask.maybeGetLastTaskByTargetUuidTaskType(
             universe.getUniverseUUID(), CustomerTask.TaskType.MasterFailover);
     if (optional.isPresent()) {
-      // Cooldown for a new master failover is calculated from the master failover task.
+      // Cooldown for a new master failover is calculated from the last master failover task.
       Duration cooldownPeriod =
           confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverCooldown);
       log.debug(
@@ -336,13 +374,18 @@ public class AutoMasterFailoverScheduler {
   }
 
   // Disabling a schedule already executing a job does not affect the job.
-  private void disableSchedule(Customer customer, String scheduleName) {
+  private void disableSchedule(Customer customer, String scheduleName, boolean disable) {
     jobScheduler
         .maybeGetSchedule(customer.getUuid(), scheduleName)
         .ifPresent(
             s -> {
-              if (!s.getScheduleConfig().isDisabled()) {
-                jobScheduler.disableSchedule(s.getUuid(), true);
+              if (disable ^ s.getScheduleConfig().isDisabled()) {
+                jobScheduler.disableSchedule(s.getUuid(), disable);
+                log.info(
+                    "Schedule {} has changed from disable={} to {}",
+                    scheduleName,
+                    s.getScheduleConfig().isDisabled(),
+                    disable);
               }
             });
   }
@@ -355,23 +398,29 @@ public class AutoMasterFailoverScheduler {
     if (!isFailoverEnabled) {
       log.debug(
           "Skipping automated master failover for universe {} because it is disabled",
-          universe.getUniverseUUID(),
-          isFailoverEnabled);
-      disableSchedule(customer, failoverScheduleName);
+          universe.getUniverseUUID());
+      disableSchedule(customer, failoverScheduleName, true);
       // Let the creator of this schedule handle the life-cycle.
+      return;
+    }
+    if (universe.getUniverseDetails().universePaused) {
+      log.info(
+          "Skipping master failover for universe {} because it is paused",
+          universe.getUniverseUUID());
+      disableSchedule(customer, failoverScheduleName, true);
       return;
     }
     if (universe.universeIsLocked()) {
       log.info(
           "Skipping master failover for universe {} because it is already being updated",
           universe.getUniverseUUID());
-      disableSchedule(customer, failoverScheduleName);
+      disableSchedule(customer, failoverScheduleName, true);
       return;
     }
     Action action = autoMasterFailover.getAllowedMasterFailoverAction(customer, universe);
     if (action.getActionType() == ActionType.NONE) {
       // No fail-over action can be performed.
-      disableSchedule(customer, failoverScheduleName);
+      disableSchedule(customer, failoverScheduleName, true);
       return;
     }
     log.info(
@@ -381,7 +430,7 @@ public class AutoMasterFailoverScheduler {
     if (action.getTaskType() == TaskType.MasterFailover) {
       if (action.getActionType() == ActionType.SUBMIT) {
         if (!isFailoverTaskCooldownOver(customer, universe)) {
-          disableSchedule(customer, failoverScheduleName);
+          disableSchedule(customer, failoverScheduleName, true);
           return;
         }
         // Verify that the replacement node exists before creating the failover schedule.
@@ -389,10 +438,10 @@ public class AutoMasterFailoverScheduler {
         NodeDetails possibleReplacementCandidate =
             autoMasterFailover.findReplacementMaster(universe, node);
         if (possibleReplacementCandidate == null) {
-          disableSchedule(customer, failoverScheduleName);
+          disableSchedule(customer, failoverScheduleName, true);
           log.info(
-              "Skipping failover schedule as no replacement master found for node {} in universe"
-                  + " {}",
+              "Disabling master failover schedule as no replacement master found for node {} in"
+                  + " universe {}",
               action.getNodeName(),
               universe.getUniverseUUID());
           return;
@@ -407,7 +456,7 @@ public class AutoMasterFailoverScheduler {
                 confGetter.getConfForScope(
                     universe, UniverseConfKeys.autoMasterFailoverMaxTaskRetries);
         if (runtimeParams.getJobSchedule().getFailedCount() > retryLimit) {
-          disableSchedule(customer, failoverScheduleName);
+          disableSchedule(customer, failoverScheduleName, true);
           String errMsg =
               String.format(
                   "Retry limit of %d reached for task %s on universe %s",
@@ -417,54 +466,56 @@ public class AutoMasterFailoverScheduler {
         }
       }
     }
-    Duration taskDelay =
+    FailoverJobType jobType =
         action.getTaskType() == TaskType.MasterFailover
-            ? confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverTaskDelay)
-            : confGetter.getConfForScope(universe, UniverseConfKeys.autoSyncMasterAddrsTaskDelay);
+            ? FailoverJobType.MASTER_FAILOVER
+            : FailoverJobType.SYNC_MASTER_ADDRS;
     log.debug(
         "Task delay is set to {} seconds for universe {}",
-        taskDelay.getSeconds(),
+        action.getDelay().getSeconds(),
         universe.getUniverseUUID());
-    Optional<JobSchedule> optional =
-        jobScheduler.maybeGetSchedule(customer.getUuid(), failoverScheduleName);
-    if (optional.isPresent()) {
-      ScheduleConfig scheduleConfig = optional.get().getScheduleConfig();
-      if (scheduleConfig.isDisabled()) {
-        log.info(
-            "Enabled schedule for action {} to perform on universe {} in {} secs",
-            action,
-            universe.getUniverseUUID(),
-            taskDelay.getSeconds());
-        jobScheduler.updateSchedule(
-            optional.get().getUuid(),
-            scheduleConfig.toBuilder()
-                .disabled(false)
-                .intervalSecs(taskDelay.getSeconds())
-                .build());
-        log.info(
-            "Updated schedule for action {} to perform on universe {} in {} secs",
-            action,
-            universe.getUniverseUUID(),
-            taskDelay.getSeconds());
-      }
-    } else {
-      JobSchedule jobSchedule = new JobSchedule();
-      jobSchedule.setCustomerUuid(customer.getUuid());
-      jobSchedule.setName(failoverScheduleName);
-      jobSchedule.setScheduleConfig(
-          ScheduleConfig.builder().intervalSecs(taskDelay.getSeconds()).build());
-      jobSchedule.setJobConfig(
-          FailoverJobConfig.builder()
-              .customerUuid(customer.getUuid())
-              .universeUuid(universe.getUniverseUUID())
-              .failoverJobType(FailoverJobType.MASTER_FAILOVER)
+    JobSchedule failoverSchedule =
+        jobScheduler.getOrBadRequest(customer.getUuid(), failoverScheduleName);
+    FailoverJobConfig jobConfig = (FailoverJobConfig) failoverSchedule.getJobConfig();
+    ScheduleConfig scheduleConfig = failoverSchedule.getScheduleConfig();
+    if (scheduleConfig.isDisabled()) {
+      jobScheduler.updateSchedule(
+          failoverSchedule.getUuid(),
+          scheduleConfig.toBuilder()
+              .disabled(false)
+              .intervalSecs(action.getDelay().getSeconds())
               .build());
-      jobScheduler.submitSchedule(jobSchedule);
       log.info(
-          "Scheduled action {} to perform on universe {} in {} seconds",
+          "Enabled schedule for action {} on universe {} in {} secs",
           action,
           universe.getUniverseUUID(),
-          taskDelay.getSeconds());
+          action.getDelay().getSeconds());
+    } else {
+      // Check if the delay has been updated.
+      Duration errorLimit =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.autoMasterFailoverFollowerLagThresholdError);
+      Instant nextStartTime = failoverSchedule.getNextStartTime().toInstant();
+      Instant newNextStartTime = Instant.now().plus(action.getDelay());
+      long diffSecs = Math.abs(nextStartTime.getEpochSecond() - newNextStartTime.getEpochSecond());
+      if (diffSecs > errorLimit.getSeconds()) {
+        // Update the schedule if the new start time has changed more than the threshold.
+        jobScheduler.updateSchedule(
+            failoverSchedule.getUuid(),
+            scheduleConfig.toBuilder()
+                .disabled(false)
+                .intervalSecs(action.getDelay().getSeconds())
+                .build());
+        log.info(
+            "Updated schedule for action {} on universe {} in {} secs",
+            action,
+            universe.getUniverseUUID(),
+            action.getDelay().getSeconds());
+      }
+    }
+    if (jobType != jobConfig.getFailoverJobType()) {
+      jobScheduler.updateJobConfig(
+          failoverSchedule.getUuid(), jobConfig.toBuilder().failoverJobType(jobType).build());
     }
   }
 }

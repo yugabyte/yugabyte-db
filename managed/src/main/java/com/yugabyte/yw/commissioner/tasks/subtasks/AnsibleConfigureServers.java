@@ -56,6 +56,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableConnectionPooling = false;
     public boolean enableYCQL = false;
     public boolean enableYSQLAuth = false;
     public boolean enableYCQLAuth = false;
@@ -100,6 +101,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public AuditLogConfig auditLogConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;

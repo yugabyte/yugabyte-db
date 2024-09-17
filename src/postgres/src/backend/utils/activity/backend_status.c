@@ -381,6 +381,9 @@ pgstat_bestart(void)
 		dbForm = (Form_pg_database) GETSTRUCT(tuple);
 		strcpy(lbeentry.st_databasename, dbForm->datname.data);
 		ReleaseSysCache(tuple);
+
+		/* Initialization of allocated memory measurement value */
+		lbeentry.yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
 	}
 
 	/* We have userid for client-backends, wal-sender and bgworker processes */
@@ -898,6 +901,11 @@ pgstat_read_current_status(void)
 									   &localentry->backend_xid,
 									   &localentry->backend_xmin);
 
+			if (YBIsEnabledInPostgresEnvVar())
+			{
+				localentry->yb_backend_rss_mem_bytes =
+					YbPgGetCurRSSMemUsage(localentry->backendStatus.st_procpid);
+			}
 			localentry++;
 			localappname += NAMEDATALEN;
 			localclienthostname += NAMEDATALEN;

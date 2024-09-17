@@ -32,7 +32,8 @@ yba backup restore [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 * [yba backup restore create](yba_backup_restore_create.md)	 - Restore a YugabyteDB Anywhere universe backup
+* [yba backup restore describe](yba_backup_restore_describe.md)	 - List YugabyteDB Anywhere restores
 * [yba backup restore list](yba_backup_restore_list.md)	 - List YugabyteDB Anywhere restores
 

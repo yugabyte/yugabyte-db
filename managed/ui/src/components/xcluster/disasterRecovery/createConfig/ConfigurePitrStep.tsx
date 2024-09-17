@@ -10,11 +10,10 @@ import {
 } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { DurationUnit } from '../constants';
-import { I18N_DURATION_KEY_PREFIX } from '../../../../redesign/helpers/constants';
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
 
-import { useModalStyles } from '../styles';
+import { useModalStyles } from '../../styles';
 
 interface ConfigureAlertStepProps {
   isFormDisabled: boolean;
@@ -22,6 +21,23 @@ interface ConfigureAlertStepProps {
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.configurePitr';
+
+// The expectation is that all `DurationUnit`s are presented as options here.
+export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
+  {
+    label: 'Seconds',
+    value: DurationUnit.SECOND
+  },
+  {
+    label: 'Minutes',
+    value: DurationUnit.MINUTE
+  },
+  {
+    label: 'Hours',
+    value: DurationUnit.HOUR
+  },
+  { label: 'Days', value: DurationUnit.DAY }
+];
 
 export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) => {
   const { control, watch, setValue, trigger, formState } = useFormContext<
@@ -33,22 +49,6 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
   const { t } = useTranslation('translation', {
     keyPrefix: TRANSLATION_KEY_PREFIX
   });
-
-  const UNIT_OPTIONS: ReactSelectOption[] = [
-    {
-      label: t('seconds', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.SECOND
-    },
-    {
-      label: t('minutes', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.MINUTE
-    },
-    {
-      label: t('hours', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.HOUR
-    },
-    { label: t('days', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
-  ];
 
   const pitrRetentionPeriodValue = watch('pitrRetentionPeriodValue');
   const pitrRetentionPeriodUnit = watch('pitrRetentionPeriodUnit')?.value;
@@ -103,9 +103,20 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
               inputProps={{ min: pitrRetentionPeriodMinValue }}
               rules={{
                 required: t('error.pitrRetentionPeriodValueRequired'),
-                min: {
-                  value: pitrRetentionPeriodMinValue,
-                  message: t('error.pitrRetentionPeriodValueMinimum')
+                validate: {
+                  pattern: (value) => {
+                    const integerPattern = /^\d+$/;
+                    return (
+                      integerPattern.test(value?.toString() ?? '') ||
+                      t('error.pitrRetentionPeriodValueIntegerValidation')
+                    );
+                  },
+                  min: (value) => {
+                    return (
+                      (value as number) >= pitrRetentionPeriodMinValue ||
+                      t('error.pitrRetentionPeriodValueMinimum')
+                    );
+                  }
                 }
               }}
               disabled={isFormDisabled}
@@ -114,7 +125,7 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
               control={control}
               name="pitrRetentionPeriodUnit"
               onChange={handlePitrRetentionPeriodUnitChange}
-              options={UNIT_OPTIONS}
+              options={PITR_RETENTION_PERIOD_UNIT_OPTIONS}
               autoSizeMinWidth={200}
               maxWidth="100%"
               rules={{ required: t('error.pitrRetentionPeriodUnitRequired') }}

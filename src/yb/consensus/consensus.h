@@ -341,6 +341,11 @@ class Consensus {
       const yb::OpId& from, int64_t* repl_index, const CoarseTimePoint deadline,
       const bool fetch_single_entry = false) = 0;
 
+  // Read all the committed messages for CDC producer.
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForConsistentCDC(
+      OpId from, uint64_t stream_safe_time, CoarseTimePoint deadline,
+      bool fetch_single_entry = false, int64_t* repl_index = nullptr) = 0;
+
   virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
 
  protected:

@@ -76,11 +76,13 @@ namespace {
 struct RunningRetryableRequest {
   RetryableRequestId request_id;
   RestartSafeCoarseTimePoint time;
+  ConsensusRoundPtr round;
   mutable std::vector<ConsensusRoundPtr> duplicate_rounds;
 
   RunningRetryableRequest(
-      RetryableRequestId request_id_, RestartSafeCoarseTimePoint time_)
-      : request_id(request_id_), time(time_) {}
+      RetryableRequestId request_id_, RestartSafeCoarseTimePoint time_,
+      const ConsensusRoundPtr& round_)
+      : request_id(request_id_), time(time_), round(round_) {}
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(request_id, time);
@@ -362,8 +364,12 @@ class RetryableRequests::Impl {
       entry_time = clock_.Now();
     }
 
-    auto& client_retryable_requests = clients_.try_emplace(
-        data.client_id(), mem_tracker_).first->second;
+    auto [client_it, inserted] = clients_.try_emplace(data.client_id(), mem_tracker_);
+    auto& client_retryable_requests = client_it->second;
+    if (inserted) {
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30)
+          << "Registered new client " << data.client_id() << ", request id: " << data.request_id();
+    }
 
     CleanupReplicatedRequests(
         data.write().min_running_request_id(), &client_retryable_requests);
@@ -378,6 +384,9 @@ class RetryableRequests::Impl {
     auto& replicated_indexed_by_last_id = client_retryable_requests.replicated->get<LastIdIndex>();
     auto it = replicated_indexed_by_last_id.lower_bound(data.request_id());
     if (it != replicated_indexed_by_last_id.end() && it->first_id <= data.request_id()) {
+      LOG_IF_WITH_PREFIX(DFATAL, !is_leader_side)
+          << "Cannot register retryable request on follower: " << round->ToString()
+          << ", duplicate range " << it->ToString();
       return STATUS_FORMAT(
               AlreadyPresent, "Duplicate request $0 from client $1 (min running $2)",
               data.request_id(), data.client_id(),
@@ -410,8 +419,12 @@ class RetryableRequests::Impl {
     }
 
     auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
-    auto emplace_result = running_indexed_by_request_id.emplace(data.request_id(), entry_time);
+    auto emplace_result = running_indexed_by_request_id.emplace(
+        data.request_id(), entry_time, round);
     if (!emplace_result.second) {
+      LOG_IF_WITH_PREFIX(DFATAL, !is_leader_side)
+          << "Cannot register retryable request on follower: " << round->ToString()
+          << ", duplicate with " << emplace_result.first->round->ToString();
       emplace_result.first->duplicate_rounds.push_back(round);
       return false;
     }
@@ -452,6 +465,7 @@ class RetryableRequests::Impl {
         if (client_retryable_requests.empty_since == RestartSafeCoarseTimePoint()) {
           client_retryable_requests.empty_since = now;
         } else if (client_retryable_requests.empty_since < clean_start) {
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Removing client " << ci->first;
           ci = clients_.erase(ci);
           continue;
         }
@@ -620,6 +634,9 @@ class RetryableRequests::Impl {
     if (max_replicated_op_id_ < op_id) {
       VLOG_WITH_PREFIX(4) << "Setting max_replicated_op_id_ to " << op_id;
       max_replicated_op_id_ = op_id;
+    } else {
+      LOG(DFATAL) << Format("Request out of order: $0, max_replicated_op_id: $1, request: $2",
+                            op_id, max_replicated_op_id_, data.request_id());
     }
 
     // Check that we have range right after this id, and we could extend it.

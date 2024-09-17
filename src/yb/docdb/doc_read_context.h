@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -72,6 +73,12 @@ struct DocReadContext {
   }
 
   void SetCotableId(const Uuid& cotable_id);
+
+  void SetVectorIdxOptions(const PgVectorIdxOptionsPB& vector_idx_options);
+
+  const PgVectorIdxOptionsPB& vector_idx_options() const {
+    return vector_idx_options_;
+  }
 
   // The number of bytes before actual key values for all encoded keys in this table.
   size_t key_prefix_encoded_len() const {
@@ -145,6 +152,9 @@ struct DocReadContext {
   size_t table_key_prefix_len_ = 0;
 
   std::string log_prefix_;
+
+  // Used for geometric indexes.
+  PgVectorIdxOptionsPB vector_idx_options_;
 };
 
 } // namespace yb::docdb

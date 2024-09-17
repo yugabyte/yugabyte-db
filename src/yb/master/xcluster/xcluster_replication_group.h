@@ -37,6 +37,9 @@ namespace master {
 Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
     UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config);
 
+Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+    client::XClusterRemoteClientHolder& xcluster_client, const AutoFlagsConfigPB& local_config);
+
 // Reruns the AutoFlags compatiblity validation when source universe AutoFlags config version has
 // changed.
 // Compatiblity validation is needed only if the requested_auto_flag_version is greater than the

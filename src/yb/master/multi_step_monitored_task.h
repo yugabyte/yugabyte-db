@@ -55,6 +55,17 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   static Status StartTasks(
       const std::vector<MultiStepMonitoredTask*>& tasks, StdStatusCallback group_completion_cb);
 
+  template <typename T>
+  static Status StartTasks(
+      const std::vector<std::shared_ptr<T>>& tasks, StdStatusCallback group_completion_cb) {
+    std::vector<MultiStepMonitoredTask*> raw_tasks;
+    raw_tasks.reserve(tasks.size());
+    for (const auto& task : tasks) {
+      raw_tasks.push_back(task.get());
+    }
+    return StartTasks(raw_tasks, group_completion_cb);
+  }
+
  protected:
   explicit MultiStepMonitoredTask(ThreadPool& async_task_pool, rpc::Messenger& messenger);
 

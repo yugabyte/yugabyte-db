@@ -4,7 +4,11 @@ package com.yugabyte.yw.commissioner.tasks.local;
 
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
+import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -37,6 +41,50 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         app,
         "DELETE",
         "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID,
+        user.createAuthToken());
+  }
+
+  protected Result failover(UUID drConfigUUID, DrConfigFailoverForm formData) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/failover",
+        user.createAuthToken(),
+        Json.toJson(formData));
+  }
+
+  protected Result replaceReplica(UUID drConfigUUID, DrConfigReplaceReplicaForm formData) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/replace_replica",
+        user.createAuthToken(),
+        Json.toJson(formData));
+  }
+
+  public Result switchover(UUID drConfigUUID, DrConfigSwitchoverForm formData) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/switchover",
+        user.createAuthToken(),
+        Json.toJson(formData));
+  }
+
+  protected Result restart(UUID drConfigUUID, DrConfigRestartForm formData) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/restart",
+        user.createAuthToken(),
+        Json.toJson(formData));
+  }
+
+  protected Result getSafeTime(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "GET",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/safetime",
         user.createAuthToken());
   }
 

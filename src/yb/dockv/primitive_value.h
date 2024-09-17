@@ -25,6 +25,8 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
+#include "yb/common/vector_types.h"
+
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/algorithm_util.h"
@@ -46,9 +48,6 @@ YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
-
-using FloatVector = std::vector<float>;
-using UInt64Vector = std::vector<uint64_t>;
 
 class PrimitiveValue {
  public:

@@ -313,15 +313,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     return;
   }
 
+  if (!FillHeartbeatResponseOrRespond(*req, resp, &rpc).ok()) {
+    return;
+  }
   auto desc_result = GetTSDescriptorOrRespond(*req, resp, &rpc);
   if (!desc_result.ok()) {
     return;
   }
   TSDescriptorPtr ts_desc = std::move(*desc_result);
 
-  if (!FillHeartbeatResponseOrRespond(*req, resp, &rpc).ok()) {
-    return;
-  }
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
   // Set the TServer metrics in TS Descriptor.
@@ -1465,7 +1465,7 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
   auto status = std::move(desc_result.status());
   if (status.IsAlreadyPresent()) {
     // AlreadyPresent indicates a host port collision. This tserver shouldn't be heartbeating
-    // anymore, but in any case ask it to re-register.
+    // anymore, but in any case ask it to re-register to preserve existing semantics.
     LOG(INFO) << Format(
         "Got heartbeat from unknown tablet server { $0 } as $1; Asking this server to "
         "re-register. Status from ts lookup: $2",

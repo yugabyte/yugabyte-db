@@ -110,6 +110,8 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
 DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
+DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
+    "Delays the abort callback in StopActiveTxns to repro GitHub #23399.");
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
@@ -1305,33 +1307,34 @@ class TransactionParticipant::Impl
 
     // It is ok to attempt to abort txns that have committed. We don't care
     // if our request succeeds or not.
-    CountDownLatch latch(ids_to_abort.size());
-    std::atomic<bool> failed{false};
-    Status return_status = Status::OK();
+    struct CallbackInfo {
+      CountDownLatch latch{0};
+      StatusHolder return_status;
+    };
+    auto cb_info = std::make_shared<CallbackInfo>();
+    cb_info->latch.Reset(ids_to_abort.size());
     for (const auto& id : ids_to_abort) {
-      Abort(
-          id, [this, id, &failed, &return_status, &latch](Result<TransactionStatusResult> result) {
-            VLOG_WITH_PREFIX(2) << "Aborting " << id << " got " << result;
-            if (!result ||
-                (result->status != TransactionStatus::COMMITTED && result->status != ABORTED)) {
-              LOG(INFO) << "Could not abort " << id << " got " << result;
-
-              bool expected = false;
-              if (failed.compare_exchange_strong(expected, true)) {
-                if (!result) {
-                  return_status = result.status();
-                } else {
-                  return_status =
-                      STATUS_FORMAT(IllegalState, "Wrong status after abort: $0", result->status);
-                }
-              }
-            }
-            latch.CountDown();
-          });
+      // Do not pass anything by reference, as the callback can outlive this function.
+      Abort(id, [this, id, cb_info](Result<TransactionStatusResult> result) {
+        VLOG_WITH_PREFIX(2) << "Aborting " << id << " got " << result;
+        if (FLAGS_TEST_stopactivetxns_sleep_in_abort_cb_ms > 0) {
+          VLOG(2) << "Sleeping for " << FLAGS_TEST_stopactivetxns_sleep_in_abort_cb_ms << "ms.";
+          SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_stopactivetxns_sleep_in_abort_cb_ms));
+        }
+        if (!result ||
+            (result->status != TransactionStatus::COMMITTED && result->status != ABORTED)) {
+          LOG(INFO) << "Could not abort " << id << " got " << result;
+          cb_info->return_status.SetError(
+              !result
+                  ? result.status()
+                  : STATUS_FORMAT(IllegalState, "Wrong status after abort: $0", result->status));
+        }
+        cb_info->latch.CountDown();
+      });
     }
-
-    return latch.WaitUntil(deadline) ? return_status
-                                     : STATUS(TimedOut, "TimedOut while aborting old transactions");
+    return cb_info->latch.WaitUntil(deadline)
+               ? cb_info->return_status.GetStatus()
+               : STATUS(TimedOut, "TimedOut while aborting old transactions");
   }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {

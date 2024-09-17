@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -134,9 +134,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(
-      const std::string& database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade);
+  Status InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -230,9 +228,6 @@ class PgApiImpl {
   const YBCPgTypeEntity *FindTypeEntity(int type_oid);
 
   //------------------------------------------------------------------------------------------------
-  // Connect database. Switch the connected database to the given "database_name".
-  Status ConnectDatabase(const char *database_name);
-
   // Determine whether the given database is colocated.
   Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                              bool *legacy_colocated_database);
@@ -616,11 +611,11 @@ class PgApiImpl {
   Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
 
   Status AddFunctionParam(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       uint64_t datum, bool is_null);
 
   Status AddFunctionTarget(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       const YBCPgTypeAttrs type_attrs);
 
   Status FinalizeFunctionTargets(PgFunction *handle);
@@ -754,12 +749,9 @@ class PgApiImpl {
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
-  MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker& GetMemTracker() { return *mem_tracker_; }
 
-  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
-
-  // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
-  int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+  MemTracker& GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
   void DumpSessionState(YBCPgSessionState* session_data);
 

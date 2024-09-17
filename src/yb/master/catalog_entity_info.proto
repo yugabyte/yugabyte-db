@@ -578,6 +578,10 @@ message SysCDCStreamEntryPB {
   // This field controls if dynamic tables should automatically be added to the CDC stream or not.
   // If set to true, dynamic table wont get added to the CDC stream.
   optional bool cdcsdk_disable_dynamic_table_addition = 11;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 12;
 }
 
 
@@ -728,8 +732,8 @@ message SysUniverseReplicationEntryPB {
   // 7, 8, and 9 were used by Namespace-level replication but never populated in
   // production so they are valid for reuse.
 
-  // Mapping from Producer Table ID to Producer->Consumer schema version mappings
-  map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
+  // DEPRECATED schema_version_mappings
+  reserved 10;
 
   // Set when consistent transactions are enabled for a replication group.
   optional bool transactional = 11; // [default = false]
@@ -738,12 +742,15 @@ message SysUniverseReplicationEntryPB {
 
   // DB Scoped repication.
   message DBScopeInfo {
+    optional bool automatic_ddl_mode = 1; // [default = false]
+
     message NamespaceInfo {
       required string consumer_namespace_id = 1;
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
   }
+
   optional DBScopeInfo db_scoped_info = 13;
 }
 
@@ -911,6 +918,8 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     DELETED = 1;
   }
   optional State state = 3 [ default = READY ];
+
+  optional bool automatic_ddl_mode = 4; // [default = false]
 }
 
 message SysTServerEntryPB {

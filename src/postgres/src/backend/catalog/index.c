@@ -947,8 +947,11 @@ index_create(Relation heapRelation,
 	 */
 	if (!OidIsValid(indexRelationId))
 	{
+		bool index_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		if (yb_binary_restore && !yb_ignore_pg_class_oids)
+			index_pg_class_oids_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
-		if (IsBinaryUpgrade && !yb_binary_restore)
+		if (index_pg_class_oids_supplied)
 		{
 			if (!OidIsValid(binary_upgrade_next_index_pg_class_oid))
 				ereport(ERROR,
@@ -958,14 +961,17 @@ index_create(Relation heapRelation,
 			indexRelationId = binary_upgrade_next_index_pg_class_oid;
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
 
-			/* Override the index relfilenode */
-			if ((relkind == RELKIND_INDEX) &&
-				(!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode)))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("index relfilenode value not set when in binary upgrade mode")));
-			relFileNode = binary_upgrade_next_index_pg_class_relfilenode;
-			binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+			if (!yb_binary_restore)
+			{
+				/* Override the index relfilenode */
+				if ((relkind == RELKIND_INDEX) &&
+					(!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode)))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("index relfilenode value not set when in binary upgrade mode")));
+				relFileNode = binary_upgrade_next_index_pg_class_relfilenode;
+				binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+			}
 
 			/*
 			 * Note that we want create_storage = true for binary upgrade. The

@@ -708,12 +708,6 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< tip title="TRUNCATE tables when CDC is enabled" >}}
-
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
-
-{{< /tip >}}
-
 {{< tip title="Suppressing tombstone events" >}}
 
 You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
@@ -930,8 +924,8 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin#create_change_data_stream) command.
-* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../cdc-overview/#known-limitations).
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command.
+* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
 
@@ -941,7 +935,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](../../../../integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/preview/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
@@ -1058,7 +1052,7 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../../secure/tls-encryption/)
-* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
 * [YugabyteDB Aeon](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}

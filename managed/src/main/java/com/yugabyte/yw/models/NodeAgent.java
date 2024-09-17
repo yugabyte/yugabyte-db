@@ -118,6 +118,12 @@ public class NodeAgent extends Model {
     REGISTERING {
       @Override
       public Set<State> nextStates() {
+        return toSet(READY, REGISTERED);
+      }
+    },
+    REGISTERED {
+      @Override
+      public Set<State> nextStates() {
         return toSet(READY);
       }
     },
@@ -304,6 +310,12 @@ public class NodeAgent extends Model {
     return finder.query().findSet();
   }
 
+  public static List<NodeAgent> getByIps(UUID customerUuid, Set<String> ips) {
+    ExpressionList<NodeAgent> query = finder.query().where().eq("customerUuid", customerUuid);
+    appendInClause(query, "ip", ips);
+    return query.findList();
+  }
+
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {
     return finder
         .query()
@@ -387,7 +399,7 @@ public class NodeAgent extends Model {
     updateInTxn(
         n -> {
           n.setState(state);
-          n.save();
+          n.update();
         });
   }
 
@@ -397,7 +409,7 @@ public class NodeAgent extends Model {
           n.setHome(nodeAgentHome);
           n.setVersion(version);
           n.setState(State.READY);
-          n.save();
+          n.update();
         });
   }
 
@@ -486,7 +498,7 @@ public class NodeAgent extends Model {
             n.setState(state);
           }
           n.getConfig().setCertPath(certDirPath.toString());
-          n.save();
+          n.update();
         });
   }
 
@@ -495,7 +507,7 @@ public class NodeAgent extends Model {
       updateInTxn(
           n -> {
             n.getConfig().setOffloadable(offloadable);
-            n.save();
+            n.update();
           });
     }
   }

@@ -46,7 +46,7 @@ func (r diskAvailCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 
-	baseDir := common.GetBaseInstall()
+	baseDir := common.GetDataRoot()
 	bytesAvail, err := getFreeBytes(baseDir)
 	if err != nil {
 		res.Error = err

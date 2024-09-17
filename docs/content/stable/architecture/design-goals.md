@@ -64,7 +64,7 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../docdb-sharding/colocated-tables">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../../explore/colocation">}}
 
 ## Security
 
@@ -76,7 +76,7 @@ YugabyteDB has been designed with operational simplicity in mind, providing feat
 
 ## Heterogeneous workload support
 
-Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/preview/tutorials/azure/azure-event-hubs/), [time-series](../../develop/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
+Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/preview/tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
 
 ## Transaction isolation levels
 

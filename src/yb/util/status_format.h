@@ -84,8 +84,12 @@
 
 #define SCHECK_STR_CONTAINS(str, substr) \
   SCHECK_NE( \
-      str.find(substr), std::string::npos, NotFound, \
-      Format("'$0' does not contain '$1'", str, substr))
+      str.find((substr)), std::string::npos, NotFound, \
+      Format("'$0' does not contain '$1'", str, (substr)))
+
+#define SCHECK_STR_NOT_CONTAINS(str, substr) \
+  SCHECK_EQ( \
+      str.find(substr), std::string::npos, IllegalState, Format("'$0' contain '$1'", str, substr))
 
 #ifndef NDEBUG
 

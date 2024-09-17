@@ -25,6 +25,7 @@
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
+DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -57,15 +58,6 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_db, "yugabyte",
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
-
-DEFINE_test_flag(bool, ysql_conn_mgr_dowarmup_all_pools_random_attach, false,
-  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
-  " randomly attach any idle server connection to client to serve it's quries. "
-  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
-  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
-  "manager process. Whereas this flag will create max of ysql_conn_mgr_min_conns_per_db"
-  " and 3 number of server connections in any pool whenever there is a requirement to create "
-  "first backend process in that particular pool.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 10,
   "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
@@ -112,11 +104,18 @@ Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
 
-  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach) {
-    LOG(INFO) << "Warmup and random allotment of server connections is enabled in "
-    "ysql connection manager";
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {
+    LOG(INFO) << "Warmup of server connections is enabled in ysql connection manager";
+    if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "random") {
+      LOG(INFO) << "Random allotment of server connections is enabled in ysql connection manager";
+    } else if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "round_robin") {
+      LOG(INFO) << "Round robin allotment of server connections is enabled in ysql connection "
+                << "manager";
+    }
     if (FLAGS_ysql_conn_mgr_min_conns_per_db < 3)
       FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
+  } else {
+    LOG(INFO) << "Warmup of server connections is disabled in ysql connection manager";
   }
 
   std::vector<std::string> argv{
@@ -132,8 +131,8 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
-  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_RANDOM_ATTACH",
-                FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach ? "true" : "false");
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
+                FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

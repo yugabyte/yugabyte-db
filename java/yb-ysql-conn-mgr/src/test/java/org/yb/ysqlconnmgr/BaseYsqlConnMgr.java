@@ -39,6 +39,11 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseYsqlConnMgr.class);
   protected static final int NUM_TSERVER = 3;
   private static final String DEFAULT_PG_USER = "yugabyte";
+  protected static final int STATS_UPDATE_INTERVAL = 2;
+  private boolean warmup_random_mode = true;
+
+  protected static final String DISABLE_TEST_WITH_ASAN =
+        "Test is not working correctly with asan build";
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -48,14 +53,29 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.numTservers(NUM_TSERVER);
     builder.replicationFactor(NUM_TSERVER);
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+    if (warmup_random_mode) {
+      builder.addCommonTServerFlag(
+      "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
+    }
   }
 
   protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster).withUser(DEFAULT_PG_USER);
   }
 
+  protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
+    builder.addCommonTServerFlag(
+        "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    warmup_random_mode = false;
+    return;
+  }
+
   public String getPgHost(int tserverIndex) {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getHostName();
+  }
+
+  protected boolean isTestRunningInWarmupRandomMode() {
+    return warmup_random_mode;
   }
 
   @Before

@@ -340,7 +340,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   void SetGetXClusterMinIndexToRetainFunc(
       std::function<int64_t(const std::string&)> get_xcluster_required_index_func) {
-    std::lock_guard l(state_lock_);
+    std::lock_guard l(get_xcluster_index_lock_);
     if (get_xcluster_min_index_to_retain_ == nullptr) {
       get_xcluster_min_index_to_retain_ = std::move(get_xcluster_required_index_func);
     }
@@ -682,10 +682,13 @@ class Log : public RefCountedThreadSafe<Log> {
   std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
   std::shared_timed_mutex disk_space_mutex_;
 
+  // Protect access to the get_xcluster_min_index_to_retain_.
+  mutable PerCpuRwMutex get_xcluster_index_lock_;
+
   // Function pointer to CDCServiceImpl::GetXClusterMinRequiredIndex.
   // This function retrieves the xCluster minimum required index for a given tablet.
   std::function<int64_t(const std::string&)> get_xcluster_min_index_to_retain_
-      GUARDED_BY(state_lock_);
+      GUARDED_BY(get_xcluster_index_lock_);
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

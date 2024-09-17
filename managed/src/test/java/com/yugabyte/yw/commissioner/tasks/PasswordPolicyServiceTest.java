@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import junitparams.JUnitParamsRunner;
@@ -23,18 +22,18 @@ public class PasswordPolicyServiceTest extends CommissionerBaseTest {
 
   private PasswordPolicyService passwordPolicyService;
   @Mock private Config config;
-  @Mock private ApiHelper apiHelper;
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @Before
   public void initValues() {
-    passwordPolicyService = new PasswordPolicyService(config, apiHelper);
+    passwordPolicyService = new PasswordPolicyService(config);
     when(config.getInt("yb.pwdpolicy.default_min_length")).thenReturn(8);
     when(config.getInt("yb.pwdpolicy.default_min_uppercase")).thenReturn(1);
     when(config.getInt("yb.pwdpolicy.default_min_lowercase")).thenReturn(1);
     when(config.getInt("yb.pwdpolicy.default_min_digits")).thenReturn(1);
     when(config.getInt("yb.pwdpolicy.default_min_special_chars")).thenReturn(1);
+    when(config.getString("yb.pwdpolicy.default_disallowed_chars")).thenReturn("`");
   }
 
   @Test(expected = PlatformServiceException.class)
@@ -64,6 +63,12 @@ public class PasswordPolicyServiceTest extends CommissionerBaseTest {
   @Test(expected = Test.None.class)
   @Parameters({"@123Yuga"})
   public void testPasswordWithAllParameters(String password) {
+    passwordPolicyService.checkPasswordPolicy(null, password);
+  }
+
+  @Test(expected = PlatformServiceException.class)
+  @Parameters({"@123Yuga`"})
+  public void testPasswordWithDisallowedCharacters(String password) {
     passwordPolicyService.checkPasswordPolicy(null, password);
   }
 }

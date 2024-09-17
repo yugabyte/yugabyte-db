@@ -167,7 +167,7 @@ xCluster currently supports active-active single-master and active-active multi-
 
 ### Active-active single-master
 
-Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
+In this setup the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 
 Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.  When used primarily for disaster recovery purposes, these deployments are also called active-standby because the target universe stands by to take over if the source universe is lost.
 
@@ -243,7 +243,7 @@ After losing one universe, the other universe may be left with torn transactions
 
 ### Transactional-mode limitations
 
-With transactional mode,
+Transactional mode has the following limitations:
 
 - No writes are allowed in the target universe
 - Active-active multi-master is not supported
@@ -259,7 +259,7 @@ When the source universe is lost, an explicit decision must be made to switch ov
 ### DDL changes
 
 - Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported.  You must first disable replication for this table.
+- `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
 - `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
 - In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 

@@ -42,7 +42,13 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 ## Fault domain
 
-A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
+A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../explore/fault-tolerance/#fault-domains">}}
+
+## Fault tolerance
+
+YugabyteDB achieves resiliency by replicating data across fault domains using the Raft consensus protocol. The [fault domain](#fault-domain) can be at the level of individual nodes, availability zones, or entire regions.
+
+The fault tolerance determines how resilient the cluster is to domain (that is, node, zone, or region) outages, whether planned or unplanned. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. This number is referred to as the [replication factor](#replication-factor-rf). For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes; that is, a replication factor of 5. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
 
 ## Follower reads
 
@@ -138,9 +144,11 @@ A region refers to a defined geographical area or location where a cloud provide
 
 ## Replication factor (RF)
 
-The number of copies of data in a YugabyteDB universe. YugabyteDB replicates data across zones (or fault domains) in order to tolerate faults. Fault tolerance (FT) and RF are correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of (2k + 1).
+The number of copies of data in a YugabyteDB universe. YugabyteDB replicates data across [fault domains](#fault-domain) (for example, zones) in order to tolerate faults. [Fault tolerance](#fault-tolerance) (FT) and RF are correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of (2k + 1).
 
 The RF should be an odd number to ensure majority consensus can be established during failures. {{<link "../docdb-replication/replication/#replication-factor">}}
+
+Each [read replica](#read-replica-cluster) cluster can also have its own replication factor. In this case, the replication factor determines how many copies of your primary data the read replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas *do not* participate in the primary cluster Raft consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
 
 ## Sharding
 
@@ -186,7 +194,7 @@ The [YB-TServer](../yb-tserver) service is responsible for maintaining and manag
 A YugabyteDB universe comprises one [primary cluster](#primary-cluster) and zero or more [read replica clusters](#read-replica-cluster) that collectively function as a resilient and scalable distributed database.
 
 {{<note>}}
-Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a universe can contain one or more [clusters](#cluster).
+Sometimes the terms *universe* and *cluster* are used interchangeably. The two are not always equivalent, as a universe can contain one or more [clusters](#cluster).
 {{</note>}}
 
 ## xCluster

@@ -123,14 +123,23 @@ public class PgOutputMessageDecoder {
       this.compareDataType = compareDataType;
     }
 
+    public PgOutputRelationMessageColumn(byte flag, String name) {
+      this.flag = flag;
+      this.name = name;
+      // This constructor is used for columns having dynamic types. Since their type OIDs
+      // are dynamic they will not be compared during the tests.
+      this.dataType = 0;
+      this.atttypmod = 0;
+      this.compareDataType = false;
+    }
+
     public static PgOutputRelationMessageColumn CreateForComparison(String name, int dataType) {
       return new PgOutputRelationMessageColumn(
           (byte) 0, name, dataType, 0, /* compareDataType */ true);
     }
 
-    public static PgOutputRelationMessageColumn CreateForComparison(
-        String name, int dataType, boolean compareDataType) {
-      return new PgOutputRelationMessageColumn((byte) 0, name, dataType, 0, compareDataType);
+    public static PgOutputRelationMessageColumn CreateForComparison(String name) {
+      return new PgOutputRelationMessageColumn((byte) 0, name);
     }
 
     @Override

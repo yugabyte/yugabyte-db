@@ -744,7 +744,7 @@ TEST_F_EX(
       {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
-  SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   string result = ASSERT_RESULT(GetLeaderlessTabletsString());
   ASSERT_EQ(result.find(tablet->id()), string::npos);
 }

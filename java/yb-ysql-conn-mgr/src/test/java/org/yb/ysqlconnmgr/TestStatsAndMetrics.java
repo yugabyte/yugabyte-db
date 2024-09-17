@@ -39,7 +39,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
-        Integer.toString(2));
+        Integer.toString(STATS_UPDATE_INTERVAL));
   }
 
   private JsonObject getConnectionStats() throws IOException {
@@ -129,7 +129,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     int num_physical_conn =
     pool.get("active_physical_connections").getAsInt() +
     pool.get("idle_physical_connections").getAsInt();
-    assertEquals("Did not get the expected number of logical connections",
+    assertEquals("Did not get the expected number of physical connections",
         exp_val, num_physical_conn);
   }
 
@@ -143,21 +143,23 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     ResultSet rs = stmt.executeQuery("SELECT 1");
     assertTrue(rs.next());
 
-    Thread.sleep(4000);
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
 
     testStatsFields();
 
     testNumPhysicalConnections("control_connection", "control_connection", 1);
     testNumLogicalConnections("control_connection", "control_connection", 0);
 
-    testNumPhysicalConnections("yugabyte", "yugabyte", 1);
+    testNumPhysicalConnections("yugabyte", "yugabyte",
+                              isTestRunningInWarmupRandomMode() ? 3 : 1);
     testNumLogicalConnections("yugabyte", "yugabyte", 1);
 
     stmt.close();
     conn.close();
 
-    Thread.sleep(4000);
-    testNumPhysicalConnections("yugabyte", "yugabyte", 1);
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+    testNumPhysicalConnections("yugabyte", "yugabyte",
+                              isTestRunningInWarmupRandomMode() ? 3 : 1);
     testNumLogicalConnections("yugabyte", "yugabyte", 0);
   }
 
@@ -170,21 +172,23 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
          Statement stmt = conn.createStatement()) {
         stmt.execute("CREATE TEMP TABLE names(id int)");
 
-        Thread.sleep(4000);
+        Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
         testStatsFields();
 
         testNumPhysicalConnections("control_connection", "control_connection", 1);
         testNumLogicalConnections("control_connection", "control_connection", 0);
 
-        testNumPhysicalConnections("yugabyte", "yugabyte", 1);
+        testNumPhysicalConnections("yugabyte", "yugabyte",
+                                  isTestRunningInWarmupRandomMode() ? 3 : 1);
         testNumLogicalConnections("yugabyte", "yugabyte", 1);
     }
 
-    Thread.sleep(4000);
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
 
     JsonObject pool = getPool("yugabyte", "yugabyte");
     if (pool != null) {
-        testNumPhysicalConnections("yugabyte", "yugabyte", 0);
+        testNumPhysicalConnections("yugabyte", "yugabyte",
+                                  isTestRunningInWarmupRandomMode() ? 2 : 0);
         testNumLogicalConnections("yugabyte", "yugabyte", 0);
     }
   }

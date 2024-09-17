@@ -586,6 +586,15 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	myoff = proc->pgxactoff;
 
 	Assert(myoff >= 0 && myoff < arrayP->numProcs);
+
+	int foundoff = ProcGlobal->allProcs[arrayP->pgprocnos[myoff]].pgxactoff;
+	if (unlikely(foundoff != myoff))
+		ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+						  errmsg("inconsistent state due to pgxactoff mismatch "
+								 "for process with pid %d", proc->pid),
+						  errdetail("provided proc's pgxactoff is %d, whereas "
+									"found proc's pgxactoff is %d",
+									myoff, foundoff)));
 	Assert(ProcGlobal->allProcs[arrayP->pgprocnos[myoff]].pgxactoff == myoff);
 
 	/*
@@ -657,8 +666,6 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	 */
 	LWLockRelease(XidGenLock);
 	LWLockRelease(ProcArrayLock);
-
-	elog(WARNING, "failed to find process with pid %d in ProcArray", proc->pid);
 }
 
 /*

@@ -1,9 +1,9 @@
 import React, { FC } from "react";
 import { Box } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
-import { MigrationData } from "./steps/MigrationData";
+import { MigrationData } from "./steps/data/NewMigrationData";
 import { MigrationAssessment } from "./steps/assessment/MigrationAssessment";
-import { MigrationSchema } from "./steps/MigrationSchema";
+import { MigrationSchema } from "./steps/schema/NewMigrationSchema";
 import { MigrationVerify } from "./steps/MigrationVerify";
 import {
   useGetAssessmentSourceDBInfoQuery,

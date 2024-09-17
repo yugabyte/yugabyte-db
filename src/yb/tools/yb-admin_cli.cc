@@ -1824,7 +1824,8 @@ Status write_universe_key_to_file_action(
 }
 
 const auto create_change_data_stream_args =
-   "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
+    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1834,9 +1835,11 @@ Status create_change_data_stream_action(
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string consistent_snapshot_option = "USE_SNAPSHOT";
+  std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
+  std::string uppercase_dynamic_tables_option;
 
 
   if (args.size() > 1) {
@@ -1864,12 +1867,22 @@ Status create_change_data_stream_action(
     consistent_snapshot_option = uppercase_consistent_snapshot_option;
   }
 
+  if (args.size() > 4) {
+    ToUpperCase(args[4], &uppercase_dynamic_tables_option);
+    if (uppercase_dynamic_tables_option != "DYNAMIC_TABLES_ENABLED" &&
+        uppercase_dynamic_tables_option != "DYNAMIC_TABLES_DISABLED") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    dynamic_tables_option = uppercase_dynamic_tables_option;
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
-          database, checkpoint_type, record_type_pb, consistent_snapshot_option),
+          database, checkpoint_type, record_type_pb, consistent_snapshot_option,
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -2080,7 +2093,6 @@ const auto alter_universe_replication_args =
     "add_table [<comma_separated_list_of_table_ids>] "
     "[<comma_separated_list_of_producer_bootstrap_ids>] | "
     "remove_table [<comma_separated_list_of_table_ids>] [ignore-errors] | "
-    "rename_id <new_producer_universe_id> | "
     "remove_namespace <source_namespace_id>)";
 Status alter_universe_replication_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2096,7 +2108,6 @@ Status alter_universe_replication_action(
   vector<string> add_tables;
   vector<string> remove_tables;
   vector<string> bootstrap_ids_to_add;
-  string new_replication_group_id = "";
   bool remove_table_ignore_errors = false;
   NamespaceId source_namespace_to_remove;
 
@@ -2110,9 +2121,6 @@ Status alter_universe_replication_action(
     if (args.size() == 4 && args[3] == "ignore-errors") {
       remove_table_ignore_errors = true;
     }
-  } else if (args[1] == "rename_id") {
-    lst = nullptr;
-    new_replication_group_id = args[2];
   } else if (args[1] == "remove_namespace") {
     lst = nullptr;
     source_namespace_to_remove = args[2];
@@ -2132,7 +2140,7 @@ Status alter_universe_replication_action(
   RETURN_NOT_OK_PREPEND(
       client->AlterUniverseReplication(
           replication_group_id, master_addresses, add_tables, remove_tables, bootstrap_ids_to_add,
-          new_replication_group_id, source_namespace_to_remove, remove_table_ignore_errors),
+          source_namespace_to_remove, remove_table_ignore_errors),
       Format("Unable to alter replication for universe $0", replication_group_id));
 
   return Status::OK();
@@ -2624,7 +2632,10 @@ Status get_universe_replication_info_action(
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
     std::cout << std::endl
               << "DB Scoped info(s):" << std::endl
+              << "DDL mode: " << (group_info.automatic_ddl_mode ? "Automatic" : "Semi-automatic")
+              << std::endl
               << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
+
     for (const auto& [target_namespace_id, source_namespace_id] :
          group_info.db_scope_namespace_id_map) {
       auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);

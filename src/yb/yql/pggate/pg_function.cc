@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -74,12 +74,12 @@ PgFunctionParams::GetValueAndType(const std::string& name) const {
 //--------------------------------------------------------------------------------------------------
 
 Status PgFunction::AddParam(
-    const std::string name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
+    const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
   return params_.AddParam(name, type_entity, datum, is_null);
 }
 
 Status PgFunction::AddTarget(
-    const std::string name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs) {
+    const std::string& name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs) {
   RETURN_NOT_OK(schema_builder_.AddColumn(name, ToLW(PersistentDataType(type_entity->yb_type))));
   RETURN_NOT_OK(schema_builder_.SetColumnPGType(name, type_entity->type_oid));
   return schema_builder_.SetColumnPGTypmod(name, type_attrs.typmod);
@@ -240,7 +240,7 @@ Result<std::vector<TransactionId>> GetDecodedBlockerTransactionIds(
 
 Result<std::list<PgTableRow>> PgLockStatusRequestor(
     const PgFunctionParams& params, const Schema& schema, const ReaderProjection& projection,
-    const scoped_refptr<PgSession> pg_session) {
+    const scoped_refptr<PgSession>& pg_session) {
   std::string table_id;
   const auto [relation, rel_null] = VERIFY_RESULT(params.GetParamValue<PgOid>("relation"));
   if (!rel_null) {

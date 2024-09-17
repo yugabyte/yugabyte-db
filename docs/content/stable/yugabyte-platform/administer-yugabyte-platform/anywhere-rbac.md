@@ -14,25 +14,7 @@ type: docs
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-Starting with v2.20.1, RBAC is available with fine-grained control over access to universes. {{<badge/ea>}}
-
-{{< note title="Fine-grained RBAC is Early Access">}}
-
-Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-maturity).
-
-During EA, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
-
-```sh
-curl --request PUT \
-  --url http://{yba_host:port}/api/v1/customers/{customerUUID}/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.rbac.use_new_authz \
-  --header 'Content-Type: text/plain' \
-  --header 'X-AUTH-YW-API-TOKEN: {api_token}' \
-  --data 'true'
-```
-
-Note that if you enable fine-grained RBAC, you can't turn it off. You should test the feature thoroughly in a development or staging environment before enabling it in your production environment.
-
-{{</note >}}
+RBAC is also available with fine-grained control over access to universes. Fine-grained RBAC is {{<badge/ea>}}; during Early Access, by default fine-grained RBAC is not enabled. See [Manage users](#manage-users).
 
 ## Users and roles
 
@@ -76,7 +58,19 @@ You can't delete or edit built-in roles.
 
 As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
-How you add and modify users varies depending on whether you have enabled fine-grained RBAC. You can only assign, create, and modify custom roles if you have enabled fine-grained RBAC.
+How you add and modify users varies depending on whether you have enabled fine-grained RBAC {{<badge/ea>}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled. During Early Access, by default fine-grained RBAC is not enabled.
+
+To enable the feature, use following API command:
+
+```sh
+curl --request PUT \
+  --url http://{yba_host:port}/api/v1/customers/{customerUUID}/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.rbac.use_new_authz \
+  --header 'Content-Type: text/plain' \
+  --header 'X-AUTH-YW-API-TOKEN: {api_token}' \
+  --data 'true'
+```
+
+If you enable fine-grained RBAC, you can't turn it off. You should test the feature thoroughly in a development or staging environment before enabling it in your production environment.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -88,7 +82,7 @@ How you add and modify users varies depending on whether you have enabled fine-g
   <li>
     <a href="#finegrain" class="nav-link" id="finegrain-tab" data-bs-toggle="tab"
       role="tab" aria-controls="finegrain" aria-selected="false">
-      Fine grained (v2.20.1.0)
+      Fine Grained
     </a>
   </li>
 </ul>
@@ -110,6 +104,8 @@ You can invite new users to your YugabyteDB Anywhere instance as follows:
 1. Click **Submit**.
 
 To modify a user role, navigate to **Admin > User Management > Users**, click **Actions** that corresponds to the specific user, and choose **Edit User Role**.
+
+To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
 
   </div>
 
@@ -151,10 +147,6 @@ To modify a user, do the following:
 
 1. To customize access to universes, assign at least one custom role, then click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
 1. Click **Edit User**.
-
-  </div>
-
-</div>
 
 To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
 
@@ -207,3 +199,7 @@ To view the users that have been assigned a role, navigate to **Admin > Access M
 - You may need to refresh your browser after creating a universe to apply the permissions for the newly created universe.
 - Currently, LDAP group mapping is not supported for custom roles. Only built-in roles are supported for LDAP users.
 - The View Resource permission provides view access to all logs, task logs, and so on.
+
+  </div>
+
+</div>

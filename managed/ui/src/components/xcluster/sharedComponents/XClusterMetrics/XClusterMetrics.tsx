@@ -346,6 +346,14 @@ export const XClusterMetrics = ({
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
+  const refetchMetrics = () => {
+    configReplicationLagMetricQuery.refetch();
+    if (!!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN) {
+      consumerSafeTimeLagMetricsQuery.refetch();
+      consumerSafeTimeSkewMetricsQuery.refetch();
+    }
+  };
+
   const namespaceUuidToNamespaceName = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
         targetUniverseNamespaceQuery.data.map((namespace) => [
@@ -393,6 +401,7 @@ export const XClusterMetrics = ({
       namespaceUuidToNamespaceName
     )
   };
+
   return (
     <div>
       <Box display="flex">
@@ -403,7 +412,7 @@ export const XClusterMetrics = ({
               endMoment={customEndMoment}
               setStartMoment={(dateString: any) => setCustomStartMoment(moment(dateString))}
               setEndMoment={(dateString: any) => setCustomEndMoment(moment(dateString))}
-              handleTimeframeChange={configReplicationLagMetricQuery.refetch}
+              handleTimeframeChange={refetchMetrics}
             />
           )}
           <Dropdown id="LagGraphTimeRangeDropdown" pullRight>
@@ -420,6 +429,7 @@ export const XClusterMetrics = ({
           metric={configReplicationLagMetrics}
           title={t('graphTitle.asyncReplicationSentLag')}
           metricSettings={replicationLagMetricSettings}
+          unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
           namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
           referenceLines={
             maxAcceptableLag && showAlertThresholdReferenceLine
@@ -490,6 +500,7 @@ export const XClusterMetrics = ({
               metric={consumerSafeTimeLagMetrics}
               title={t('graphTitle.consumerSafeTimeLag')}
               metricSettings={consumerSafeTimeLagMetricSettings}
+              unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
               namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
               graphHeaderAccessor={
                 <MetricsFilter
@@ -509,6 +520,7 @@ export const XClusterMetrics = ({
               metric={consumerSafeTimeSkewMetrics}
               title={t('graphTitle.consumerSafeTimeSkew')}
               metricSettings={consumerSafeTimeSkewMetricSettings}
+              unit={t('unitAbbreviation.milliseconds', { keyPrefix: 'common' })}
               namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
               graphHeaderAccessor={
                 <MetricsFilter

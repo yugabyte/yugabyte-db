@@ -29,6 +29,7 @@
 
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "src/vector.h"
 
 #define YB_VECTOR_DIST_PROCNUM 1
 

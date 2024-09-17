@@ -39,6 +39,7 @@
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -145,15 +146,10 @@ inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slic
 
 using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
 
-struct MetricContext {
-  PgDocMetrics& metrics;
-  PgWaitEventWatcher::Starter wait_starter;
-};
-
 class FlushFuture {
  public:
-  FlushFuture(PgOperationBuffer::PerformFutureEx&& future, MetricContext* context)
-      : future_(std::move(future.first)), session_(future.second), context_(context) {}
+  FlushFuture(PgOperationBuffer::PerformFutureEx&& future, PgDocMetrics* metrics)
+      : future_(std::move(future.first)), session_(future.second), metrics_(metrics) {}
 
   bool Ready() const {
     return future_.Ready();
@@ -161,38 +157,34 @@ class FlushFuture {
 
   Status EnsureCompleted() {
     uint64_t duration = 0;
-    auto& metrics = context_->metrics;
     {
-      PgWaitEventWatcher watcher(context_->wait_starter,
-                                 ash::WaitStateCode::kStorageFlush);
-      RETURN_NOT_OK(metrics.CallWithDuration(
+      auto watcher = session_->StartWaitEvent(ash::WaitStateCode::kStorageFlush);
+      RETURN_NOT_OK(metrics_->CallWithDuration(
           [this] { return future_.Get(*session_); }, &duration));
     }
-    metrics.FlushRequest(duration);
+    metrics_->FlushRequest(duration);
     return Status::OK();
   }
 
  private:
   PerformFuture future_;
   PgSession* session_;
-  MetricContext* context_;
+  PgDocMetrics* metrics_;
 };
 
 class Flusher {
  public:
   Flusher(
-      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter)
-      : ops_flusher_(std::move(ops_flusher)),
-        context_{*metrics, wait_starter} {}
+      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics& metrics)
+      : ops_flusher_(std::move(ops_flusher)), metrics_(metrics) {}
 
   Result<FlushFuture> Flush(BufferableOperations&& ops, bool transactional) {
-    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &context_};
+    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &metrics_};
   }
 
  private:
   PgOperationBuffer::OperationsFlusher ops_flusher_;
-  MetricContext context_;
+  PgDocMetrics& metrics_;
 };
 
 struct InFlightOperation {
@@ -252,9 +244,9 @@ size_t BufferableOperations::size() const {
 class PgOperationBuffer::Impl {
  public:
   Impl(
-      OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
-      : flusher_(std::move(ops_flusher), metrics, wait_starter),
+      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+      const BufferingSettings& buffering_settings)
+      : flusher_(std::move(ops_flusher), metrics),
         buffering_settings_(buffering_settings) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
@@ -484,9 +476,9 @@ class PgOperationBuffer::Impl {
 };
 
 PgOperationBuffer::PgOperationBuffer(
-    OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-    PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
-    : impl_(new Impl(std::move(ops_flusher), metrics, wait_starter, buffering_settings)) {}
+    OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+    const BufferingSettings& buffering_settings)
+    : impl_(new Impl(std::move(ops_flusher), metrics, buffering_settings)) {}
 
 PgOperationBuffer::~PgOperationBuffer() = default;
 

@@ -193,3 +193,23 @@ groups:
         expr: "node_filesystem_size_bytes - ignoring(saved_name)  node_filesystem_free_bytes"
         labels:
           saved_name: node_filesystem_used_bytes
+
+      - record: process_user_cpu_seconds_rate
+        expr: 'rate(yb_process_cpu_seconds_total{type="user"}[120s])'
+        labels:
+          saved_name: process_user_cpu_seconds_rate
+
+      - record: process_system_cpu_seconds_rate
+        expr: 'rate(yb_process_cpu_seconds_total{type="system"}[120s])'
+        labels:
+          saved_name: process_system_cpu_seconds_rate
+
+      - record: process_io_read_rate
+        expr: 'rate(yb_process_io_kb_total{type="read"}[120s])'
+        labels:
+          saved_name: process_io_read_rate
+
+      - record: process_io_write_rate
+        expr: 'rate(yb_process_io_kb_total{type="write"}[120s])'
+        labels:
+          saved_name: process_io_write_rate

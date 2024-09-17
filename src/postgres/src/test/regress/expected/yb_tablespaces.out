@@ -355,7 +355,12 @@ lsm, for table "testschema.test_default_tab"
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
+-- YB_TODO: Update output after GH #23825 is fixed.
 SELECT * FROM testschema.test_default_tab;
+ id
+----
+(0 rows)
+
  id
 ----
   1
@@ -491,7 +496,7 @@ Tablespace: "regress_tblspace"
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_global;
 ERROR:  only shared relations can be placed in pg_global tablespace
 \d testschema.part
-              Table "testschema.part"
+        Partitioned table "testschema.part"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -504,7 +509,7 @@ ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_default;
 NOTICE:  Data movement for table part_a_idx is successfully initiated.
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 \d testschema.part
-              Table "testschema.part"
+        Partitioned table "testschema.part"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -517,7 +522,7 @@ ALTER INDEX testschema.part_a_idx SET TABLESPACE regress_tblspace;
 NOTICE:  Data movement for table part_a_idx is successfully initiated.
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 \d testschema.part
-              Table "testschema.part"
+        Partitioned table "testschema.part"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |

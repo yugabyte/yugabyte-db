@@ -2726,6 +2726,7 @@ Executor::ExecutorTask& Executor::ExecutorTask::Bind(
   executor_ = executor;
   reset_async_calls_ = std::move(*reset_async_calls);
   wait_state_ = ash::WaitStateInfo::CurrentWaitState();
+  ASH_ENABLE_CONCURRENT_UPDATES();
   return *this;
 }
 

@@ -635,6 +635,7 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
   private void resetTriggers(Statement stmt) throws Exception {
     stmt.execute("UPDATE triggers_fired SET fired = 0");
     stmt.execute("TRUNCATE TABLE triggers_update_values");
+    waitForTServerHeartbeatIfConnMgrEnabled();
   }
 
   /**

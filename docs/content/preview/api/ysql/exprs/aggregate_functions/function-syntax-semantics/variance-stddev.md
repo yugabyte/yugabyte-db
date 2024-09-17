@@ -181,7 +181,7 @@ real              double precision
 
 ## Example
 
-The example uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
+The example uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/extension-tablefunc) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;

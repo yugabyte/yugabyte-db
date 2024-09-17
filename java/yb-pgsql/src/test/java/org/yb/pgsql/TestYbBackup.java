@@ -117,7 +117,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
+    return 900; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
   }
 
   @Override

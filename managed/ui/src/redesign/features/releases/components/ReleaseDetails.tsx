@@ -9,14 +9,14 @@ import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { ImportedArchitecture } from './ImportedArchitecture';
 import { InUseUniverses } from './InUseUniverses';
 import { YBButton } from '../../../components';
-import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
+import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import { ModalTitle, ReleasePlatformArchitecture, ReleaseState, Releases } from './dtos';
 import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
+import { MAX_RELEASE_TAG_CHAR, MAX_RELEASE_VERSION_CHAR } from '../helpers/utils';
 
 import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
-import { MAX_RELEASE_TAG_CHAR, MAX_RELEASE_VERSION_CHAR } from '../helpers/utils';
 
 const DOCS_LINK = 'https://docs.yugabyte.com/preview/releases/yba-releases/';
 
@@ -269,36 +269,36 @@ export const ReleaseDetails = ({
       </Box>
       <Box>
         <Box className={helperClasses.floatBoxRight} mt={2} mr={2}>
-          <YBButton
-            className={helperClasses.deleteButton}
-            variant="secondary"
-            disabled={
-              data?.universes?.length > 0 || !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
-            }
-            size="large"
-            startIcon={<Delete />}
-            onClick={() => {
-              onDeleteReleaseButtonClick();
-              onSidePanelClose();
-            }}
-          >
-            {t('common.delete')}
-          </YBButton>
-          <YBButton
-            variant="secondary"
-            size="large"
-            disabled={
-              data?.universes?.length > 0 || !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
-            }
-            onClick={() => {
-              onDisableReleaseButtonClick();
-              onSidePanelClose();
-            }}
-          >
-            {data?.state === ReleaseState.ACTIVE
-              ? t('releases.disableDeployment')
-              : t('releases.enableDeployment')}
-          </YBButton>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE} isControl>
+            <YBButton
+              className={helperClasses.deleteButton}
+              variant="secondary"
+              disabled={data?.universes?.length > 0}
+              size="large"
+              startIcon={<Delete />}
+              onClick={() => {
+                onDeleteReleaseButtonClick();
+                onSidePanelClose();
+              }}
+            >
+              {t('common.delete')}
+            </YBButton>
+          </RbacValidator>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE} isControl>
+            <YBButton
+              variant="secondary"
+              size="large"
+              disabled={data?.universes?.length > 0}
+              onClick={() => {
+                onDisableReleaseButtonClick();
+                onSidePanelClose();
+              }}
+            >
+              {data?.state === ReleaseState.ACTIVE
+                ? t('releases.disableDeployment')
+                : t('releases.enableDeployment')}
+            </YBButton>
+          </RbacValidator>
         </Box>
       </Box>
       <Box ml={3} mr={2} className={helperClasses.releaseDetailsBox}>
@@ -347,29 +347,29 @@ export const ReleaseDetails = ({
           </TabList>
           <Box className={clsx(helperClasses.tabPanel, helperClasses.importedArchitectureBox)}>
             <TabPanel value={ReleaseDetailsTab.IMPORTED_ARCHITECTURE}>
-              <YBButton
-                className={helperClasses.floatBoxRight}
-                disabled={
-                  data?.artifacts.length >= 3 ||
-                  !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
-                }
-                variant="secondary"
-                size="large"
-                startIcon={<Add />}
-                onClick={() => {
-                  onNewReleaseButtonClick();
-                  onSidePanelClose();
-                  onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
-                }}
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE}
+                isControl
+                overrideStyle={{ display: 'block' }}
               >
-                {ModalTitle.ADD_ARCHITECTURE}
-              </YBButton>
+                <YBButton
+                  className={helperClasses.floatBoxRight}
+                  disabled={data?.artifacts.length >= 3}
+                  variant="secondary"
+                  size="large"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    onNewReleaseButtonClick();
+                    onSidePanelClose();
+                    onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+                  }}
+                >
+                  {ModalTitle.ADD_ARCHITECTURE}
+                </YBButton>
+              </RbacValidator>
               <Box mt={8}>
                 <ImportedArchitecture
-                  isDisabled={
-                    data?.universes?.length > 0 ||
-                    !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
-                  }
+                  isDisabled={data?.universes?.length > 0}
                   artifacts={data?.artifacts}
                   onSetModalTitle={onSetModalTitle}
                   onSidePanelClose={onSidePanelClose}

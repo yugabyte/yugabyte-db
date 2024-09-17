@@ -130,9 +130,10 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               if (mSchemaData?.overall_status === "complete") {
                 completed = true;
               } else if (
-                mSchemaData?.export_schema !== "N/A" ||
-                mSchemaData?.analyze_schema !== "N/A" ||
-                mSchemaData?.import_schema !== "N/A"
+                mSchemaData &&
+                (mSchemaData.export_schema !== "N/A" ||
+                  mSchemaData.analyze_schema !== "N/A" ||
+                  mSchemaData.import_schema !== "N/A")
               ) {
                 running = true;
               } else {
@@ -176,6 +177,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 
         return (
           <Box
+            key={step}
             className={clsx(
               classes.tile,
               currentStep === stepIndex && classes.tileSelected,

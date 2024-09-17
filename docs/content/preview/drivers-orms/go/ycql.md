@@ -7,7 +7,7 @@ aliases:
   - /preview/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   preview:
-    identifier: yb-pgx-driver-ycql
+    identifier: go-4-yb-pgx-driver-ycql
     parent: go-drivers
     weight: 500
 type: docs

@@ -2,11 +2,13 @@
 
 import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
+import { Tooltip } from '@material-ui/core';
+import { Info } from '@material-ui/icons';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
+import { UniverseStatusContainer } from '../../universes';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
-import './TableDetail.scss';
 import Measure from 'react-measure';
 import { TableSchema } from '../../tables';
 import { CustomerMetricsPanel } from '../../metrics';
@@ -14,7 +16,9 @@ import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 
-import { UniverseStatusContainer } from '../../universes';
+import './TableDetail.scss';
+
+const TABLE_NAME_LENGTH = 40;
 
 export default class TableDetail extends Component {
   constructor(props) {
@@ -129,18 +133,28 @@ export default class TableDetail extends Component {
         {tableMetricsContent}
       </Tab>
     ];
-    let tableName = '';
+    let tableNameDetails = '';
+
     if (isValidObject(currentTableDetail.tableDetails)) {
-      tableName = (
+      const keySpace = currentTableDetail.tableDetails.keyspace;
+      const tableName = currentTableDetail.tableDetails.tableName;
+
+      tableNameDetails = (
         <Fragment>
           {currentTableDetail.tableDetails.keyspace}
           <strong>.</strong>
-          <em>{currentTableDetail.tableDetails.tableName}</em>
+          {tableName.length > TABLE_NAME_LENGTH ? `${tableName}...` : tableName}
+          {tableName.length > TABLE_NAME_LENGTH && (
+            <Tooltip title={`${keySpace}.${tableName}`}>
+              <Info />
+            </Tooltip>
+          )}
         </Fragment>
       );
     }
 
     let universeState = <span />;
+
     if (
       isNonEmptyObject(currentUniverse.data) &&
       isNonEmptyObject(currentTableDetail.tableDetails)
@@ -157,7 +171,7 @@ export default class TableDetail extends Component {
                 <i className="fa fa-chevron-right"></i>
                 <Link to={`/universes/${currentUniverse.data.universeUUID}/tables`}>Tables</Link>
                 <i className="fa fa-chevron-right"></i>
-                {tableName}
+                {tableNameDetails}
               </span>
             </h2>
             <UniverseStatusContainer

@@ -14,7 +14,7 @@ type: docs
 
 After creating the on-premises provider, you can add instances to its free pool of nodes.
 
-1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
+1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
 1. Select **Instances**.
 
 This displays the configured instance types and instances for the selected provider.

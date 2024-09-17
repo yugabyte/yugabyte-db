@@ -319,7 +319,7 @@ templates:
     name: DB Instance restart
     description: Unexpected Master or TServer process restart(s) occurred during
       last 30 minutes
-    queryTemplate: max by (universe_uuid) (changes(yb_node_boot_time{universe_uuid="__universeUuid__"}[30m])
+    queryTemplate: max by (universe_uuid) ((sum_over_time((increase(yb_node_boot_time{universe_uuid="__universeUuid__"}[1m]) > bool 10)[30m:1m]))
       and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid="__universeUuid__"}[35m])
       == 0)) {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
@@ -335,7 +335,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (changes(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}'}[30m])
+        ((sum_over_time((increase(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}'}[1m]) > bool 10)[30m:1m]))
         and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid='{{ $labels.universe_uuid }}'}[35m])
         == 0)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -1079,7 +1079,8 @@ templates:
   NODE_RESTART:
     name: DB node restart
     description: Unexpected DB node restart(s) occurred during last 30 minutes
-    queryTemplate: max by (universe_uuid) (changes(node_boot_time_seconds{universe_uuid="__universeUuid__"}[30m]))
+    queryTemplate: max by (universe_uuid) (sum_over_time(
+      (increase(node_boot_time_seconds{universe_uuid="__universeUuid__"}[1m]) > bool 10)[30m:1m]))
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
     defaultThresholdMap:
@@ -1094,7 +1095,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (changes(node_boot_time_seconds{universe_uuid='{{ $labels.universe_uuid }}'}[30m]))
+        (sum_over_time((increase(node_boot_time_seconds{universe_uuid='{{ $labels.universe_uuid }}'}[1m]) > bool 10)[30m:1m]))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -1906,7 +1907,7 @@ templates:
     name: High clock drift
     description: Local clock on the node has drift too far from the actual time in the past 10 minutes.
     queryTemplate: max by (universe_uuid) (yb_node_clock_drift_check_ms{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true 
+    createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
         threshold: 200.0

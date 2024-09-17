@@ -1045,7 +1045,9 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       //   2. a kConflict is raised even if their_priority equals our_priority.
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
-            our_transaction_id, transaction.id, "higher priority", GetTabletMetrics());
+            our_transaction_id, transaction.id,
+            our_priority == their_priority ? "same priority" : "higher priority",
+            GetTabletMetrics());
       }
     }
     fetched_metadata_for_transactions_ = true;

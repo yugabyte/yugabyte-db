@@ -78,6 +78,11 @@ var reconfigureCmd = &cobra.Command{
 					log.Fatal("failed to edit basic auth: " + err.Error())
 				}
 			}
+			if name == PostgresServiceName {
+				// Make sure postgres is configured correctly
+				pg := services[name].(Postgres)
+				pg.modifyPostgresConf()
+			}
 			log.Info("Starting service " + name)
 			services[name].Start()
 		}

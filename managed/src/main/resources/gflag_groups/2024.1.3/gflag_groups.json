@@ -1,0 +1,13 @@
+[
+    {
+        "group_name": "ENHANCED_POSTGRES_COMPATIBILITY",
+        "flags": {
+            "MASTER": {},
+            "TSERVER": {
+                "yb_enable_read_committed_isolation": "true",
+                "ysql_enable_read_request_caching": "true",
+                "ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,yb_enable_optimizer_statistics=true,yb_bnl_batch_size=1024,yb_parallel_range_rows=10000,yb_enable_bitmapscan=true,yb_use_hash_splitting_by_default=false"
+            }
+        }
+    }
+]

@@ -106,7 +106,6 @@ bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	return ActivePortal->stmts->length == 1 &&
 		YBCIsSingleRowModify(pstmt) &&
-		list_length(estate->es_opened_result_relations) == 1 &&
 		(pstmt->commandType == CMD_UPDATE ||
 		YBCIsSingleRowTxnCapableRel((ResultRelInfo *) linitial(estate->es_opened_result_relations)));
 }

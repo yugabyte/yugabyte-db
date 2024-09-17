@@ -174,11 +174,11 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.11",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
@@ -207,7 +207,7 @@ libraryDependencies ++= Seq(
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
-  "com.jayway.jsonpath" % "json-path" % "2.6.0",
+  "com.jayway.jsonpath" % "json-path" % "2.9.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
@@ -926,8 +926,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.93-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.94-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b6"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -1207,7 +1207,7 @@ def runNpmInstall(implicit dir: File): Int =
     println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
     println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
     println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
-    Process("npm" :: "ci" :: Nil, dir).!
+    Process("npm" :: "ci" :: "--legacy-peer-deps" :: Nil, dir).!
   }
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.

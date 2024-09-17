@@ -48,6 +48,9 @@ var preflightCmd = &cobra.Command{
 			}
 			// TODO: We should allow the user to better specify which checks to run.
 			// Will do this as we implement a set of upgrade preflight checks
+			if dataless {
+				skippedPreflightChecks = append(skippedPreflightChecks, "disk-availability")
+			}
 			results := preflight.Run(checksToRun, skippedPreflightChecks...)
 			preflight.PrintPreflightResults(results)
 			if preflight.ShouldFail(results) {
@@ -65,6 +68,8 @@ func init() {
 		"run preflight checks for upgrade")
 	preflightCmd.Flags().BoolVar(&migratePreflightChecks, "migrate", false,
 		"run preflight checks for replicted migration")
+	preflightCmd.Flags().BoolVar(&dataless, "without-data", false,
+		"Preflight checks for install without setting up the data directory")
 
 	rootCmd.AddCommand(preflightCmd)
 }

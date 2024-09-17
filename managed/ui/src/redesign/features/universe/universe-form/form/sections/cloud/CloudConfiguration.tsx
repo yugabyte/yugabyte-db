@@ -36,7 +36,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { t } = useTranslation();
   const isLargeDevice = useMediaQuery('(min-width:1400px)');
 
-  const provider: YBProvider = useWatch({ name: PROVIDER_FIELD });
+  const provider = useWatch({ name: PROVIDER_FIELD });
 
   const providerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.providerScope(provider?.uuid),
@@ -111,11 +111,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor
-            disabled={isViewMode}
-            isPrimary={isPrimary}
-            isEditMode={isEditMode}
-          />
+          <ReplicationFactor disabled={isViewMode} isPrimary={isPrimary} isEditMode={isEditMode} />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">

@@ -1848,8 +1848,14 @@ removing_database_from_system:
 		 */
 		if (YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
+		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
+				yb_net_client_connections = yb_num_logical_conn;
+		}
+
 		/*
 		 * yb_net_client_connections can be negative if there are broken physical connections
 		 * in ysql connection manager pool.
@@ -1870,19 +1876,6 @@ removing_database_from_system:
 						dbname),
 				 errdetail_busy_db(notherbackends, npreparedxacts)));
 	}
-
-	/*
-	 * Check for other backends in the target database.  (Because we hold the
-	 * database lock, no new ones can start after this.)
-	 *
-	 * As in CREATE DATABASE, check this after other error conditions.
-	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("database \"%s\" is being accessed by other users",
-						dbname),
-				 errdetail_busy_db(notherbackends, npreparedxacts)));
 
 	/*
 	 * Remove the database's tuple from pg_database.
@@ -2068,8 +2061,13 @@ RenameDatabase(const char *oldname, const char *newname)
 		 */
 		if (YbGetNumYsqlConnMgrConnections(oldname, NULL, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
+		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
+				yb_net_client_connections = yb_num_logical_conn;
+		}
 
 		/*
 		 * yb_net_client_connections can be negative if there are broken physical connections

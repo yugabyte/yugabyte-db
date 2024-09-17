@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB Go driver for YCQL
 menu:
   stable:
-    identifier: yb-pgx-driver-ycql
+    identifier: go-4-yb-pgx-driver-ycql
     parent: go-drivers
     weight: 500
 type: docs
