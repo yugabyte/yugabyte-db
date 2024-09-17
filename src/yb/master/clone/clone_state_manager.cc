@@ -672,6 +672,8 @@ Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_sta
       auto lock = clone_state->LockForWrite();
       SCHECK_EQ(lock->pb.aggregate_state(), SysCloneStatePB::RESTORED, IllegalState,
           "Expected clone to be in restored state");
+      LOG(INFO) << Format("Marking clone as complete for source namespace $0 with seq_no $1",
+                          lock->pb.source_namespace_id(), lock->pb.clone_request_seq_no());
       lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::COMPLETE);
       LOG(INFO) << Format(
           "Marking clone of namespace: $0 as complete", lock->pb.source_namespace_id());
