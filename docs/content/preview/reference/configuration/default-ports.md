@@ -84,7 +84,6 @@ sudo dnf config-manager --set-enabled extras
 sudo dnf install -y firewalld
 sudo systemctl start firewalld
 
-
 ports=(5433 9042 7100 9100 18018 9070 7000 9000 15433)
 
 for port in "${ports[@]}"; do
