@@ -214,9 +214,9 @@ YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will 
 
 ## Known issues
 
-- When executing vault operations, the internal query may fail with the following error:
+When executing vault operations, the internal query may fail with the following error:
 
- ```output
+```output
 ERROR: The catalog snapshot used for this transaction has been invalidated: expected: 2, got: 1: MISMATCHED_SCHEMA (SQLSTATE 40001)
 ```
 
