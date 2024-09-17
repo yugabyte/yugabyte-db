@@ -497,8 +497,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->yb_rel_pushdown.quals =
 					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset);
 				/*
-				 * Index quals has to be fixed to refer index columns, not main
-				 * table columns, so we need to index the indextlist.
+				 * Index quals has to be fixed to refer to index columns, not
+				 * main table columns, so we need to index the indextlist.
 				 * Also, indextlist has to be converted, as ANALYZE may use it.
 				 * Skip that if we don't have index pushdown quals.
 				 */
@@ -565,22 +565,32 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->indexqual, rtoffset);
 				splan->indexqualorig =
 					fix_scan_list(root, splan->indexqualorig, rtoffset);
-
-				indexed_tlist *index_itlist;
-				index_itlist = build_tlist_index(splan->indextlist);
-
-				splan->yb_idx_pushdown.quals = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.quals,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset);
-				splan->yb_idx_pushdown.colrefs = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.colrefs,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset);
+				/*
+				 * Index quals has to be fixed to refer to index columns, not
+				 * main table columns, so we need to index the indextlist.
+				 * Also, indextlist has to be converted, as ANALYZE may use it.
+				 * Skip that if we don't have index pushdown quals.
+				 */
+				if (splan->yb_idx_pushdown.quals)
+				{
+					indexed_tlist *index_itlist;
+					index_itlist = build_tlist_index(splan->indextlist);
+					splan->yb_idx_pushdown.quals = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.quals,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset);
+					splan->yb_idx_pushdown.colrefs = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.colrefs,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset);
+					splan->indextlist =
+						fix_scan_list(root, splan->indextlist, rtoffset);
+					pfree(index_itlist);
+				}
 			}
 			break;
 		case T_BitmapHeapScan:

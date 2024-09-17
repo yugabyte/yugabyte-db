@@ -256,5 +256,20 @@ JOIN (
     WHERE a.site_id = 1
     AND a.recorded_at IS NULL
     ) aa ON true;
+
+-- try with bitmap scans
+/*+ Set(yb_enable_bitmapscan true) Set(enable_indexscan false) Set(enable_seqscan false) */
+explain (costs off)
+SELECT s.id, aa.addresses
+FROM site s
+JOIN (
+    SELECT
+        array_agg(json_build_object(
+        'id', a.id,
+        'site_id', a.site_id)) AS addresses
+    FROM address a
+    WHERE a.site_id = 1
+    AND a.recorded_at IS NULL
+    ) aa ON true;
 DROP TABLE site;
 DROP TABLE address;
