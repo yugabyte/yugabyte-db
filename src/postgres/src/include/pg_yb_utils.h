@@ -730,6 +730,8 @@ extern YBUpdateOptimizationOptions yb_update_optimization_options;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
+extern bool yb_skip_data_insert_for_table_rewrite;
+
 /*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.

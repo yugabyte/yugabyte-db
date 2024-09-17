@@ -49,18 +49,25 @@
 #include "extension_util.h"
 #include "pg_yb_utils.h"
 #include "tcop/cmdtag.h"
+#include "tcop/deparse_utility.h"
 #include "utils/jsonb.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
 
 #define DDL_END_OBJID_COLUMN_ID		  1
 #define DDL_END_COMMAND_TAG_COLUMN_ID 2
+#define DDL_END_SCHEMA_NAME_COLUMN_ID 3
+#define DDL_END_COMMAND_COLUMN_ID     4
 
 #define SQL_DROP_CLASS_ID_COLUMN_ID	   1
 #define SQL_DROP_IS_TEMP_COLUMN_ID	   2
 #define SQL_DROP_OBJECT_TYPE_COLUMN_ID 3
 #define SQL_DROP_SCHEMA_NAME_COLUMN_ID 4
 #define SQL_DROP_OBJECT_NAME_COLUMN_ID 5
+
+#define TABLE_REWRITE_OBJID_COLUMN_ID 1
+
+static List *rewritten_table_oid_list = NIL;
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -179,6 +186,35 @@ SPI_GetBool(HeapTuple spi_tuple, int column_id)
 	return val;
 }
 
+CollectedCommand *
+GetCollectedCommand(HeapTuple spi_tuple, int column_id)
+{
+	bool isnull;
+	Pointer command_datum = DatumGetPointer(
+		SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc, column_id, &isnull));
+	if (isnull)
+		elog(ERROR, "Found NULL value when parsing command (column %d)", column_id);
+	return (CollectedCommand *) command_datum;
+}
+
+void
+CheckAlterColumnTypeDDL(CollectedCommand *cmd)
+{
+	if (cmd && cmd->type == SCT_AlterTable && cmd->d.alterTable.subcmds)
+	{
+		ListCell *cell;
+		foreach(cell, cmd->d.alterTable.subcmds)
+		{
+			AlterTableCmd *subcmd = castNode(
+				AlterTableCmd, ((CollectedATSubcmd *) lfirst(cell))->parsetree);
+			if (subcmd->subtype == AT_AlterColumnType)
+			{
+				elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not supported\n");
+			}
+		}
+	}
+}
+
 bool
 IsPrimaryIndex(Relation rel)
 {
@@ -211,8 +247,10 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	return IsPassThroughDdlCommandSupported(command_tag);
 }
 
+// This function handles both new relation from create table/index,
+// and also new relations as a result of table rewrites.
 bool
-ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
+ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
@@ -248,6 +286,49 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
 	return true;
+}
+
+void
+ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_list)
+{
+	Relation rewritten_table = RelationIdGetRelation(rel_oid);
+	if (!rewritten_table)
+		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+
+	char *rewritten_table_name = pstrdup(RelationGetRelationName(rewritten_table));
+	RelationClose(rewritten_table);
+
+	StringInfoData query_buf;
+	initStringInfo(&query_buf);
+	appendStringInfo(&query_buf,
+			"SELECT c.oid FROM pg_class c JOIN pg_indexes i ON c.relname = i.indexname "
+			"WHERE i.tablename = '%s' AND i.schemaname = '%s';",
+			rewritten_table_name, schema_name);
+
+	// Preserve current state of SPI_processed and SPI_tuptable because they will be overwritten
+	// by the next SPI_execute call. This ensures that caller's expected state remains unchanged.
+	int saved_processed = SPI_processed;
+	SPITupleTable * saved_tuptable = SPI_tuptable;
+
+	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	if (exec_res != SPI_OK_SELECT)
+		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
+
+	for (int i = 0; i < SPI_processed; i++)
+	{
+		HeapTuple spi_tuple = SPI_tuptable->vals[i];
+		Oid rewritten_index_oid = SPI_GetOid(spi_tuple, 1);
+		Relation rewritten_index = RelationIdGetRelation(rewritten_index_oid);
+
+		NewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct NewRelMapEntry));
+		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
+		rewritten_index_entry->rel_name = pstrdup(RelationGetRelationName(rewritten_index));
+		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
+		RelationClose(rewritten_index);
+	}
+
+	SPI_processed = saved_processed;
+	SPI_tuptable = saved_tuptable;
 }
 
 bool
@@ -286,7 +367,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
 	StringInfoData query_buf;
 	initStringInfo(&query_buf);
-	appendStringInfo(&query_buf, "SELECT objid, command_tag FROM "
+	appendStringInfo(&query_buf, "SELECT objid, command_tag, schema_name, command FROM "
 								 "pg_catalog.pg_event_trigger_ddl_commands()");
 	int exec_res = SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
 	if (exec_res != SPI_OK_SELECT)
@@ -308,7 +389,27 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			command_tag == CMDTAG_CREATE_INDEX)
 		{
 			should_replicate_ddl |=
-				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
+				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE &&
+				 list_member_oid(rewritten_table_oid_list, obj_id))
+		{
+			// Verify if the command is ALTER COLUMN TYPE, which is currently unsupported.
+			// TODO(yyan): Unblock ALTER COLUMN TYPE table rewrite after resolving issue #24007.
+			CollectedCommand *cmd = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
+			CheckAlterColumnTypeDDL(cmd);
+
+			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
+			// We need to also add the rewritten table to the new_rel_list, because in case of a table rewrite,
+			// the associated old DocDB table is discarded and a new one is created,
+			// and the relfile_oid of the table is updated to reference this new DocDB table,
+			should_replicate_ddl |=
+				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+
+			// Add all indexes that are associated with this table, as table rewrite will
+			// also rewrite all dependent index tables.
+			const char *schema_name = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
+			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE ||
 				 command_tag == CMDTAG_ALTER_INDEX)
@@ -351,6 +452,26 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	}
 
 	return should_replicate_ddl;
+}
+
+void
+ProcessSourceEventTriggerTableRewrite()
+{
+	StringInfoData query_buf;
+	initStringInfo(&query_buf);
+	appendStringInfo(&query_buf, "SELECT pg_event_trigger_table_rewrite_oid()");
+	int exec_res = SPI_execute(query_buf.data, /*readonly*/ true, /*tcount*/ 0);
+	if (exec_res != SPI_OK_SELECT)
+		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
+
+	HeapTuple spi_tuple = SPI_tuptable->vals[0];
+	Oid rewritten_table_oid = SPI_GetOid(spi_tuple, TABLE_REWRITE_OBJID_COLUMN_ID);
+
+	// Add the rewritten table to the list of rewritten tables, so that ddl end event
+	// triggers can process the rewritten table.
+	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, rewritten_table_oid);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 bool
@@ -456,4 +577,11 @@ ProcessSourceEventTriggerDroppedObjects()
 							   kManualReplicationErrorMsg)));
 
 	return should_replicate_ddl;
+}
+
+void
+ClearRewrittenTableOidList()
+{
+	list_free(rewritten_table_oid_list);
+	rewritten_table_oid_list = NIL;
 }

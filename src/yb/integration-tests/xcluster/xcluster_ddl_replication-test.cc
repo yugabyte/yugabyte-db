@@ -717,4 +717,167 @@ TEST_F(XClusterDDLReplicationTest, CreateNonXClusterColocatedDb) {
   ASSERT_OK(p_conn.Execute(kInsertStmt));
 }
 
+class XClusterDDLReplicationTableRewriteTest : public XClusterDDLReplicationTest {
+ public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    XClusterDDLReplicationTest::SetUp();
+    ASSERT_OK(SetUpClusters());
+    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+
+    producer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(producer_cluster_.Connect()));
+    consumer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(consumer_cluster_.Connect()));
+
+    // Create a base table and insert some rows.
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0($1 int, $2 int)", kBaseTableName_, kKeyColumnName, kColumn2Name_));
+    producer_base_table_name_ = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kBaseTableName_));
+
+    // Create index on the second column.
+    ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX idx ON $0($1 ASC)",
+        kBaseTableName_, kColumn2Name_));
+
+    // Check number of tables in the universe replication.
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(VerifyUniverseReplication(&resp));
+    EXPECT_EQ(resp.entry().tables_size(), 4);  // ddl_queue + base_table + index + sequences_data
+
+    // Check the second column is indexed.
+    VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+  }
+
+  void VerifyIndex(const std::string& column_name, bool expected_indexed) {
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    const auto stmt =
+        Format("SELECT COUNT(*) FROM $0 WHERE $1 = 1", kBaseTableName_, column_name);
+    ASSERT_EQ(expected_indexed, ASSERT_RESULT(producer_conn_->HasIndexScan(stmt)));
+    ASSERT_EQ(expected_indexed, ASSERT_RESULT(consumer_conn_->HasIndexScan(stmt)));
+  }
+
+  void VerifyTableRewrite() {
+    // Verify table rewrite change the table id.
+    auto producer_base_table_name_after_rewrite = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, "", kBaseTableName_));
+    ASSERT_NE(producer_base_table_name_.table_id(),
+        producer_base_table_name_after_rewrite.table_id());
+    // Verify data has been replicated.
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto producer_table = ASSERT_RESULT(GetProducerTable(producer_base_table_name_after_rewrite));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_base_table_name_after_rewrite));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  }
+
+  const std::string kBaseTableName_ = "base_table";
+  const std::string kColumn2Name_ = "b";
+  std::unique_ptr<pgwrapper::PGConn> producer_conn_;
+  std::unique_ptr<pgwrapper::PGConn> consumer_conn_;
+  client::YBTableName producer_base_table_name_;
+};
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, AddAndDropPrimaryKeyTest) {
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  // Execute ADD PRIMARY KEY table rewrite.
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD PRIMARY KEY ($1 ASC);",
+      kBaseTableName_, kKeyColumnName));
+  VerifyIndex(kKeyColumnName, /* expected_indexed */ true);
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;",
+      kBaseTableName_));
+  VerifyTableRewrite();
+
+  // Execute DROP PRIMARY KEY table rewrite.
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $1;",
+      kBaseTableName_, kBaseTableName_ + "_pkey"));
+  VerifyIndex(kKeyColumnName, /* expected_indexed */ false);
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;",
+      kBaseTableName_));
+  VerifyTableRewrite();
+
+  // Verify column 2 is still indexed after reindex from table rewrite.
+  VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+}
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnPrimaryKeyTest) {
+  const std::string kColumn3Name = "c";
+
+  // Execute ADD COLUMN .. PRIMARY KEY table rewrite.
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 int PRIMARY KEY;",
+      kBaseTableName_, kColumn3Name));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2, i FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  VerifyTableRewrite();
+
+  // Verify new column is indexed.
+  VerifyIndex(kColumn3Name, /* expected_indexed */ true);
+  // Verify the second column is still indexed after reindex from table rewrite.
+  VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+}
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnDefaultVolatile) {
+  const std::string kColumn3Name = "created_at";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  // Execute ADD COLUMN ... DEFAULT (volatile) table rewrite.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 TIMESTAMP DEFAULT clock_timestamp() NOT NULL;",
+      kBaseTableName_, kColumn3Name));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;",
+      kBaseTableName_));
+
+  // Make sure there isn't any NULL in the new column.
+  auto producer_base_table_name_after_rewrite = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, "", kBaseTableName_));
+  auto producer_scan_results =
+      ASSERT_RESULT(ScanToStrings(producer_base_table_name_after_rewrite, &producer_cluster_));
+  for (int row = 0; row < PQntuples(producer_scan_results.get()); ++row) {
+    auto prod_val = EXPECT_RESULT(pgwrapper::ToString(producer_scan_results.get(), row, 2));
+    ASSERT_NE(prod_val, "NULL");
+  }
+
+  VerifyTableRewrite();
+
+  // Verify column 2 is still indexed after reindex from table rewrite.
+  VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+}
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, AlterTypeIsBlocked) {
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  // Execute ALTER COLUMN ... TYPE table rewrite.
+  auto status = producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE float USING(random());",
+      kBaseTableName_, kColumn2Name_);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Table Rewrite ALTER COLUMN TYPE is not supported");
+
+  // Ensure the table rewrite is not processed by verifying that
+  // the table ID and column type remain unchanged.
+  auto producer_base_table_name_after_rewrite_failed = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, "", kBaseTableName_));
+  ASSERT_EQ(producer_base_table_name_.table_id(),
+      producer_base_table_name_after_rewrite_failed.table_id());
+  auto column2_type = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      Format("SELECT data_type FROM information_schema.columns WHERE table_name = '$0' "
+             "AND column_name = '$1';", kBaseTableName_, kColumn2Name_)));
+  ASSERT_EQ(column2_type, "integer");
+
+  // Verify column 2 is still indexed.
+  VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+}
+
 }  // namespace yb

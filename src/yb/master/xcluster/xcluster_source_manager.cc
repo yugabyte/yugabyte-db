@@ -1276,6 +1276,27 @@ Status XClusterSourceManager::ValidateSplitCandidateTable(const TableId& table_i
   return Status::OK();
 }
 
+bool XClusterSourceManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  auto all_outbound_groups = GetAllOutboundGroups();
+  if (all_outbound_groups.empty()) {
+    return false;
+  }
+
+  bool namespace_found = false;
+  for (const auto& outbound_group : all_outbound_groups) {
+    if (!outbound_group->HasNamespace(namespace_id)) {
+      continue;
+    }
+    if (!outbound_group->AutomaticDDLMode()) {
+      return false;
+    }
+    namespace_found = true;
+  }
+
+  // Return true only if the namespace was found in repl groups and all in automatic DDL mode.
+  return namespace_found;
+}
+
 Status XClusterSourceManager::SetupDDLReplicationExtension(
     const NamespaceId& namespace_id, StdStatusCallback callback) const {
   auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();

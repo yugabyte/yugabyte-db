@@ -1644,6 +1644,8 @@ bool yb_silence_advisory_locks_not_supported_error = false;
 
 bool yb_use_hash_splitting_by_default = true;
 
+bool yb_skip_data_insert_for_table_rewrite = false;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {

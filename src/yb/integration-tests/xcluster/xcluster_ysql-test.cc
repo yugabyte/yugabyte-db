@@ -2062,7 +2062,8 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+  ASSERT_OK(VerifyWrittenRecords(
+      producer_table_, consumer_table_, /*verify_column_count_match=*/false));
 }
 
 void PrepareChangeRequest(
@@ -2651,7 +2652,8 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
 TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
+  const auto errstr =
+      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))

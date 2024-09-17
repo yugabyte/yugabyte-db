@@ -7756,7 +7756,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
 TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
+  const auto errstr =
+      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
