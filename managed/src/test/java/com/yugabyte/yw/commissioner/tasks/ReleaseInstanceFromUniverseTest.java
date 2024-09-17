@@ -153,8 +153,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> RELEASE_INSTANCE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckNodeSafeToDelete,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.SetNodeState,

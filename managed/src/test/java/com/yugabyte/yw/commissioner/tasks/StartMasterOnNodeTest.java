@@ -153,8 +153,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   private static final List<TaskType> START_MASTER_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
