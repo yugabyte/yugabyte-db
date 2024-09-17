@@ -160,8 +160,61 @@ vault lease renew <lease-ID>
 vault lease revoke <lease-ID>
 ```
 
+## Configure SSL/TLS
+
+To allow YSQL hashicorp vault plugin to communicate securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
+
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+
+To start a secure local YugabyteDB cluster using `yugabyted` refer to [Multi-node cluster](../../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster) 
+
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters while adding the database by either of the following 2 ways:
+
+- Enter the credentials:
+
+    ```sh
+    vault write database/config/yugabytedb plugin_name=ysql-plugin  \
+    host="127.0.0.1" \
+    port=5433 \
+    username="yugabyte" \
+    password="yugabyte" \
+    db="yugabyte" \
+    load_balance=true \
+    yb_servers_refresh_interval=0 \
+    sslmode="verify-full" \
+    sslrootcert="path/to/.crt-file" \
+    allowed_roles="*"
+    ```
+
+- Use a connection string:
+
+    ```sh
+    vault write database/config/yugabytedb \
+    plugin_name=ysql-plugin \
+    connection_url="postgres://{{username}}:{{password}}@localhost:5433/yugabyte?sslmode=verify-full&load_balance=true&yb_servers_refresh_interval=0&sslrootcert=path/to/.crt-file" \
+    allowed_roles="*" \
+    username="yugabyte" \
+    password="yugabyte"
+    ```
+
+### SSL modes
+
+The following table summarizes the SSL modes:
+
+| SSL Mode | Client Driver Behavior | YugabyteDB Support |
+| :------- | :--------------------- | ------------------ |
+| disable  | SSL Disabled | Supported
+| allow    | SSL enabled only if server requires SSL connection | Supported
+| prefer (default) | SSL enabled only if server requires SSL connection | Supported
+| require | SSL enabled for data encryption and Server identity is not verified | Supported
+| verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
+| verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
+
+YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
+
 ## Learn more
 
+- [ERROR: The catalog snapshot used for this transaction has been invalidated](../../../troubleshoot/ysql-issues/#DDL)
 - [Database static roles and credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-creds-rotation)
 - [Database root credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-root-rotation)
 - [Username templating](https://developer.hashicorp.com/vault/tutorials/secrets-management/username-templating)
