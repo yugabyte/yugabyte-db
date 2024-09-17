@@ -124,20 +124,67 @@ To configure Hudi to use YugabyteDB, do the following:
     spark-submit --class example.HudiYugabyteDBIntegration --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0 path_to_your_scala_file.jar
     ```
 
-## Query the HUDI table
+## Query the Hudi table
 
-To verify the integration, connect to YugabyteDB using [ysqlsh](../../admin/ysqlsh/) and execute YSQL queries as follows:
+To verify the integration, check that the Hudi table is created successfully as follows:
 
 ```sh
-./bin/ysqlsh
+azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name$ ls -atlr
 ```
 
-```sql
--- Connect to your database
-\c your_db_name
--- Verify the table created by Hudi
-SELECT * FROM your_hudi_table_name LIMIT 10;
+```output
+drwxr-xr-x  7 azureuser azureuser 4096 Dec 16 15:59  .hoodie
 ```
+
+```sh
+azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name$ cd .hoodie/
+azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name/.hoodie$ ls -altr
+```
+
+```output
+total 136
+drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:44 archived
+drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:44 .schema
+drwxr-xr-x 3 azureuser azureuser 4096 Dec 16 15:44 .aux
+-rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:44 20231216154446818.deltacommit.requested
+-rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:44 .20231216154446818.deltacommit.requested.crc
+drwxr-xr-x 4 azureuser azureuser 4096 Dec 16 15:44 metadata
+-rw-r--r-- 1 azureuser azureuser 1014 Dec 16 15:44 hoodie.properties
+-rw-r--r-- 1 azureuser azureuser   16 Dec 16 15:44 .hoodie.properties.crc
+-rw-r--r-- 1 azureuser azureuser 1499 Dec 16 15:44 20231216154446818.deltacommit.inflight
+-rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:44 .20231216154446818.deltacommit.inflight.crc
+-rw-r--r-- 1 azureuser azureuser 2858 Dec 16 15:44 20231216154446818.deltacommit
+-rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:44 .20231216154446818.deltacommit.crc
+-rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:45 20231216154526806.deltacommit.requested
+-rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:45 .20231216154526806.deltacommit.requested.crc
+-rw-r--r-- 1 azureuser azureuser 1499 Dec 16 15:45 20231216154526806.deltacommit.inflight
+-rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:45 .20231216154526806.deltacommit.inflight.crc
+-rw-r--r-- 1 azureuser azureuser 2882 Dec 16 15:45 20231216154526806.deltacommit
+-rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:45 .20231216154526806.deltacommit.crc
+-rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:53 20231216155306810.deltacommit.requested
+-rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:53 .20231216155306810.deltacommit.requested.crc
+-rw-r--r-- 1 azureuser azureuser  814 Dec 16 15:53 20231216155306810.deltacommit.inflight
+-rw-r--r-- 1 azureuser azureuser   16 Dec 16 15:53 .20231216155306810.deltacommit.inflight.crc
+drwxr-xr-x 6 azureuser azureuser 4096 Dec 16 15:53 ..
+-rw-r--r-- 1 azureuser azureuser 1957 Dec 16 15:53 20231216155306810.deltacommit
+-rw-r--r-- 1 azureuser azureuser   24 Dec 16 15:53 .20231216155306810.deltacommit.crc
+-rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:53 20231216155326810.deltacommit.requested
+-rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:53 .20231216155326810.deltacommit.requested.crc
+-rw-r--r-- 1 azureuser azureuser 1503 Dec 16 15:53 20231216155326810.deltacommit.inflight
+-rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:53 .20231216155326810.deltacommit.inflight.crc
+-rw-r--r-- 1 azureuser azureuser 2898 Dec 16 15:53 20231216155326810.deltacommit
+-rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:53 .20231216155326810.deltacommit.crc
+-rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:59 20231216155926812.deltacommit.requested
+-rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:59 .20231216155926812.deltacommit.requested.crc
+-rw-r--r-- 1 azureuser azureuser 1525 Dec 16 15:59 20231216155926812.deltacommit.inflight
+-rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:59 .20231216155926812.deltacommit.inflight.crc
+drwxr-xr-x 7 azureuser azureuser 4096 Dec 16 15:59 .
+-rw-r--r-- 1 azureuser azureuser 2232 Dec 16 15:59 20231216155926812.deltacommit
+-rw-r--r-- 1 azureuser azureuser   28 Dec 16 15:59 .20231216155926812.deltacommit.crc
+drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:59 .temp
+```
+
+You can execute queries to the table using Spark. Refer to instructions in the [Apache Hudi documentation](https://hudi.apache.org/docs/quick-start-guide/#querying).
 
 ## Learn more
 
