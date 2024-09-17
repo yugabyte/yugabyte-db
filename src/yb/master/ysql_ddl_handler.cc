@@ -145,7 +145,7 @@ Status CatalogManager::ScheduleVerifyTransaction(
                 "YsqlTableSchemaChecker failed");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, true /* ddl_atomicity_enabled */);
   return Status::OK();
 }
@@ -688,7 +688,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
                 "YsqlTableSchemaChecker failed");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, true /* ddl_atomicity_enabled */);
   return Status::OK();
 }

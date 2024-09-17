@@ -925,8 +925,9 @@ std::vector<scoped_refptr<NamespaceInfo>> CatalogManager::NamespaceNameMapper::G
   return result;
 }
 
-CatalogManager::CatalogManager(Master* master)
+CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
     : master_(DCHECK_NOTNULL(master)),
+      sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
       tablet_exists_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -946,12 +947,8 @@ CatalogManager::CatalogManager(Master* master)
                .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
-
-  sys_catalog_.reset(new SysCatalogTable(
-      master_, master_->metric_registry(),
-      Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
-
-  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
+  CHECK_OK(sys_catalog_->Start(Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
+  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
 }
 
 CatalogManager::~CatalogManager() {
@@ -1373,7 +1370,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
       // need to do a one-time migration to make YSQL system catalog tables transactional.
       RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
-          tables_->GetAllTables(), sys_catalog_.get(), ysql_catalog_config_.get(), state->epoch));
+          tables_->GetAllTables(), sys_catalog_, ysql_catalog_config_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
   return Status::OK();
@@ -1475,6 +1472,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
+  RETURN_NOT_OK(master_->ts_manager()->RunLoader());
 
   return Status::OK();
 }
@@ -4392,7 +4390,7 @@ void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
     WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, false /* ddl_atomicity_enabled */);
 }
 
@@ -8600,7 +8598,7 @@ void CatalogManager::ScheduleVerifyNamespacePgLayer(
     WARN_NOT_OK(VerifyNamespacePgLayer(ns, result, epoch), "VerifyNamespacePgLayer");
   };
   NamespaceVerificationTask::CreateAndStartTask(
-      *this, ns, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, ns, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch);
 }
 
@@ -9820,7 +9818,8 @@ Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate() {
   return Status::OK();
 }
 
-Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {
+Status CatalogManager::RegisterTsFromRaftConfig(
+    const consensus::RaftPeerPB& peer, const LeaderEpoch& epoch) {
   NodeInstancePB instance_pb;
   instance_pb.set_permanent_uuid(peer.permanent_uuid());
   instance_pb.set_instance_seqno(0);
@@ -9843,7 +9842,7 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
     common->set_placement_uuid(placement_uuid);
   }
   return master_->ts_manager()->RegisterFromRaftConfig(
-      instance_pb, registration_pb, master_->MakeCloudInfoPB(), &master_->proxy_cache());
+      instance_pb, registration_pb, master_->MakeCloudInfoPB(), epoch, &master_->proxy_cache());
 }
 
 Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const TabletId& tablet_id) const {
@@ -12694,12 +12693,9 @@ Status CatalogManager::PromoteTableToRunningState(
       l.mutable_data()->IsPreparing(), IllegalState,
       "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),
       l.mutable_data()->pb.state());
-
   l.mutable_data()->pb.set_state(SysTablesEntryPB::RUNNING);
   RETURN_NOT_OK_PREPEND(
-                        sys_catalog_->Upsert(epoch, table_info.get()),
-      "Promote table to RUNNING state");
-
+      sys_catalog_->Upsert(epoch, table_info.get()), "Promote table to RUNNING state");
   l.Commit();
   return Status::OK();
 }

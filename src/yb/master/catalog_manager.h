@@ -218,7 +218,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   };
 
  public:
-  explicit CatalogManager(Master *master);
+  explicit CatalogManager(Master *master, SysCatalogTable* sys_catalog);
   virtual ~CatalogManager();
 
   Status Init();
@@ -615,7 +615,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Register the tablet server with the ts manager using the Raft config. This is called for
   // servers that are part of the Raft config but haven't registered as yet.
-  Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
+  Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer, const LeaderEpoch& epoch);
 
   // Create a new Namespace with the specified attributes.
   //
@@ -770,7 +770,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp);
 
-  SysCatalogTable* sys_catalog() override { return sys_catalog_.get(); }
+  SysCatalogTable* sys_catalog() override { return sys_catalog_; }
 
   // Tablet peer for the sys catalog tablet's peer.
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
@@ -2292,7 +2292,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Master* const master_;
   Atomic32 closing_;
 
-  std::unique_ptr<SysCatalogTable> sys_catalog_;
+  SysCatalogTable* sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
