@@ -20,14 +20,14 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 - The installation methods (including RHEL, Ubuntu, Brew, and the installer script) now install PostgreSQL 16 instead of PostgreSQL 14.
 - Added support in [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) to report issues in indexes on columns with complex data types, such as INET, CITEXT, JSONB, TSVECTOR, TSQUERY, and ARRAYs. In assess-migration, these data types are categorized under the common unsupported feature "Index on complex data types".
 - Both [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) now detect and report UNLOGGED tables, which are unsupported in YugabyteDB.
-- Renamed report file names - "assessmentReport" to "migration_assessment_report", and "bulkAssessmentReport" to "bulk_assessment_report" .
+- Changed assessment report file names from "assessmentReport" to "migration_assessment_report", and "bulkAssessmentReport" to "bulk_assessment_report" .
 - Improved UI output of [assess-migration](../reference/assess-migration/) by removing the progress bar from ora2pg when fetching the assessment report.
 
 ### Bug Fixes
 
 - Fixed an issue in streaming phase of [import data](../reference/data-migration/import-data/) where conflicts between events that could cause unique constraint errors were not being detected properly.
 - Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where multi-column GIN indexes were incorrectly reported as an issue due to a regex misidentifying expression indexes that combine two columns.
-- Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where table or column names containing the keyword "cluster" were incorrectly reported as issues of the type, `ALTER TABLE CLUSTER ON`.
+- Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where table or column names containing the keyword "cluster" were incorrectly reported as issues of the type `ALTER TABLE CLUSTER ON`.
 - Fixed an issue in [export-data-from-target](../reference/data-migration/export-data/#export-data-from-target) involving the new YugabyteDB CDC connector from Oracle sources.
 - Fixed a schema registry issue in [import-data](../reference/data-migration/import-data/#import-data) where a "no such file or directory" error occurred.
 - Fixed a bug where Voyager was unable to send details to YugabyteDB UI when upgrading from version 1.7.2 to 1.8 using the same yugabyted cluster.

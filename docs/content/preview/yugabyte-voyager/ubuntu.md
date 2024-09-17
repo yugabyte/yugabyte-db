@@ -19,7 +19,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
 
     This repository contains the `yb-voyager` Debian package and the dependencies required to run `yb-voyager`.
 
-1. Install the `postgresql-common` repository to fetch postgresql 16 using the following commands:
+1. Install the `postgresql-common` repository to fetch PostgreSQL 16 using the following commands:
 
     ```sh
     sudo apt install -y postgresql-common
