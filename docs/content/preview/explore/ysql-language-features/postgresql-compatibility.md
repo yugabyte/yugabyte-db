@@ -104,8 +104,8 @@ To learn more about join strategies in YugabyteDB, see [Join strategies](../../.
 
 Configuration parameter: `pg_client_use_shared_memory=true`
 
-Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
--->
+Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.-->
+
 #### Default ascending indexing
 
 Configuration parameter: `yb_use_hash_splitting_by_default=false`
