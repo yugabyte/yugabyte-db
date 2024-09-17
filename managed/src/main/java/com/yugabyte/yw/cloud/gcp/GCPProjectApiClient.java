@@ -412,6 +412,7 @@ public class GCPProjectApiClient {
     String instanceGroupName = "ig-" + UUID.randomUUID().toString();
     InstanceGroup instanceGroup = new InstanceGroup();
     instanceGroup.setName(instanceGroupName);
+    log.info("About to create new instance group " + instanceGroupName);
     Operation response = compute.instanceGroups().insert(project, zone, instanceGroup).execute();
     operationPoller.waitForOperationCompletion(response);
     log.info("New instance group created with name: " + instanceGroupName);
