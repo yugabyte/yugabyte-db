@@ -106,7 +106,11 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
   </div>
 </div>
 
-### Upgrade yb-voyager
+## Upgrade yb-voyager
+
+{{< tabpane text=true >}}
+
+   {{% tab header="RHEL" %}}
 
 Upgrade yb-voyager using the following command:
 
@@ -114,11 +118,9 @@ Upgrade yb-voyager using the following command:
 sudo yum update yb-voyager
 ```
 
-## Upgrade yb-voyager
+   {{% /tab %}}
 
-{{< tabpane text=true >}}
-
-  {{% tab header="RHEL" %}}
+   {{% tab header="Ubuntu" %}}
 
 {{< note title="Note" >}}
 If you are upgrading Voyager from version 1.8.0 or earlier, you need to install the `postgresql-common` repository before the upgrade as follows:
@@ -129,16 +131,6 @@ sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
 ```
 
 {{< /note >}}
-
-Upgrade yb-voyager using the following command:
-
-```sh
-sudo apt-get upgrade yb-voyager
-```
-
-   {{% /tab %}}
-
-   {{% tab header="Ubuntu" %}}
 
 Upgrade yb-voyager using the following command:
 
