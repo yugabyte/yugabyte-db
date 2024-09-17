@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
-import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK;
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK_TABLE_NAME;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -40,7 +40,7 @@ public class UpdateConsistencyLocalTest extends LocalProviderUniverseTestBase {
             details,
             universe,
             SYSTEM_PLATFORM_DB,
-            String.format("update %s set seq_num = 10", CONSISTENCY_CHECK),
+            String.format("update %s set seq_num = 10", CONSISTENCY_CHECK_TABLE_NAME),
             10);
     assertTrue(ysqlResponse.isSuccess());
     UniverseDefinitionTaskParams.Cluster cluster =
@@ -59,6 +59,6 @@ public class UpdateConsistencyLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
-    assertThat(error, containsString("stale metadata"));
+    assertThat(error, containsString("stale universe metadata"));
   }
 }

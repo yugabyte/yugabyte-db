@@ -243,8 +243,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_UPGRADE_SOFTWARE_TASKS =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
@@ -299,8 +299,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.UpdateAndPersistGFlags,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,

@@ -359,6 +359,16 @@ Create a new database user, and assign the necessary user permissions.
 
 {{< /tabpane >}}
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+{{< note title="Connecting to Oracle instances" >}}
+You can use only one of the following arguments to connect to your Oracle instance.
+
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+{{< /note >}}
+
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
@@ -587,17 +597,9 @@ Create a new database user, and assign the necessary user permissions.
 
 {{< /tabpane >}}
 
-</div>
-
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
-
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
-{{< /note >}}
+</div>
 
 ## Prepare the target database
 

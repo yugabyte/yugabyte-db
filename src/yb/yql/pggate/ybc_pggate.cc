@@ -646,6 +646,7 @@ typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
 
 static void FreeSlice(Slice slice) {
   delete[] slice.data(), slice.size();
+  slice.Clear();
 }
 
 SliceSet YBCBitmapCreateSet() {

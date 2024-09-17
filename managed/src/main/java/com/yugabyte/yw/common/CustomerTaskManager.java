@@ -739,7 +739,7 @@ public class CustomerTaskManager {
         Universe universe = Universe.getOrBadRequest(pending.getUniverse().getUniverseUUID());
         ConsistencyInfoResp response = ysqlQueryExecutor.getConsistencyInfo(universe);
         if (response != null) {
-          UUID dbTaskUuid = response.getTaskUuid();
+          UUID dbTaskUuid = response.getTaskUUID();
           int dbSeqNum = response.getSeqNum();
           if (dbTaskUuid.equals(pending.getTaskUuid())) {
             // Updated on DB side before crash, set ourselves to whatever is in the DB
