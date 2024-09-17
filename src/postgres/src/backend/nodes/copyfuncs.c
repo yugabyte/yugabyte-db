@@ -3569,6 +3569,7 @@ _copyAlterTableCmd(const AlterTableCmd *from)
 	COPY_SCALAR_FIELD(missing_ok);
 	COPY_SCALAR_FIELD(recurse);
 	COPY_SCALAR_FIELD(yb_is_add_primary_key);
+	COPY_SCALAR_FIELD(yb_cascade);
 
 	return newnode;
 }
