@@ -55,9 +55,13 @@ v2.14 and v2.18 will reach end of maintenance in mid-2024. If you are running un
 
 For information on managing YugabyteDB releases and upgrading universes using YugabyteDB Anywhere, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).
 
-### Upgrading YugabyteDB Anywhere
+## Upgrading YugabyteDB Anywhere
 
 Keep YugabyteDB Anywhere up-to-date with the latest stable version to get the latest fixes and improvements, as well as to be able to deploy the latest releases of YugabyteDB.
+
+{{< warning title="Replicated end of life" >}}
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YugabyteDB Anywhere v2.20.1 or later using Replicated.
+{{< /warning >}}
 
 You can't use YugabyteDB Anywhere to deploy versions of YugabyteDB that are newer than your YugabyteDB Anywhere instance. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
 
@@ -65,12 +69,8 @@ You can't use YugabyteDB Anywhere to deploy versions of YugabyteDB that are newe
 
 - For YugabyteDB Anywhere upgrades, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
-{{< warning title="Replicated end of life" >}}
-YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YugabyteDB Anywhere v2.20.1 or later using Replicated.
-{{< /warning >}}
+For instructions on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/).
 
-For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/).
+### Skip tests
 
-#### Skip tests
-
-Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YugabyteDB Anywhere version checks during upgrades. For more information, contact {{% support-platform %}}.
+Optionally, you can set a runtime flag `yb.skip_version_checks` to skip all YugabyteDB and YugabyteDB Anywhere version checks during upgrades. For more information, contact {{% support-platform %}}.
