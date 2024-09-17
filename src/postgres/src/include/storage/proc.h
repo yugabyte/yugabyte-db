@@ -341,6 +341,7 @@ struct PGPROC
 	 */
 	LWLock		yb_ash_metadata_lock;
 	YBCAshMetadata yb_ash_metadata;
+	bool		yb_is_ash_metadata_set;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
