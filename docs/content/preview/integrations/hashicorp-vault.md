@@ -162,11 +162,11 @@ vault lease revoke <lease-ID>
 
 ## Configure SSL/TLS
 
-To allow YSQL hashicorp vault plugin to communicate securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
+To allow YSQL hashicorp vault plugin to communicate securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
-To start a secure local YugabyteDB cluster using `yugabyted` refer to [Multi-node cluster](../../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster) 
+To start a secure local YugabyteDB cluster using `yugabyted` refer to [Multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster) 
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters while adding the database by either of the following 2 ways:
 
@@ -214,7 +214,7 @@ YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will 
 
 ## Learn more
 
-- [ERROR: The catalog snapshot used for this transaction has been invalidated](../../../troubleshoot/ysql-issues/#DDL)
+- [ERROR: The catalog snapshot used for this transaction has been invalidated](../../troubleshoot/ysql-issues/#ddl)
 - [Database static roles and credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-creds-rotation)
 - [Database root credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-root-rotation)
 - [Username templating](https://developer.hashicorp.com/vault/tutorials/secrets-management/username-templating)
