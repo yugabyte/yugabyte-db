@@ -15,9 +15,9 @@ type: docs
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
 - Database query logging. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
-<!-- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
--->
-Note that YugabyteDB is based on PostgreSQL 11<!-- and uses pgaudit v1.3.2-->.
+- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
+
+Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
 
 Exporting logs may incur additional costs for network transfer in a cloud region, between cloud regions, and across the Internet. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -105,9 +105,10 @@ Log the duration of all completed statements. Statement text is not included. Us
 
 Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log-statement), the text is not repeated in the duration log message.
 
-Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds)<!--, or use [log sampling](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate).This setting overrides [the sampling setting](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate); queries exceeding the minimum duration are not subject to sampling and are always logged -->.
+Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds).
 
-<!--
+<!--Alternatively, you can use [log sampling](#sample-statements-with-duration-log-min-duration-sample-and-log-statement-sample-rate). log_min_duration_statement overrides the sampling setting: queries exceeding the minimum duration are not subject to sampling and are always logged.
+
 ##### Sample statements with duration (log_min_duration_sample and log_statement_sample_rate)
 
 Log a sampling of statements that ran for a specified duration (in ms) or longer. These options are used together, typically to identify slow queries while minimizing the performance impact on high traffic clusters.
@@ -129,7 +130,6 @@ Log all connection attempts, along with successfully completed client authentica
 
 Log session termination and duration of the session.
 
-<!--
 ## Database Audit Log
 
 To enable database audit logging for a cluster, do the following:
@@ -171,4 +171,3 @@ The YSQL audit logging settings are derived from the settings for logging used b
 - [Logging in YugabyteDB](../../../secure/audit-logging/)
 - [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html)
 - [Annotated PostgreSQL configuration settings](https://github.com/jberkus/annotated.conf)
--->
