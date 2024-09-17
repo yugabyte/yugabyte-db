@@ -34,7 +34,7 @@ The following table lists the most important YSQL features which you would find 
 | :----------- | :---------- |
 | [Schemas and Tables](databases-schemas-tables/) | SQL shell with `ysqlsh`, users, databases, tables, and schemas |
 | [Data Types](data-types/) | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
-| [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/) | Data definition language |
+| [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl) | Data definition language |
 | [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
 | [Join strategies](join-strategies/) | Inner join, outer join, full outer join, cross join, natural join. |

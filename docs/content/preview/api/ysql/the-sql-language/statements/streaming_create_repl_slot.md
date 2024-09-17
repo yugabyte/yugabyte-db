@@ -10,6 +10,10 @@ menu:
 type: docs
 ---
 
+{{< tip title="Requires replication connection." >}}
+This command can only be executed on a walsender backend which can be started by establishing a replication connection. A replication connection can be created by passing the parameter `replication=database` in the connection string. Refer to examples section.
+{{< /tip >}}
+
 ## Synopsis
 
 Use the `CREATE_REPLICATION_SLOT` statement to create a replication slot.
@@ -39,6 +43,12 @@ Decides what to do with the snapshot created during logical slot initialization.
 `NOEXPORT_SNAPSHOT` will just use the snapshot for logical decoding as normal but won't do anything else with it.
 
 ## Examples
+
+Establish a replication connection to the database `yugabyte`.
+
+```sql
+bin/ysqlsh "dbname=yugabyte replication=database"
+```
 
 Create a Replication Slot with name *test_replication_slot* and use the `yboutput` plugin.
 

@@ -131,13 +131,14 @@ public class ScheduleTest extends FakeDBApplication {
     BackupRequestParams params = Json.fromJson(s1.getTaskParams(), BackupRequestParams.class);
     params.schedulingFrequency = 1200000L;
     params.frequencyTimeUnit = TimeUnit.MILLISECONDS;
-    s1 =
-        Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
-            defaultCustomer.getUuid(), s1.getScheduleUUID(), State.Editing, params);
-    assertEquals(s1.getFrequency(), 1200000L);
-    assertEquals(s1.getStatus(), State.Editing);
-    assertEquals(s1.getFrequencyTimeUnit(), TimeUnit.MILLISECONDS);
-    assertNotEquals(s1.getNextScheduleTaskTime(), nextScheduleTimeInitial);
+    Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
+        defaultCustomer.getUuid(), s1.getScheduleUUID(), State.Editing, params);
+    Schedule updatedSchedule =
+        Schedule.getOrBadRequest(defaultCustomer.getUuid(), s1.getScheduleUUID());
+    assertEquals(updatedSchedule.getFrequency(), 1200000L);
+    assertEquals(updatedSchedule.getStatus(), State.Editing);
+    assertEquals(updatedSchedule.getFrequencyTimeUnit(), TimeUnit.MILLISECONDS);
+    assertNotEquals(updatedSchedule.getNextScheduleTaskTime(), nextScheduleTimeInitial);
   }
 
   @Test
@@ -146,10 +147,10 @@ public class ScheduleTest extends FakeDBApplication {
         ModelFactory.createScheduleBackup(
             defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     assertEquals(s1.getStatus(), State.Active);
-    s1 =
+    Schedule updatedSchedule =
         Schedule.updateStatusAndSave(
             defaultCustomer.getUuid(), s1.getScheduleUUID(), State.Editing);
-    assertEquals(s1.getStatus(), State.Editing);
+    assertEquals(updatedSchedule.getStatus(), State.Editing);
   }
 
   @Test
@@ -159,10 +160,10 @@ public class ScheduleTest extends FakeDBApplication {
             defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     UUID scheduleUUID = s1.getScheduleUUID();
     assertEquals(s1.getStatus(), State.Active);
-    s1 =
+    Schedule updatedSchedule =
         Schedule.updateStatusAndSave(
             defaultCustomer.getUuid(), s1.getScheduleUUID(), State.Editing);
-    assertEquals(s1.getStatus(), State.Editing);
+    assertEquals(updatedSchedule.getStatus(), State.Editing);
     RuntimeException ex =
         assertThrows(
             RuntimeException.class,

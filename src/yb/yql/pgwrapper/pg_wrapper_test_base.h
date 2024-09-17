@@ -71,6 +71,10 @@ class PgCommandTestBase : public PgWrapperTestBase {
     RunPsqlCommand(statement, "CREATE TYPE");
   }
 
+  void CreateSequence(const std::string &statement) {
+    RunPsqlCommand(statement, "CREATE SEQUENCE");
+  }
+
   void CreateIndex(const std::string &statement) {
     RunPsqlCommand(statement, "CREATE INDEX");
   }

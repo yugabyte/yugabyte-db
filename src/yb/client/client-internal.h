@@ -280,12 +280,6 @@ class YBClient::Data {
                                  CoarseTimePoint deadline,
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
-  Status GetColocatedTabletSchemaByParentTableId(
-      YBClient* client,
-      const TableId& parent_colocated_table_id,
-      CoarseTimePoint deadline,
-      std::shared_ptr<std::vector<YBTableInfo>> info,
-      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,

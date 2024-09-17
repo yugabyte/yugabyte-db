@@ -2,6 +2,13 @@ import { XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION } from '../components/xcl
 import { TableType } from '../redesign/helpers/dtos';
 import { isDefinedNotNull } from './ObjectUtils';
 
+export const formatYbSoftwareVersionString = (ybSoftwareVersion: string) => {
+  // ybSoftwareVersion is made up of a version number and a build number joined
+  // by a `-`.
+  // <version number>-<build>
+  return `v${ybSoftwareVersion.split('-', 1)}`;
+};
+
 /**
  * Format the duration into _d _h _m _s _ms format.
  */

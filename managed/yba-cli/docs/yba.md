@@ -32,8 +32,10 @@ yba [flags]
 ### SEE ALSO
 
 * [yba auth](yba_auth.md)	 - Authenticate yba cli
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 * [yba completion](yba_completion.md)	 - Generate the autocompletion script for the specified shell
+* [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
+* [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
 * [yba register](yba_register.md)	 - Register a YugabyteDB Anywhere customer using yba cli

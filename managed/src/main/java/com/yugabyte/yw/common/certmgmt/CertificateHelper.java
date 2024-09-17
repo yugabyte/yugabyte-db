@@ -58,6 +58,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -419,51 +420,60 @@ public class CertificateHelper {
       String keyContent,
       CertConfigType certType,
       CertificateParams.CustomCertInfo customCertInfo,
-      CertificateParams.CustomServerCertData customServerCertData) {
+      CertificateParams.CustomServerCertData customServerCertData,
+      boolean validate) {
     log.debug("uploadRootCA: Label: {}, customerUUID: {}", label, customerUUID.toString());
     try {
+      // If cert type is HashicorpVault, we should fail early.
+      if (certType == CertConfigType.HashicorpVault) {
+        throw new PlatformServiceException(BAD_REQUEST, "Not a valid request for HashicorpVault");
+      }
+      if (!validate) {
+        log.info(
+            "Skipping certificate validation."
+                + " Set yb.tlsCertificate.enableValidation to true to enable it.");
+      }
       if (certContent == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Certificate file can't be null");
+      }
+      if (certContent.charAt(certContent.length() - 1) != '\n') {
+        throw new PlatformServiceException(BAD_REQUEST, "Certificate must end with a newline");
       }
       UUID rootCA_UUID = UUID.randomUUID();
       String keyPath = null;
       CertificateInfo.CustomServerCertInfo customServerCertInfo = null;
       List<X509Certificate> x509CACerts;
+      List<X509Certificate> x509ServerCertificates = null;
       try {
         x509CACerts = convertStringToX509CertList(certContent);
       } catch (CertificateException e) {
         throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
       }
-
       Pair<Date, Date> dates = extractDatesFromCertBundle(x509CACerts);
       Date certStart = dates.getLeft();
       Date certExpiry = dates.getRight();
-
-      // Verify the uploaded cert is a verified cert chain.
-      verifyCertValidity(x509CACerts);
-      if (certType == CertConfigType.SelfSigned) {
-        // The first entry in the file should be the cert we want to use for generating server
-        // certs.
-        verifyCertSignatureAndOrder(x509CACerts, keyContent);
-        keyPath = getCAKeyPath(storagePath, customerUUID, rootCA_UUID);
-
-      } else if (certType == CertConfigType.CustomServerCert) {
-        // Verify the upload Server Cert is a verified cert chain.
-        List<X509Certificate> x509ServerCertificates;
+      // If customServerCertData is not null, then we have a custom server cert to upload.
+      if (customServerCertData != null && customServerCertData.serverCertContent != null) {
         try {
           x509ServerCertificates =
               convertStringToX509CertList(customServerCertData.serverCertContent);
         } catch (CertificateException e) {
-          throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
+          throw new PlatformServiceException(BAD_REQUEST, "Unable to get server cert Objects");
         }
+      }
+      // Verify the cert and key at the beginning for all types of certs.
+      if (validate) {
+        if (certType == CertConfigType.CustomServerCert) {
+          verifyCertificateConfig(
+              certType, x509CACerts, customServerCertData.serverKeyContent, x509ServerCertificates);
+        } else {
+          verifyCertificateConfig(certType, x509CACerts, keyContent, null);
+        }
+      }
+      if (certType == CertConfigType.SelfSigned) {
+        keyPath = getCAKeyPath(storagePath, customerUUID, rootCA_UUID);
 
-        // Verify that the uploaded server cert was signed by the uploaded CA cert
-        List<X509Certificate> combinedArrayList = new ArrayList<>(x509ServerCertificates);
-        combinedArrayList.addAll(x509CACerts);
-        verifyCertValidity(combinedArrayList);
-        // The first entry in the file should be the cert we want to use for generating server
-        // certs.
-        verifyCertSignatureAndOrder(x509ServerCertificates, customServerCertData.serverKeyContent);
+      } else if (certType == CertConfigType.CustomServerCert) {
         String serverCertPath =
             String.format("%s/certs/%s/%s/%s", storagePath, customerUUID, rootCA_UUID, SERVER_CERT);
         String serverKeyPath =
@@ -473,8 +483,6 @@ public class CertificateHelper {
             getPrivateKey(customServerCertData.serverKeyContent), serverKeyPath);
         customServerCertInfo =
             new CertificateInfo.CustomServerCertInfo(serverCertPath, serverKeyPath);
-      } else if (certType == CertConfigType.HashicorpVault) {
-        throw new PlatformServiceException(BAD_REQUEST, "Not a valid request for HashicorpVault");
       }
       String certPath = getCACertPath(storagePath, customerUUID, rootCA_UUID);
       writeCertBundleToCertPath(x509CACerts, certPath);
@@ -1012,6 +1020,17 @@ public class CertificateHelper {
     }
   }
 
+  // Checks if the list of certs have CA = true extension
+  private static void verifyCAExtension(List<X509Certificate> certs) {
+    for (X509Certificate cert : certs) {
+      if (cert.getBasicConstraints() < 0) {
+        X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Certificate " + x500Name + " is missing CA=true extension");
+      }
+    }
+  }
+
   private static boolean verifyCertValidity(
       X509Certificate cert, X509Certificate potentialRootCert) {
     try {
@@ -1073,6 +1092,48 @@ public class CertificateHelper {
     } catch (RuntimeException e) {
       log.error("Private key Algorithm extraction failed: ", e);
       return false;
+    }
+  }
+
+  private static void verifyKeySize(String privateKeyString) {
+    RSAPrivateKey privKey = (RSAPrivateKey) getPrivateKey(privateKeyString);
+    int keySizeInBits = privKey.getModulus().bitLength();
+    if (keySizeInBits < 2048) {
+      throw new PlatformServiceException(BAD_REQUEST, "key size is less than 2048 bits");
+    }
+  }
+
+  /*
+   * Caller for all the certificate verification checks.
+   * These checks are only executed during addition of new certificates.
+   * If you are planning to add more checks, Make sure to also add them to
+   * yugabyte-db/managed/devops/opscli/ybops/cloud/common/cloud.py#L409
+   */
+  private static void verifyCertificateConfig(
+      CertConfigType certType,
+      List<X509Certificate> x509CACerts,
+      String keyContent,
+      @Nullable List<X509Certificate> x509ServerCerts) {
+    // Verify the uploaded cert is a verified cert chain.
+    verifyCertValidity(x509CACerts);
+    // Verify that all certs in the CA chain have CA = true set
+    verifyCAExtension(x509CACerts);
+    if (certType == CertConfigType.SelfSigned || certType == CertConfigType.CustomServerCert) {
+      // Verify keySize and Algorithm
+      if (keyContent == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Key is Null");
+      }
+      if (!isValidRsaKey(keyContent)) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid RSA key");
+      }
+      verifyKeySize(keyContent);
+      // The first entry in the file should be the cert we want to use for generating server
+      // certs.
+      if (certType == CertConfigType.CustomServerCert) {
+        // Append the server certs to the start of the chain.
+        x509CACerts.addAll(0, x509ServerCerts);
+      }
+      verifyCertSignatureAndOrder(x509CACerts, keyContent);
     }
   }
 }

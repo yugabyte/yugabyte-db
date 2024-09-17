@@ -9,6 +9,7 @@ menu:
     parent: async-replication-transactional
     identifier: async-transactional-switchover
     weight: 40
+badges: ysql
 type: docs
 ---
 

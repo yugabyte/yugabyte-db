@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /*
  * Created on Mon Jul 08 2024
  *

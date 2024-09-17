@@ -22,6 +22,7 @@ public class UpdateClusterAPIDetails extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public boolean enableYSQL = false;
+    public boolean enableConnectionPooling = false;
     public boolean enableYSQLAuth = false;
     public boolean enableYCQL = false;
     public boolean enableYCQLAuth = false;
@@ -57,6 +58,7 @@ public class UpdateClusterAPIDetails extends UniverseTaskBase {
 
               for (Cluster cluster : universeDetails.clusters) {
                 cluster.userIntent.enableYSQL = taskParams().enableYSQL;
+                cluster.userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
                 cluster.userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
                 cluster.userIntent.enableYCQL = taskParams().enableYCQL;
                 cluster.userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;

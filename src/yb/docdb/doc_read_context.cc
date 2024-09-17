@@ -85,6 +85,10 @@ void DocReadContext::SetCotableId(const Uuid& cotable_id) {
   UpdateKeyPrefix();
 }
 
+void DocReadContext::SetVectorIdxOptions(const PgVectorIdxOptionsPB& vector_idx_options) {
+  vector_idx_options_ = vector_idx_options;
+}
+
 void DocReadContext::UpdateKeyPrefix() {
   uint8_t* out = shared_key_prefix_buffer_.data();
   if (schema_.has_cotable_id()) {

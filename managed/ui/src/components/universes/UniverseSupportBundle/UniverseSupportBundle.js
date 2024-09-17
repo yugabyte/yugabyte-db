@@ -28,7 +28,7 @@ const stepsObj = {
   thirdStep: 'thirdStep'
 };
 
-const POLLING_INTERVAL = 3000; // ten seconds
+const POLLING_INTERVAL = 10000; // ten seconds
 
 export const UniverseSupportBundle = (props) => {
   const {
@@ -39,8 +39,8 @@ export const UniverseSupportBundle = (props) => {
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
   const defaultOptions = updateOptions(
-    filterTypes[0].value,
-    [true, true, true, true, true, true, true, true, true, true],
+    filterTypes[0],
+    [true, true, true, true, true, true, true, true, true, true, true],
     () => {}
   );
   const [payload, setPayload] = useState(defaultOptions);

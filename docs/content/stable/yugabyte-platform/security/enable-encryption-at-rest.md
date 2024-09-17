@@ -57,8 +57,7 @@ You enable encryption at rest on an existing universe as follows:
 
 You can verify that encryption at rest has been successfully configured as follows:
 
-1. Open the YugabyteDB Anywhere UI and navigate to the universe.
-1. Select **Nodes**.
+1. Navigate to your universe and select **Nodes**.
 1. On one of the nodes, click **Master** under the **PROCESSES** column to open the overview.
 1. To the right of **Replication Factor**, click **See full config** to open the **Current Cluster Config** page.
 1. Verify that the configuration includes the following `encryption_info` section with the correct values:
@@ -113,7 +112,7 @@ You can change KMS configurations, and consequently the master keys used to encr
 
 {{< warning title="Deleting KMS configurations" >}}
 
-When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deleting a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions. Retain all KMS configurations used to encrypt data in backups and snapshots.
+Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
 
 {{< /warning >}}
 

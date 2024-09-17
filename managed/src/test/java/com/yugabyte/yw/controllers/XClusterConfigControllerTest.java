@@ -270,7 +270,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
-        .query(anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   public void setupMetricValues() {
@@ -330,6 +330,16 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
           .thenReturn(mockListTablesResponse);
     } catch (Exception e) {
       e.printStackTrace();
+    }
+  }
+
+  private void mockDefaultInstanceClusterConfig() {
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
     }
   }
 
@@ -397,6 +407,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreate() {
 
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
@@ -433,6 +444,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   @Test
   public void testCreateUsingNewRbacAuthzWithNeededPermissions() {
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);
@@ -805,7 +817,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     String fakeErrMsg = "failed to fetch metric data";
     doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
         .when(mockMetricQueryHelper)
-        .query(any(), any(), any());
+        .query(any(), anyList(), anyMap(), anyMap());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 

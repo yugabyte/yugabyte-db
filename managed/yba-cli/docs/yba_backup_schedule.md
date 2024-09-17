@@ -32,6 +32,7 @@ yba backup schedule [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 * [yba backup schedule create](yba_backup_schedule_create.md)	 - Create a YugabyteDB Anywhere universe backup schedule
+* [yba backup schedule delete](yba_backup_schedule_delete.md)	 - Delete a YugabyteDB Anywhere universe backup schedule
 

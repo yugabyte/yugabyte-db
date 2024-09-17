@@ -10,6 +10,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
@@ -27,8 +29,12 @@ import io.ebean.SqlUpdate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -469,5 +475,192 @@ public class BackupTest extends FakeDBApplication {
     assertEquals(increment1_identifier_1, baseIdentifier_1);
     assertEquals(increment1_identifier_2, baseIdentifier_2);
     assertNotEquals(increment1_identifier_3, baseIdentifier_2);
+  }
+
+  @Test
+  public void testGetBackupParamsCollectionForRestoreTimestamp() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    childParam1.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(1000L, 5000L));
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(1, 2, "bar");
+    childParam2.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(2000L, 6000L));
+    paramsList.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(2, 3, "bar");
+    childParam3.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(4000L, 6000L));
+    paramsList.add(childParam3);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    List<BackupTableParams> paramsInRestoreWindowActual =
+        backup.getBackupParamsCollectionForRestore(3000L);
+    assertEquals(2, paramsInRestoreWindowActual.size());
+    Optional<BackupTableParams> optParamAboveRangeEnd =
+        paramsInRestoreWindowActual.stream()
+            .filter(
+                bP ->
+                    bP.getBackupPointInTimeRestoreWindow().timestampRetentionWindowStartMillis
+                        > 3000L)
+            .findAny();
+    assertTrue(optParamAboveRangeEnd.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithClosestCreateTimeAfterRestoreTimestampFail()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    incrementalBackup.save();
+    // Restore timestamp more than latest backup create time
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() + 1000L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithClosestCreateTimeAfterRestoreTimestamp()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    incrementalBackup.save();
+    // Restore timestamp more than latest backup create time
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() - 200L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isPresent());
+    assertEquals(incrementalBackup.getBackupUUID(), optBackup.get().getBackupUUID());
+  }
+
+  @Test
+  public void testGetKeyspaceAndTablesBackupLocationMap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(1, 3, "bar");
+    paramsList.add(childParam3);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    Map<String, Map<String, Set<String>>> keyspaceLocationTablesMap =
+        backup.getKeyspaceAndTablesBackupLocationMap(0L);
+    assertEquals(2, keyspaceLocationTablesMap.size());
+    assertEquals(2, keyspaceLocationTablesMap.get("foo").size());
+    Iterator<Entry<String, Set<String>>> iter =
+        keyspaceLocationTablesMap.get("foo").entrySet().iterator();
+    assertNotEquals(iter.next().getKey(), iter.next().getKey());
+    assertEquals(1, keyspaceLocationTablesMap.get("bar").size());
+  }
+
+  @Test
+  public void testFetchBackupWithBaseBackupUUID() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> childParams = new ArrayList<>();
+    BackupTableParams childParam = createTableParams(0, 2, "foo");
+    childParams.add(childParam);
+    tableParamsParent.backupList = childParams;
+    tableParamsParent.baseBackupUUID = UUID.randomUUID();
+    Backup backup_1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_1.setState(BackupState.Completed);
+    backup_1.save();
+
+    Backup backup_2 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_2.setState(BackupState.InProgress);
+    backup_2.save();
+
+    Backup backup_3 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_3.setState(BackupState.Completed);
+    backup_3.save();
+
+    List<Backup> backupListCompleted =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, BackupState.Completed);
+    assertEquals(2, backupListCompleted.size());
+    List<Backup> backupListInProgress =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, BackupState.InProgress);
+    assertEquals(1, backupListInProgress.size());
+    List<Backup> backupListAll =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, null /* state */);
+    assertEquals(3, backupListAll.size());
   }
 }

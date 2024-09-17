@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: postgres-psycopg2-driver
     parent: python-drivers
-    weight: 500
+    weight: 510
 type: docs
 ---
 
@@ -215,8 +215,4 @@ Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and
 
 ## Learn more
 
-- [PostgreSQL Psycopg2 driver reference](../../../reference/drivers/python/postgres-psycopg2-reference/)
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Build Python applications using [YugabyteDB Psycopg2 smart driver](../yugabyte-psycopg2/)
-- Build Python applications using [Django](../django/)
-- Build Python applications using [SQLAlchemy](../sqlalchemy/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

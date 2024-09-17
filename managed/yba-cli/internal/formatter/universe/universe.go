@@ -43,6 +43,7 @@ const (
 	numMastersHeader         = "Number of Masters"
 	numTserversHeader        = "Number of Tservers"
 	liveNodesHeader          = "Number of Live Nodes"
+	cpuArchitectureHeader    = "CPU Architecture"
 )
 
 // Context for universe outputs
@@ -55,7 +56,7 @@ type Context struct {
 // NewUniverseFormat for formatting output
 func NewUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUniverseListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -66,7 +67,7 @@ func NewUniverseFormat(source string) formatter.Format {
 // Write renders the context for a list of Universes
 func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of universes into JSON
 		var output []byte
 		var err error
@@ -133,6 +134,7 @@ func NewUniverseContext() *Context {
 		"NumMasters":         numMastersHeader,
 		"NumTservers":        numTserversHeader,
 		"LiveNodes":          liveNodesHeader,
+		"CPUArchitecture":    cpuArchitectureHeader,
 	}
 	return &universeCtx
 }
@@ -152,6 +154,12 @@ func (c *Context) PricePerDay() string {
 	return fmt.Sprintf("%f", c.u.GetPricePerHour()*24)
 }
 
+// CPUArchitecture fetches CPU architecture of the universe
+func (c *Context) CPUArchitecture() string {
+	details := c.u.GetUniverseDetails()
+	return details.GetArch()
+}
+
 // ProviderCode fetches the Cloud provider used in the universe
 func (c *Context) ProviderCode() string {
 	details := c.u.GetUniverseDetails()
@@ -165,6 +173,11 @@ func (c *Context) ProviderUUID() string {
 	details := c.u.GetUniverseDetails()
 	primaryCluster := details.GetClusters()[0]
 	userIntent := primaryCluster.GetUserIntent()
+	for _, p := range Providers {
+		if strings.Compare(p.GetUuid(), userIntent.GetProvider()) == 0 {
+			return fmt.Sprintf("%s(%s)", p.GetName(), p.GetUuid())
+		}
+	}
 	return userIntent.GetProvider()
 }
 

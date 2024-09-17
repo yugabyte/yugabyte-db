@@ -165,13 +165,13 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 ### YugabyteDB version
 
-By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#release-versioning-convention-for-stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
+By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-If you need a feature from the [preview release series](../../../releases/versioning/#release-versioning-convention-for-preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
+If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 

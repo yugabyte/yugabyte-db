@@ -5,6 +5,7 @@ import { Box, Typography } from '@material-ui/core';
 import {
   AccessKeysField,
   ARNField,
+  ConnectionPoolingField,
   DBVersionField,
   DeploymentPortsField,
   IPV6Field,
@@ -40,6 +41,11 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isReleasesEnabled =
     runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
+    )?.value === 'true';
+
+  const isConnectionPoolEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
     )?.value === 'true';
 
   //field data
@@ -82,13 +88,21 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           <PGCompatibiltyField disabled={!isCreateMode} />
         </Box>
       )}
+      {isPrimary && isConnectionPoolEnabled && provider.code !== CloudType.kubernetes && (
+        <Box display="flex" width="100%" mt={2.5}>
+          <ConnectionPoolingField disabled={!isCreateMode} />
+        </Box>
+      )}
       {provider.code !== CloudType.kubernetes && (
         <>
           <Box display="flex" width="100%" mt={2.5}>
             <SystemDField disabled={!isCreatePrimary} />
           </Box>
           <Box display="flex" width="100%" mt={2.5}>
-            <DeploymentPortsField disabled={!isCreatePrimary} isEditMode={!isCreateMode} />
+            <DeploymentPortsField
+              disabled={provider.code === CloudType.kubernetes}
+              isEditMode={!isCreateMode}
+            />
           </Box>
         </>
       )}

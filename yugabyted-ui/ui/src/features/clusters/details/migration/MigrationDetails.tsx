@@ -3,6 +3,8 @@ import { Box, Divider } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
 import { MigrationTiles } from "./MigrationTiles";
 import { MigrationStep } from "./MigrationStep";
+import { YBButton } from "@app/components";
+import { useTranslation } from "react-i18next";
 
 interface MigrationDetailsProps {
   steps: string[];
@@ -21,6 +23,8 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   React.useEffect(() => {
     setSelectedStep(migration.landing_step);
   }, [migration.landing_step]);
+
+  const { t } = useTranslation();
 
   return (
     <Box ml={-2} pt={2}>
@@ -47,6 +51,31 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
             onRefetch={onRefetch}
             isFetching={isFetching}
           />
+          <Box justifyContent="between" gridGap={2} display="flex" mt={2}>
+            {selectedStep > 0 && (
+              <YBButton
+                variant="secondary"
+                onClick={() => {
+                  setSelectedStep(selectedStep - 1);
+                }}
+              >
+                {t("clusterDetail.voyager.previous")}
+              </YBButton>
+            )}
+            {selectedStep < steps.length - 1 && (
+              <Box ml="auto">
+                <YBButton
+                  variant="primary"
+                  onClick={() => {
+                    setSelectedStep(selectedStep + 1);
+                  }}
+                  disabled={selectedStep === steps.length - 2}
+                >
+                  {t("clusterDetail.voyager.nextStep", { step: steps[selectedStep + 1] })}
+                </YBButton>
+              </Box>
+            )}
+          </Box>
         </Box>
       </Box>
     </Box>

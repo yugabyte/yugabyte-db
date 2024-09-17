@@ -13,11 +13,15 @@ import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { formatDuration } from '../../../utils/Formatters';
+import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
+import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
+import { YBTooltip } from '../../../redesign/components';
+import { Box, Typography, useTheme } from '@material-ui/core';
 
 import { HaInstanceState, HaPlatformInstance } from '../dtos';
 
+import { useIconStyles } from '../../../redesign/styles/styles';
 import './HAInstances.scss';
-import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 
 interface HAInstancesProps {
   // Dispatch
@@ -26,13 +30,6 @@ interface HAInstancesProps {
   // State
   runtimeConfigs: any;
 }
-
-const renderAddress = (cell: any, row: HaPlatformInstance): ReactElement => (
-  <a href={row.address} target="_blank" rel="noopener noreferrer">
-    {row.address}
-    {row.is_local && <span className="badge badge-orange">Current</span>}
-  </a>
-);
 
 const renderInstanceType = (cell: HaPlatformInstance['is_leader']): ReactElement => (
   <BadgeInstanceType isActive={cell} />
@@ -53,6 +50,8 @@ export const HAInstances: FC<HAInstancesProps> = ({
     loadSchedule: false,
     autoRefresh: true
   });
+  const iconClasses = useIconStyles();
+  const theme = useTheme();
 
   const showAddInstancesModal = () => setAddInstancesModalVisible(true);
   const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
@@ -62,6 +61,40 @@ export const HAInstances: FC<HAInstancesProps> = ({
   const hidePromoteModal = () => setInstanceToPromote(undefined);
 
   const currentInstance = config?.instances.find((item) => item.is_local);
+
+  const renderAddress = (_: any, platformInstance: HaPlatformInstance): ReactElement => {
+    const getPrometheusUrl = (platformInstanceAddress: string): string | null => {
+      try {
+        const platformInstanceUrl = new URL(platformInstanceAddress);
+        return `${platformInstanceUrl.protocol}//${platformInstanceUrl.hostname}:9090/targets?search=federate`;
+      } catch (error) {
+        console.error(`Invalid URL: ${platformInstanceAddress}`, error);
+        return null;
+      }
+    };
+    const prometheusUrl = getPrometheusUrl(platformInstance.address);
+    // Only standby YBA instances will have the federate metrics job.
+    const showPrometheusIcon = !platformInstance.is_leader && prometheusUrl;
+    return (
+      <Box display="flex" gridGap={theme.spacing(1)} alignItems="center">
+        <a href={platformInstance.address} target="_blank" rel="noopener noreferrer">
+          {platformInstance.address}
+        </a>
+        {platformInstance.is_local && <span className="badge badge-orange">Current</span>}
+        {showPrometheusIcon && (
+          <YBTooltip
+            title={
+              <Typography variant="body2">View metrics federation job on prometheus</Typography>
+            }
+          >
+            <a target="_blank" rel="noopener noreferrer" href={prometheusUrl}>
+              <PrometheusIcon className={iconClasses.interactiveIcon} />
+            </a>
+          </YBTooltip>
+        )}
+      </Box>
+    );
+  };
 
   const renderActions = (cell: any, row: HaPlatformInstance): ReactElement => {
     if (currentInstance?.is_leader) {

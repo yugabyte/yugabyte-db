@@ -34,6 +34,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   virtual void BeforePgProcessStart() {
   }
 
+  virtual void EnableYSQLFlags();
+
   void DoTearDown() override;
 
   void SetUp() override;
@@ -83,10 +85,13 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   void EnableFailOnConflict();
 
+  virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
+
+  std::unique_ptr<PgSupervisor> pg_supervisor_;
+
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
 
-  std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
 };
 

@@ -1,4 +1,4 @@
-export const DrConfigActions = {
+export const DrConfigAction = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
   EDIT: 'editDrConfig',
@@ -6,7 +6,7 @@ export const DrConfigActions = {
   SWITCHOVER: 'switchover',
   FAILOVER: 'failover'
 } as const;
-export type DrConfigActions = typeof DrConfigActions[keyof typeof DrConfigActions];
+export type DrConfigAction = typeof DrConfigAction[keyof typeof DrConfigAction];
 
 export const DurationUnit = {
   SECOND: 'second',
@@ -18,8 +18,10 @@ export type DurationUnit = typeof DurationUnit[keyof typeof DurationUnit];
 
 /**
  * Map from duration units to seconds.
+ *
+ * The map should include all possible DurationUnit.
  */
-export const DURATION_UNIT_TO_SECONDS = {
+export const DURATION_UNIT_TO_SECONDS: { [key in DurationUnit]: number } = {
   [DurationUnit.SECOND]: 1,
   [DurationUnit.MINUTE]: 60,
   [DurationUnit.HOUR]: 60 * 60,

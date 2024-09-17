@@ -66,7 +66,6 @@ import play.libs.Json;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
-  static final int WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS = 120;
   private final OperatorStatusUpdater kubernetesStatus;
   private final YbcManager ybcManager;
 
@@ -107,7 +106,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion,
+              u -> setCommunicationPortsForNodes(false) /* Txn callback */);
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -379,6 +379,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
     }
+
+    // Handle Namespaced services ownership change/delete
+    addHandleKubernetesNamespacedServices(
+            false /* readReplicaDelete */,
+            taskParams(),
+            taskParams().getUniverseUUID(),
+            true /* handleOwnershipChanges */)
+        .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
+
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -495,7 +504,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.MASTER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           true,
@@ -505,7 +513,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
 
       upgradePodsTask(
           universe.getName(),
@@ -514,7 +522,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           false,
@@ -524,7 +531,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -533,7 +540,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           false,
@@ -543,7 +549,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
@@ -705,11 +711,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
 
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       Set<NodeDetails> mastersToModify =
           Stream.concat(
                   mastersToAdd.stream(),
@@ -748,11 +749,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
-
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set flag in memory for tserver
       createSetFlagInMemoryTasks(

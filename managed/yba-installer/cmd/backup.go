@@ -73,9 +73,19 @@ func CreateBackupScriptHelper(outputPath string, dataDir string, excludePromethe
 		args = append(args, "--pg_dump_path", pgdump)
 		args = addPostgresArgs(args)
 	}
+	if viper.GetBool("prometheus.enableHttps") {
+		args = append(args, "--prometheus_protocol", "https")
+	}
+	envVars := map[string]string{}
+	if viper.GetBool("prometheus.enableAuth") {
+		envVars = map[string]string {
+			"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
+			"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
+		}
+	}
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
-	out := shell.Run(script, args...)
+	out := shell.RunWithEnvVars(script, envVars, args...)
 	if !out.SucceededOrLog() {
 		return out.Error
 	}
@@ -191,8 +201,18 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 		args = append(args, "--pg_restore_path", pgRestore)
 		args = addPostgresArgs(args)
 	}
+	if viper.GetBool("prometheus.enableHttps") {
+		args = append(args, "--prometheus_protocol", "https")
+	}
+	envVars := map[string]string{}
+	if viper.GetBool("prometheus.enableAuth") {
+		envVars = map[string]string {
+			"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
+			"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
+		}
+	}
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
-	if out := shell.Run(script, args...); !out.SucceededOrLog() {
+	if out := shell.RunWithEnvVars(script, envVars, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
 	}
 	if common.HasSudoAccess() {

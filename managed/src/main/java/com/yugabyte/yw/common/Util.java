@@ -143,6 +143,10 @@ public class Util {
 
   public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
 
+  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.23.0.0";
+
+  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.1.0.0";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";
@@ -1228,17 +1232,10 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
-    return retreiveImageBundleUUID(arch, userIntent, provider, false);
-  }
-
-  public static UUID retreiveImageBundleUUID(
-      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null && !cloudEnabled) {
-      // Don't use defaultProvider bundle for YBM, as they will
-      // specify machineImage for provisioning the node.
+    } else if (provider.getUuid() != null) {
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);

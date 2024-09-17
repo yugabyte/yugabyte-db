@@ -263,7 +263,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
           CallJsonAdmin("list_clones", source_namespace_id, seq_no));
       const auto entries = out.GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
-      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||
@@ -593,6 +593,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   }
 
   void TestPgsqlDropDefault();
+  void TestTransactionDuringPITR();
 };
 
 class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
@@ -5420,7 +5421,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, CreateDuplicateSchedules,
     "already exists for the given keyspace ysql." + kTableName.namespace_name());
 }
 
-TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+void YbAdminSnapshotScheduleTestWithYsql::TestTransactionDuringPITR() {
   ASSERT_OK(PrepareCommon());
   std::string db_name = "test_db_name";
   std::string table_name = "test_table";
@@ -5441,6 +5442,25 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
   auto row_value = ASSERT_RESULT(
       conn.FetchRow<int32_t>(Format("SELECT value from $0 where key = 3", table_name)));
   ASSERT_EQ(row_value, 3);
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+  TestTransactionDuringPITR();
+}
+
+class YbAdminSnapshotScheduleTestWithYsqlRepro23399 : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraTSFlags() override {
+    return {
+        "--TEST_stopactivetxns_sleep_in_abort_cb_ms=500"
+        };
+  }
+};
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITRRepro23399,
+    YbAdminSnapshotScheduleTestWithYsqlRepro23399) {
+  TestTransactionDuringPITR();
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL

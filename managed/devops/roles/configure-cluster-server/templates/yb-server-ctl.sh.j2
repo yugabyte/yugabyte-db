@@ -138,7 +138,7 @@ clean_data_paths() {
     # Only the tserver creates and accesses the pg_data directory, so it
     # should be cleaned only when the tserver files are cleaned.
     if [ "$daemon" == "tserver" ]; then
-      rm -rf "${MOUNT_PATHS[i]}"/pg_data
+      rm -rf "${MOUNT_PATHS[i]}"/pg_data*
     fi
 
     if [ "$daemon" == "controller" ]; then

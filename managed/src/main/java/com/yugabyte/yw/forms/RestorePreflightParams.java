@@ -1,29 +1,25 @@
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
+import com.yugabyte.yw.models.Universe;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import play.data.validation.Constraints;
 
 @Data
-public class RestorePreflightParams {
-
-  @ApiModelProperty(value = "The backup of which the restore is being attempted")
-  private UUID backupUUID;
-
-  @ApiModelProperty(value = "Storage config UUID", required = true)
-  @Constraints.Required
-  private UUID storageConfigUUID;
-
+@EqualsAndHashCode(callSuper = true)
+@ApiModel(value = "Parameters for Restore preflight checks")
+public class RestorePreflightParams extends RestoreItemsValidationParams {
   @ApiModelProperty(value = "Target universe UUID", required = true)
   @Constraints.Required
   private UUID universeUUID;
 
-  @ApiModelProperty(value = "List of backup locations", required = true)
-  @Constraints.Required
-  @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-  private Set<String> backupLocations = new HashSet<>();
+  @Override
+  public void validateParams(UUID customerUUID) {
+    super.validateParams(customerUUID);
+    Universe.getOrBadRequest(universeUUID);
+  }
 }

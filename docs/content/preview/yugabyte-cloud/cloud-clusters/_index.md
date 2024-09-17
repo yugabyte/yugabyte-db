@@ -66,6 +66,10 @@ Keep in mind the following:
 
 - Make sure that you schedule maintenance and backups so that they do not conflict.
 
+### Enhanced Postgres Compatibility
+
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode).
+
 &nbsp;
 
 {{<index/block>}}

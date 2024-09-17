@@ -195,6 +195,7 @@ public class InternalHAController extends Controller {
 
   public Result demoteLocalLeader(long timestamp, boolean promote, Http.Request request) {
     try {
+      LOG.info("Received request to demote local instance.");
       Optional<HighAvailabilityConfig> config =
           HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
       if (!config.isPresent()) {

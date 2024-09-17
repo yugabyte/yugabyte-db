@@ -19,6 +19,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
@@ -213,8 +214,7 @@ Status SetupUniverseReplicationWithBootstrapHelper::ValidateReplicationBootstrap
   }
 
   RETURN_NOT_OK_PREPEND(
-      SetupUniverseReplicationHelper::ValidateMasterAddressesBelongToDifferentCluster(
-          master_, req->producer_master_addresses()),
+      ValidateMasterAddressesBelongToDifferentCluster(master_, req->producer_master_addresses()),
       req->ShortDebugString());
 
   auto universe =
@@ -281,8 +281,9 @@ void SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrap(
 
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::SETUP_REPLICATION);
-  MARK_BOOTSTRAP_FAILED_NOT_OK(SetupUniverseReplicationHelper::Setup(
-      master_, catalog_manager_, &replication_req, &replication_resp, epoch_));
+
+  MARK_BOOTSTRAP_FAILED_NOT_OK(xcluster_manager_.SetupUniverseReplication(
+      &replication_req, &replication_resp, /*rpc=*/nullptr, epoch_));
 
   LOG(INFO) << Format(
       "Successfully completed replication bootstrap for $0", replication_id.ToString());

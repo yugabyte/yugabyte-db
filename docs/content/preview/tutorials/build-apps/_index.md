@@ -3,15 +3,12 @@ title: Build a hello world application with YugabyteDB
 headerTitle: Hello world
 linkTitle: Hello world
 description: Build an application using your favorite programming language.
-headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
+headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs
 aliases:
   - /preview/quick-start/build-apps/
-menu:
-  preview_tutorials:
-    identifier: build-apps
-    parent: tutorials
 type: indexpage
-weight: 10
+cascade:
+  unversioned: true
 ---
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.

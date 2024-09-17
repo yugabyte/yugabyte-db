@@ -62,7 +62,7 @@ Azure Event Hubs will be used to capture the CDC data from YugabyteDB. To create
 
 Now that you have created Event Hubs in Azure, you need to create a YugabyteDB CDC Connector that will capture the changes in the Yugabyte database and send them to Event Hubs. Perform the following steps to create a YugabyteDB CDC Connector:
 
-1. Add data and tables to YugabyteDB. After this is done, [create the CDC Stream ID using the yb-admin command](../../../../integrations/cdc/debezium/#create-a-database-stream-id).
+1. Add data and tables to YugabyteDB. After this is done, [create the CDC Stream ID using the yb-admin command](/preview/integrations/cdc/debezium/#create-a-database-stream-id).
 
 1. [Download Apache Kafka](https://downloads.apache.org/kafka/3.3.2/kafka_2.12-3.3.2.tgz).
 

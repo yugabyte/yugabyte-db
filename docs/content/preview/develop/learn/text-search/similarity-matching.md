@@ -31,7 +31,7 @@ CREATE TABLE words (
 );
 ```
 
- Load some sample words into the table as follows:
+Load some sample words into the table as follows:
 
 ```sql
 INSERT INTO words(word) VALUES
@@ -43,7 +43,7 @@ INSERT INTO words(word) VALUES
 
 ## Levenshtein
 
-The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly useful for spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
+The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly well suited to spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
 
 To enable the Levenshtein function, activate the `fuzzystrmatch` extension as follows:
 
@@ -120,8 +120,27 @@ SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two word
 
 The `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
 
+`pg_trgm` supports the `gin_trgm_ops` operator class, which is specifically designed for [GIN (Generalized Inverted Index)](../../../../explore/ysql-language-features/indexes-constraints/gin) indexes to efficiently handle trigram-based similarity searches. `gin_trgm_ops` improves the performance of `LIKE` and `ILIKE` queries by extracting the trigrams and indexing them in the GIN index.
+
+For example, take the following query:
+
+```sql
+SELECT * FROM my_table WHERE my_column LIKE '%search_term%';
+```
+
+To improve its performance, create the following index:
+
+```sql
+CREATE INDEX idx_gin_trgm ON my_table USING gin (my_column gin_trgm_ops);
+```
+
+{{<tip>}}
+If your application frequently requires exact matches, or searches for substrings in larger text fields, `gin_trgm_ops` is a good choice.
+{{</tip>}}
+
 ## Learn more
 
 - [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)
+- [Range indexes for LIKE queries](https://dev.to/yugabyte/range-indexes-for-like-queries-in-yugabytedb-10kd)

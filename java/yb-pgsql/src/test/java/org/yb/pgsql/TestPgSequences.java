@@ -28,7 +28,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.yb.AssertionWrappers.*;
-import static org.junit.Assume.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgSequences extends BasePgSQLTest {
@@ -100,7 +99,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithCache() throws Exception {
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 100");
@@ -123,7 +121,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequencesWithCacheAndIncrement() throws Exception {
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 50 INCREMENT 3");
@@ -197,7 +194,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testSequenceWithMaxValueAndCache() throws Exception {
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 MAXVALUE 5 CACHE 10");
@@ -503,7 +499,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testLastvalInAnotherSessionFails() throws Exception {
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
@@ -776,7 +771,6 @@ public class TestPgSequences extends BasePgSQLTest {
 
   @Test
   public void testNextValAsDefaultValueInTable() throws Exception {
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CACHE 20");

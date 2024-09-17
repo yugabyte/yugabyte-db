@@ -27,7 +27,7 @@ type Context struct {
 // NewReleasesFormat for formatting output
 func NewReleasesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultReleasesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

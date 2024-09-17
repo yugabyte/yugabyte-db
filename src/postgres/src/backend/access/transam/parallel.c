@@ -1313,6 +1313,9 @@ ParallelWorkerMain(Datum main_arg)
 	/* Set flag to indicate that we're initializing a parallel worker. */
 	InitializingParallelWorker = true;
 
+	if (YBIsEnabledInPostgresEnvVar())
+		YbSetParallelWorker();
+
 	/* Establish signal handlers. */
 	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();

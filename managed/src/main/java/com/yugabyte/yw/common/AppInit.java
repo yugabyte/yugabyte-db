@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
@@ -118,7 +119,8 @@ public class AppInit {
       UpdateProviderMetadata updateProviderMetadata,
       @Named("AppStartupTimeMs") Long startupTime,
       ReleasesUtils releasesUtils,
-      JobScheduler jobScheduler)
+      JobScheduler jobScheduler,
+      NodeAgentEnabler nodeAgentEnabler)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -281,6 +283,7 @@ public class AppInit {
         xClusterScheduler.start();
 
         ybcUpgrade.start();
+        nodeAgentEnabler.init();
 
         prometheusConfigManager.updateK8sScrapeConfigs();
 

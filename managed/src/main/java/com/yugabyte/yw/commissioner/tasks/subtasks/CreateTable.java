@@ -88,6 +88,9 @@ public class CreateTable extends AbstractTaskBase {
     TableDetails tableDetails = taskParams().tableDetails;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
+    boolean enableConnectionPooling =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling;
+
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
 
     boolean tableCreated = false;
@@ -95,9 +98,15 @@ public class CreateTable extends AbstractTaskBase {
     Instant timeout = Instant.now().plusSeconds(TOTAL_ATTEMPTS_DURATION_SEC);
     while (Instant.now().isBefore(timeout) || attempt < MIN_RETRY_COUNT) {
       NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
+      int internalYsqlServerRpcPort = randomTServer.internalYsqlServerRpcPort;
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
-              randomTServer, universe, tableDetails.keyspace, createTableStatement);
+              randomTServer,
+              universe,
+              tableDetails.keyspace,
+              createTableStatement,
+              enableConnectionPooling,
+              internalYsqlServerRpcPort);
       if (!response.isSuccess()
           || !YSQLSH_CREATE_TABLE_SUCCESS.matcher(response.getMessage()).find()) {
         log.warn(

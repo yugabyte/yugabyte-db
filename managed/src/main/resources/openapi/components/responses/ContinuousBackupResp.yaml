@@ -1,0 +1,5 @@
+description: Continuous Backup Config
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/ContinuousBackup.yaml"

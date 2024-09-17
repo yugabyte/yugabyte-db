@@ -57,79 +57,25 @@ namespace yb {
 // setup routines useful for integration tests.
 class ExternalMiniClusterITestBase : public YBTest {
  public:
-  virtual void SetUpCluster(ExternalMiniClusterOptions* opts) {
-    // Fsync causes flakiness on EC2.
-    CHECK_NOTNULL(opts)->extra_tserver_flags.push_back("--never_fsync");
-  }
+  virtual void TearDown() override;
 
-  virtual void TearDown() override {
-    client_.reset();
-    if (cluster_) {
-      if (HasFatalFailure()) {
-        LOG(INFO) << "Found fatal failure";
-        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-          if (!cluster_->tablet_server(i)->IsProcessAlive()) {
-            LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
-            continue;
-          }
-          LOG(INFO) << "Attempting to dump stacks of TS " << i
-                    << " with UUID " << cluster_->tablet_server(i)->uuid()
-                    << " and pid " << cluster_->tablet_server(i)->pid();
-          WARN_NOT_OK(PstackWatcher::DumpPidStacks(cluster_->tablet_server(i)->pid()),
-                      "Couldn't dump stacks");
-        }
-      }
-      cluster_->Shutdown();
-    }
-    YBTest::TearDown();
-    ts_map_.clear();
-  }
-
-  Result<TabletId> GetSingleTabletId(const TableName& table_name) {
-    TabletId tablet_id_to_split;
-    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-      const auto ts = cluster_->tablet_server(i);
-      const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
-      for (const auto& tablet : tablets) {
-        if (tablet.table_name() == table_name) {
-          return tablet.tablet_id();
-        }
-      }
-    }
-    return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
-  }
+  Result<TabletId> GetSingleTabletId(const TableName& table_name);
 
  protected:
+  virtual void SetUpOptions(ExternalMiniClusterOptions& opts);
+
   void StartCluster(const std::vector<std::string>& extra_ts_flags = std::vector<std::string>(),
                     const std::vector<std::string>& extra_master_flags = std::vector<std::string>(),
                     int num_tablet_servers = 3,
                     int num_masters = 1,
                     bool enable_ysql = false);
 
+  Status StartCluster(ExternalMiniClusterOptions opts);
+
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::unique_ptr<client::YBClient> client_;
   itest::TabletServerMap ts_map_;
 };
-
-void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& extra_ts_flags,
-                                                const std::vector<std::string>& extra_master_flags,
-                                                int num_tablet_servers,
-                                                int num_masters,
-                                                bool enable_ysql) {
-  ExternalMiniClusterOptions opts;
-  opts.num_masters = num_masters;
-  opts.num_tablet_servers = num_tablet_servers;
-  opts.extra_master_flags = extra_master_flags;
-  opts.extra_tserver_flags = extra_ts_flags;
-  opts.enable_ysql = enable_ysql;
-  SetUpCluster(&opts);
-
-  cluster_.reset(new ExternalMiniCluster(opts));
-  ASSERT_OK(cluster_->Start());
-  inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
-  client_ = ASSERT_RESULT(cluster_->CreateClient());
-}
 
 }  // namespace yb

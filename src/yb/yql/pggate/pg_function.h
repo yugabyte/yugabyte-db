@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -82,10 +82,10 @@ class PgFunction : public PgMemctx::Registrable {
   virtual ~PgFunction() = default;
 
   Status AddParam(
-      const std::string name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null);
+      const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null);
 
   Status AddTarget(
-      const std::string name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs);
+      const std::string& name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs);
 
   Status FinalizeTargets();
 
@@ -109,7 +109,7 @@ class PgFunction : public PgMemctx::Registrable {
 
 Result<std::list<dockv::PgTableRow>> PgLockStatusRequestor(
     const PgFunctionParams& params, const Schema& schema,
-    const dockv::ReaderProjection& reader_projection, const scoped_refptr<PgSession> pg_session);
+    const dockv::ReaderProjection& reader_projection, const scoped_refptr<PgSession>& pg_session);
 
 }  // namespace pggate
 }  // namespace yb

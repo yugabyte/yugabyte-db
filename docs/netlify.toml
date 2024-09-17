@@ -16,6 +16,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
   GO_VERSION = "1.20"
@@ -23,6 +24,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
   GO_VERSION = "1.20"
@@ -30,6 +32,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
+  RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
 #
@@ -1096,8 +1099,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# CDC tutorials was in explore, now in Tutorials
+# Moving Drivers from reference to Develop
+[[redirects]]
+  from = "/preview/reference/drivers/"
+  to = "/preview/drivers-orms/"
+  force = true
 
+# CDC tutorials was in explore, now in Tutorials
 [[redirects]]
   from = "/preview/explore/change-data-capture/cdc-tutorials/*"
   to = "/preview/tutorials/cdc-tutorials/:splat"
@@ -1355,6 +1363,9 @@
             https://api.segment.io/
             https://cdn.segment.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
+            https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            https://api.rudderstack.com/
+            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1377,8 +1388,10 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
-            https://js.driftt.com/
             https://cdn.segment.com/
+            https://j.6sc.co/
+            https://cdn.rudderlabs.com/
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1420,7 +1433,6 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
-            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
@@ -1430,7 +1442,6 @@
         ;
 
         media-src 'self' 'unsafe-inline'
-        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

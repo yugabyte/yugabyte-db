@@ -445,6 +445,8 @@ extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
 
+extern void YbSetParallelWorker();
+
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);
 extern void SerializeGUCState(Size maxsize, char *start_address);

@@ -14,6 +14,7 @@ type MappedResults struct {
 	Passed   []Result
 	Warning  []Result
 	Critical []Result
+	Skipped  []Result
 }
 
 // NewMappedResults returns a map results pointer
@@ -22,6 +23,7 @@ func NewMappedResults() *MappedResults {
 		Passed:   make([]Result, 0),
 		Warning:  make([]Result, 0),
 		Critical: make([]Result, 0),
+		Skipped:  make([]Result, 0),
 	}
 }
 
@@ -34,6 +36,8 @@ func (mr *MappedResults) AddResult(result Result) {
 		mr.Warning = append(mr.Warning, result)
 	case StatusCritical:
 		mr.Critical = append(mr.Critical, result)
+	case StatusSkipped:
+		mr.Skipped = append(mr.Skipped, result)
 	default:
 		panic("unknown status")
 	}
@@ -47,9 +51,11 @@ const (
 	// Pass - check fully succeeds
 	// Warning - check passed, but doesn't meet all best practices
 	// Critical - check failed, we should not allow most operations
+	// Skipped - check was not run, and should not be reported.
 	StatusPassed Status = iota
 	StatusWarning
 	StatusCritical
+	StatusSkipped
 	maxStatus // marker for the highest allowed status value, could be used for validation later
 )
 
@@ -62,6 +68,8 @@ func (s Status) String() string {
 		return "Warning"
 	case StatusPassed:
 		return "Pass"
+	case StatusSkipped:
+		return "Skipped"
 	default:
 		return "unknown status value " + strconv.Itoa(int(s))
 	}

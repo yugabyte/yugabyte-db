@@ -966,7 +966,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       String enable_wait_queues = client.getFlag(
           miniCluster.getTabletServers().keySet().iterator().next(), "enable_wait_queues");
 
-      boolean is_wait_on_conflict_concurrency_control = (enable_wait_queues == "true");
+      boolean is_wait_on_conflict_concurrency_control = (enable_wait_queues.equals("true"));
 
       // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict" for pure
       // reads.

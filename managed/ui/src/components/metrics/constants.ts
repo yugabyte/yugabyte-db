@@ -10,6 +10,7 @@ export const MetricTypes = {
   YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
   DISK_IO: 'disk_io',
+  PER_PROCESS: 'per_process',
   TSERVER: 'tserver',
   MASTER: 'master',
   MASTER_ADVANCED: 'master_advanced',
@@ -29,7 +30,8 @@ export const MetricTypesWithOperations = {
       'ysql_connections',
       'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
-      'ysql_sql_advanced_latency'
+      'ysql_sql_advanced_latency',
+      'ysql_catalog_cache_misses'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
@@ -97,6 +99,19 @@ export const MetricTypesWithOperations = {
       'node_clock_skew'
     ]
   },
+  per_process: {
+    title: 'Per Process',
+    metrics: [
+      'process_user_cpu_seconds',
+      'process_system_cpu_seconds',
+      'process_virtual_memory',
+      'process_resident_memory',
+      'process_proportional_memory',
+      'process_io_read',
+      'process_io_write',
+      'process_open_files'
+    ]
+  },
   disk_io: {
     title: 'Disk I/O',
     metrics: [
@@ -110,7 +125,7 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
       'tserver_log_bytes_read',
-      'tserver_log_bytes_written',
+      'tserver_log_bytes_written'
     ]
   },
   tserver: {
@@ -278,7 +293,8 @@ export const MetricTypesWithOperations = {
       'table_memory_rejections',
       'table_compaction',
       'table_block_cache_hit_miss',
-      'table_mem_tracker_db_memtable'
+      'table_mem_tracker_db_memtable',
+      'ysql_catalog_cache_misses'
     ]
   }
 } as const;
@@ -290,6 +306,7 @@ export const MetricTypesByOrigin = {
       'ycql_ops',
       'yedis_ops',
       'disk_io',
+      'per_process',
       'container',
       'server',
       'tserver',

@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -157,7 +158,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
         .thenReturn(null);
 
     endpointPort.forEach(
@@ -186,8 +187,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodIP() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("12.13.14.15");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("12.13.14.15")));
 
     endpointPortYSQL.forEach(
         (key, value) -> {
@@ -211,13 +212,16 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
     Universe universe = getKubernetesUniverse(true);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("12.13.14.15");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("12.13.14.15", "12.13.14.16")));
 
     endpointPort.forEach(
         (key, value) -> {
           String expectedHostString = "12.13.14.15:" + value;
-          String completeString = String.format("%s,%s", expectedHostString, expectedHostString);
+          String expectedHostString_2 = "12.13.14.16:" + value;
+          String completeString = String.format("%s,%s", expectedHostString_2, expectedHostString);
+          String completeString_2 =
+              String.format("%s,%s", expectedHostString, expectedHostString_2);
           Result r =
               route(
                   fakeRequest(
@@ -228,7 +232,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(completeString, json.asText());
+          assertTrue(
+              completeString.equals(json.asText()) || completeString_2.equals(json.asText()));
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -237,8 +242,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("56.78.90.1");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("56.78.90.1")));
 
     endpointPort.forEach(
         (key, value) -> {
@@ -262,8 +267,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("loadbalancer.hostname");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("loadbalancer.hostname")));
 
     endpointPort.forEach(
         (key, value) -> {
@@ -287,8 +292,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
     Universe universe = getKubernetesUniverse(false);
     when(mockKubernetesManager.getPreferredServiceIP(
-            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn("loadbalancer.hostname");
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString()))
+        .thenReturn(new HashSet<>(Arrays.asList("loadbalancer.hostname")));
 
     endpointPort.forEach(
         (key, value) -> {

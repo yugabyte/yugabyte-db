@@ -121,11 +121,29 @@ COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
 // To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
 // bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
 // message length that may produce integer overflow warnings, so that's what we'll use.
-DEFINE_UNKNOWN_int32(
+DEFINE_UNKNOWN_uint32(
     protobuf_message_total_bytes_limit, 511_MB,
     "Limits single protobuf message size for deserialization.");
 TAG_FLAG(protobuf_message_total_bytes_limit, advanced);
 TAG_FLAG(protobuf_message_total_bytes_limit, hidden);
+
+namespace {
+
+bool ProtobufMessageTotalBytesLimitValidator(const char* flag_name, uint32_t value) {
+  constexpr uint32_t kMaxProtobufMessageTotalBytesLimit = 512_MB;
+
+  if (value >= kMaxProtobufMessageTotalBytesLimit) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be less than "
+        << kMaxProtobufMessageTotalBytesLimit;
+    return false;
+  }
+
+  return true;
+}
+
+} // namespace
+
+DEFINE_validator(protobuf_message_total_bytes_limit, ProtobufMessageTotalBytesLimitValidator);
 
 namespace yb {
 namespace pb_util {

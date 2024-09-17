@@ -441,10 +441,10 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 		 * layer. Hence this variable is not relevant for Yugabyte relations and
 		 * will always evaluate to false.
 		 */
-		indexUnchanged = isYBRelation && update && index_unchanged_by_update(resultRelInfo,
-																			 estate,
-																			 indexInfo,
-																			 indexRelation);
+		indexUnchanged = !isYBRelation && update && index_unchanged_by_update(resultRelInfo,
+																			  estate,
+																			  indexInfo,
+																			  indexRelation);
 
 		satisfiesConstraint =
 			index_insert(indexRelation, /* index relation */

@@ -265,6 +265,9 @@ public class NodeDetails {
   @ApiModelProperty(value = "YSQL RPC port")
   public int ysqlServerRpcPort = 5433;
 
+  @ApiModelProperty(value = "Internal YSQL RPC port")
+  public int internalYsqlServerRpcPort = 6433;
+
   // Which port node_exporter is running on.
   @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;

@@ -1027,6 +1027,7 @@ public class TestPgTransactions extends BasePgSQLTest {
 
         s1.execute("COMMIT");
         s1.execute("DROP TABLE test");
+        waitForTServerHeartbeatIfConnMgrEnabled();
       } catch (Exception ex) {
         fail(ex.getMessage());
       }
@@ -1120,5 +1121,13 @@ public class TestPgTransactions extends BasePgSQLTest {
     verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (2, 2)", 1);
     verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (3, 3)", 1);
     statement.execute("DROP TABLE test_id_non_pk");
+  }
+
+  @Test
+  public void testParititionedTableFastPath() throws Exception {
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE partitioned (a int) PARTITION BY LIST (a)");
+    statement.execute("CREATE TABLE partitioned_part PARTITION OF partitioned FOR VALUES IN (123)");
+    verifyStatementTxnMetric(statement, "INSERT INTO partitioned (a) VALUES (123)", 1);
   }
 }

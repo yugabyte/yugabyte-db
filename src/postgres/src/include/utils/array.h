@@ -68,6 +68,12 @@
 struct ExprState;
 struct ExprContext;
 
+/*
+ * Maximum number of elements in an array.  We limit this to at most about a
+ * quarter billion elements, so that it's not necessary to check for overflow
+ * in quite so many places --- for instance when palloc'ing Datum arrays.
+*/
+#define MaxArraySize ((Size) (MaxAllocSize / sizeof(Datum)))
 
 /*
  * Maximum number of array subscripts (arbitrary limit)

@@ -44,6 +44,8 @@
 #pragma once
 
 #include "yb/server/webserver.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 
@@ -69,5 +71,9 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);
 
 void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server);
+
+void ParseRequestOptions(
+    const Webserver::WebRequest& req, MetricPrometheusOptions* prometheus_opts,
+    MetricJsonOptions* json_opts = nullptr, JsonWriter::Mode* json_mode = nullptr);
 
 } // namespace yb

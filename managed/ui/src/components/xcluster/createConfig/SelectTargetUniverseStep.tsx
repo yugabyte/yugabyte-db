@@ -19,7 +19,7 @@ import {
   XCLUSTER_REPLICATION_DOCUMENTATION_URL,
   YB_ADMIN_XCLUSTER_DOCUMENTATION_URL
 } from '../constants';
-import { getIsTransactionalAtomicityEnabled } from '../ReplicationUtils';
+import { getIsTransactionalAtomicitySupported } from '../ReplicationUtils';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import InfoMessageIcon from '../../../redesign/assets/info-message.svg';
 import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
@@ -156,7 +156,7 @@ export const SelectTargetUniverseStep = ({
   );
   // targetUniverse could be undefined on this page since the user might not have entered a value yet.
   const targetUniverse = watch('targetUniverse') as { label: string; value: Universe } | undefined;
-  const isTransactionalAtomicitySupported = getIsTransactionalAtomicityEnabled(
+  const isTransactionalAtomicitySupported = getIsTransactionalAtomicitySupported(
     sourceUniverse,
     targetUniverse?.value
   );

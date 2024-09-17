@@ -454,10 +454,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
 
   std::vector<xrepl::StreamId> streams{xcluster_streams.begin(), xcluster_streams.end()};
   EXPECT_CALL(
-      xcluster_client,
-      SetupDbScopedUniverseReplication(
-          kReplicationGroupId, _, std::vector<NamespaceName>{kNamespaceName},
-          std::vector<NamespaceId>{kNamespaceId}, std::vector<TableId>{kTableId1}, streams))
+      xcluster_client, SetupDbScopedUniverseReplication(
+                           kReplicationGroupId, _, std::vector<NamespaceName>{kNamespaceName},
+                           std::vector<NamespaceId>{kNamespaceId}, std::vector<TableId>{kTableId1},
+                           streams, /*automatic_ddl_mode=*/false))
       .Times(AtLeast(1));
 
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
@@ -496,7 +496,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   EXPECT_CALL(xcluster_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(IsOperationDoneResult::Done()));
 
-  EXPECT_CALL(xcluster_client, SetupDbScopedUniverseReplication(_, _, _, _, _, _));
+  EXPECT_CALL(xcluster_client, SetupDbScopedUniverseReplication(_, _, _, _, _, _, _));
 
   // Calling create again should not do anything.
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));

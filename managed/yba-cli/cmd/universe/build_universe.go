@@ -101,11 +101,59 @@ func buildClusters(
 		}
 	}
 
+	cpuArch := v1.GetString("cpu-architecture")
+	if len(strings.TrimSpace(cpuArch)) == 0 {
+		cpuArch = util.X86_64
+	}
+
+	imageBundlesInProvider := providerUsed.GetImageBundles()
+	if len(imageBundlesInProvider) == 0 {
+		return nil, fmt.Errorf("no image bundles found for provider %s", providerName)
+	}
+
 	addReadReplica := v1.GetBool("add-read-replica")
 	noOfClusters := 1
 	if addReadReplica {
 		noOfClusters = 2
 	}
+
+	linuxVersionsInterface := v1.Get("linux-version")
+	var linuxVersionsInput []string
+	if linuxVersionsInterface != nil {
+		if reflect.TypeOf(linuxVersionsInterface) == reflect.TypeOf(checkInterfaceType) {
+			linuxVersionsInput = *util.StringSlice(linuxVersionsInterface.([]interface{}))
+		} else {
+			linuxVersionsInput = linuxVersionsInterface.([]string)
+		}
+	}
+
+	var imageBundleUUIDs []string
+	for _, l := range linuxVersionsInput {
+		for _, ib := range imageBundlesInProvider {
+			ibDetails := ib.GetDetails()
+			if strings.Compare(ib.GetName(), l) == 0 &&
+				strings.Compare(ibDetails.GetArch(), cpuArch) == 0 {
+				imageBundleUUIDs = append(imageBundleUUIDs, ib.GetUuid())
+			}
+		}
+	}
+
+	if len(imageBundleUUIDs) != len(linuxVersionsInput) {
+		fmt.Errorf("the provided linux version name cannot be found")
+	}
+
+	imageBundleLen := len(imageBundleUUIDs)
+	for i := 0; i < noOfClusters-imageBundleLen; i++ {
+		for _, ib := range imageBundlesInProvider {
+			ibDetails := ib.GetDetails()
+			if strings.Compare(ibDetails.GetArch(), cpuArch) == 0 &&
+				ib.GetUseAsDefault() {
+				imageBundleUUIDs = append(imageBundleUUIDs, ib.GetUuid())
+			}
+		}
+	}
+
+	logrus.Info("Using image bundles: ", imageBundleUUIDs, "\n")
 
 	dedicatedNodes := v1.GetBool("dedicated-nodes")
 
@@ -469,8 +517,9 @@ func buildClusters(
 				Provider:       util.GetStringPointer(providerUUID),
 				DedicatedNodes: util.GetBoolPointer(dedicatedNodes),
 
-				InstanceType: util.GetStringPointer(instanceTypes[i]),
-				DeviceInfo:   deviceInfo[i],
+				InstanceType:    util.GetStringPointer(instanceTypes[i]),
+				ImageBundleUUID: util.GetStringPointer(imageBundleUUIDs[i]),
+				DeviceInfo:      deviceInfo[i],
 
 				MasterInstanceType: util.GetStringPointer(masterInstanceType),
 				MasterDeviceInfo:   masterDeviceInfo,

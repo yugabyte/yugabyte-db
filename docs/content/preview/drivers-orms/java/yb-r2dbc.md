@@ -3,11 +3,12 @@ title: YugabyteDB R2DBC Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB R2DBC Smart Driver for YSQL
+badges: ysql
 menu:
   preview:
-    identifier: r2dbc-driver
+    identifier: java-driver-2-r2dbc
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -230,6 +231,6 @@ ID: 3, Name: John, Age: 38, Language: JAVA
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

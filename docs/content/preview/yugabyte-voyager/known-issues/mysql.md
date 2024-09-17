@@ -30,7 +30,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [json_valid() does not exist in PostgreSQL/YugabyteDB](#json-valid-does-not-exist-in-postgresql-yugabytedb)
 - [json_value() does not exist in PostgreSQL/YugabyteDB](#json-value-does-not-exist-in-postgresql-yugabytedb)
 - [Unnecessary DDLs for RANGE COLUMN PARTITIONED tables](#unnecessary-ddls-for-range-column-partitioned-tables)
-- [DOUBLE UNSIGNED and FLOAT UNSIGNED datatypes are not supported](#double-unsigned-and-float-unsigned-datatypes-are-not-supported)
+- [DOUBLE UNSIGNED and FLOAT UNSIGNED data types are not supported](#double-unsigned-and-float-unsigned-data-types-are-not-supported)
 - [Foreign key referenced column cannot be a subset of a unique/primary key](#foreign-key-referenced-column-cannot-be-a-subset-of-a-unique-primary-key)
 - [Multiple indexes on the same column of a table errors during import](#multiple-indexes-on-the-same-column-of-a-table-errors-during-import)
 
@@ -593,7 +593,7 @@ json_extract_path_text(key_value_pair_variable::json,'key');
 
 **Description**: If you have a schema which contains RANGE COLUMN PARTITIONED tables in MYSQL, some extra indexes are created during migration which are unnecessary and might result in an import error.
 
-**Workaround**: Remove the unnecessary DDLs from `PARTITION_INDEXES_partition.sql` file from the export-dir/schema/partitions sub-directory for the corresponding tables.
+**Workaround**: Remove the unnecessary DDLs from `PARTITION_INDEXES_partition.sql` file in the `export-dir/schema/partitions` sub-directory for the corresponding tables.
 
 **Example**
 
@@ -621,11 +621,11 @@ Suggested change is to remove the unnecessary index.
 
 ---
 
-### DOUBLE UNSIGNED and FLOAT UNSIGNED datatypes are not supported
+### DOUBLE UNSIGNED and FLOAT UNSIGNED data types are not supported
 
 **GitHub**: [Issue #1607](https://github.com/yugabyte/yb-voyager/issues/1607)
 
-**Description**: If the schema has a table with a DOUBLE UNSIGNED or FLOAT UNSIGNED column, those datatypes  are not converted by Voyager to a YugabyteDB relevant syntax, and thus get errored during import. These datatypes are deprecated as of [MySQL 8.0.17](https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html).
+**Description**: If the schema has a table with a DOUBLE UNSIGNED or FLOAT UNSIGNED column, those data types are not converted by Voyager to a YugabyteDB relevant syntax, and result in errors during import. These data types are deprecated as of [MySQL 8.0.17](https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html).
 
 **Workaround**: Manually change the exported schema to the closest YugabyteDB supported syntax.
 
@@ -650,9 +650,7 @@ CREATE TABLE test (
 );
 ```
 
-Suggested change to the schema is as follows:
-
-Change to YugabyteDB compatible syntax closest to the respective datatypes.
+Suggested change to the schema is to change to YugabyteDB-compatible syntax closest to the respective data types:
 
 ```sql
 CREATE TABLE test (
@@ -702,9 +700,7 @@ Error during import is as follows:
 ERROR:  there is no unique constraint matching given keys for referenced table "k"
 ```
 
-Suggested change to the schema is as follows:
-
-Add individual unique/primary keys to the referenced column as follows:
+Suggested change to the schema is to add individual unique/primary keys to the referenced column as follows:
 
 ```sql
 ALTER TABLE k ADD UNIQUE (id);

@@ -14,7 +14,8 @@ import {
   InstanceTag,
   InstanceTags,
   MasterPlacementMode,
-  NodeDetails
+  NodeDetails,
+  CommunicationPorts
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -32,8 +33,12 @@ import {
 import {
   GFLAG_GROUPS,
   MIN_PG_SUPPORTED_PREVIEW_VERSION,
-  MIN_PG_SUPPORTED_STABLE_VERSION
+  MIN_PG_SUPPORTED_STABLE_VERSION,
+  CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+  CONNECTION_POOL_SUPPORTED_STABLE_VERSION
 } from '../../../../helpers/constants';
+import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
+import { ProviderCode } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
@@ -59,11 +64,11 @@ export const getCurrentVersion = (universeData: UniverseDetails) => {
 export const getUniverseName = (universeData: UniverseDetails) =>
   _.get(getClusterByType(universeData, ClusterType.PRIMARY), 'userIntent.universeName');
 
-export const getPrimaryFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.PRIMARY);
+export const getPrimaryFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.PRIMARY, providerConfig);
 
-export const getAsyncFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.ASYNC);
+export const getAsyncFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.ASYNC, providerConfig);
 
 //returns fields needs to be copied from Primary to Async in Create+RR flow
 export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
@@ -170,7 +175,11 @@ export const isPGEnabledFromIntent = (intent: UserIntent) => {
 };
 
 //Transform universe data to form data
-export const getFormData = (universeData: UniverseDetails, clusterType: ClusterType) => {
+export const getFormData = (
+  universeData: UniverseDetails,
+  clusterType: ClusterType,
+  providerConfig?: YBProvider
+) => {
   const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
@@ -183,7 +192,11 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       universeName: userIntent.universeName,
       provider: {
         code: userIntent.providerType,
-        uuid: userIntent.provider
+        uuid: userIntent.provider,
+        isOnPremManuallyProvisioned:
+          (providerConfig?.code === ProviderCode.ON_PREM &&
+            providerConfig.details?.skipProvisioning) ??
+          false
       },
       regionList: userIntent.regionList,
       numNodes: userIntent.numNodes,
@@ -238,6 +251,10 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     universeOverrides: userIntent.universeOverrides,
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
+
+  if (!_.isEmpty(userIntent?.enableConnectionPooling)) {
+    data.advancedConfig.enableConnectionPooling = userIntent.enableConnectionPooling;
+  }
 
   if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
@@ -337,6 +354,9 @@ export const getUserIntent = (
   if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
+  if (!_.isEmpty(advancedConfig?.enableConnectionPooling)) {
+    intent.enableConnectionPooling = advancedConfig.enableConnectionPooling;
+  }
 
   if (
     cloudConfig.provider?.code === CloudType.kubernetes &&
@@ -526,4 +546,35 @@ export const isVersionPGSupported = (dbVersion: string) => {
       }
     }) >= 0
   );
+};
+
+export const isVersionConnectionPoolSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? CONNECTION_POOL_SUPPORTED_STABLE_VERSION
+        : CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
+};
+
+export const getChangedPorts = (
+  oldCommunicationPorts: CommunicationPorts,
+  newCommunicationPorts: CommunicationPorts
+) => {
+  const oldPorts = {};
+  const newPorts = {};
+
+  Object.keys(newCommunicationPorts).forEach((key) => {
+    if (JSON.stringify(oldCommunicationPorts[key]) !== JSON.stringify(newCommunicationPorts[key])) {
+      newPorts[key] = newCommunicationPorts[key];
+      oldPorts[key] = oldCommunicationPorts[key];
+    }
+  });
+
+  return { oldPorts, newPorts };
 };

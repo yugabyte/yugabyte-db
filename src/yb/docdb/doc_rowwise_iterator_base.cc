@@ -279,6 +279,10 @@ Slice DocRowwiseIteratorBase::GetTupleId() const {
   return tuple_id;
 }
 
+Slice DocRowwiseIteratorBase::GetRowKey() const {
+  return row_key_;
+}
+
 void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.

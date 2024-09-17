@@ -35,6 +35,12 @@
  */
 extern bool yb_is_client_ysqlconnmgr;
 
+/*
+ * `yb_is_parallel_worker` is used to identify that whether background worker is
+ * of parallel worker type.
+*/
+extern bool yb_is_parallel_worker;
+
 /* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
 extern int yb_logical_client_shmem_key;
 

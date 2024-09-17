@@ -24,6 +24,7 @@ interface YBMetricGraphCommonProps {
   metric: YBMetricGraphData;
   title: string;
   metricSettings: MetricSettings;
+  unit: string;
   referenceLines?: {
     y: number;
     name: string;
@@ -47,7 +48,7 @@ type YBMetricGraphProps =
     });
 
 export const YBMetricGraph = (props: YBMetricGraphProps) => {
-  const { graphHeaderAccessor, metric, metricSettings, referenceLines, title } = props;
+  const { graphHeaderAccessor, metric, metricSettings, referenceLines, title, unit } = props;
   const theme = useTheme();
   const traceStrokes = Object.values(theme.palette.chart.stroke);
 
@@ -80,7 +81,7 @@ export const YBMetricGraph = (props: YBMetricGraphProps) => {
             type="number"
             domain={['dataMin', 'dataMax']}
           />
-          <YAxis tickFormatter={(value) => `${value} ms`} />
+          <YAxis tickFormatter={(value) => `${value} ${unit}`} />
           <Tooltip labelFormatter={(value) => formatDatetime(value)} isAnimationActive={false} />
           <Legend iconType="plainline" />
           {metric.metricTraces.map((trace, index) => {
@@ -95,7 +96,7 @@ export const YBMetricGraph = (props: YBMetricGraphProps) => {
                 type="linear"
                 dataKey={timeSeriesKey}
                 stroke={traceStrokes[index]}
-                unit=" ms"
+                unit={` ${unit}`}
               />
             );
           })}

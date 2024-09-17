@@ -3,9 +3,11 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
@@ -17,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -127,8 +130,38 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
             getLiveNode(universe), universe, table.db.name, query, 10);
-    assertTrue(ysqlResponse.isSuccess());
+    if (!ysqlResponse.isSuccess()) {
+      throw new RuntimeException(
+          String.format(
+              "Failed to get row count for universe: %s and table: %s",
+              universe.getName(), table.name));
+    }
     return Integer.parseInt(CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
+  }
+
+  public void validateRowCount(Universe universe, Table table, int expectedRows) {
+    assertNotEquals(-1, expectedRows);
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              try {
+                int rowCount = getRowCount(universe, table);
+                log.debug("row count {}", rowCount);
+                return rowCount;
+              } catch (Exception e) {
+                log.error(e.getMessage());
+                return -1;
+              }
+            },
+            rowCount -> {
+              return rowCount == expectedRows;
+            });
+    boolean success = condition.retryUntilCond(5, TimeUnit.MINUTES.toSeconds(1));
+    if (!success) {
+      throw new RuntimeException(
+          String.format(
+              "Failed to get expected number of rows: %d for table %s.", expectedRows, table.name));
+    }
   }
 
   public void createDatabase(Universe universe, Db db) {

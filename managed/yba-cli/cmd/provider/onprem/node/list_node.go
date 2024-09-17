@@ -70,11 +70,12 @@ var listNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		nodeInstancesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: onprem.NewNodesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  onprem.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No node instances found\n")
 			} else {
 				logrus.Infoln("[]\n")

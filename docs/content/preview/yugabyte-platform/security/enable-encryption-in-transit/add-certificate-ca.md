@@ -56,7 +56,7 @@ In addition, ensure the following:
 
 Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 

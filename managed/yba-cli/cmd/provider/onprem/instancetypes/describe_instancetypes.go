@@ -95,7 +95,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 		instanceTypeList = append(instanceTypeList, rDescribe)
 
 		if rDescribe.GetActive() {
-			if len(instanceTypeList) > 0 && util.IsOutputType("table") {
+			if len(instanceTypeList) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 				fullInstanceTypesContext := *instancetypes.NewFullInstanceTypesContext()
 				fullInstanceTypesContext.Output = os.Stdout
 				fullInstanceTypesContext.Format = instancetypes.NewFullInstanceTypesFormat(
@@ -106,8 +106,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 			}
 
 			instanceTypesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+				Command: "describe",
+				Output:  os.Stdout,
+				Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 			}
 			instancetypes.Write(instanceTypesCtx, instanceTypeList)
 		} else {

@@ -1,0 +1,31 @@
+title: ContinuousBackupInfo
+description: |
+  ContinuousBackupInfo
+
+  These are read-only system generated properties of a continuous backup configuration. Returned as part of the Continuous Backup resource.
+type: object
+properties:
+  uuid:
+    description: UUID of the Continuous Backup Config
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  frequency:
+    description: Interval between two backups.
+    type: integer
+    format: int64
+  frequency_time_unit:
+    description: The time unit for the interval between backups.
+    $ref: "./TimeUnitType.yaml"
+  storage_location:
+    description: bucket or directory where backups are stored
+    type: string
+    example: 's3://backup_storage_path/YBA_1.2.3.4'
+    readOnly: true
+  last_backup:
+    description: time of last backup stored
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true

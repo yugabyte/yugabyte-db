@@ -96,6 +96,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testSeqScan() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     try (Statement stmt = connection.createStatement()) {
       Checker checker = makeTopLevelBuilder()
           .storageReadRequests(Checkers.equal(5))
@@ -119,6 +120,14 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
       // Warm up the cache to get catalog requests out of the way.
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+
+      // Additionally warmup the cache for all backends when Connection Manager
+      // is in round-robin warmup mode.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for(int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+            testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+        }
+      }
 
       // Seq Scan (ybc_fdw ForeignScan)
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), checker);
@@ -333,12 +342,21 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertValues() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     try (Statement stmt = connection.createStatement()) {
       // reduce the batch size to avoid 0 wait time
       stmt.execute("SET ysql_session_max_batch_size = 4");
 
       // Warm up the cache to get catalog requests out of the way.
       testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+
+      // Additionally warmup the cache for all backends when Connection Manager
+      // is in round-robin warmup mode.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for(int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+            testExplain(String.format("SELECT * FROM %s", TABLE_NAME), null);
+        }
+      }
 
       ObjectChecker planChecker =
           makePlanBuilder()

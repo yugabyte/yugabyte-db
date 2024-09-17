@@ -64,10 +64,16 @@ extern void YbAshFillSampleWeight(int samples_considered);
 extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
+extern bool yb_ash_circular_buffer_size_check_hook(int *newval,
+												   void **extra,
+												   GucSource source);
 
 extern void YbAshSetMetadata(void);
 extern void YbAshUnsetMetadata(void);
 
 extern void YbAshSetOneTimeMetadata(void);
+extern void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
+												int64 query_id, StringInfo output_buffer,
+												char *description);
 
 #endif							/* YB_ASH_H */

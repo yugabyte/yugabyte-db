@@ -14,14 +14,14 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) that connects to a YugabyteDB cluster using the [Ruby Pg driver](../../../../reference/drivers/ysql-client-drivers/#pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Ruby.
+The following tutorial shows a small [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) that connects to a YugabyteDB cluster using the [Ruby Pg driver](../../../../drivers-orms/ruby/ysql-pg/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Ruby.
 
 ## Prerequisites
 
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
-- [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](../../../../reference/drivers/ysql-client-drivers/#pg). To install Ruby pg, run the following command:
+- [libpq](../../../../drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [Ruby pg](../../../../drivers-orms/ruby/ysql-pg/). To install Ruby pg, run the following command:
 
     ```sh
     gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
@@ -166,6 +166,6 @@ end
 
 ## Learn more
 
-[Ruby pg driver](../../../../reference/drivers/ysql-client-drivers/#pg)
+[Ruby pg driver](../../../../drivers-orms/ruby/ysql-pg/)
 
-[libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
+[libpq driver](../../../../drivers-orms/ysql-client-drivers/#libpq)

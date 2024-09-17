@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.scheduler;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Injector;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -158,10 +161,23 @@ public class JobScheduler {
    *
    * @param customerUuid the customer UUID.
    * @param name the name of the schedule.
-   * @return
+   * @return the optional schedule.
    */
   public Optional<JobSchedule> maybeGetSchedule(UUID customerUuid, String name) {
     return JobSchedule.maybeGet(customerUuid, name);
+  }
+
+  /**
+   * Get the schedule with the name for the given customer if it is found else throw exception.
+   *
+   * @param customerUuid the customer UUID.
+   * @param name the name of the schedule.
+   * @return the schedule.
+   */
+  public JobSchedule getOrBadRequest(UUID customerUuid, String name) {
+    return maybeGetSchedule(customerUuid, name)
+        .orElseThrow(
+            () -> new PlatformServiceException(BAD_REQUEST, "Cannot find job schedule " + name));
   }
 
   /**
@@ -191,23 +207,31 @@ public class JobScheduler {
     Preconditions.checkNotNull(scheduleConfig, "Schedule config must be set");
     JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
     ScheduleConfig oldScheduleConfig = jobSchedule.getScheduleConfig();
-    jobSchedule.updateScheduleConfig(scheduleConfig);
-    if (oldScheduleConfig.isDisabled() ^ scheduleConfig.isDisabled()) {
-      if (scheduleConfig.isDisabled()) {
-        removeJobInstanceIfPresent(jobSchedule.getUuid());
-      } else {
-        // Reset the next start time on enabling the schedule.
-        jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, true));
-        jobSchedule.update();
-        Instant nextMaxPollTime =
-            Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
-        if (nextMaxPollTime.isAfter(jobSchedule.getNextStartTime().toInstant())) {
-          // If the next execution time is arriving too soon, add it in the memory as well.
-          addJobInstanceIfAbsent(jobSchedule.getUuid());
-        }
+    if (!oldScheduleConfig.equals(scheduleConfig)) {
+      jobSchedule.setScheduleConfig(scheduleConfig);
+      jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, false));
+      jobSchedule.update();
+      removeJobInstanceIfPresent(jobSchedule.getUuid());
+      Instant nextMaxPollTime = Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
+      if (nextMaxPollTime.isAfter(jobSchedule.getNextStartTime().toInstant())) {
+        // If the next execution time is arriving too soon, add it in the memory as well.
+        addJobInstanceIfAbsent(jobSchedule.getUuid());
       }
     }
     return jobSchedule;
+  }
+
+  /**
+   * Update the job config.
+   *
+   * @param uuid the UUID of the schedule.
+   * @param jobConfig the new job config.
+   * @return the JobSchedule
+   */
+  public synchronized JobSchedule updateJobConfig(UUID uuid, JobConfig jobConfig) {
+    Preconditions.checkNotNull(jobConfig, "Job config must be set");
+    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    return jobSchedule.updateJobConfig(jobConfig);
   }
 
   /**
@@ -233,12 +257,11 @@ public class JobScheduler {
    */
   public synchronized JobSchedule snooze(UUID uuid, long snoozeSecs) {
     JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
-    Date nextStartTime =
-        Date.from(
-            createNextStartTime(jobSchedule, true)
-                .toInstant()
-                .plus(snoozeSecs, ChronoUnit.SECONDS));
-    jobSchedule.setNextStartTime(nextStartTime);
+    jobSchedule.setScheduleConfig(
+        jobSchedule.getScheduleConfig().toBuilder()
+            .snoozeUntil(Date.from(Instant.now().plus(snoozeSecs, ChronoUnit.SECONDS)))
+            .build());
+    jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, true));
     jobSchedule.update();
     removeJobInstanceIfPresent(jobSchedule.getUuid());
     return jobSchedule;
@@ -268,10 +291,20 @@ public class JobScheduler {
         .forEach(s -> deleteSchedule(s.getUuid()));
   }
 
-  // Update dangling instance records on process restart.
-  private void handleRestart() {
+  @VisibleForTesting
+  void handleRestart() {
+    // Update dangling instance records on process restart.
     JobInstance.updateAllPending(State.SKIPPED, State.SCHEDULED);
     JobInstance.updateAllPending(State.FAILED);
+    // Make currently active schedules inactive.
+    JobSchedule.getAll().stream()
+        .filter(s -> s.getScheduleConfig().isDisabled() == false)
+        .forEach(
+            s -> {
+              s.setState(JobSchedule.State.INACTIVE);
+              s.setNextStartTime(s.getJobConfig().createNextStartTime(s, true));
+              s.save();
+            });
   }
 
   // Create the next start time for the schedule. An implementation of JobConfig can choose to

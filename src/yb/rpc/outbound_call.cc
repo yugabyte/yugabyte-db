@@ -296,6 +296,14 @@ void OutboundCall::Serialize(ByteBlocks* output) {
   buffer_consumption_ = ScopedTrackedConsumption();
 }
 
+size_t OutboundCall::HeaderTotalLength(size_t header_pb_len) {
+  return
+      kMsgLengthPrefixLength                            // Int prefix for the total length.
+      + CodedOutputStream::VarintSize32(
+            narrow_cast<uint32_t>(header_pb_len))       // Varint delimiter for header PB.
+      + header_pb_len;                                  // Length for the header PB itself.
+}
+
 Status OutboundCall::SetRequestParam(
     AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker) {
   auto req_size = req.SerializedSize();
@@ -320,11 +328,7 @@ Status OutboundCall::SetRequestParam(
     encoded_sidecars_len = sidecar_offsets->size() * sizeof(uint32_t);
     header_pb_len += 1 + Output::VarintSize64(encoded_sidecars_len) + encoded_sidecars_len;
   }
-  size_t header_size =
-      kMsgLengthPrefixLength                            // Int prefix for the total length.
-      + CodedOutputStream::VarintSize32(
-            narrow_cast<uint32_t>(header_pb_len))       // Varint delimiter for header PB.
-      + header_pb_len;                                  // Length for the header PB itself.
+  size_t header_size = HeaderTotalLength(header_pb_len);
   size_t buffer_size = header_size + message_size;
 
   buffer_ = RefCntBuffer(buffer_size);

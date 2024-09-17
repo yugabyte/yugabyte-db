@@ -3688,7 +3688,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
-    const std::string& consistent_snapshot_option) {
+    const std::string& consistent_snapshot_option,
+    const bool& is_dynamic_tables_enabled) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3711,6 +3712,15 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
   } else {
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+  }
+
+  auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
+  if (is_dynamic_tables_enabled) {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+  } else {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
   }
 
   RpcController rpc;
@@ -3892,8 +3902,10 @@ Status ClusterAdminClient::RemoveUserTableFromCDCSDKStream(
     return StatusFromPB(resp.error().status());
   }
 
-  cout << "Successfully removed user table: " << table_id << " from CDC stream: " << stream_id
-       << "\n";
+  cout << "Request to remove table: " << table_id << " from the stream: " << stream_id
+       << " sent asynchronously.\n"
+       << "For confirmation, please run get_change_data_stream_info yb-admin command after "
+          "sometime. The output should not contain the removed table under \'table_info\'. \n";
 
   return Status::OK();
 }
@@ -4140,8 +4152,7 @@ Status ClusterAdminClient::AlterUniverseReplication(
     const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
-    bool remove_table_ignore_errors) {
+    const NamespaceId& source_namespace_to_remove, bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_replication_group_id(replication_group_id);
@@ -4184,10 +4195,6 @@ Status ClusterAdminClient::AlterUniverseReplication(
         for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
         }
-  }
-
-  if (!new_replication_group_id.empty()) {
-    req.set_new_replication_group_id(new_replication_group_id);
   }
 
   if (!source_namespace_to_remove.empty()) {

@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -52,6 +53,7 @@ public class DrConfigTest extends FakeDBApplication {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
+            new PitrParams(),
             sourceDbIds);
     DrConfig found = DrConfig.getOrBadRequest(drConfig.getUuid());
     XClusterConfig activeXClusterConfig = found.getActiveXClusterConfig();
@@ -76,7 +78,8 @@ public class DrConfigTest extends FakeDBApplication {
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             sourceTableIds,
-            backupRequestParams);
+            backupRequestParams,
+            new PitrParams());
     DrConfig found = DrConfig.getOrBadRequest(drConfig.getUuid());
     XClusterConfig activeXClusterConfig = found.getActiveXClusterConfig();
 

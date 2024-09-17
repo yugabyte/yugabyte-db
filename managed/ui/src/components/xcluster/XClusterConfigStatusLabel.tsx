@@ -43,6 +43,12 @@ const DELETION_FAILED_LABEL = (
     Deletion Failed
   </span>
 );
+const DRAINED_DATA_LABEL = (
+  <span className={clsx(styles.label, styles.inProgress)}>
+    <i className="fa fa-spinner fa-spin" />
+    Drained Data
+  </span>
+);
 
 const useSelectStyles = makeStyles((theme) => ({
   pillContainer: {
@@ -89,6 +95,9 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
       );
       break;
     }
+    case XClusterConfigStatus.DRAINED_DATA:
+        statusLabel.push(DRAINED_DATA_LABEL);
+      break;
     default:
       return assertUnreachableCase(xClusterConfig.status);
   }

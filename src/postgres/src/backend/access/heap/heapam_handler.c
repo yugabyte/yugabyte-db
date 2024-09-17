@@ -1200,6 +1200,9 @@ heapam_index_build_range_scan(Relation heapRelation,
 	 */
 	Assert(OidIsValid(indexRelation->rd_rel->relam));
 
+	/* YB note: progress flag must not be set for YB relations. */
+	Assert(!IsYBRelation(heapRelation) || !progress);
+
 	/* Remember if it's a system catalog */
 	is_system_catalog = IsSystemRelation(heapRelation);
 
@@ -1293,9 +1296,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 		snapshot = scan->rs_snapshot;
 	}
 
-	/* YB_TODO(arpan): scan can be instance of YBScanDesc as well. hscan is only
-	 * used in non YB code path except for one place. See hscan usages. */
-	hscan = (HeapScanDesc) scan;
+	if (!IsYBRelation(heapRelation))
+		hscan = (HeapScanDesc) scan;
 
 	/*
 	 * Must have called GetOldestNonRemovableTransactionId() if using

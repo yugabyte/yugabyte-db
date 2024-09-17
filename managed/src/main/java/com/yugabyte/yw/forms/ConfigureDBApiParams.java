@@ -26,6 +26,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   public boolean enableYSQL;
 
+  public boolean enableConnectionPooling;
+
   public boolean enableYSQLAuth;
 
   public String ysqlPassword;
@@ -83,6 +85,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
+      } else if (communicationPorts.ysqlServerHttpPort == communicationPorts.ysqlServerRpcPort
+          || communicationPorts.ysqlServerRpcPort == communicationPorts.internalYsqlServerRpcPort
+          || communicationPorts.internalYsqlServerRpcPort
+              == communicationPorts.ysqlServerHttpPort) {
+        throw new PlatformServiceException(BAD_REQUEST, "All YSQL ports must be different.");
       } else if (!enableYSQL) {
         // Ensure that user deletes all backup schedules, xcluster configs
         // and pitr configs before disabling YSQL.
@@ -108,6 +115,10 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           throw new PlatformServiceException(
               BAD_REQUEST, "Cannot disable YSQL if xcluster config exists");
         }
+        if (enableConnectionPooling) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YSQL if connection pooling is enabled");
+        }
       }
     } else if (configureServer.equals(ServerType.YQLSERVER)) {
       if (changeInYsql) {
@@ -129,6 +140,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ycqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YCQL auth is disabled.");
+      } else if (communicationPorts.yqlServerHttpPort == communicationPorts.yqlServerRpcPort) {
+        throw new PlatformServiceException(BAD_REQUEST, "All YCQL ports must be different.");
       } else if (!enableYCQL) {
         // Ensure that all backup schedules, xcluster configs
         // and pitr configs are deleted before disabling YCQL.
