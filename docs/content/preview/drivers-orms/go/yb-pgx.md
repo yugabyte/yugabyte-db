@@ -135,6 +135,8 @@ conn, err := pgx.Connect(context.Background(), url)
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
+To enable load balancing for primary cluster nodes that have a read replica cluster, see [Load balancing read replica clusters](../yb-pgx-reference/#load-balancing-read-replica-clusters).
+
 #### Use multiple addresses
 
 You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
