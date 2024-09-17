@@ -521,7 +521,8 @@ static ObjectAddress ATExecAddConstraint(List **wqueue,
 										 LOCKMODE lockmode);
 static char *ChooseForeignKeyConstraintNameAddition(List *colnames);
 static ObjectAddress ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
-											  IndexStmt *stmt, LOCKMODE lockmode);
+											  IndexStmt *stmt, LOCKMODE lockmode,
+											  List **yb_wqueue);
 static ObjectAddress ATAddCheckConstraint(List **wqueue,
 										  AlteredTableInfo *tab, Relation rel,
 										  Constraint *constr,
@@ -691,8 +692,8 @@ static Relation YbATCloneRelationSetColumnType(Relation old_rel,
 											   Oid altered_collation_id,
 											   TypeName *altered_type_name,
 											   List *new_column_values);
-static bool YbATIsRangePk(IndexStmt *stmt,
-						  bool is_colocated, bool is_tablegroup);
+static bool YbATIsRangePk(SortByDir ordering, bool is_colocated,
+						  bool is_tablegroup);
 static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 											AlteredTableInfo *tab,
 											bool skip_copy_split_options);
@@ -5514,7 +5515,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			break;
 		case AT_AddIndexConstraint: /* ADD CONSTRAINT USING INDEX */
 			address = ATExecAddIndexConstraint(tab, rel, (IndexStmt *) cmd->def,
-											   lockmode);
+											   lockmode, wqueue);
 			break;
 		case AT_AlterConstraint:	/* ALTER CONSTRAINT */
 			address = ATExecAlterConstraint(rel, cmd, false, false, lockmode);
@@ -9264,7 +9265,8 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		{
 			YbGetTableProperties(*mutable_rel);
 			/* Don't copy split options if we are creating a range key. */
-			bool skip_copy_split_options = YbATIsRangePk(stmt,
+			bool skip_copy_split_options = YbATIsRangePk(
+				linitial_node(IndexElem, stmt->indexParams)->ordering,
 				(*mutable_rel)->yb_table_properties->is_colocated, OidIsValid(
 					(*mutable_rel)->yb_table_properties->tablegroup_oid));
 			if (!skip_build)
@@ -9336,7 +9338,8 @@ ATExecAddStatistics(AlteredTableInfo *tab, Relation rel,
  */
 static ObjectAddress
 ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
-						 IndexStmt *stmt, LOCKMODE lockmode)
+						 IndexStmt *stmt, LOCKMODE lockmode,
+						 List **yb_wqueue)
 {
 	Oid			index_oid = stmt->indexOid;
 	Relation	indexRel;
@@ -9360,11 +9363,6 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ALTER TABLE / ADD CONSTRAINT USING INDEX is not supported on partitioned tables")));
 
-	if (IsYugaByteEnabled() && stmt->primary)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ALTER TABLE / ADD CONSTRAINT PRIMARY KEY USING INDEX is not supported")));
-
 	indexRel = index_open(index_oid, AccessShareLock);
 
 	indexName = pstrdup(RelationGetRelationName(indexRel));
@@ -9374,6 +9372,29 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 	/* this should have been checked at parse time */
 	if (!indexInfo->ii_Unique)
 		elog(ERROR, "index \"%s\" is not unique", indexName);
+
+	/*
+	 * YB: Adding a primary key requires table rewrite.
+	 * We do not need to rewrite any children as this operation is not supported
+	 * on partitioned tables (checked above).
+	 */
+	if (IsYBRelation(rel) && stmt->primary)
+	{
+		YbGetTableProperties(rel);
+		/* Don't copy split options if we are creating a range key. */
+		bool skip_copy_split_options = YbATIsRangePk(
+			YbGetIndexKeySortOrdering(indexRel),
+			rel->yb_table_properties->is_colocated, OidIsValid(
+				rel->yb_table_properties->tablegroup_oid));
+		tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+		tab->yb_skip_copy_split_options = tab->yb_skip_copy_split_options
+			|| skip_copy_split_options;
+		/*
+		 * Since this index is going to be upgraded to a pkey, we can drop the
+		 * DocDB table associated with the secondary index.
+		 */
+		YBCDropIndex(indexRel);
+	}
 
 	/*
 	 * Determine name to assign to constraint.  We require a constraint to
@@ -19284,7 +19305,8 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel, List **yb_wqueue)
 				tab->rewrite = YB_AT_REWRITE_ALTER_PRIMARY_KEY;
 				YbGetTableProperties(attachrel);
 				/* Don't copy split options if we are creating a range key. */
-				bool skip_copy_split_options = YbATIsRangePk(stmt,
+				bool skip_copy_split_options = YbATIsRangePk(
+					linitial_node(IndexElem, stmt->indexParams)->ordering,
 					attachrel->yb_table_properties->is_colocated,
 					OidIsValid(
 						attachrel->yb_table_properties->tablegroup_oid));
@@ -20992,11 +21014,11 @@ YbATGetRenameStmt(const char *namespace_name, const char *current_name,
 }
 
 static bool
-YbATIsRangePk(IndexStmt *stmt, bool is_colocated, bool is_tablegroup)
+YbATIsRangePk(SortByDir ordering, bool is_colocated, bool is_tablegroup)
 {
 	SortByDir yb_ordering =
-		YbSortOrdering(linitial_node(IndexElem, stmt->indexParams)->ordering,
-					   is_colocated, is_tablegroup, true /* is_first_key */);
+		YbSortOrdering(ordering, is_colocated, is_tablegroup,
+					   true /* is_first_key */);
 
 	if (yb_ordering == SORTBY_ASC || yb_ordering == SORTBY_DESC)
 		return true;
@@ -22351,7 +22373,8 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 
 	if (stmt)
 		is_range_pk = YbATIsRangePk(
-			stmt, old_rel->yb_table_properties->is_colocated,
+			linitial_node(IndexElem, stmt->indexParams)->ordering,
+			old_rel->yb_table_properties->is_colocated,
 			OidIsValid(old_rel->yb_table_properties->tablegroup_oid));
 
 	/*
