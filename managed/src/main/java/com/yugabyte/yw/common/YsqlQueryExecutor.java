@@ -581,4 +581,9 @@ public class YsqlQueryExecutor {
     allQueries.append(query);
     runUserDbCommands(allQueries.toString(), data.dbName, universe);
   }
+
+  public void dropTable(Universe universe, String dbName, String tableName) {
+    String query = String.format("DROP TABLE if exists %s;", tableName);
+    runUserDbCommands(query, dbName, universe);
+  }
 }

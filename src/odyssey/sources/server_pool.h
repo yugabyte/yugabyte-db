@@ -133,10 +133,12 @@ static inline od_server_t *yb_od_server_pool_idle_last(od_server_pool_t *pool)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server = NULL;
+	od_list_t *i, *n;
 	int len = pool->count_idle;
 	if (len == 0)
 		return NULL;
-	server = od_container_of(target->prev, od_server_t, link);
+	od_list_foreach(target, i)
+		server = od_container_of(i, od_server_t, link);
 
 	return server;
 }

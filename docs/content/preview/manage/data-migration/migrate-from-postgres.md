@@ -304,13 +304,13 @@ To learn more about the various useful metrics that can be monitored, see [Metri
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
 
-- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
 
-- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
+- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
 
-- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
+- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
 
-- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
+- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
 
 {{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/">}}
 For a full list of best practices to improve performance, see [Performance tuning in YSQL](../../../develop/learn/transactions/transactions-performance-ysql/)

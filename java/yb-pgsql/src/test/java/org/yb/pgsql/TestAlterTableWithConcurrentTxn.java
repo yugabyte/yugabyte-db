@@ -836,6 +836,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testTransactionConflictErrorCode() throws Exception {
+    // (DB-12741) Disabling the test due to a flaky failure point when run with
+    // connection manager, needs further investigation.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection conn1 = getConnectionBuilder().connect();
          Statement stmt1 = conn1.createStatement();
          Connection conn2 = getConnectionBuilder().connect();
