@@ -99,7 +99,8 @@ public class KubernetesOperatorStatusUpdater {
 
           for (Backup backupCr :
               kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
-            if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+            if (backupCr.getStatus() != null
+                && backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
               // Found our backup.
               log.info("Found Backup {} task {} ", backupCr, taskUUID);
               BackupStatus status = backupCr.getStatus();
