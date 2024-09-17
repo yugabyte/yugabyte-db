@@ -81,7 +81,6 @@ Oid ApiCurrentCursorStateFunctionId(void);
 Oid ExtensionTableSampleSystemRowsFunctionId(void);
 Oid BsonInRangeNumericFunctionId(void);
 Oid BsonInRangeIntervalFunctionId(void);
-Oid BsonDensifyPartitionFunctionId(void);
 
 /* bson_value functions */
 Oid BsonValueEqualMatchFunctionId(void);
@@ -290,6 +289,7 @@ Oid BsonRepathAndBuildFunctionOid(void);
 Oid BsonExpressionGetFunctionOid(void);
 Oid BsonExpressionGetWithLetFunctionOid(void);
 Oid BsonExpressionPartitionGetFunctionOid(void);
+Oid BsonExpressionPartitionByFieldsGetFunctionOid(void);
 Oid BsonExpressionPartitionGetWithLetFunctionOid(void);
 Oid BsonExpressionMapFunctionOid(void);
 Oid BsonExpressionMapWithLetFunctionOid(void);
@@ -338,6 +338,7 @@ Oid BsonMinNAggregateFunctionOid(void);
 /* Window functions*/
 Oid BsonLinearFillFunctionOid(void);
 Oid BsonLocfFillFunctionOid(void);
+Oid BsonConstFillFunctionOid(void);
 Oid BsonRankFunctionOid(void);
 Oid BsonDenseRankFunctionOid(void);
 Oid BsonShiftFunctionOid(void);

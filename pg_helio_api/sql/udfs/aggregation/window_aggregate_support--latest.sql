@@ -124,3 +124,10 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_std_dev_samp_winfunc_final(by
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_std_dev_samp_winfunc_final$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_const_fill(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_const_fill$function$;

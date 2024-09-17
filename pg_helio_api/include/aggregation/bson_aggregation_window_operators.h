@@ -21,4 +21,9 @@
 
 Query * HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 							  AggregationPipelineBuildContext *context);
+Query * HandleSetWindowFieldsCore(const bson_value_t *existingValue,
+								  Query *query,
+								  AggregationPipelineBuildContext *context,
+								  Expr *partitionByExpr,
+								  bool enableInternalWindowOperator);
 #endif

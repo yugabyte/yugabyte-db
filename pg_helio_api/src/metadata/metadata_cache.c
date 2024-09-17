@@ -185,8 +185,6 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_in_range_numeric function (in_range support function for btree to support RANGE in PARTITION clause) */
 	Oid BsonInRangeNumericFunctionId;
 
-	Oid BsonDensifyPartitionFunctionId;
-
 	/* OID of ApiSchema.collection() UDF */
 	Oid CollectionFunctionId;
 
@@ -800,6 +798,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the helio_api_internal.bson_dollar_lookup_extract_filter_expression function */
 	Oid HelioInternalBsonLookupExtractFilterExpressionOid;
 
+	/* OID of the bson_const_fill window function */
+	Oid BsonConstFillFunctionOid;
+
 	/* OID of helio_api_internal.bson_dollar_lookup_join_filter function */
 	Oid BsonDollarLookupJoinFilterFunctionOid;
 
@@ -808,6 +809,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_distinct_unwind function */
 	Oid BsonDistinctUnwindFunctionOid;
+
+	/* OID of the bson_expression_partition_get function */
+	Oid BsonExpressionPartitionByFieldsGetFunctionOid;
 
 	/* Postgis box2df type id */
 	Oid Box2dfTypeId;
@@ -2927,19 +2931,6 @@ BsonInRangeIntervalFunctionId(void)
 
 
 Oid
-BsonDensifyPartitionFunctionId(void)
-{
-	int nargs = 2;
-	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
-	bool missingOk = false;
-	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyPartitionFunctionId,
-										"helio_api_internal",
-										"densify_partition_by_fields", nargs, argTypes,
-										missingOk);
-}
-
-
-Oid
 BsonInRangeNumericFunctionId(void)
 {
 	InitializeHelioApiExtensionCache();
@@ -3418,6 +3409,26 @@ BsonLocfFillFunctionOid(void)
 	}
 
 	return Cache.ApiCatalogBsonLocfFillFunctionOid;
+}
+
+
+Oid
+BsonConstFillFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonConstFillFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_const_fill"));
+		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.BsonConstFillFunctionOid =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.BsonConstFillFunctionOid;
 }
 
 
@@ -4003,6 +4014,21 @@ BsonExpressionPartitionGetFunctionOid(void)
 		&Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid,
 		"helio_api_internal", "bson_expression_partition_get",
 		BsonTypeId(), BsonTypeId(), BOOLOID);
+}
+
+
+Oid
+BsonExpressionPartitionByFieldsGetFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.BsonExpressionPartitionByFieldsGetFunctionOid,
+		"helio_api_internal",
+		"bson_expression_partition_by_fields_get", nargs,
+		argTypes,
+		missingOk);
 }
 
 

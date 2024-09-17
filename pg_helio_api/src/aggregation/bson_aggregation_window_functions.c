@@ -58,6 +58,7 @@ PG_FUNCTION_INFO_V1(bson_linear_fill);
 PG_FUNCTION_INFO_V1(bson_locf_fill);
 PG_FUNCTION_INFO_V1(bson_document_number);
 PG_FUNCTION_INFO_V1(bson_shift);
+PG_FUNCTION_INFO_V1(bson_const_fill);
 
 
 Datum
@@ -374,6 +375,32 @@ bson_locf_fill(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_POINTER(stateData->preValue);
 	}
+}
+
+
+/**
+ * Fill the missing values with the const based value.
+ * The const value is the second argument of the function.
+ */
+Datum
+bson_const_fill(PG_FUNCTION_ARGS)
+{
+	WindowObject winobj = PG_WINDOW_OBJECT();
+
+	bool isCurrentNull;
+	bool isFilledNull;
+
+	pgbson *currentValue = DatumGetPgBson(WinGetFuncArgCurrent(winobj, 0,
+															   &isCurrentNull));
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+	if (!isCurrentNull && currentValueElement.bsonValue.value_type != BSON_TYPE_NULL)
+	{
+		PG_RETURN_POINTER(currentValue);
+	}
+
+	pgbson *filledValue = DatumGetPgBson(WinGetFuncArgCurrent(winobj, 1, &isFilledNull));
+	PG_RETURN_POINTER(filledValue);
 }
 
 

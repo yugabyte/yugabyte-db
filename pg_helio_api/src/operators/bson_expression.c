@@ -29,6 +29,7 @@
 #include "operators/bson_expression_operators.h"
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
+#include "aggregation/bson_project.h"
 #include "aggregation/bson_projection_tree.h"
 #include "utils/feature_counter.h"
 #include "utils/hashset_utils.h"
@@ -74,6 +75,11 @@ typedef struct BsonExpressionGetState
 	AggregationExpressionData *expressionData;
 	ExpressionVariableContext *variableContext;
 } BsonExpressionGetState;
+
+typedef struct BsonExpressionPartitionByFieldsGetState
+{
+	BsonProjectionQueryState *projectionTreeState;
+} BsonExpressionPartitionByFieldsGetState;
 
 
 /* --------------------------------------------------------- */
@@ -166,6 +172,8 @@ static int VariableHashEntryCompareFunc(const void *obj1, const void *obj2, Size
 static void ParseBsonExpressionGetState(BsonExpressionGetState *getState,
 										const bson_value_t *expressionValue,
 										pgbson *variableSpec);
+static void CreateProjectionTreeStateForPartitionByFields(
+	BsonExpressionPartitionByFieldsGetState *state, pgbson *partitionBy);
 
 /*
  *  Keep this list lexicographically sorted by the operator name,
@@ -526,6 +534,7 @@ CreateVariableEntryHashTable()
 
 PG_FUNCTION_INFO_V1(bson_expression_get);
 PG_FUNCTION_INFO_V1(bson_expression_partition_get);
+PG_FUNCTION_INFO_V1(bson_expression_partition_by_fields_get);
 PG_FUNCTION_INFO_V1(bson_expression_map);
 
 /*
@@ -682,6 +691,60 @@ bson_expression_partition_get(PG_FUNCTION_ARGS)
 
 	PG_FREE_IF_COPY(document, 0);
 	PG_RETURN_POINTER(returnedBson);
+}
+
+
+/*
+ * bson_expression_partition_by_fields_get recieves the document and the composite path fields
+ * that define the unique grouping according to partitionByFields.
+ */
+Datum
+bson_expression_partition_by_fields_get(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_MAYBE_NULL_PGBSON_PACKED(0);
+	if (document == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
+	pgbson *partitionByFields = PG_GETARG_MAYBE_NULL_PGBSON_PACKED(1);
+	if (partitionByFields == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
+	int argPositions[1] = { 1 };
+	int numArgs = 1;
+
+	BsonExpressionPartitionByFieldsGetState *state;
+	SetCachedFunctionStateMultiArgs(
+		state,
+		BsonExpressionPartitionByFieldsGetState,
+		argPositions,
+		numArgs,
+		CreateProjectionTreeStateForPartitionByFields,
+		partitionByFields);
+
+	if (state == NULL)
+	{
+		state = palloc0(sizeof(BsonExpressionPartitionByFieldsGetState));
+		CreateProjectionTreeStateForPartitionByFields(state, partitionByFields);
+	}
+
+	pgbson *result = NULL;
+	if (document != NULL && state != NULL && state->projectionTreeState != NULL)
+	{
+		result = ProjectDocumentWithState(document, state->projectionTreeState);
+	}
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_FREE_IF_COPY(partitionByFields, 1);
+
+	if (result == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_POINTER(result);
 }
 
 
@@ -1236,6 +1299,55 @@ ParseBsonExpressionGetState(BsonExpressionGetState *getState,
 		ParseVariableSpec(&varsValue, variableContext, &context);
 		getState->variableContext = variableContext;
 	}
+}
+
+
+/* Converts the {"": ["a", "b", "c"]} into a projection spec
+ * of this form {"a": 1, "b": 1, "c": 1, "_id": 0}, so that the projection tree
+ * can be created and cached as per requirement
+ */
+static void
+CreateProjectionTreeStateForPartitionByFields(
+	BsonExpressionPartitionByFieldsGetState *state, pgbson *partitionBy)
+{
+	if (partitionBy == NULL)
+	{
+		return;
+	}
+
+	pgbsonelement elem;
+	PgbsonToSinglePgbsonElement(partitionBy, &elem);
+
+	if (elem.bsonValue.value_type != BSON_TYPE_ARRAY)
+	{
+		return;
+	}
+
+	pgbson_writer projectionSpecWriter;
+	PgbsonWriterInit(&projectionSpecWriter);
+	bson_iter_t partitionValueItr;
+	BsonValueInitIterator(&elem.bsonValue, &partitionValueItr);
+
+	while (bson_iter_next(&partitionValueItr))
+	{
+		const bson_value_t *pathValue = bson_iter_value(&partitionValueItr);
+		PgbsonWriterAppendInt32(&projectionSpecWriter, pathValue->value.v_utf8.str,
+								pathValue->value.v_utf8.len, 1);
+	}
+
+	/* Exclude _id if any */
+	PgbsonWriterAppendInt32(&projectionSpecWriter, "_id", 3, 0);
+
+	pgbson *densifyPartitionProjectionSpec = PgbsonWriterGetPgbson(&projectionSpecWriter);
+	bson_iter_t iter;
+	PgbsonInitIterator(densifyPartitionProjectionSpec, &iter);
+
+	bool forceProjectId = false;
+	bool allowInclusionExclusion = true;
+	state->projectionTreeState =
+		(BsonProjectionQueryState *) GetProjectionStateForBsonProject(&iter,
+																	  forceProjectId,
+																	  allowInclusionExclusion);
 }
 
 

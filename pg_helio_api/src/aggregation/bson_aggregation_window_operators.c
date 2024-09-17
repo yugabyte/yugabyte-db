@@ -96,6 +96,9 @@ typedef struct
 
 	/* boolean to check if the window is present */
 	bool isWindowPresent;
+
+	/* whether internal window operator is enabled or not */
+	bool enableInternalWindowOperator;
 } WindowOperatorContext;
 
 
@@ -202,6 +205,8 @@ static WindowFunc * HandleDollarLinearFillWindowOperator(const bson_value_t *opV
 														 WindowOperatorContext *context);
 static WindowFunc * HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 													   WindowOperatorContext *context);
+static WindowFunc * HandleDollarConstFillWindowOperator(const bson_value_t *opValue,
+														WindowOperatorContext *context);
 static WindowFunc * HandleDollarShiftWindowOperator(const bson_value_t *opValue,
 													WindowOperatorContext *context);
 static WindowFunc * HandleDollarTopNWindowOperator(const bson_value_t *opValue,
@@ -232,6 +237,10 @@ extern bool EnableSetWindowFields;
  */
 static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 {
+	{
+		.operatorName = "$_internal_constFill",
+		.windowOperatorFunc = &HandleDollarConstFillWindowOperator
+	},
 	{
 		.operatorName = "$addToSet",
 		.windowOperatorFunc = &HandleDollarAddToSetWindowOperator
@@ -475,6 +484,18 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
 }
 
 
+Query *
+HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
+					  AggregationPipelineBuildContext *context)
+{
+	bool enableInternalWindowOperator = false;
+	Expr *partitionByExpr = NULL;
+
+	return HandleSetWindowFieldsCore(existingValue, query, context, partitionByExpr,
+									 enableInternalWindowOperator);
+}
+
+
 /*
  * $setWindowFields aggregation stage handler.
  * This function constructs the query AST for Window aggregation operators over a partition defined by the $setWindowFields spec.
@@ -512,11 +533,21 @@ EnsureSortRequirements(int frameOptions, WindowOperatorContext *context)
  * );
  *
  * The window aggregation operation is only pushed to shards in case when `partitionBy` expression is same as the `shardKey` of collection or
+ *
+ * If partitionByExpr is specified and not null, it is used as the partitionBy expression in priority and the partitionBy field in the spec would be skipped.
+ * Otherwise, the partitionBy expression is derived from the partitionBy field in the $setWindowFields spec.
+ *
+ * If enbaleInternalWindowOperator is set to true, the internal window operators can be used to perform the window operations;
+ * In normal usage of $setWindowFields, this should be false.
+ *
  * the query is a single shard query.
  */
 Query *
-HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
-					  AggregationPipelineBuildContext *context)
+HandleSetWindowFieldsCore(const bson_value_t *existingValue,
+						  Query *query,
+						  AggregationPipelineBuildContext *context,
+						  Expr *partitionByExpr,
+						  bool enableInternalWindowOperator)
 {
 	ReportFeatureUsage(FEATURE_STAGE_SETWINDOWFIELDS);
 
@@ -553,7 +584,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 	Expr *docExpr = firstEntry->expr;
 
 	bson_value_t outputSpec = { 0 };
-	Expr *partitionExpr = NULL;
+	Expr *partitionExpr = partitionByExpr;
 	List *sortOptions = NIL;
 
 	bson_iter_t iter;
@@ -562,7 +593,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 	{
 		const char *key = bson_iter_key(&iter);
 		const bson_value_t *value = bson_iter_value(&iter);
-		if (strcmp(key, "partitionBy") == 0)
+		if (partitionExpr == NULL && strcmp(key, "partitionBy") == 0)
 		{
 			if (value->value_type == BSON_TYPE_ARRAY)
 			{
@@ -719,6 +750,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 			.winRef = winRef,
 			.sortOptions = sortOptions,
 			.variableContext = context->variableSpec,
+			.enableInternalWindowOperator = enableInternalWindowOperator,
 		};
 
 		TargetEntry *windowpOperatorTle =
@@ -2684,4 +2716,87 @@ HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 	/*reuse the logic of minN in the group stage.*/
 	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
 												BsonMinNAggregateFunctionOid());
+}
+
+
+/*
+ * Handle for const fill window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonsum`
+ */
+static WindowFunc *
+HandleDollarConstFillWindowOperator(const bson_value_t *opValue,
+									WindowOperatorContext *context)
+{
+	if (!context->enableInternalWindowOperator)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("Unrecognized window function, $_internal_constFill.")));
+	}
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonConstFillFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	bson_value_t fillValue = { 0 };
+	bson_value_t path = { 0 };
+
+	bson_iter_t opSpeciter;
+	BsonValueInitIterator(opValue, &opSpeciter);
+	while (bson_iter_next(&opSpeciter))
+	{
+		const char *key = bson_iter_key(&opSpeciter);
+		const bson_value_t *value = bson_iter_value(&opSpeciter);
+		if (strcmp(key, "value") == 0)
+		{
+			fillValue = *value;
+		}
+		else if (strcmp(key, "path") == 0)
+		{
+			path = *value;
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+							errmsg("Unknown field %s in $constFill", key)));
+		}
+	}
+
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&path));
+	Expr *filledValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&fillValue));
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+	Const *falseConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(false), false,
+								  true);
+
+	List *args;
+	List *argsFilled;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		args = list_make4(context->docExpr, constValue, trueConst,
+						  context->variableContext);
+		argsFilled = list_make4(context->docExpr, filledValue, falseConst,
+								context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		args = list_make3(context->docExpr, constValue, trueConst);
+		argsFilled = list_make3(context->docExpr, filledValue, falseConst);
+	}
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	FuncExpr *filledExpr = makeFuncExpr(
+		functionOid, BsonTypeId(), argsFilled, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	windowFunc->args = list_make2(accumFunc, filledExpr);
+	return windowFunc;
 }

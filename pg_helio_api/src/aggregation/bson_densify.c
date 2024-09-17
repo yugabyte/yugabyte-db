@@ -233,8 +233,6 @@ static void TimeStepIncrementor(bson_value_t *baseValue, TypedStep *step);
 static void NumericStepIncrementor(bson_value_t *baseValue, TypedStep *step);
 static int DensifyFullKeyHashCompare(const void *obj1, const void *obj2, Size objsize);
 static void PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec);
-static bool IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields,
-										  const MongoCollection *collection);
 static void CreateProjectionTreeStateForPartitionBy(DensifyWindowState *state,
 													pgbson *partitionByFields);
 static PartitionAwareState * GetValidPartitionAwareState(DensifyWindowState *state,
@@ -270,57 +268,6 @@ static Query * GenerateUnionAllWithSelectNullQuery(Query *baseQuery,
 PG_FUNCTION_INFO_V1(bson_densify_range);
 PG_FUNCTION_INFO_V1(bson_densify_partition);
 PG_FUNCTION_INFO_V1(bson_densify_full);
-PG_FUNCTION_INFO_V1(densify_partition_by_fields);
-
-/*
- * densify_partition_by_fields recieves the document and the composite path fields
- * that define the unique grouping for densify stage.
- */
-Datum
-densify_partition_by_fields(PG_FUNCTION_ARGS)
-{
-	pgbson *partitionByFields = PG_GETARG_MAYBE_NULL_PGBSON_PACKED(1);
-	if (partitionByFields == NULL)
-	{
-		PG_RETURN_NULL();
-	}
-
-	int argPositions[1] = { 1 };
-	int numArgs = 1;
-
-	DensifyWindowState *state = NULL;
-	SetCachedFunctionStateMultiArgs(
-		state,
-		DensifyWindowState,
-		argPositions,
-		numArgs,
-		CreateProjectionTreeStateForPartitionBy,
-		partitionByFields);
-
-	pgbson *document = PG_GETARG_MAYBE_NULL_PGBSON_PACKED(0);
-	if (document == NULL)
-	{
-		PG_RETURN_NULL();
-	}
-
-	if (state == NULL)
-	{
-		state = palloc0(sizeof(DensifyWindowState));
-		CreateProjectionTreeStateForPartitionBy(state, partitionByFields);
-	}
-
-	bool moveToExecutorContext = false;
-	pgbson *result = GetPartitionByFieldsPgbson(document, state, moveToExecutorContext);
-
-	PG_FREE_IF_COPY(document, 0);
-	PG_FREE_IF_COPY(partitionByFields, 1);
-
-	if (result == NULL)
-	{
-		PG_RETURN_NULL();
-	}
-	PG_RETURN_POINTER(result);
-}
 
 
 /* bson_densify_range
@@ -921,7 +868,7 @@ GetDensifyQueryExprs(DensifyArguments *arguments,
 		{
 			Const *partitionConst = MakeBsonConst(arguments->partitionByFields);
 			*partitionByFieldsExpr = (Expr *) makeFuncExpr(
-				BsonDensifyPartitionFunctionId(),
+				BsonExpressionPartitionByFieldsGetFunctionOid(),
 				BsonTypeId(), list_make2(
 					docExpr, partitionConst),
 				InvalidOid, InvalidOid,
@@ -1535,46 +1482,6 @@ DensifyFullKeyHashCompare(const void *obj1, const void *obj2, Size objsize)
 	}
 
 	return ComparePgbson(entry1->evaluatedPartitionBy, entry2->evaluatedPartitionBy);
-}
-
-
-/*
- * Checks if partitionByFields expression of $densify stage is on the shard key
- * of the collection
- *
- * `partitionByFields`: { "": ["a", "b", "c"]}
- * `shardkey`: {"a": "hashed", "b": "hashed", "c": "hashed"}
- *
- * These 2 are same
- */
-static bool
-IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields, const
-							  MongoCollection *collection)
-{
-	if (collection == NULL || collection->shardKey == NULL || partitionByFields == NULL)
-	{
-		return false;
-	}
-
-	pgbson_writer shardKeyWriter;
-	pgbson_array_writer arrayWriter;
-	PgbsonWriterInit(&shardKeyWriter);
-	PgbsonWriterStartArray(&shardKeyWriter, "", 0, &arrayWriter);
-
-	bson_iter_t shardKeyIter;
-	PgbsonInitIterator(collection->shardKey, &shardKeyIter);
-	while (bson_iter_next(&shardKeyIter))
-	{
-		PgbsonArrayWriterWriteUtf8(&arrayWriter, bson_iter_key(&shardKeyIter));
-	}
-	PgbsonWriterEndArray(&shardKeyWriter, &arrayWriter);
-
-	if (PgbsonEquals(PgbsonWriterGetPgbson(&shardKeyWriter), partitionByFields))
-	{
-		return true;
-	}
-
-	return false;
 }
 
 

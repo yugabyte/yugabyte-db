@@ -18,9 +18,3 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_densify_full(__CORE_SCHEMA__.
  WINDOW
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_densify_full$function$;
-
-CREATE OR REPLACE FUNCTION helio_api_internal.densify_partition_by_fields(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
- RETURNS __CORE_SCHEMA__.bson
- LANGUAGE c
- STABLE
-AS 'MODULE_PATHNAME', $function$densify_partition_by_fields$function$;

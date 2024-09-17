@@ -162,6 +162,8 @@ static Query * HandleBucket(const bson_value_t *existingValue, Query *query,
 							AggregationPipelineBuildContext *context);
 static Query * HandleCount(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
+static Query * HandleFill(const bson_value_t *existingValue, Query *query,
+						  AggregationPipelineBuildContext *context);
 static Query * HandleLimit(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
 static Query * HandleProject(const bson_value_t *existingValue, Query *query,
@@ -218,6 +220,13 @@ static void ValidateQueryTreeForMatchStage(const Query *query);
 static void DisallowExpressionsForTopLevelLet(
 	AggregationExpressionData *parsedExpression);
 static pgbson * ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec);
+static void RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
+											 bool *hasSortBy,
+											 bool *onlyHasValueFill,
+											 bson_value_t *sortSpec,
+											 bson_value_t *addFieldsForValueFill,
+											 bson_value_t *setWindowFieldsSpec,
+											 bson_value_t *partitionByFields);
 
 #define COMPATIBLE_CHANGE_STREAM_STAGES_COUNT 8
 const char *CompatibleChangeStreamPipelineStages[COMPATIBLE_CHANGE_STREAM_STAGES_COUNT] =
@@ -375,7 +384,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$fill",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleFill,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
@@ -2225,6 +2234,387 @@ HandleBucket(const bson_value_t *existingValue, Query *query,
 	query = HandleGroup(&groupSpec, query, context);
 
 	return query;
+}
+
+
+/**
+ * Processes the $fill Pipeine stage.
+ * $fill will be rewritten to $setWindowFields and $addFields. $setWindowFields will be used to process `linear` and `locf`;
+ * $addFields will be used to process const based fill. The rewritten query will be divided into two cases:
+ *
+ * 1) If method-fill is specified in output, the query will be rewritten with $setWindowFields.
+ * 2) If only value-fill is specified in output, the query will be rewritten with $addFields, $sort.
+ *
+ * Example 1:
+ *
+ *   $fill: {
+ *       partitionBy: { part : "$part"},
+ *       sortBy: { key: 1 },
+ *       output: {
+ *           field1 : { method: "linear" },
+ *           field2 : { method: "locf" },
+ *           field3 : { value: "<expr>"}
+ *       }
+ *   }
+ *
+ *   ==>
+ *
+ *   [
+ *		{
+ *			$setWindowFields: {
+ *				partitionBy: { part : "$part"},
+ *				sortBy: { key: 1 },
+ *				output: {
+ *					field1: {
+ *						$linearFill: "$field1"
+ *					},
+ *					field2: {
+ *						$locf: "$field2"
+ *					}
+ *					field3: {
+ *						$_internal_constFill: {
+ *							path: "$field3",
+ *							value: "<expr>"
+ *						}
+ *					}
+ *				}
+ *			}
+ *		},
+ *	]
+ *
+ * Example 2:
+ *
+ *  $fill: {
+ *		partitionBy: { part : "$part" },
+ *	    sortBy: { key : 1},
+ *		output: {
+ *			field1 : { value: "<expr>"}
+ *		}
+ *	}
+ *
+ *	==>
+ *  [
+ *      { $sort: { key : 1}},
+ *      { $addFields: { field1: { $ifNull: ["$field1", "<expr>"]}}},
+ *  ]
+ *
+ */
+static Query *
+HandleFill(const bson_value_t *existingValue, Query *query,
+		   AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_FILL);
+
+	bool hasSortBy = false;
+	bool onlyHasValueFill = true;
+	bool enableInternalWindowOperator = true;
+	bson_value_t sortSpec = { 0 };
+	bson_value_t addFieldsForValueFill = { 0 };
+
+	bson_value_t setWindowFieldsSpec = { 0 };
+	bson_value_t partitionByFields = { 0 };
+
+	RewriteFillToSetWindowFieldsSpec(existingValue,
+									 &hasSortBy,
+									 &onlyHasValueFill,
+									 &sortSpec,
+									 &addFieldsForValueFill,
+									 &setWindowFieldsSpec,
+									 &partitionByFields);
+
+	/* if only const based fill exists, we rewrite it into $addFields directly */
+	if (onlyHasValueFill)
+	{
+		if (hasSortBy)
+		{
+			query = HandleSort(&sortSpec, query, context);
+		}
+		query = HandleAddFields(&addFieldsForValueFill, query, context);
+		return query;
+	}
+
+	Expr *partitionByFieldsExpr = NULL;
+
+	/* construct partitionByFieldsExpr if it exists */
+	if (partitionByFields.value_type != BSON_TYPE_EOD)
+	{
+		/* convert partitionByFields to pgbson */
+		pgbson *partitionByFieldsDoc = BsonValueToDocumentPgbson(&partitionByFields);
+
+		TargetEntry *firstEntry = linitial(query->targetList);
+		Expr *docExpr = (Expr *) firstEntry->expr;
+
+		RangeTblEntry *rte = linitial(query->rtable);
+		bool isRTEDataTable = (rte->rtekind == RTE_RELATION || rte->rtekind ==
+							   RTE_FUNCTION);
+
+		if (isRTEDataTable && IsPartitionByFieldsOnShardKey(partitionByFieldsDoc,
+															context->mongoCollection))
+		{
+			partitionByFieldsExpr = (Expr *) makeVar(((Var *) docExpr)->varno,
+													 MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
+													 INT8OID, -1,
+													 InvalidOid, 0);
+		}
+		else
+		{
+			Const *partitionConst = MakeBsonConst(partitionByFieldsDoc);
+			partitionByFieldsExpr = (Expr *) makeFuncExpr(
+				BsonExpressionPartitionByFieldsGetFunctionOid(),
+				BsonTypeId(), list_make2(
+					docExpr, partitionConst),
+				InvalidOid, InvalidOid,
+				COERCE_EXPLICIT_CALL);
+		}
+	}
+
+	query = HandleSetWindowFieldsCore(&setWindowFieldsSpec, query, context,
+									  partitionByFieldsExpr,
+									  enableInternalWindowOperator);
+
+	return query;
+}
+
+
+static void
+RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
+								 bool *hasSortBy,
+								 bool *onlyHasValueFill,
+								 bson_value_t *sortSpec,
+								 bson_value_t *addFieldsForValueFill,
+								 bson_value_t *setWindowFieldsSpec,
+								 bson_value_t *partitionByFields)
+{
+	if (fillSpec->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40201),
+						errmsg(
+							"Argument to $fill stage must be an object, but found type: %s",
+							BsonTypeName(fillSpec->value_type)),
+						errdetail_log(
+							"Argument to $fill stage must be an object, but found type: %s",
+							BsonTypeName(fillSpec->value_type))));
+	}
+
+
+	bson_iter_t fillIter;
+	BsonValueInitIterator(fillSpec, &fillIter);
+	bson_value_t partitionBy = { 0 };
+	bson_value_t sortBy = { 0 };
+	bson_value_t output = { 0 };
+
+	bool hasPartitionBy = false;
+	bool hasPartitionByFields = false;
+
+	while (bson_iter_next(&fillIter))
+	{
+		const char *key = bson_iter_key(&fillIter);
+		const bson_value_t *value = bson_iter_value(&fillIter);
+
+		if (strcmp(key, "partitionBy") == 0)
+		{
+			partitionBy = *value;
+			hasPartitionBy = true;
+		}
+		else if (strcmp(key, "partitionByFields") == 0)
+		{
+			*partitionByFields = *value;
+			hasPartitionByFields = true;
+		}
+		else if (strcmp(key, "sortBy") == 0)
+		{
+			sortBy = *value;
+			*hasSortBy = true;
+		}
+		else if (strcmp(key, "output") == 0)
+		{
+			output = *value;
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+							errmsg("BSON field '$fill.%s' is an unknown field", key),
+							errdetail_log("BSON field '$fill.%s' is an unknown field",
+										  key)));
+		}
+	}
+
+	if (hasPartitionBy && hasPartitionByFields)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6050204),
+						errmsg(
+							"Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'"),
+						errdetail_log(
+							"Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'")));
+	}
+
+	/* output is a required field in $fill, check it */
+
+	/* Required fields check */
+	if (output.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+						errmsg(
+							"BSON field '$fill.output' is missing but a required field")));
+	}
+
+
+	/* validate partitionByFields spec */
+	if (hasPartitionByFields)
+	{
+		bson_iter_t partitionByFieldsIter;
+		BsonValueInitIterator(partitionByFields, &partitionByFieldsIter);
+
+		while (bson_iter_next(&partitionByFieldsIter))
+		{
+			const bson_value_t *fieldBson = bson_iter_value(&partitionByFieldsIter);
+			EnsureTopLevelFieldValueType("partitionByFields", fieldBson, BSON_TYPE_UTF8);
+			EnsureStringValueNotDollarPrefixed(fieldBson->value.v_utf8.str,
+											   fieldBson->value.v_utf8.len);
+		}
+	}
+
+	pgbson_writer swfWriter;
+	PgbsonWriterInit(&swfWriter);
+
+	if (partitionBy.value_type != BSON_TYPE_EOD)
+	{
+		PgbsonWriterAppendValue(&swfWriter, "partitionBy", 11, &partitionBy);
+	}
+	if (sortBy.value_type != BSON_TYPE_EOD)
+	{
+		PgbsonWriterAppendValue(&swfWriter, "sortBy", 6, &sortBy);
+	}
+
+	pgbson_writer addFieldsSpecWriter;
+	PgbsonWriterInit(&addFieldsSpecWriter);
+
+	pgbson_writer outputWriter;
+	PgbsonWriterStartDocument(&swfWriter, "output", 6, &outputWriter);
+
+	bson_iter_t outputIter;
+	BsonValueInitIterator(&output, &outputIter);
+	while (bson_iter_next(&outputIter))
+	{
+		const char *fieldName = bson_iter_key(&outputIter);
+
+		StringInfo dollarFieldName = makeStringInfo();
+		appendStringInfo(dollarFieldName, "$%s", fieldName);
+
+		const bson_value_t *fieldSpec = bson_iter_value(&outputIter);
+
+		bson_iter_t fieldSpecIter;
+		BsonValueInitIterator(fieldSpec, &fieldSpecIter);
+		while (bson_iter_next(&fieldSpecIter))
+		{
+			const char *key = bson_iter_key(&fieldSpecIter);
+			const bson_value_t *expr = bson_iter_value(&fieldSpecIter);
+
+			pgbson_writer outputFieldSpecWriter;
+			PgbsonWriterStartDocument(&outputWriter, fieldName, strlen(fieldName),
+									  &outputFieldSpecWriter);
+			if (strcmp(key, "method") == 0)
+			{
+				*onlyHasValueFill = false;
+				EnsureTopLevelFieldValueType("method", expr, BSON_TYPE_UTF8);
+				if (strcmp(expr->value.v_utf8.str, "linear") == 0)
+				{
+					PgbsonWriterAppendUtf8(&outputFieldSpecWriter, "$linearFill", 11,
+										   dollarFieldName->data);
+				}
+				else if (strcmp(expr->value.v_utf8.str, "locf") == 0)
+				{
+					PgbsonWriterAppendUtf8(&outputFieldSpecWriter, "$locf", 5,
+										   dollarFieldName->data);
+				}
+				else
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION6050202),
+									errmsg("Method must be either locf or linear"),
+									errdetail_log(
+										"Method must be either locf or linear")));
+				}
+			}
+			else if (strcmp(key, "value") == 0)
+			{
+				/**
+				 * convert into output of $setWindowFields.
+				 * We will do this in current iteration to avoid multiple iterations, even if it may not be used if only value fill exists.
+				 */
+				pgbson_writer constFillSpecWriter;
+				PgbsonWriterStartDocument(&outputFieldSpecWriter, "$_internal_constFill",
+										  20, &constFillSpecWriter);
+				PgbsonWriterAppendUtf8(&constFillSpecWriter, "path", 4,
+									   dollarFieldName->data);
+				PgbsonWriterAppendValue(&constFillSpecWriter, "value", 5, expr);
+				PgbsonWriterEndDocument(&outputFieldSpecWriter, &constFillSpecWriter);
+
+				/**
+				 * convert value fill to $addFields.
+				 * We will do this in current iteration to avoid multiple iterations, even if it may not be used if method fill exists as well.
+				 */
+				pgbson_writer addFieldItemWriter;
+				PgbsonWriterStartDocument(&addFieldsSpecWriter, fieldName, strlen(
+											  fieldName), &addFieldItemWriter);
+
+				pgbson_array_writer ifNullWriter;
+				PgbsonWriterStartArray(&addFieldItemWriter, "$ifNull", 7, &ifNullWriter);
+				PgbsonArrayWriterWriteUtf8(&ifNullWriter, dollarFieldName->data);
+				PgbsonArrayWriterWriteValue(&ifNullWriter, expr);
+				PgbsonWriterEndArray(&addFieldItemWriter, &ifNullWriter);
+
+				PgbsonWriterEndDocument(&addFieldsSpecWriter, &addFieldItemWriter);
+			}
+			else
+			{
+				/* unsupported field name */
+				ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+								errmsg("BSON field '$fill.%s' is an unknown field", key),
+								errdetail_log("BSON field '$fill.%s' is an unknown field",
+											  key)));
+			}
+			PgbsonWriterEndDocument(&outputWriter, &outputFieldSpecWriter);
+		}
+		pfree(dollarFieldName->data);
+	}
+
+	/**
+	 * construct $sort spec for sortBy if only value fill exists.
+	 *
+	 * Example:
+	 *
+	 *  $fill: {
+	 *		sortBy: { key1 : 1, key2 : 1 },
+	 *	}
+	 *
+	 *	==>
+	 *
+	 *  "$sort": {"sortKey": { "key1": 1, "key2": 1 }}
+	 */
+
+	if (*onlyHasValueFill && *hasSortBy)
+	{
+		pgbson_writer sortSpecWriter;
+		PgbsonWriterInit(&sortSpecWriter);
+
+		/* iterator each field in sortBy and write to sortKey */
+		bson_iter_t sortByIter;
+		BsonValueInitIterator(&sortBy, &sortByIter);
+		while (bson_iter_next(&sortByIter))
+		{
+			const char *fieldName = bson_iter_key(&sortByIter);
+			const bson_value_t *fieldValue = bson_iter_value(&sortByIter);
+			PgbsonWriterAppendValue(&sortSpecWriter, fieldName, strlen(fieldName),
+									fieldValue);
+		}
+		*sortSpec = ConvertPgbsonToBsonValue(PgbsonWriterGetPgbson(&sortSpecWriter));
+	}
+
+	PgbsonWriterEndDocument(&swfWriter, &outputWriter);
+
+	*setWindowFieldsSpec = ConvertPgbsonToBsonValue(PgbsonWriterGetPgbson(&swfWriter));
+	*addFieldsForValueFill = ConvertPgbsonToBsonValue(PgbsonWriterGetPgbson(
+														  &addFieldsSpecWriter));
 }
 
 
@@ -4942,6 +5332,46 @@ MakeSubQueryRte(Query *subQuery, int stageNum, int pipelineDepth,
 	}
 
 	return rte;
+}
+
+
+/*
+ * Checks if partitionByFields expression of $densify stage is on the shard key
+ * of the collection
+ *
+ * `partitionByFields`: { "": ["a", "b", "c"]}
+ * `shardkey`: {"a": "hashed", "b": "hashed", "c": "hashed"}
+ *
+ * These 2 are same
+ */
+bool
+IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields, const
+							  MongoCollection *collection)
+{
+	if (collection == NULL || collection->shardKey == NULL || partitionByFields == NULL)
+	{
+		return false;
+	}
+
+	pgbson_writer shardKeyWriter;
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterInit(&shardKeyWriter);
+	PgbsonWriterStartArray(&shardKeyWriter, "", 0, &arrayWriter);
+
+	bson_iter_t shardKeyIter;
+	PgbsonInitIterator(collection->shardKey, &shardKeyIter);
+	while (bson_iter_next(&shardKeyIter))
+	{
+		PgbsonArrayWriterWriteUtf8(&arrayWriter, bson_iter_key(&shardKeyIter));
+	}
+	PgbsonWriterEndArray(&shardKeyWriter, &arrayWriter);
+
+	if (PgbsonEquals(PgbsonWriterGetPgbson(&shardKeyWriter), partitionByFields))
+	{
+		return true;
+	}
+
+	return false;
 }
 
 

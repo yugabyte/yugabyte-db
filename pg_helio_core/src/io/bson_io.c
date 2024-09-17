@@ -391,6 +391,9 @@ bson_object_keys(PG_FUNCTION_ARGS)
  * bson_repath_and_build take an array of paths and an array of bsons and constructs a bson where
  * the root paths of each bson become the corresponding text in the array of paths and are merged into one object
  * ["l1", "l2"] [{"":x}, {"":y}] becomes {"l1":x, "l2":y}
+ *
+ * If the value is an empty document, it is treated as an EOD value and is not written. For example:
+ * ["l1", "l2"] [{"":x}, {}] becomes {"l1":x}
  */
 Datum
 bson_repath_and_build(PG_FUNCTION_ARGS)
@@ -454,6 +457,13 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		{
 			pgbsonelement elem;
 			pgbson *pbson = DatumGetPgBson(args[i + 1]);
+
+			if (IsPgbsonEmptyDocument(pbson))
+			{
+				/* We treat empty document as EOD values and these values should just not be written */
+				continue;
+			}
+
 			if (TryGetSinglePgbsonElementFromPgbson(pbson, &elem))
 			{
 				PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);

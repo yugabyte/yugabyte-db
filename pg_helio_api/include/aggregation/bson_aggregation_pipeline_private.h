@@ -186,6 +186,9 @@ Query * HandleMongoNativeVectorSearch(const bson_value_t *existingValue, Query *
 /* Metadata based query generators */
 Query * GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context);
 
+bool IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields,
+								   const MongoCollection *collection);
+
 /* Helper methods */
 
 inline static Const *
