@@ -492,8 +492,16 @@
     showSection = true
 
 [[preview]]
-  name = "Reference"
+  name = "YSQL API"
   weight = 12
+  identifier = "api-ysql"
+  url = "/preview/ysql/"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Reference"
+  weight = 13
   identifier = "reference"
   [preview.params]
     showSection = true
@@ -505,7 +513,7 @@
 
 [[preview]]
   name = "Contribute"
-  weight = 13
+  weight = 14
   identifier = "contribute"
   url = "/preview/contribute/"
   [preview.params]
