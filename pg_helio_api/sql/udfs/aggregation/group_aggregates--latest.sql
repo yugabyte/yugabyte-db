@@ -342,3 +342,41 @@ CREATE OR REPLACE AGGREGATE helio_api_internal.BSONMINN(__CORE_SCHEMA__.bson)
     COMBINEFUNC = helio_api_internal.bson_maxminn_combine,
     PARALLEL = SAFE
 );
+
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_first_transition_on_sorted,
+    FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final_on_sorted,
+    stype = bytea,
+    PARALLEL = SAFE
+);
+
+/*
+* See summary of __CORE_SCHEMA__.bsonFIRSTONSORTED()
+*/
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTONSORTED(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_last_transition_on_sorted,
+    FINALFUNC = __API_CATALOG_SCHEMA__.bson_first_last_final_on_sorted,
+    stype = bytea,
+    PARALLEL = SAFE
+);
+
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONFIRSTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_firstn_transition_on_sorted,
+    FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final_on_sorted,
+    stype = bytea,
+    PARALLEL = SAFE
+);
+
+/*
+* See summary of __CORE_SCHEMA__.bsonFIRSTNONSORTED()
+*/
+CREATE OR REPLACE AGGREGATE helio_api_internal.BSONLASTNONSORTED(__CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson)
+(
+    SFUNC = helio_api_internal.bson_lastn_transition_on_sorted,
+    FINALFUNC = __API_CATALOG_SCHEMA__.bson_firstn_lastn_final_on_sorted,
+    stype = bytea,
+    PARALLEL = SAFE
+);

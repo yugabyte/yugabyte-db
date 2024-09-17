@@ -39,6 +39,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "p
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": {"$numberDecimal": "Infinity"}}}}} ] }'); -- n is not a number
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": -1}}}} ] }'); -- n is negative
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 0.5}}}} ] }'); -- n is not an integer
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": 1, "n": 1}}}} ] }'); -- sortBy is not an object
 
 
 /* $top operator with $group */

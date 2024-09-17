@@ -301,3 +301,27 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_maxminn_combine(bytea, bytea)
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_maxminn_combine$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_first_transition_on_sorted(bytea, __CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson DEFAULT NULL)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_first_transition_on_sorted$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_last_transition_on_sorted(bytea, __CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson DEFAULT NULL)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_last_transition_on_sorted$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_firstn_transition_on_sorted(bytea, __CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson DEFAULT NULL)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_firstn_transition_on_sorted$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_lastn_transition_on_sorted(bytea, __CORE_SCHEMA__.bson, bigint, __CORE_SCHEMA__.bson DEFAULT NULL)
+ RETURNS bytea
+ LANGUAGE c
+ STABLE
+AS 'MODULE_PATHNAME', $function$bson_lastn_transition_on_sorted$function$;

@@ -108,6 +108,8 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "p
 ERROR:  'n' must be greater than 0, found -1
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }, "n": 0.5}}}} ] }'); -- n is not an integer
 ERROR:  Value for 'n' must be of integral type, but found 0.5
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$bottomN": {"output": [ "$playerId", "$score" ], "sortBy": 1, "n": 1}}}} ] }'); -- sortBy is not an object
+ERROR:  expected 'sortBy' to already be an object in the arguments to $bottomN
 /* $top operator with $group */
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "games", "pipeline": [ {"$group": {"_id": "$gameId", "playerId": {"$top": {"output": [ "$playerId", "$score" ], "sortBy": { "score": 1 }}}}} ] }');
                       document                      

@@ -172,6 +172,11 @@ static WindowFunc * HandleDollarTopBottomOperators(const bson_value_t *opValue,
 												   const char *opName,
 												   Oid aggregateFunctionOid,
 												   bool isNOperator);
+static WindowFunc * HandleDollarFirstLastOperators(const bson_value_t *opValue,
+												   WindowOperatorContext *context,
+												   const char *opName,
+												   Oid aggregateFunctionOid,
+												   bool isNOperator);
 
 /*===================================*/
 /* Window Operator Handler functions */
@@ -221,6 +226,14 @@ static WindowFunc * HandleDollarStdDevPopWindowOperator(const bson_value_t *opVa
 														WindowOperatorContext *context);
 static WindowFunc * HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 														 WindowOperatorContext *context);
+static WindowFunc * HandleDollarFirstWindowOperator(const bson_value_t *opValue,
+													WindowOperatorContext *context);
+static WindowFunc * HandleDollarLastWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarFirstNWindowOperator(const bson_value_t *opValue,
+													 WindowOperatorContext *context);
+static WindowFunc * HandleDollarLastNWindowOperator(const bson_value_t *opValue,
+													WindowOperatorContext *context);
 static WindowFunc * HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
 static WindowFunc * HandleDollarMinNWindowOperator(const bson_value_t *opValue,
@@ -287,11 +300,11 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$first",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarFirstWindowOperator
 	},
 	{
 		.operatorName = "$firstN",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarFirstNWindowOperator
 	},
 	{
 		.operatorName = "$integral",
@@ -299,11 +312,11 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$last",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarLastWindowOperator
 	},
 	{
 		.operatorName = "$lastN",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarLastNWindowOperator
 	},
 	{
 		.operatorName = "$linearFill",
@@ -655,7 +668,6 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 				BsonIterToPgbsonElement(&sortByIter, &element);
 
 				pgbson *sortDoc = PgbsonElementToPgbson(&element);
-
 				Const *sortBson = MakeBsonConst(sortDoc);
 				bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
 
@@ -1558,6 +1570,7 @@ ParseIntegralDerivativeExpression(const bson_value_t *opValue,
 		sortField = (SetWindowFieldSortOption *) list_nth(
 			context->sortOptions, 0);
 	}
+
 	pgbson *sortSpecBson = DatumGetPgBson(sortField->sortSpecConst->constvalue);
 	pgbson *opValueBson = BsonValueToDocumentPgbson(opValue);
 	bson_iter_t iterOpValue, iterSortSpec;
@@ -2363,8 +2376,16 @@ ParseInputDocumentForDollarShift(const bson_value_t *opValue, bson_value_t *outp
 
 
 /*
- * Handle for $topN window aggregation operator.
- * Returns the WindowFunc for bson aggregate function `bsontopnsetwindowfields`
+ * Handler for $topN window aggregation operator.
+ * input format:
+ * {
+ *  $topN:
+ *     {
+ *        output: <expression>,
+ *        n: <expression>,
+ *        sortBy: { <field1>: <sort order>, <field2>: <sort order> ... },
+ *     }
+ *	}
  */
 static WindowFunc *
 HandleDollarTopNWindowOperator(const bson_value_t *opValue,
@@ -2384,8 +2405,16 @@ HandleDollarTopNWindowOperator(const bson_value_t *opValue,
 
 
 /*
- * Handle for $bottomN window aggregation operator.
- * Returns the WindowFunc for bson aggregate function `bsonbottomnsetwindowfields`
+ * Handler for $bottomN window aggregation operator.
+ * input format:
+ * {
+ *  $bottomN:
+ *     {
+ *        output: <expression>,
+ *        n: <expression>,
+ *        sortBy: { <field1>: <sort order>, <field2>: <sort order> ... },
+ *     }
+ *	}
  */
 static WindowFunc *
 HandleDollarBottomNWindowOperator(const bson_value_t *opValue,
@@ -2405,8 +2434,15 @@ HandleDollarBottomNWindowOperator(const bson_value_t *opValue,
 
 
 /*
- * Handle for $top window aggregation operator.
- * Returns the WindowFunc for bson aggregate function `bsontopsetwindowfields`
+ * Handler for $top window aggregation operator.
+ * input format:
+ * {
+ *  $top:
+ *     {
+ *        output: <expression>,
+ *        sortBy: { <field1>: <sort order>, <field2>: <sort order> ... },
+ *     }
+ *	}
  */
 static WindowFunc *
 HandleDollarTopWindowOperator(const bson_value_t *opValue,
@@ -2426,8 +2462,15 @@ HandleDollarTopWindowOperator(const bson_value_t *opValue,
 
 
 /*
- * Handle for $bottom window aggregation operator.
- * Returns the WindowFunc for bson aggregate function `bsonbottomsetwindowfields`
+ * Handler for $bottom window aggregation operator.
+ * input format:
+ * {
+ *  $bottom:
+ *     {
+ *        output: <expression>,
+ *        sortBy: { <field1>: <sort order>, <field2>: <sort order> ... },
+ *     }
+ *	}
  */
 static WindowFunc *
 HandleDollarBottomWindowOperator(const bson_value_t *opValue,
@@ -2447,7 +2490,7 @@ HandleDollarBottomWindowOperator(const bson_value_t *opValue,
 
 
 /*
- * Common handler for $topN and $bottomN operators.
+ * Common handler for $top(N) and $bottom(N) operators.
  * Parses the spec and generates the WindowFunc for the respective bson aggregate function.
  *
  * TODO: Support n(elementsToFetch) as an expression
@@ -2716,6 +2759,224 @@ HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 	/*reuse the logic of minN in the group stage.*/
 	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
 												BsonMinNAggregateFunctionOid());
+}
+
+
+/*
+ * Handler for $first window aggregation operator.
+ * input format: { $first: <expression> }
+ */
+static WindowFunc *
+HandleDollarFirstWindowOperator(const bson_value_t *opValue,
+								WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("$first is not supported yet")));
+	}
+
+	bool isNOperator = false;
+	Oid functionOid;
+	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
+	{
+		functionOid = BsonFirstAggregateAllArgsFunctionOid();
+	}
+	else
+	{
+		functionOid = BsonFirstOnSortedAggregateAllArgsFunctionOid();
+	}
+
+	return HandleDollarFirstLastOperators(opValue, context, "$first", functionOid,
+										  isNOperator);
+}
+
+
+/*
+ * Handler for $last window aggregation operator.
+ * input format: { $last: <expression> }
+ */
+static WindowFunc *
+HandleDollarLastWindowOperator(const bson_value_t *opValue,
+							   WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("$last is not supported yet")));
+	}
+
+	bool isNOperator = false;
+	Oid functionOid;
+	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
+	{
+		functionOid = BsonLastAggregateAllArgsFunctionOid();
+	}
+	else
+	{
+		functionOid = BsonLastOnSortedAggregateAllArgsFunctionOid();
+	}
+
+	return HandleDollarFirstLastOperators(opValue, context, "$last", functionOid,
+										  isNOperator);
+}
+
+
+/*
+ * Handler for $firstN window aggregation operator.
+ * input format:
+ * {
+ *  $firstN:
+ *     {
+ *        input: <expression>,
+ *        n: <expression>
+ *     }
+ *	}
+ */
+static WindowFunc *
+HandleDollarFirstNWindowOperator(const bson_value_t *opValue,
+								 WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("$firstN is not supported yet")));
+	}
+
+	bool isNOperator = true;
+	Oid functionOid;
+	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
+	{
+		functionOid = BsonFirstNAggregateAllArgsFunctionOid();
+	}
+	else
+	{
+		functionOid = BsonFirstNOnSortedAggregateAllArgsFunctionOid();
+	}
+
+	return HandleDollarFirstLastOperators(opValue, context, "$firstN", functionOid,
+										  isNOperator);
+}
+
+
+/*
+ * Handler for $lastN window aggregation operator.
+ * input format:
+ * {
+ *  $lastN:
+ *     {
+ *        input: <expression>,
+ *        n: <expression>
+ *     }
+ *	}
+ */
+static WindowFunc *
+HandleDollarLastNWindowOperator(const bson_value_t *opValue,
+								WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+						errmsg("$lastN is not supported yet")));
+	}
+
+	bool isNOperator = true;
+	Oid functionOid;
+	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
+	{
+		functionOid = BsonLastNAggregateAllArgsFunctionOid();
+	}
+	else
+	{
+		functionOid = BsonLastNOnSortedAggregateAllArgsFunctionOid();
+	}
+
+	return HandleDollarFirstLastOperators(opValue, context, "$lastN", functionOid,
+										  isNOperator);
+}
+
+
+/*
+ * Common handler for $first(N) and $last(N) operators.
+ * Parses the spec and generates the WindowFunc for the respective bson aggregate function.
+ *
+ * TODO: Support n(elementsToFetch) as an expression
+ */
+static WindowFunc *
+HandleDollarFirstLastOperators(const bson_value_t *opValue,
+							   WindowOperatorContext *context,
+							   const char *opName,
+							   Oid aggregateFunctionOid,
+							   bool isNOperator)
+{
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winfnoid = aggregateFunctionOid;
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	Const *constValue, *nConst;
+	if (isNOperator)
+	{
+		bson_value_t input = { 0 };
+		bson_value_t elementsToFetch = { 0 };
+		ParseInputForNGroupAccumulators(opValue, &input, &elementsToFetch, opName);
+		ValidateElementForNGroupAccumulators(&elementsToFetch, opName);
+		nConst = makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
+						   Int64GetDatum(elementsToFetch.value.v_int64), false,
+						   true);
+
+		constValue = MakeBsonConst(BsonValueToDocumentPgbson(&input));
+	}
+	else
+	{
+		constValue = MakeBsonConst(BsonValueToDocumentPgbson(opValue));
+	}
+
+	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
+	{
+		int nelems = list_length(context->sortOptions);
+		Datum *sortDatumArray = palloc(sizeof(Datum) * nelems);
+
+		ListCell *lc;
+		int i = 0;
+		foreach(lc, context->sortOptions)
+		{
+			SetWindowFieldSortOption *sortOption =
+				(SetWindowFieldSortOption *) lfirst(lc);
+			sortDatumArray[i] = sortOption->sortSpecConst->constvalue;
+			i++;
+		}
+
+		ArrayType *arrayValue = construct_array(sortDatumArray, nelems, BsonTypeId(), -1,
+												false, TYPALIGN_INT);
+		Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
+										  PointerGetDatum(arrayValue), false, false);
+
+		if (isNOperator)
+		{
+			windowFunc->args = list_make4(context->docExpr, nConst, sortArrayConst,
+										  constValue);
+		}
+		else
+		{
+			windowFunc->args = list_make3(context->docExpr, sortArrayConst, constValue);
+		}
+	}
+	else
+	{
+		if (isNOperator)
+		{
+			windowFunc->args = list_make3(context->docExpr, nConst, constValue);
+		}
+		else
+		{
+			windowFunc->args = list_make2(context->docExpr, constValue);
+		}
+	}
+
+	return windowFunc;
 }
 
 

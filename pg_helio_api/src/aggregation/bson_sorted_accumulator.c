@@ -558,17 +558,32 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
  * The args are:
  *      0) The current aggregation state
  *      1) The document/evaluated expression which will eventually be returned
- * For isSingle == 'false'
+ *
+ * For isSingle == 'true' && storeInputExpression == 'true
+ *      2) The input expression to be applied on the results.
+ *
+ * For isSingle == 'false' && storeInputExpression == 'true
  *      2) The number of documents to be returned or 'N'
+ *      3) The input expression to be applied on the results.
  */
 Datum
 BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 {
 	MemoryContext aggregateContext;
-	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+
+	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
 							"aggregate function called in non-aggregate context")));
+	}
+
+	bool storeInputExpression = false;
+
+	/* We store input expression in $setWindowFields context */
+	if (aggContext == AGG_CONTEXT_WINDOW)
+	{
+		storeInputExpression = true;
 	}
 
 	bytea *byteArray = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
@@ -577,6 +592,8 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 	char *sourcePtr;
 	int64 currentCount = 0;
 	int64 copySize = 0;
+	pgbson *inputExpression;
+	int64 inputExpressionSize = 0;
 
 	/*
 	 *  If no sort keys are provided, or the data is pre-sorted we do the following:
@@ -584,7 +601,7 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 	 *          (1.a.) keep ignoring any new element for invertSort = false
 	 *          (1.b.) keep replacing the lease recent value with the new one for invertSort = true
 	 *  Format is:
-	 *  VARHDR | ByteSize | ReturnCount |CurrentCount | Result 1 | Size 1 | Result 2 | Size 2 | ...
+	 *  VARHDR | ByteSize | ReturnCount | CurrentCount | InputExpressionSize | InputExpression | Result 1 | Size 1 | Result 2 | Size 2 | ...
 	 */
 
 	/* Get the current count and setup*/
@@ -597,19 +614,44 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 		{
 			/* The 3rd argument is number of results to return */
 			returnCount = PG_GETARG_INT64(2);
+			inputExpression = storeInputExpression ? PG_GETARG_MAYBE_NULL_PGBSON(3) :
+							  NULL;
+		}
+		else
+		{
+			inputExpression = storeInputExpression ? PG_GETARG_MAYBE_NULL_PGBSON(2) :
+							  NULL;
+		}
+
+		if (inputExpression != NULL)
+		{
+			inputExpressionSize = VARSIZE(inputExpression);
 		}
 	}
 	else
 	{
 		sourcePtr = (char *) VARDATA(byteArray);
 
-		/* Copy size is total size - VARHDRSZ, the 3 ints we are extracting, and ptr. */
-		copySize = *(int64 *) sourcePtr - sizeof(int64) * 3 - VARHDRSZ;
+		/* Copy size is total size - VARHDRSZ, the 4 ints we are extracting, and ptr. */
+		copySize = *(int64 *) sourcePtr - sizeof(int64) * 4 - VARHDRSZ;
 		sourcePtr += sizeof(int64);
 		returnCount = *(int64 *) sourcePtr;
 		sourcePtr += sizeof(int64);
 		currentCount = *(int64 *) sourcePtr;
 		sourcePtr += sizeof(int64);
+		inputExpressionSize = *(int64 *) sourcePtr;
+		sourcePtr += sizeof(int64);
+
+		if (inputExpressionSize != 0)
+		{
+			inputExpression = (pgbson *) sourcePtr;
+			sourcePtr += inputExpressionSize;
+			copySize -= inputExpressionSize;
+		}
+		else
+		{
+			inputExpression = NULL;
+		}
 
 		if (currentCount > returnCount)
 		{
@@ -637,8 +679,8 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 		}
 	}
 
-	/* Output is VARHDR | ByteSize | ReturnCount | CurrentCount | values... */
-	uint32 totalSize = VARHDRSZ + sizeof(int64) * 3 + copySize;
+	/* Output is VARHDR | ByteSize | ReturnCount | CurrentCount | InputExpressionSize | InputExpression | values... */
+	uint32 totalSize = VARHDRSZ + sizeof(int64) * 4 + copySize + inputExpressionSize;
 
 	/* Add in newValue to total size */
 	if (newValue != NULL)
@@ -666,6 +708,15 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 	returnDataPtr += sizeof(int64);
 	*((int64 *) (returnDataPtr)) = currentCount;
 	returnDataPtr += sizeof(int64);
+	*((int64 *) (returnDataPtr)) = inputExpressionSize;
+	returnDataPtr += sizeof(int64);
+
+	/* Copy input expression to returnDataPtr */
+	if (inputExpression != NULL)
+	{
+		memcpy(returnDataPtr, inputExpression, inputExpressionSize);
+		returnDataPtr += inputExpressionSize;
+	}
 
 
 	/* Need to copy first so we don't overwrite with newValue if we are reusing the array. */
@@ -928,13 +979,27 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 	/* If there were no regular rows, or the last result was NULL, the result is $null */
 	if (returnNull)
 	{
-		/* Mongo returns $null for empty sets */
-		pgbsonelement finalValue;
-		finalValue.path = "";
-		finalValue.pathLength = 0;
-		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		pgbson *finalPgbson;
 
-		PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		if (isSingle)
+		{
+			/* Mongo returns $null for empty sets */
+			pgbsonelement finalValue;
+			finalValue.path = "";
+			finalValue.pathLength = 0;
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+			finalPgbson = PgbsonElementToPgbson(&finalValue);
+		}
+		else
+		{
+			/* empty array */
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterAppendEmptyArray(&writer, "", 0);
+			finalPgbson = PgbsonWriterGetPgbson(&writer);
+		}
+
+		PG_RETURN_POINTER(finalPgbson);
 	}
 
 	AggregationExpressionData *aggregationExpressionState = NULL;
@@ -1077,10 +1142,21 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 Datum
 BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 {
+	MemoryContext aggregateContext;
+	int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+
+	if (!aggContext)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+							"aggregate function called in non-aggregate context")));
+	}
+
 	bool returnNull = false;
 	bytea *byteArray = PG_GETARG_BYTEA_P(0);
 	char *sourcePtr;
 	int64 currentCount = 0;
+	pgbson *inputExpression = NULL;
+	int64 inputExpressionSize = 0;
 
 	if (byteArray == NULL)
 	{
@@ -1095,6 +1171,15 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 		sourcePtr += sizeof(int64);
 		currentCount = *(int64 *) sourcePtr;
 		sourcePtr += sizeof(int64);
+		inputExpressionSize = *(int64 *) sourcePtr;
+		sourcePtr += sizeof(int64);
+
+		/* Extract inputExpression from sourcePtr */
+		if (inputExpressionSize != 0)
+		{
+			inputExpression = (pgbson *) sourcePtr;
+			sourcePtr += inputExpressionSize;
+		}
 
 		if (isSingle)
 		{
@@ -1116,19 +1201,100 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 		}
 	}
 
+	AggregationExpressionData *aggregationExpressionState = NULL;
+	StringView path;
+	ExpressionVariableContext *variableContext = NULL;
+
+	/* Cache aggregationExpressionState for $setWindowFields to avoid re-parsing the expression for each row/partition.
+	 * aggregationExpressionState holds the parsed input expression which stays the same for all rows/partitions.
+	 */
+	if (aggContext == AGG_CONTEXT_WINDOW)
+	{
+		if (inputExpression != NULL)
+		{
+			pgbsonelement element;
+			PgbsonToSinglePgbsonElement(inputExpression, &element);
+
+			path = (StringView) {
+				.length = element.pathLength,
+				.string = element.path,
+			};
+
+			/*
+			 * Use numArgs as 0 as we want to return true from IsSafeToReuseFmgrFunctionExtraMultiArgs().
+			 * This is to avoid the check for the node being a const or a Param of type extern as the caller knows its safe to reuse
+			 * as this is the common expression for all rows inside the bytea returned by transition function.
+			 */
+			int argPositions[1] = { 0 };
+			int numArgs = 0;
+			ParseAggregationExpressionContext context = { 0 };
+
+			SetCachedFunctionStateMultiArgs(
+				aggregationExpressionState,
+				AggregationExpressionData,
+				argPositions,
+				numArgs,
+				ParseInputExpressionAndPersistValue,
+				&element.bsonValue,
+				&context);
+
+			if (aggregationExpressionState == NULL)
+			{
+				aggregationExpressionState = palloc0(sizeof(AggregationExpressionData));
+				ParseInputExpressionAndPersistValue(
+					aggregationExpressionState,
+					&element.bsonValue,
+					&context);
+			}
+		}
+	}
+
 	/* If there were no regular rows, or the last result was NULL, the result is $null */
 	if (returnNull)
 	{
-		/* Mongo returns $null for empty sets */
-		pgbsonelement finalValue;
-		finalValue.path = "";
-		finalValue.pathLength = 0;
-		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		pgbson *finalPgbson;
 
-		PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		if (isSingle)
+		{
+			/* Mongo returns $null for empty sets */
+			pgbsonelement finalValue;
+			finalValue.path = "";
+			finalValue.pathLength = 0;
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+			finalPgbson = PgbsonElementToPgbson(&finalValue);
+		}
+		else
+		{
+			/* empty array */
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterAppendEmptyArray(&writer, "", 0);
+			finalPgbson = PgbsonWriterGetPgbson(&writer);
+		}
+
+		PG_RETURN_POINTER(finalPgbson);
 	}
 	else if (isSingle)
 	{
+		if (aggContext == AGG_CONTEXT_WINDOW)
+		{
+			if (inputExpression != NULL)
+			{
+				/* Apply the inputExpression to the result documents to calculate result for $first/$last */
+				bool isNullOnEmpty = true;
+				pgbson_writer writer;
+				PgbsonWriterInit(&writer);
+				EvaluateAggregationExpressionDataToWriter(aggregationExpressionState,
+														  (pgbson *) sourcePtr,
+														  path,
+														  &writer,
+														  variableContext, isNullOnEmpty);
+
+				pgbson *result = PgbsonWriterGetPgbson(&writer);
+				PG_RETURN_POINTER(result);
+			}
+		}
+
 		PG_RETURN_POINTER((pgbson *) sourcePtr);
 	}
 	else
@@ -1149,7 +1315,32 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 			}
 			else
 			{
-				PgbsonArrayWriterWriteDocument(&arrayWriter, (pgbson *) sourcePtr);
+				if (aggContext == AGG_CONTEXT_WINDOW)
+				{
+					if (inputExpression != NULL)
+					{
+						/* Apply the inputExpression to the result documents to calculate result for $firstN/$lastN */
+						bool isNullOnEmpty = true;
+						pgbson_writer innerWriter;
+						PgbsonWriterInit(&innerWriter);
+						EvaluateAggregationExpressionDataToWriter(
+							aggregationExpressionState,
+							(pgbson *) sourcePtr,
+							path,
+							&innerWriter,
+							variableContext,
+							isNullOnEmpty);
+						pgbson *resultpg = PgbsonWriterGetPgbson(&innerWriter);
+						pgbsonelement element;
+						PgbsonToSinglePgbsonElement(resultpg, &element);
+						PgbsonArrayWriterWriteValue(&arrayWriter, &element.bsonValue);
+					}
+				}
+				else
+				{
+					PgbsonArrayWriterWriteDocument(&arrayWriter, (pgbson *) sourcePtr);
+				}
+
 				sourcePtr += VARSIZE(sourcePtr);
 				sourcePtr += sizeof(uint32);
 			}

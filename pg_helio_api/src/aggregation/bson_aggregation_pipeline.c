@@ -2204,6 +2204,261 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 }
 
 
+/**
+ * Parses the input document for FirstN and LastN group expression operator and extracts the value for input and n.
+ * @param inputDocument: input document for the $firstN operator
+ * @param input:  this is a pointer which after parsing will hold array expression
+ * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
+ * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
+ */
+void
+ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
+								bson_value_t *input,
+								bson_value_t *elementsToFetch, const char *opName)
+{
+	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		if (strcmp(opName, "$maxN") == 0 || strcmp(opName, "$minN") == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900),
+							errmsg("specification must be an object; found %s: %s",
+								   opName, BsonValueToJsonForLogging(inputDocument)),
+							errdetail_log(
+								"specification must be an object; opname: %s type found: %s",
+								opName, BsonTypeName(inputDocument->value_type))));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787801),
+							errmsg("specification must be an object; found %s :%s",
+								   opName, BsonValueToJsonForLogging(inputDocument)),
+							errdetail_log(
+								"specification must be an object; opname: %s type found :%s",
+								opName, BsonTypeName(inputDocument->value_type))));
+		}
+	}
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputDocument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			*input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			*elementsToFetch = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901),
+							errmsg("%s found an unknown argument: %s", opName, key),
+							errdetail_log(
+								"%s found an unknown argument", opName)));
+		}
+	}
+
+	/**
+	 * Validation check to see if input and elements to fetch are present otherwise throw error.
+	 */
+	if (input->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907),
+						errmsg("%s requires an 'input' field", opName),
+						errdetail_log(
+							"%s requires an 'input' field", opName)));
+	}
+
+	if (elementsToFetch->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906),
+						errmsg("%s requires an 'n' field", opName),
+						errdetail_log(
+							"%s requires an 'n' field", opName)));
+	}
+}
+
+
+/**
+ * Parses the input document for $top(N) and $bottom(N) group expression operator and extracts the value for output, sortBy and n.
+ * @param inputDocument: input document for the operator
+ * @param output:  this is a pointer which after parsing will hold array expression
+ * @param sortSpec:  this is a pointer which after parsing will hold the sortBy expression
+ * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
+ * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
+ */
+void
+ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_t *output,
+								  bson_value_t *elementsToFetch, bson_value_t *sortSpec,
+								  const char *opName)
+{
+	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788001),
+						errmsg("specification must be an object; found %s :%s",
+							   opName, BsonValueToJsonForLogging(inputDocument)),
+						errdetail_log(
+							"specification must be an object; opname: %s type found :%s",
+							opName, BsonTypeName(inputDocument->value_type))));
+	}
+	bson_iter_t docIter;
+	BsonValueInitIterator(inputDocument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "output") == 0)
+		{
+			*output = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			*elementsToFetch = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "sortBy") == 0)
+		{
+			*sortSpec = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002),
+							errmsg("Unknown argument to %s '%s'", opName, key),
+							errdetail_log(
+								"%s found an unknown argument", opName)));
+		}
+	}
+
+	/**
+	 * Validation check to see if input and elements to fetch are present otherwise throw error.
+	 */
+	if (elementsToFetch->value_type == BSON_TYPE_EOD && (strcmp(opName, "$topN") == 0 ||
+														 strcmp(opName, "$bottomN") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788003),
+						errmsg("Missing value for 'n'"),
+						errdetail_log(
+							"%s requires an 'n' field", opName)));
+	}
+
+	if (elementsToFetch->value_type != BSON_TYPE_EOD && (strcmp(opName, "$top") == 0 ||
+														 strcmp(opName, "$bottom") == 0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002),
+						errmsg("Unknown argument to %s 'n'", opName),
+						errdetail_log(
+							"Unknown argument to %s 'n'", opName)));
+	}
+
+	if (output->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788004),
+						errmsg("Missing value for 'output'"),
+						errdetail_log(
+							"%s requires an 'output' field", opName)));
+	}
+
+	if (sortSpec->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788005),
+						errmsg("Missing value for 'sortBy'"),
+						errdetail_log(
+							"%s requires a 'sortBy", opName)));
+	}
+	else if (sortSpec->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788604),
+						errmsg(
+							"expected 'sortBy' to already be an object in the arguments to %s",
+							opName),
+						errdetail_log(
+							"'sortBy' field in %s is not an object", opName)));
+	}
+}
+
+
+/**
+ * This function validates and throws error in case bson type is not a numeric > 0 and less than max value of int64 i.e. 9223372036854775807
+ */
+void
+ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
+									 char *opName)
+{
+	switch (elementsToFetch->value_type)
+	{
+		case BSON_TYPE_INT32:
+		case BSON_TYPE_INT64:
+		case BSON_TYPE_DOUBLE:
+		case BSON_TYPE_DECIMAL128:
+		{
+			if (IsBsonValueNaN(elementsToFetch))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109),
+								errmsg("Can't coerce out of range value %s to long",
+									   BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
+			if (IsBsonValueInfinity(elementsToFetch) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109),
+								errmsg("Can't coerce out of range value %s to long",
+									   BsonValueToJsonForLogging(elementsToFetch))));
+			}
+
+			if (!IsBsonValueFixedInteger(elementsToFetch))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787903),
+								errmsg(
+									"Value for 'n' must be of integral type, but found %s",
+									BsonValueToJsonForLogging(elementsToFetch)),
+								errdetail_log(
+									"Value for 'n' must be of integral type, but found of type %s",
+									BsonTypeName(elementsToFetch->value_type))));
+			}
+
+			/* This is done as elements to fetch must only be int64. */
+			bool throwIfFailed = true;
+			elementsToFetch->value.v_int64 = BsonValueAsInt64WithRoundingMode(
+				elementsToFetch, ConversionRoundingMode_Floor, throwIfFailed);
+			elementsToFetch->value_type = BSON_TYPE_INT64;
+
+			if (elementsToFetch->value.v_int64 <= 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908),
+								errmsg("'n' must be greater than 0, found %s",
+									   BsonValueToJsonForLogging(elementsToFetch)),
+								errdetail_log(
+									"'n' must be greater than 0, found %ld",
+									elementsToFetch->value.v_int64)));
+			}
+			if (elementsToFetch->value.v_int64 > 10)
+			{
+				if (strncmp(opName, "$lastN", 6) == 0)
+				{
+					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN_GT10);
+				}
+				else if ((strncmp(opName, "$firstN", 7) == 0))
+				{
+					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN_GT10);
+				}
+			}
+			break;
+		}
+
+		default:
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902),
+							errmsg("Value for 'n' must be of integral type, but found %s",
+								   BsonValueToJsonForLogging(elementsToFetch)),
+							errdetail_log(
+								"Value for 'n' must be of integral type, but found of type %s",
+								BsonTypeName(elementsToFetch->value_type))));
+		}
+	}
+}
+
+
 /*
  * Mutates the query for the $addFields stage
  */
@@ -3970,251 +4225,6 @@ AddGroupExpression(Expr *expression, ParseState *parseState, char *identifiers,
 	parseState->p_hasAggs = true;
 	Index childIndex = 1;
 	return makeVar(childIndex, entry->resno, outputOid, -1, InvalidOid, 0);
-}
-
-
-/**
- * Parses the input document for FirstN and LastN group expression operator and extracts the value for input and n.
- * @param inputDocument: input document for the $firstN operator
- * @param input:  this is a pointer which after parsing will hold array expression
- * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
- * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
- */
-static void
-ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
-								bson_value_t *input,
-								bson_value_t *elementsToFetch, const char *opName)
-{
-	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		if (strcmp(opName, "$maxN") == 0 || strcmp(opName, "$minN") == 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900), errmsg(
-								"specification must be an object; found %s: %s",
-								opName, BsonValueToJsonForLogging(inputDocument)),
-							errdetail_log(
-								"specification must be an object; opname: %s type found: %s",
-								opName, BsonTypeName(inputDocument->value_type))));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787801), errmsg(
-								"specification must be an object; found %s :%s",
-								opName, BsonValueToJsonForLogging(inputDocument)),
-							errdetail_log(
-								"specification must be an object; opname: %s type found :%s",
-								opName, BsonTypeName(inputDocument->value_type))));
-		}
-	}
-	bson_iter_t docIter;
-	BsonValueInitIterator(inputDocument, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			*input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "n") == 0)
-		{
-			*elementsToFetch = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
-								"%s found an unknown argument: %s", opName, key),
-							errdetail_log(
-								"%s found an unknown argument", opName)));
-		}
-	}
-
-	/**
-	 * Validation check to see if input and elements to fetch are present otherwise throw error.
-	 */
-	if (input->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
-							"%s requires an 'input' field", opName),
-						errdetail_log(
-							"%s requires an 'input' field", opName)));
-	}
-
-	if (elementsToFetch->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
-							"%s requires an 'n' field", opName),
-						errdetail_log(
-							"%s requires an 'n' field", opName)));
-	}
-}
-
-
-/**
- * Parses the input document for $top(N) and $bottom(N) group expression operator and extracts the value for output, sortBy and n.
- * @param inputDocument: input document for the operator
- * @param output:  this is a pointer which after parsing will hold array expression
- * @param sortSpec:  this is a pointer which after parsing will hold the sortBy expression
- * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
- * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
- */
-void
-ParseInputDocumentForTopAndBottom(const bson_value_t *inputDocument, bson_value_t *output,
-								  bson_value_t *elementsToFetch, bson_value_t *sortSpec,
-								  const char *opName)
-{
-	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788001), errmsg(
-							"specification must be an object; found %s :%s",
-							opName, BsonValueToJsonForLogging(inputDocument)),
-						errdetail_log(
-							"specification must be an object; opname: %s type found :%s",
-							opName, BsonTypeName(inputDocument->value_type))));
-	}
-	bson_iter_t docIter;
-	BsonValueInitIterator(inputDocument, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "output") == 0)
-		{
-			*output = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "n") == 0)
-		{
-			*elementsToFetch = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "sortBy") == 0)
-		{
-			*sortSpec = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002), errmsg(
-								"Unknown argument to %s '%s'", opName, key),
-							errdetail_log(
-								"%s found an unknown argument", opName)));
-		}
-	}
-
-	/**
-	 * Validation check to see if input and elements to fetch are present otherwise throw error.
-	 */
-	if (elementsToFetch->value_type == BSON_TYPE_EOD && (strcmp(opName, "$topN") == 0 ||
-														 strcmp(opName, "$bottomN") == 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788003), errmsg(
-							"Missing value for 'n'"),
-						errdetail_log(
-							"%s requires an 'n' field", opName)));
-	}
-
-	if (elementsToFetch->value_type != BSON_TYPE_EOD && (strcmp(opName, "$top") == 0 ||
-														 strcmp(opName, "$bottom") == 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788002), errmsg(
-							"Unknown argument to %s 'n'", opName),
-						errdetail_log(
-							"Unknown argument to %s 'n'", opName)));
-	}
-
-	if (output->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788004), errmsg(
-							"Missing value for 'output'"),
-						errdetail_log(
-							"%s requires an 'output' field", opName)));
-	}
-
-	if (sortSpec->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788005), errmsg(
-							"Missing value for 'sortBy'"),
-						errdetail_log(
-							"%s requires a 'sortBy", opName)));
-	}
-}
-
-
-/**
- * This function validates and throws error in case bson type is not a numeric > 0 and less than max value of int64 i.e. 9223372036854775807
- */
-void
-ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
-									 char *opName)
-{
-	switch (elementsToFetch->value_type)
-	{
-		case BSON_TYPE_INT32:
-		case BSON_TYPE_INT64:
-		case BSON_TYPE_DOUBLE:
-		case BSON_TYPE_DECIMAL128:
-		{
-			if (IsBsonValueNaN(elementsToFetch))
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
-									"Can't coerce out of range value %s to long",
-									BsonValueToJsonForLogging(elementsToFetch))));
-			}
-
-			if (IsBsonValueInfinity(elementsToFetch) != 0)
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
-									"Can't coerce out of range value %s to long",
-									BsonValueToJsonForLogging(elementsToFetch))));
-			}
-
-			if (!IsBsonValueFixedInteger(elementsToFetch))
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787903), errmsg(
-									"Value for 'n' must be of integral type, but found %s",
-									BsonValueToJsonForLogging(elementsToFetch)),
-								errdetail_log(
-									"Value for 'n' must be of integral type, but found of type %s",
-									BsonTypeName(elementsToFetch->value_type))));
-			}
-
-			/* This is done as elements to fetch must only be int64. */
-			bool throwIfFailed = true;
-			elementsToFetch->value.v_int64 = BsonValueAsInt64WithRoundingMode(
-				elementsToFetch, ConversionRoundingMode_Floor, throwIfFailed);
-			elementsToFetch->value_type = BSON_TYPE_INT64;
-
-			if (elementsToFetch->value.v_int64 <= 0)
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
-									"'n' must be greater than 0, found %s",
-									BsonValueToJsonForLogging(elementsToFetch)),
-								errdetail_log(
-									"'n' must be greater than 0, found %ld",
-									elementsToFetch->value.v_int64)));
-			}
-			if (elementsToFetch->value.v_int64 > 10)
-			{
-				if (strncmp(opName, "$lastN", 6) == 0)
-				{
-					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_LASTN_GT10);
-				}
-				else if ((strncmp(opName, "$firstN", 7) == 0))
-				{
-					ReportFeatureUsage(FEATURE_STAGE_GROUP_ACC_FIRSTN_GT10);
-				}
-			}
-			break;
-		}
-
-		default:
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
-								"Value for 'n' must be of integral type, but found %s",
-								BsonValueToJsonForLogging(elementsToFetch)),
-							errdetail_log(
-								"Value for 'n' must be of integral type, but found of type %s",
-								BsonTypeName(elementsToFetch->value_type))));
-		}
-	}
 }
 
 

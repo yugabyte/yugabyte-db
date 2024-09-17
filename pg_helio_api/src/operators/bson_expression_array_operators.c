@@ -25,6 +25,7 @@
 #include "utils/heap_utils.h"
 
 #include "planner/helio_planner.h"
+#include "aggregation/bson_aggregation_pipeline.h"
 
 #define MAX_BUFFER_SIZE_DOLLAR_RANGE (64 * 1024 * 1024)
 #define EMPTY_BSON_ARRAY_SIZE_BYTES 5 /* size of empty array is fixed as 5 bytes. */
@@ -197,10 +198,6 @@ static void ParseDollarMaxMinN(const bson_value_t *argument,
 							   bool isMaxN, ParseAggregationExpressionContext *context);
 static pgbsonelement ParseElementFromObjectForArrayToObject(const bson_value_t *element);
 static pgbsonelement ParseElementFromArrayForArrayToObject(const bson_value_t *element);
-static void ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument,
-											   bson_value_t *input,
-											   bson_value_t *elementsToFetch, const
-											   char *opName);
 static void ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch,
 											const char *opName);
 static void FillResultForDollarFirstAndLastN(bson_value_t *input,
@@ -1452,8 +1449,8 @@ ParseDollarFirstN(const bson_value_t *inputDocument, AggregationExpressionData *
 
 	data->operator.returnType = BSON_TYPE_ARRAY;
 
-	ParseInputDocumentForFirstAndLastN(inputDocument, &input,
-									   &elementsToFetch, "$firstN");
+	ParseInputForNGroupAccumulators(inputDocument, &input,
+									&elementsToFetch, "$firstN");
 
 	DollarFirstNLastNArguments *arguments = palloc0(sizeof(DollarFirstNLastNArguments));
 
@@ -1533,8 +1530,8 @@ ParseDollarLastN(const bson_value_t *inputDocument, AggregationExpressionData *d
 
 	data->operator.returnType = BSON_TYPE_ARRAY;
 
-	ParseInputDocumentForFirstAndLastN(inputDocument, &input,
-									   &elementsToFetch, "$lastN");
+	ParseInputForNGroupAccumulators(inputDocument, &input,
+									&elementsToFetch, "$lastN");
 
 	DollarFirstNLastNArguments *arguments = palloc0(sizeof(DollarFirstNLastNArguments));
 
@@ -1598,68 +1595,6 @@ HandlePreParsedDollarLastN(pgbson *doc, void *arguments,
 	FillResultForDollarFirstAndLastN(&evaluatedInputArg, &evaluatedElementsToFetch,
 									 isSkipElement, &result);
 	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/**
- * Parses the input document for FirstN and LastN array expression operator and extracts the value for input and n.
- * @param inputDocument: input document for the $firstN operator
- * @param input:  this is a pointer which after parsing will hold array expression
- * @param elementsToFetch: this is a pointer which after parsing will hold n i.e. how many elements to fetch for result
- * @param opName: this contains the name of the operator for error msg formatting purposes. This value is supposed to be $firstN/$lastN.
- */
-static void
-ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument, bson_value_t *input,
-								   bson_value_t *elementsToFetch, const char *opName)
-{
-	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787801), errmsg(
-							"specification must be an object; found %s :%s",
-							opName, BsonValueToJsonForLogging(inputDocument)),
-						errdetail_log(
-							"specification must be an object; found opname:%s input type:%s",
-							opName, BsonTypeName(inputDocument->value_type))));
-	}
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(inputDocument, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			*input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "n") == 0)
-		{
-			*elementsToFetch = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
-								"%s found an unknown argument: %s", opName, key),
-							errdetail_log(
-								"%s found an unknown argument, while parsing request",
-								opName)));
-		}
-	}
-
-	/**
-	 * Validation check to see if input and elements to fetch are present otherwise throw error.
-	 */
-	if (input->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
-							"%s requires an 'input' field", opName)));
-	}
-
-	if (elementsToFetch->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
-							"%s requires an 'n' field", opName)));
-	}
 }
 
 
