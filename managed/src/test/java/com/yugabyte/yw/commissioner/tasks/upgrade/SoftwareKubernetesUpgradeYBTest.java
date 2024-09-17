@@ -56,8 +56,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckUpgrade,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
