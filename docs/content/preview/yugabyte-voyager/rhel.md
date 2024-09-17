@@ -77,11 +77,3 @@ Install a specific version of `yb-voyager` on your machine using the following c
     ```sh
     yb-voyager version
     ```
-
-### Upgrade yb-voyager
-
-Upgrade yb-voyager using the following command:
-
-```sh
-sudo yum update yb-voyager
-```

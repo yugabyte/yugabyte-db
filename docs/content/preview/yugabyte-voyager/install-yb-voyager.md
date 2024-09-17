@@ -106,6 +106,50 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
   </div>
 </div>
 
+### Upgrade yb-voyager
+
+Upgrade yb-voyager using the following command:
+
+```sh
+sudo yum update yb-voyager
+```
+
+## Upgrade yb-voyager
+
+{{< tabpane text=true >}}
+
+  {{% tab header="RHEL" %}}
+
+{{< note title="Note" >}}
+If you are upgrading Voyager from version 1.8.0 or earlier, you need to install the `postgresql-common` repository before the upgrade as follows:
+
+```sh
+sudo apt install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+```
+
+{{< /note >}}
+
+Upgrade yb-voyager using the following command:
+
+```sh
+sudo apt-get upgrade yb-voyager
+```
+
+   {{% /tab %}}
+
+   {{% tab header="Ubuntu" %}}
+
+Upgrade yb-voyager using the following command:
+
+```sh
+sudo apt-get upgrade yb-voyager
+```
+
+   {{% /tab %}}
+
+{{< /tabpane >}}
+
 ### Collect diagnostics
 
 By default, yb-voyager captures a [diagnostics report](../diagnostics-report/) using the YugabyteDB diagnostics service that runs each time you use the yb-voyager command. If you don't want to send diagnostics when you run yb-voyager, set the [--send-diagnostics flag](../diagnostics-report/#configuration-flag) to false.
