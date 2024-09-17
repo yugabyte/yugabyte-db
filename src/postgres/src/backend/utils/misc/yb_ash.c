@@ -661,24 +661,6 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 											redacted_query_len, 0));
 }
 
-/*
- * Events such as ClientRead can take up a lot of space in the circular buffer
- * if there is an idle session. We don't want to include such wait events.
- * This list may increase in the future.
- */
-bool
-YbAshShouldIgnoreWaitEvent(uint32 wait_event_info)
-{
-	switch (wait_event_info)
-	{
-		case WAIT_EVENT_CLIENT_READ:
-			return true;
-		default:
-			return false;
-	}
-	return false;
-}
-
 static void
 YbAshAcquireBufferLock(bool exclusive)
 {
