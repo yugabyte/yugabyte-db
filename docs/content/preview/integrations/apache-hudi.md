@@ -20,8 +20,8 @@ To use Apache Hudi, ensure that you have the following:
 
 - YugabyteDB up and running. Download and install YugabyteDB on macOS by following the steps in [Quick start](../../quick-start/).
 - Java JDK 11 or later is installed.
-- Scala is installed.
-- Apache Hadoop and Apache Spark installed.
+- [Scala](https://www.scala-lang.org/download/) is installed.
+- [Apache Hadoop](https://hadoop.apache.org/releases.html) and [Apache Spark](https://spark.apache.org/downloads.html) installed.
 
 ## Setup
 
@@ -184,7 +184,7 @@ drwxr-xr-x 7 azureuser azureuser 4096 Dec 16 15:59 .
 drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:59 .temp
 ```
 
-You can execute queries to the table using Spark. Refer to instructions in the [Apache Hudi documentation](https://hudi.apache.org/docs/quick-start-guide/#querying).
+You can execute queries on the table using Spark. Refer to instructions in the [Apache Hudi documentation](https://hudi.apache.org/docs/quick-start-guide/#querying).
 
 ## Learn more
 
