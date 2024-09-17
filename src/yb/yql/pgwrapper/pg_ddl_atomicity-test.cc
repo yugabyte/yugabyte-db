@@ -1775,5 +1775,32 @@ TEST_F(PgDdlAtomicityTest, TestCreateColocatedTable) {
   ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
 }
 
+TEST_F(PgDdlAtomicityTest, TestAlterTableAddUniqueConstraint) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(x character varying(20))"));
+  // Adding a unique constraint does not change the table schema of the base table foo.
+  // If we use schema comparison of foo, we will not be able to tell whether the
+  // DDL transaction has committed at PG side or not. In this case we must use schema
+  // comparison of the index x_unique instead.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("x_unique")).size(), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD CONSTRAINT x_unique UNIQUE(x)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("x_unique")).size(), 1);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (y character varying(20))"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 0);
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  // As of 2024-09-17, the aborted ALTER TABLE bar statement leaves an orphan index
+  // inside DocDB that is not garbage collected. But its existence will not prevent
+  // a retry of the same statement to succeed, which will create another index with
+  // the same name y_unique (but with a different table id).
+  ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+  ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 2);
+}
+
 } // namespace pgwrapper
 } // namespace yb
