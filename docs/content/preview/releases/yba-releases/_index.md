@@ -34,26 +34,26 @@ For information on release versioning, see [Versioning](../versioning/).
 
 YugabyteDB Anywhere is a control plane for deploying and managing YugabyteDB universes. You can use YugabyteDB Anywhere to deploy universes with an equivalent or earlier version of YugabyteDB.
 
+Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
+
 ### Supported versions
 
 Every version of YugabyteDB Anywhere supports the same version and prior releases of YugabyteDB, down to and including the two preceding LTS release series and any intervening STS releases. This provides a span of support of approximately 2 years.
 
-YugabyteDB Anywhere v2.20.x supports the following YugabyteDB release series:
+For example, YugabyteDB Anywhere v2.20.x supports the following YugabyteDB release series:
 
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
 - [v2.18.x](../ybdb-releases/v2.18/) (STS)
 - [v2.16.x](../ybdb-releases/end-of-life/v2.16/) (STS)
 - [v2.14.x](../ybdb-releases/v2.14/) (LTS)
 
-Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
+For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
 {{< warning title="YugabyteDB v2.14 and v2.18 End of Maintenance" >}}
 v2.14 and v2.18 will reach end of maintenance in mid-2024. If you are running universes on these release series, you should consider upgrading those universes to the next LTS release series (v2.20).
 {{< /warning >}}
 
 For information on managing YugabyteDB releases and upgrading universes using YugabyteDB Anywhere, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).
-
-For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
 ### Upgrading YugabyteDB Anywhere
 
