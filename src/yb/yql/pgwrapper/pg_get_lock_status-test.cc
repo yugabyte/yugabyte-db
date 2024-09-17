@@ -483,6 +483,11 @@ TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
   ASSERT_OK(blocker.StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(blocker.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, locked_key));
 
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "PgGetLockStatusTest::TestGetWaitStart"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
   std::atomic<bool> txn_finished = false;
   std::thread th([&session, &table, &locked_key, &txn_finished] {
     ASSERT_OK(session.conn->FetchFormat(
@@ -490,8 +495,7 @@ TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
     txn_finished.store(true);
   });
 
-  SleepFor(1ms * kTimeMultiplier);
-
+  TEST_SYNC_POINT("PgGetLockStatusTest::TestGetWaitStart");
   auto res = ASSERT_RESULT(blocker.FetchRow<int64_t>(
     "SELECT COUNT(*) FROM yb_lock_status(null, null) WHERE waitstart IS NOT NULL"));
   // The statement above acquires two locks --
