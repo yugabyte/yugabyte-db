@@ -6221,8 +6221,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 }
 
 void CatalogManager::AcquireObjectLocks(
-    LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB* req,
-    tserver::AcquireObjectLockResponsePB* resp, rpc::RpcContext rpc) {
+    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+    rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
@@ -6230,12 +6230,12 @@ void CatalogManager::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(epoch, req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(req, resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocks(
-    LeaderEpoch epoch, const tserver::ReleaseObjectLockRequestPB* req,
-    tserver::ReleaseObjectLockResponsePB* resp, rpc::RpcContext rpc) {
+    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+    rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
@@ -6243,11 +6243,12 @@ void CatalogManager::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(epoch, req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(req, resp, std::move(rpc));
 }
 
-void CatalogManager::ExportObjectLockInfo(tserver::DdlLockEntriesPB* resp) {
-  object_lock_info_manager_->ExportObjectLockInfo(resp);
+void CatalogManager::ExportObjectLockInfo(
+    const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp) {
+  object_lock_info_manager_->ExportObjectLockInfo(tserver_uuid, resp);
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
