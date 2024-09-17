@@ -74,7 +74,7 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` connection parameter.
 
-#### Load balancing read replica clusters
+#### Load balancing for read replica clusters
 
 YugabyteDB PGX smart driver also enables load balancing across nodes in primary clusters which have an associated read replica cluster.
 
