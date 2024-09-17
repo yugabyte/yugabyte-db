@@ -8,9 +8,9 @@
   border-radius: 6px;
   text-decoration: none;
   margin: 0 10px;
-  background: #7879f1;
-  border: 1px solid #7879f1;
-  color: #fff;
+  background: #E8E9FE;
+  border: 1px solid #E8E9FE;
+  color: #4F4FA4;
   justify-content: center;
   align-items: center;
   position: relative;
@@ -23,13 +23,14 @@
   }
 
   &.tech-preview {
-    background: #ff603b;
-    border: 1px solid #ff603b;
+    background: #ffeec8;
+    border: 1px solid #ffeec8;
+    color: #9d6c00;
 
     &:hover,
     &:focus,
     &:active {
-      background: rgba(255, 96, 59, 0.8);
+      background: rgba(255, 238, 200, 0.8);
     }
   }
 
