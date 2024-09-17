@@ -19,7 +19,7 @@ On this page:
 
 ## Change log
 
-### September 6, 2024
+### September 17, 2024
 
 **New features**
 
