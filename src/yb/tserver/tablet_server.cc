@@ -1514,6 +1514,10 @@ void TabletServer::ClearAllMetaCachesOnServer() {
   client()->ClearAllMetaCachesOnServer();
 }
 
+Status TabletServer::ClearMetacache(const std::string& namespace_id) {
+  return client()->ClearMetacache(namespace_id);
+}
+
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
   std::vector<tablet::TabletStatusPB> result;
   auto peers = tablet_manager_.get()->GetTabletPeers();

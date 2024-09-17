@@ -108,6 +108,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual void ClearAllMetaCachesOnServer() = 0;
 
+  virtual Status ClearMetacache(const std::string& namespace_id) = 0;
+
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
 

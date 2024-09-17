@@ -627,6 +627,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void ClearAll();
 
+  Status ClearCacheEntries(const std::string& namespace_id);
+
   // TabletConsensusInfo is piggybacked from the response of a TServer.
   // Returns Status::OK() if and only if the meta-cache was updated.
   Status RefreshTabletInfoWithConsensusInfo(

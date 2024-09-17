@@ -388,6 +388,15 @@ message ClearAllMetaCachesOnServerRequestPB {}
 
 message ClearAllMetaCachesOnServerResponsePB {}
 
+message ClearMetacacheRequestPB {
+  // Only Ysql namespace can be cleared from metacache.
+  optional string namespace_id = 1;
+}
+
+message ClearMetacacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearUniverseUuidRequestPB {
 }
 
