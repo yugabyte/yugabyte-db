@@ -183,12 +183,14 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
+        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
+            || createForm.dbScoped;
+    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
+        && createForm.dbScoped) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
-              + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
+              + "by setting yb.xcluster.db_scoped.creationEnabled to true in the application.conf");
     }
 
     if (isDbScoped) {
@@ -1632,7 +1634,7 @@ public class DrConfigController extends AuthenticatedController {
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
     Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
-    Set<String> newDatabaseIds = setDatabasesForm.databases;
+    Set<String> newDatabaseIds = setDatabasesForm.dbs;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
     if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
@@ -1756,7 +1758,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSetDatabasesForm formData =
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), DrConfigSetDatabasesForm.class);
-    formData.databases = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.databases);
+    formData.dbs = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.dbs);
     return formData;
   }
 

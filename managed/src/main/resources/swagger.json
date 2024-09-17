@@ -5262,7 +5262,7 @@
     "DrConfigSetDatabasesForm" : {
       "description" : "dr config set databases form",
       "properties" : {
-        "databases" : {
+        "dbs" : {
           "description" : "WARNING: This is a preview API that could change. Source universe database IDs",
           "example" : "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]",
           "items" : {
@@ -16236,7 +16236,7 @@
           "$ref" : "#/definitions/BootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
         },
-        "databases" : {
+        "dbs" : {
           "description" : "WARNING: This is a preview API that could change. Source universe database IDs",
           "example" : "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]",
           "items" : {
