@@ -46,9 +46,7 @@ DEFINE_RUNTIME_bool(callhome_enabled, true,
     "Enables callhome feature that sends analytics data to yugabyte");
 
 DEFINE_RUNTIME_int32(callhome_interval_secs, 3600, "How often to run callhome");
-// TODO: We need to change this to https, it involves updating our libcurl
-// implementation to support SSL.
-DEFINE_RUNTIME_string(callhome_url, "http://diagnostics.yugabyte.com", "URL of callhome server");
+DEFINE_RUNTIME_string(callhome_url, "https://diagnostics.yugabyte.com", "URL of callhome server");
 DEFINE_RUNTIME_string(callhome_collection_level, kMediumLevel, "Level of details sent by callhome");
 
 DEFINE_RUNTIME_string(callhome_tag, "",
@@ -210,6 +208,7 @@ class GFlagsCollector : public Collector {
 
 CallHome::CallHome(server::RpcAndWebServerBase* server) : server_(server), pool_("call_home", 1) {
   scheduler_ = std::make_unique<yb::rpc::Scheduler>(&pool_.io_service());
+  curl_.set_follow_redirects(true);
 
   AddCollector<MetricsCollector>();
   AddCollector<RpcsCollector>();
