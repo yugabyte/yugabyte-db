@@ -212,9 +212,22 @@ The following table summarizes the SSL modes:
 
 YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
+## Known issues
+
+- When executing vault operations, the internal query may fail with the following error:
+
+ ```output
+ERROR: The catalog snapshot used for this transaction has been invalidated: expected: 2, got: 1: MISMATCHED_SCHEMA (SQLSTATE 40001)
+```
+
+A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
+
+In these cases, the database aborts the query and returns a 40001 error code. Operations failing with this code can be safely retried.
+
+For more info, refer to [How to troubleshoot Schema or Catalog version mismatch database errors](https://support.yugabyte.com/hc/en-us/articles/4406287763597-How-to-troubleshoot-Schema-or-Catalog-version-mismatch-database-errors)
+
 ## Learn more
 
-- [ERROR: The catalog snapshot used for this transaction has been invalidated](../../troubleshoot/ysql-issues/#ddl)
 - [Database static roles and credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-creds-rotation)
 - [Database root credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-root-rotation)
 - [Username templating](https://developer.hashicorp.com/vault/tutorials/secrets-management/username-templating)
