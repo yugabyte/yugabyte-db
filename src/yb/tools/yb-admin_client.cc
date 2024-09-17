@@ -2348,7 +2348,10 @@ ClusterAdminClient::IsYsqlMajorVersionUpgradeInitdbDone() {
 Status ClusterAdminClient::WaitForYsqlMajorVersionUpgradeInitdb() {
   for (;;) {
     auto result = IsYsqlMajorVersionUpgradeInitdbDone();
-    if (result && result->done()) {
+    if (!result.ok()) {
+      cout << "Failed to check if ysql major version upgrade initdb is done: " << result.status()
+           << std::endl;
+    } else if (result->done()) {
       if (result->has_initdb_error()) {
         return StatusFromPB(result->initdb_error().status());
       } else {

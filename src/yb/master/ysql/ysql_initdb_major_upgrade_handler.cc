@@ -212,6 +212,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::MajorVersionCatalogUpgradeFinished(
   if (upgrade_status.ok()) {
     ysql_major_upgrade_info->clear_next_ver_initdb_error();
   } else {
+    ysql_major_upgrade_info->mutable_next_ver_initdb_error()->set_code(
+        MasterErrorPB::INTERNAL_ERROR);
     StatusToPB(
         upgrade_status, ysql_major_upgrade_info->mutable_next_ver_initdb_error()->mutable_status());
   }
