@@ -36,13 +36,15 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 
 YugabyteDB smart drivers have the following key features.
 
-| Feature | Notes |
-| :--- | :--- |
-| Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
-| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
-| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
-| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
-| [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
+| Feature                                                     | Notes                                                                                                                                                                                                                                        |
+|:------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Multiple hosts                                              | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable.                                     |
+| [Cluster aware](#cluster-aware-connection-load-balancing)   | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections.                                                      |
+| [Configurable refresh interval](#servers-refresh-interval)  | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python).                                                                                              |
+| [Connection pooling](#connection-pooling)                   | Like the upstream driver, smart drivers support popular connection pooling solutions.                                                                                                                                                        |
+| [Support read-replica nodes](#support-read-replica-nodes)   | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver.                                                   |
+
 
 ## Overview
 
@@ -173,6 +175,19 @@ The appropriate connection timeout depends on the specific requirements of the a
 When a connection reaches the timeout period, the pool re-establishes a new connection to the node with the least amount of connections, which would likely be the new node. Set the timeout too long, and you risk not taking maximum advantage of a new node. For example, a timeout of 10 minutes means a new node might not receive connections for up to 10 minutes. (The node will still be used for YB-TServer operations, but not for new client connections.) Setting the timeout too short, however, degrades overall latency performance due to the high first connection latency. Experiment with different timeout values and monitor the performance of the application and the database to determine the optimal value.
 
 For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
+
+### Support read replica nodes
+
+The smart driver can already distribute connections based on topology keys specified and now it can also distribute connections to certain node types (primary or read-replica) as well.
+
+To support this feature, the load balance property accepts 5 new values:
+   - _any_ - Distribute connections equally across all nodes in the cluster, irrespective of its type (`primary` or `read-replica`). This is an alias for value _true_.
+   - _only-primary_ - Create connections equally across only the primary nodes of the cluster
+   - _only-rr_ - Create connections equally across only the read-replica nodes of the cluster
+   - _prefer-primary_ - Create connections equally across primary cluster nodes. If none available, on any available read replica node in the cluster
+   - _prefer-rr_ - Create connections equally across read replica nodes of the cluster. If none available, on any available primary cluster node
+
+The default value for the property remains the same, which is 'false'.
 
 ## Using smart drivers with YugabyteDB Managed
 
