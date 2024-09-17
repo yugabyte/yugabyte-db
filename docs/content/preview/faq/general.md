@@ -97,19 +97,17 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 
 - **Consistency vs. Latency**: YugabyteDB uses the [Raft](../../architecture/docdb-replication/raft) consensus algorithm for strong consistency in distributed systems. While this guarantees data integrity, it can result in higher write latency compared to eventually consistent databases like Cassandra.
 
-- **Increased Query Latency**: Transactions and JOINs that span multiple nodes experience inter-node latency, making queries slower than in single-node databases like PostgreSQL.
+- **Data Distribution vs Query Latency**: Transactions and JOINs that span multiple nodes experience inter-node latency, making queries slower than in single-node databases like PostgreSQL.
 
   {{<note>}}
   [Many projects](https://github.com/yugabyte/yugabyte-db?tab=readme-ov-file#current-roadmap) are currently in progress to match the performance of a single-node database.
   {{</note>}}
 
-- **Cross-Region Latency**: In multi-region or globally distributed setups, YugabyteDB replicates data across regions to ensure availability and resilience. However, this can lead to higher write latency due to cross-region coordination.
+- **Multi-Region vs Latency**: In multi-region or globally distributed setups, YugabyteDB replicates data across regions to ensure availability and resilience. However, this can lead to higher write latency due to cross-region coordination.
 
-- **Resource Requirements**: Being a distributed database, YugabyteDB demands more hardware and networking resources to maintain high availability and fault tolerance compared to traditional monolithic databases that run on a single machine.
+- **Availability vs Resource Requirements**: Being a distributed database, YugabyteDB demands more hardware and networking resources to maintain high availability and fault tolerance compared to traditional monolithic databases that run on a single machine.
 
-- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
-
-{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
+- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
 
 ### What is a YugabyteDB universe
 
