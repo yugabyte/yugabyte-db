@@ -238,6 +238,10 @@ static WindowFunc * HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
 static WindowFunc * HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarMinWindowOperator(const bson_value_t *opValue,
+												  WindowOperatorContext *context);
+static WindowFunc * HandleDollarMaxWindowOperator(const bson_value_t *opValue,
+												  WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -328,7 +332,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$max",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarMaxWindowOperator
 	},
 	{
 		.operatorName = "$maxN",
@@ -340,7 +344,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$min",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarMinWindowOperator
 	},
 	{
 		.operatorName = "$minN",
@@ -3060,4 +3064,37 @@ HandleDollarConstFillWindowOperator(const bson_value_t *opValue,
 
 	windowFunc->args = list_make2(accumFunc, filledExpr);
 	return windowFunc;
+}
+
+
+/*
+ * Handle the $min window operator. This uses the existing
+ * `bsonmin` aggregate function.
+ *
+ * TODO: This is just a quick implementation. Later add inverse transition
+ * to make it performant for moving windows
+ */
+static WindowFunc *
+HandleDollarMinWindowOperator(const bson_value_t *opValue,
+							  WindowOperatorContext *context)
+{
+	/*reuse the logic of min in the group stage.*/
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonMinAggregateFunctionOid());
+}
+
+
+/*
+ * Handle the $max window operator. This uses the existing
+ * `bsonmax` aggregate function.
+ *
+ * TODO: This is just a quick implementation. Later add inverse transition
+ * to make it performant for moving windows
+ */
+static WindowFunc *
+HandleDollarMaxWindowOperator(const bson_value_t *opValue,
+							  WindowOperatorContext *context)
+{
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonMaxAggregateFunctionOid());
 }
