@@ -126,6 +126,10 @@ service TabletServerService {
   rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
       returns (ClearAllMetaCachesOnServerResponsePB);
 
+  // Clear metacache entries (tables and tablets) that belong to the provided namespace.
+  rpc ClearMetacache(ClearMetacacheRequestPB)
+      returns (ClearMetacacheResponsePB);
+
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 
   rpc AcquireObjectLocks(AcquireObjectLockRequestPB)

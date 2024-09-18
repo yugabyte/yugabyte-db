@@ -785,12 +785,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> dbScopedXClusterEnabled =
+  public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
-          "yb.xcluster.db_scoped.enabled",
+          "yb.xcluster.db_scoped.creationEnabled",
           ScopeType.GLOBAL,
-          "Flag to enable db scoped xcluster replication",
-          "If flag is enabled, allows DR support with db scoped xcluster replication",
+          "Flag to enable db scoped xCluster replication creation",
+          "If flag is enabled, allows DR creation with db scoped xCluster replication",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> xclusterEnableAutoFlagValidation =

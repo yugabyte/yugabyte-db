@@ -122,7 +122,7 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
     targetTableMissing
   } = categorizedNeedBootstrapPerTableResponse;
   const skipBootstrap = watch('skipBootstrap');
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
 
   const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
     (config: any) =>

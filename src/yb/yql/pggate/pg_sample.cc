@@ -20,7 +20,14 @@
 #include <vector>
 #include <utility>
 
+#include "yb/common/read_hybrid_time.h"
+
+#include "yb/util/atomic.h"
+
 #include "yb/gutil/casts.h"
+
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
 
 namespace yb::pggate {
 
@@ -30,8 +37,9 @@ namespace yb::pggate {
 class PgSamplePicker : public PgSelectIndex {
  public:
   PgSamplePicker(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local)
-      : PgSelectIndex(std::move(pg_session), table_id, is_region_local) {}
+      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local,
+      HybridTime read_time)
+      : PgSelectIndex(std::move(pg_session), table_id, is_region_local), read_time_(read_time) {}
 
   Status Prepare() override {
     target_ = PgTable(VERIFY_RESULT(LoadTable()));
@@ -39,6 +47,9 @@ class PgSamplePicker : public PgSelectIndex {
     auto read_op = ArenaMakeShared<PgsqlReadOp>(
         arena_ptr(), &arena(), *target_, is_region_local_,
         pg_session_->metrics().metrics_capture());
+    // Use the same time as PgSample. Otherwise, ybctids may be gone
+    // when PgSample tries to fetch the rows.
+    read_op->set_read_time(ReadHybridTime::SingleTime(read_time_));
     read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
     doc_op_ = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
     return Status::OK();
@@ -103,6 +114,7 @@ class PgSamplePicker : public PgSelectIndex {
   }
 
   Result<EstimatedRowCount> GetEstimatedRowCount() const {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_after_table_analyze_ms);
     return down_cast<const PgDocReadOp*>(doc_op_.get())->GetEstimatedRowCount();
   }
 
@@ -113,12 +125,15 @@ class PgSamplePicker : public PgSelectIndex {
   bool reservoir_ready_ = false;
   // Vector of Slices pointing to the values in the reservoir
   std::vector<Slice> ybctids_;
+  // Use the same read time on the ybctid sampler as the row fetcher.
+  HybridTime read_time_;
 };
 
 PgSample::PgSample(
     PgSession::ScopedRefPtr pg_session,
-    int targrows, const PgObjectId& table_id, bool is_region_local)
-    : PgDmlRead(pg_session, table_id, is_region_local), targrows_(targrows) {}
+    int targrows, const PgObjectId& table_id, bool is_region_local, HybridTime read_time)
+    : PgDmlRead(pg_session, table_id, is_region_local), targrows_(targrows),
+      read_time_(read_time) {}
 
 Status PgSample::Prepare() {
   // Setup target and bind descriptor.
@@ -127,15 +142,22 @@ Status PgSample::Prepare() {
 
   // Setup sample picker as secondary index query
   secondary_index_query_ = std::make_unique<PgSamplePicker>(
-      pg_session_, table_id_, is_region_local_);
+      pg_session_, table_id_, is_region_local_, read_time_);
   RETURN_NOT_OK(secondary_index_query_->Prepare());
 
   // Prepare read op to fetch rows
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
       arena_ptr(), &arena(), *target_, is_region_local_,
       pg_session_->metrics().metrics_capture());
+  // Clamp the read uncertainty window to avoid read restart errors.
+  read_op->set_read_time(ReadHybridTime::SingleTime(read_time_));
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
+
+  VLOG_WITH_FUNC(3)
+    << "Sampling table: " << target_->table_name().table_name()
+    << " for " << targrows_ << " rows"
+    << " using read time: " << read_time_;
 
   return Status::OK();
 }

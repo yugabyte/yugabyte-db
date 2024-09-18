@@ -20,6 +20,7 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertThrows;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import java.sql.BatchUpdateException;
 import java.sql.Connection;
@@ -161,6 +162,11 @@ public class TestPgBatch extends BasePgSQLTest {
       // YB treats this as batched execution mode.
       for (int i = 1; i <= 2; i++) {
         s1.addBatch(String.format("UPDATE t SET v=2 WHERE k=%d", i));
+      }
+      // Disable heartbeats so that catalog version is not propagated.
+      for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            hp, "TEST_tserver_disable_heartbeat", "true", true));
       }
       // Causes a schema version mismatch error on the next UPDATE statement.
       // Execute ALTER in a different session c2 so as not to invalidate

@@ -941,12 +941,12 @@ public class UniverseCRUDHandler {
               // Default service scope should be 'Namespaced'
               primaryIntent.defaultServiceScopeAZ = false;
             }
-            // Validate service endpoints
-            try {
-              KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
-            } catch (IOException e) {
-              throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
-            }
+          }
+          // Validate service endpoints
+          try {
+            KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
+          } catch (IOException e) {
+            throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
           }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {

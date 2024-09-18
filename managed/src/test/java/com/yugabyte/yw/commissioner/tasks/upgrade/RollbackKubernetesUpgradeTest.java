@@ -46,8 +46,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.RollbackAutoFlags,
           TaskType.KubernetesCommandExecutor,

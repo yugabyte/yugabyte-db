@@ -100,6 +100,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void ClearAllMetaCachesOnServer() override;
 
+  Status ClearMetacache(const std::string& namespace_id) override;
+
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 

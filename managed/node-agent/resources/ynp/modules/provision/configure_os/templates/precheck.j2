@@ -89,9 +89,10 @@ fi
 
 threshold=49 #Gigabytes
 # Convert the space-separated string to an array in bash
-IFS=' ' read -r -a mount_points_array <<< {{ mount_points }}
+mount_points="{{ mount_points | default('') | trim }}"
+IFS=' ' read -ra mount_points_array <<< "$mount_points"
 # Verify each mount point
-for mount_point in "${mount_point_array[@]}"; do
+for mount_point in "${mount_points_array[@]}"; do
     if [ -d "$mount_point" ]; then
         if [ -w "$mount_point" ] && [ $(( $(stat -c %a "$mount_point") % 10 & 2 )) -ne 0 ]; then
             result="PASS"
@@ -111,19 +112,21 @@ for mount_point in "${mount_point_array[@]}"; do
     fi
     add_result "$mount_point Check" "$result" "$message"
 
-    # Get the available disk space in gigabytes.
-    free_space_gb=$(df -BG --output=avail "$MOUNT_POINT" | tail -n 1 | tr -d 'G ')
-    if [ "$free_space_gb" -gt "$threshold" ]; then
-        result="PASS"
-        message="Sufficient disk space available: ${AVAILABLE}G"
-        echo "[PASS] $message"
-    else
-        result="FAIL"
-        message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
-        echo "[FAIL] $message"
-        any_fail=1
+    if [ -d "$mount_point" ]; then
+        # Get the available disk space in gigabytes.
+        free_space_gb=$(df -BG --output=avail "$mount_point" | tail -n 1 | tr -d 'G ')
+        if [ "$free_space_gb" -gt "$threshold" ]; then
+            result="PASS"
+            message="Sufficient disk space available: ${free_space_gb}G"
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+        add_result "$mount_point Free space check" "$result" "$message"
     fi
-    add_result "$mount_point Free space check" "$result" "$message"
 done
 
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')

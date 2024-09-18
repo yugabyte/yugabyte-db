@@ -117,6 +117,8 @@ class MiniMaster {
 
   FsManager& fs_manager() const;
 
+  std::string ToString() const;
+
  private:
   Status StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
                                        const std::vector<uint16_t>& peer_ports);

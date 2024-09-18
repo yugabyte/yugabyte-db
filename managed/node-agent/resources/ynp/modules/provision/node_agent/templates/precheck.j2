@@ -3,6 +3,14 @@ yba_url={{ url }}
 customer_uuid={{ customer_uuid }}
 token={{ api_key }}
 provider_id={{ provider_id }}
+provider_name={{ provider_name }}
+
+_get_provider_by_name_url() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_name=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers?name={$provider_name}"
+}
 
 _get_nodes_in_provider() {
     local yba_url=$1
@@ -60,12 +68,25 @@ else
     add_result "Memory Usage Check" "FAIL" "MemoryCurrent is not greater than 0: $memory"
 fi
 
+if [ -z "$provider_id" ]; then
+    # Perform GET request to fetch provider to get provider_uuid
+    get_provider_url=$(_get_provider_by_name_url $yba_url $customer_uuid $provider_name)
+    response=$(curl -s -w "%{http_code}" -o response_provider.json -X GET \
+        "${header_options[@]}" $tls_verify_option "$get_provider_url")
+    http_status="${response:(-3)}"
+    if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
+        echo "HTTP GET request successful. Processing response for provider"
+        provider_id=$(awk -F'"uuid":' '{print $2}' response_provider.json | awk -F'"' '{print $2}' | head -n 1)
+    fi
+fi
+
 # Perform GET request to fetch all the nodes associated with provider
 get_nodes_in_provider=$(_get_nodes_in_provider $yba_url $customer_uuid $provider_id)
 response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
     "${header_options[@]}" $tls_verify_option "$get_nodes_in_provider")
 http_status="${response:(-3)}"
 response_body=$(<response.txt)
+matched=false
 if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
     echo "HTTP GET request successful. Processing response..."
 
@@ -82,7 +103,7 @@ else
     add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
 fi
 
-if [[ "$matched" == false ]]; then
+if [[ $matched == false ]]; then
     echo "Node addition to the provider failed: {{ node_ip }}"
     add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
 else

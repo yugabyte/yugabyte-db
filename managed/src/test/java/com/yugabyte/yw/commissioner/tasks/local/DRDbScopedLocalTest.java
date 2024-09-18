@@ -67,7 +67,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
-        GlobalConfKeys.dbScopedXClusterEnabled.getKey(),
+        GlobalConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
 
@@ -283,10 +283,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     List<String> updateNamespaceNames = Arrays.asList("dbcolocated");
     DrConfigSetDatabasesForm setDatabasesFormData = new DrConfigSetDatabasesForm();
-    setDatabasesFormData.databases = new HashSet<String>();
+    setDatabasesFormData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (updateNamespaceNames.contains(namespace.name)) {
-        setDatabasesFormData.databases.add(namespace.namespaceUUID.toString());
+        setDatabasesFormData.dbs.add(namespace.namespaceUUID.toString());
       }
     }
 
