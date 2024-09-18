@@ -3685,7 +3685,7 @@ class ControlScript(object):
     def callhome(self):
         if self.configs.saved_data.get("callhome"):
             try:
-                url = "http://diagnostics.yugabyte.com"
+                url = "https://diagnostics.yugabyte.com"
                 headers = {
                     "Content-Type": "application/json",
                     "User-Agent": "Mozilla",
