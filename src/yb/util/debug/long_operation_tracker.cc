@@ -116,12 +116,12 @@ class LongOperationTrackerHelper {
 
       TrackedOperationPtr operation = queue_.top();
       queue_.pop();
-      if (!operation.unique()) {
+      if (operation.use_count() > 1) {
         lock.unlock();
         auto stack = DumpThreadStack(operation->thread_id);
         // Make sure the task did not complete while we were dumping the stack. Else we could get
         // some other innocent stack.
-        if (!operation.unique()) {
+        if (operation.use_count() > 1) {
           LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
                        << " in thread " << operation->thread_id << ":\n"
                        << stack;
