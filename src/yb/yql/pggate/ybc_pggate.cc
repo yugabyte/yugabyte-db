@@ -1354,8 +1354,8 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
   return ToYBCStatus(pgapi->DmlAssignColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector) {
-  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vector));
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector) {
+  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vec_att_no, vector));
 }
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size) {

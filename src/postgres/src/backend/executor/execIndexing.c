@@ -515,13 +515,13 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 			   indexRelation->rd_index->indisready);
 
 		/*
-		 * No need to update YugaByte primary key which is intrinic part of
-		 * the base table.
+		 * No need to update YugaByte primary key or a covered index
+		 * since they are share the same storage as the base table.
 		 *
 		 * TODO(neil) The following YB check might not be needed due to later work on indexes.
 		 * We keep this check for now as this bugfix will be backported to ealier releases.
 		 */
-		if (isYBRelation && indexRelation->rd_index->indisprimary &&
+		if (isYBRelation && YBIsCoveredByMainTable(indexRelation) &&
 			!YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
 			continue;
 
@@ -677,7 +677,7 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 		 * - As a result, we don't need distinguish between Postgres and YugaByte here.
 		 *   I update this code only for clarity.
 		 */
-		if (isYBRelation && indexRelation->rd_index->indisprimary &&
+		if (isYBRelation && YBIsCoveredByMainTable(indexRelation) &&
 			!YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
 			continue;
 

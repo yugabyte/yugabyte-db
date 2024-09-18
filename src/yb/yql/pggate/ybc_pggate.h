@@ -530,7 +530,7 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value);
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector);
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector);
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size);
 
