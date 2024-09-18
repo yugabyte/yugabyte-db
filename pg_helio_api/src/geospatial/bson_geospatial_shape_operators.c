@@ -136,6 +136,12 @@ DatumWithDefaultSRID(Datum datum)
 const ShapeOperator *
 GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePointsOut)
 {
+	if (IsBsonValueEmptyDocument(shapeValue))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("geo query doesn't have any geometry")));
+	}
+
 	bson_iter_t shapeIter;
 	BsonValueInitIterator(shapeValue, &shapeIter);
 

@@ -46,9 +46,12 @@ static inline const char *
 BaseGeoSubdivideQuery(const char *shape)
 {
 	StringInfo baseQuery = makeStringInfo();
-	appendStringInfo(baseQuery, "SELECT %s.ST_SUBDIVIDE(%s.ST_SEGMENTIZE($1::%s.%s"
-								", $2)::%s.geometry, $3)::%s.%s",
-					 PostgisSchemaName, PostgisSchemaName, PostgisSchemaName, shape,
+	appendStringInfo(baseQuery,
+					 "SELECT %s.ST_SUBDIVIDE("
+					 "%s.ST_MAKEVALID(%s.ST_SEGMENTIZE($1::%s.%s, $2)::%s.geometry),"
+					 "$3)::%s.%s",
+					 PostgisSchemaName, PostgisSchemaName, PostgisSchemaName,
+					 PostgisSchemaName, shape,
 					 PostgisSchemaName, PostgisSchemaName, shape);
 
 	return baseQuery->data;
