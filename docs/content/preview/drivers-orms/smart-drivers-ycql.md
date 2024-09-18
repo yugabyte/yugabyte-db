@@ -29,7 +29,7 @@ Yugabyte has extended the upstream Cassandra drivers with specific changes to le
 | [YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) | [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) | [Documentation](../nodejs/ycql/) |
 | [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) | [DataStax C++ Driver](https://github.com/datastax/cpp-driver) | [Documentation](../cpp/ycql/) |
 | [YugabyteDB C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) | [DataStax C# Driver](https://github.com/datastax/csharp-driver) | [Documentation](../csharp/ycql/) |
-| [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) | [DataStax Ruby Driver](https://github.com/datastax/ruby-driver) | [Documentation](../rust/yb-rust-postgres) |
+| [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver) | [DataStax Ruby Driver](https://github.com/datastax/ruby-driver) | [Documentation](../ruby/ysql) |
 
 ## Key features
 

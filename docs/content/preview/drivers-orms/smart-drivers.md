@@ -182,10 +182,10 @@ The smart driver can already distribute connections based on topology keys speci
 
 To support this feature, the load balance property accepts 5 new values:
    - _any_ - Distribute connections equally across all nodes in the cluster, irrespective of its type (`primary` or `read-replica`). This is an alias for value _true_.
-   - _only-primary_ - Create connections equally across only the primary nodes of the cluster
-   - _only-rr_ - Create connections equally across only the read-replica nodes of the cluster
-   - _prefer-primary_ - Create connections equally across primary cluster nodes. If none available, on any available read replica node in the cluster
-   - _prefer-rr_ - Create connections equally across read replica nodes of the cluster. If none available, on any available primary cluster node
+   - _only-primary_ - Create connections equally across only the primary nodes of the cluster. Fail, if none available.
+   - _only-rr_ - Create connections equally across only the read-replica nodes of the cluster. Fail, if none available.
+   - _prefer-primary_ - Create connections equally across primary cluster nodes. If none available, create them equally across the available read replica nodes in the cluster.
+   - _prefer-rr_ - Create connections equally across read replica nodes of the cluster. If none available, create them equally across the available primary cluster nodes.
 
 The default value for the property remains the same, which is 'false'.
 
