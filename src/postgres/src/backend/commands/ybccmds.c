@@ -1115,8 +1115,7 @@ static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
 						YBCPgStatement* rollbackHandle,
-						bool isPartitionOfAlteredTable,
-						int rewrite)
+						bool isPartitionOfAlteredTable)
 {
 	Oid relationId = RelationGetRelid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1316,13 +1315,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 								cmd->name, RelationGetRelationName(rel))));
 				}
 				ReleaseSysCache(typeTuple);
-
-				/*
-				 * If this ALTER TYPE operation doesn't require a rewrite
-				 * we do not need to increment the schema version.
-				 */
-				if (!(rewrite & AT_REWRITE_COLUMN_REWRITE))
-					break;
 			}
 			/*
 			 * For these cases a YugaByte metadata does not need to be updated
@@ -1533,8 +1525,7 @@ YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YBCPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable,
-					 int rewriteState)
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1562,7 +1553,7 @@ YBCPrepareAlterTable(List** subcmds,
 			handles = YBCPrepareAlterTableCmd(
 						(AlterTableCmd *) lfirst(lcmd), rel, handles,
 						&col, &needsYBAlter, rollbackHandle,
-						isPartitionOfAlteredTable, rewriteState);
+						isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);

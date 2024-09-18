@@ -821,9 +821,9 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
-void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
-                                              const YBCPgOid table_oid) {
-  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
+void YBCPgAlterTableInvalidateTableByOid(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_relfilenode_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
