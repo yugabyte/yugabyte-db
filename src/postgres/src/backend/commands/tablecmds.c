@@ -621,7 +621,7 @@ static void ATPrepSetAccessMethod(AlteredTableInfo *tab, Relation rel, const cha
 static bool ATPrepChangePersistence(Relation rel, bool toLogged);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 								const char *tablespacename, LOCKMODE lockmode,
-								bool cascade);
+								bool yb_cascade);
 static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode);
 static void ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace);
 static void ATExecSetRelOptions(Relation rel, List *defList,
@@ -15101,7 +15101,8 @@ ATPrepSetAccessMethod(AlteredTableInfo *tab, Relation rel, const char *amname)
  */
 static void
 ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
-					const char *tablespacename, LOCKMODE lockmode, bool cascade)
+					const char *tablespacename, LOCKMODE lockmode,
+					bool yb_cascade)
 {
 	Oid			tablespaceId;
 
@@ -15129,7 +15130,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 				 errmsg("cannot set tablespace for primary key index")));
 	}
 
-	if (IsYugaByteEnabled() && !cascade && MyDatabaseColocated &&
+	if (IsYugaByteEnabled() && !yb_cascade && MyDatabaseColocated &&
 		YbGetTableProperties(rel)->is_colocated)
 	{
 		/*
