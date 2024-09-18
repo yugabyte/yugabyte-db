@@ -43,7 +43,7 @@ YugabyteDB smart drivers have the following key features.
 | [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
-| [Support read-replica nodes](#support-read-replica-nodes) | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver. |
+| [Support Read Replica nodes](#support-read-replica-nodes) | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver. |
 
 
 ## Overview
@@ -176,18 +176,70 @@ When a connection reaches the timeout period, the pool re-establishes a new conn
 
 For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
 
-### Support read replica nodes
+### Support Read Replica nodes
 
-The smart driver can already distribute connections based on topology keys specified and now it can also distribute connections to certain node types (primary or read-replica) as well.
+If a YugabyteDB cluster has a Read Replica cluster associated with it, then some applications may desire to load balance their connections only to the Read Replica servers or only to the primary cluster while sharing regions or zones.
+
+To support this use case, the smart driver can now distribute connections based on the node types (primary or read-replica).
 
 To support this feature, the load balance property accepts 5 new values:
    - _any_ - Distribute connections equally across all nodes in the cluster, irrespective of its type (`primary` or `read-replica`). This is an alias for value _true_.
    - _only-primary_ - Create connections equally across only the primary nodes of the cluster. Fail, if none available.
    - _only-rr_ - Create connections equally across only the read-replica nodes of the cluster. Fail, if none available.
-   - _prefer-primary_ - Create connections equally across primary cluster nodes. If none available, create them equally across the available read replica nodes in the cluster.
-   - _prefer-rr_ - Create connections equally across read replica nodes of the cluster. If none available, create them equally across the available primary cluster nodes.
+   - _prefer-primary_ - Create connections equally across primary cluster nodes. If none available, create them equally across the available Read Replica nodes in the cluster.
+   - _prefer-rr_ - Create connections equally across Read Replica nodes of the cluster. If none available, create them equally across the available primary cluster nodes.
 
 The default value for the property remains the same, which is 'false'.
+
+#### Example
+
+Let us consider a cluster with 3 primary nodes spread across 3 zones and with one node each in zoneA, zoneB and zoneC. And 3 read-replica nodes with one node in each of zoneB, zoneC and zoneD.
+
+We will see how various values of the load balance related properties affect the node selection for new connections. (The property names used below are applicable for JDBC Smart driver)
+
+<table>
+    <tr>
+        <td rowspan="3">load-balance ↓</td>
+        <td colspan="3">Order of node selection for new connections</td>
+    </tr>
+    <tr>
+        <td>topology-keys is not specified</td>
+        <td colspan="2">topology-keys = "zoneA:1,zoneB:2"</td>
+    </tr>
+    <tr>
+        <td>fallback-to-topology-keys-only is ignored</td>
+        <td>fallback-to-topology-keys-only = false (default)</td>
+        <td>fallback-to-topology-keys-only = true</td>
+    </tr>
+    <tr>
+        <td>true or any</td>
+        <td>1. Any nodes in entire cluster (all zones)</td>
+        <td>1. Any nodes in zoneA <br/>2. If none, then any nodes in zoneB<br/>3. If none, then any nodes in entire cluster (all zones)</td>
+        <td>1. Any nodes in zoneA<br/>2. If none, then any nodes in zoneB<br/>3. If none, fail</td>
+    </tr>
+    <tr>
+        <td>only-primary</td>
+        <td>1. Primary nodes in entire cluster (all zones)<br/>2. If none, fail</td>
+        <td>1. Primary nodes in zoneA<br/>2. If none, then primary nodes in zoneB <br/>3. If none, then primary nodes in entire cluster (all zones)<br/>4. If none, fail</td>
+        <td>1. Primary nodes in zoneA<br/>2. If none, then primary nodes in zoneB<br/>3. If none, fail</td>
+    </tr>
+    <tr>
+        <td>only-rr</td>
+        <td>1. Read Replica nodes in entire cluster (all zones)<br/>2. If none, fail</td>
+        <td>1. Read Replica nodes in zoneB<br/>2. If none, Read Replica nodes in entire cluster (all zones)<br/>3. If none, fail</td>
+        <td>1. Read Replica nodes in zoneB<br/>2. If none, fail</td>
+    </tr>
+    <tr>
+        <td>prefer-primary</td>
+        <td>1. Primary nodes in entire cluster<br/>2. If none, then Read Replica nodes in entire cluster</td>
+        <td colspan="2">1. Primary nodes in zoneA<br/>2. If none, primary nodes in zoneB<br/>3. If none, then primary nodes in entire cluster<br/>4. If none, then Read Replica nodes in entire cluster</td>
+    </tr>
+    <tr>
+        <td>prefer-rr</td>
+        <td>1. Read Replica nodes in entire cluster<br/>2. If none, then primary nodes in entire cluster</td>
+        <td colspan="2">1. Read Replica nodes in zoneB<br/>2. If none, Read Replica nodes in entire cluster<br/>3. If none, then primary nodes in entire cluster</td>
+    </tr>
+</table>
 
 ## Using smart drivers with YugabyteDB Aeon
 
