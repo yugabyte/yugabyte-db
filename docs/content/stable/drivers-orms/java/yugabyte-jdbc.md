@@ -126,7 +126,7 @@ The following table describes the connection parameters required to connect, inc
 | `fallback-to-topology-keys-only` | Applicable only when `topology-keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology-keys` | Empty
 | `failed-host-reconnect-delay-secs` | The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if the time specified via this property has elapsed since the time it was last marked as a failed host. | 5 
 
-Starting with version 42.3.5-yb-7, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'
+Starting with version 42.3.5-yb-7, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'. See the [smart driver page](../smart-drivers.md#read-replica-cluster-aware) for usage of these values.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 

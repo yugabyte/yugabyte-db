@@ -43,7 +43,7 @@ YugabyteDB smart drivers have the following key features.
 | [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
-| [Support Read Replica nodes](#support-read-replica-nodes) | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver. |
+| [Node type aware](#read-replica-cluster-aware) | The driver now enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver. |
 
 
 ## Overview
@@ -176,7 +176,7 @@ When a connection reaches the timeout period, the pool re-establishes a new conn
 
 For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
 
-### Support Read Replica nodes
+### Read Replica Cluster aware
 
 If a YugabyteDB cluster has a Read Replica cluster associated with it, then some applications may desire to load balance their connections only to the Read Replica servers or only to the primary cluster while sharing regions or zones.
 
