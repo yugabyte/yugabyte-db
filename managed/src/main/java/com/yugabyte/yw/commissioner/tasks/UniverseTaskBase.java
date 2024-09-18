@@ -2065,11 +2065,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
-    if (!getInstanceOf(NodeAgentClient.class).isClientEnabled(universe)) {
+    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
+    if (nodeAgentEnabler.shouldMarkUniverse(universe)) {
+      // Mark the universe.
       log.info(
-          "Skipping node agent installation for universe {} as client is not enabled",
+          "Skipping node agent installation for universe {} as it is not enabled",
           universe.getUniverseUUID());
-      getInstanceOf(NodeAgentEnabler.class).markUniverse(universe.getUniverseUUID());
+      nodeAgentEnabler.markUniverse(universe.getUniverseUUID());
       return subTaskGroup;
     }
     Customer customer = Customer.get(universe.getCustomerId());

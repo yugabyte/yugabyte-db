@@ -1379,4 +1379,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " local universe details",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowNodeAgentClientMixMode =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.allow_mix_mode",
+          ScopeType.UNIVERSE,
+          "Allow Mix Mode Operations in Universe",
+          "Allow node agent and SSH communications to nodes at the same time for the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
