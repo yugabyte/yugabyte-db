@@ -52,15 +52,15 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
 | Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
 
-| Planned Feature | Flag/Configuration Parameter | EA | GA |
-| :--- | :--- | :--- | :--- |
-| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 | |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 | |
-| Parallel query | | Planned | |
+| Planned Feature | Flag/Configuration Parameter | EA |
+| :--- | :--- | :--- |
+| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 |
+| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 |
+| Parallel query | | Planned |
 
 ### Released
 
-The following features are currently available.
+The following features are currently available in EPCM.
 
 #### Read committed
 

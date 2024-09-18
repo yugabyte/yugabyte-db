@@ -58,7 +58,7 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 
 ### Released
 
-The following features are currently available.
+The following features are currently available in EPCM.
 
 #### Read committed
 
