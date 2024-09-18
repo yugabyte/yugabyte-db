@@ -558,7 +558,7 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 											bool skip_copy_split_options);
 static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
-static void YbATInvalidateTableCacheAfterAlter(List *handles);
+static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds);
 /* ----------------------------------------------------------------
  *		DefineRelation
  *				Creates a new relation.
@@ -3972,7 +3972,7 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Phase 2: update system catalogs */
 	List *rollbackHandles = NIL;
-	List *volatile handles = NIL;
+	List *volatile ybAlteredTableIds = NIL;
 	PG_TRY();
 	{
 		/*
@@ -3980,11 +3980,12 @@ ATController(AlterTableStmt *parsetree,
 		 * If Phase 3 fails, rollbackHandle will specify how to rollback the
 		 * changes done to DocDB.
 		 */
-		ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandles, &handles);
+		ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandles,
+						   &ybAlteredTableIds);
 	}
 	PG_CATCH();
 	{
-		YbATInvalidateTableCacheAfterAlter(handles);
+		YbATInvalidateTableCacheAfterAlter(ybAlteredTableIds);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3993,7 +3994,7 @@ ATController(AlterTableStmt *parsetree,
 	PG_TRY();
 	{
 		ATRewriteTables(parsetree, &wqueue, lockmode);
-		YbATInvalidateTableCacheAfterAlter(handles);
+		YbATInvalidateTableCacheAfterAlter(ybAlteredTableIds);
 	}
 	PG_CATCH();
 	{
@@ -4011,7 +4012,7 @@ ATController(AlterTableStmt *parsetree,
 				YBCExecAlterTable(handle, RelationGetRelid(rel));
 			}
 		}
-		YbATInvalidateTableCacheAfterAlter(handles);
+		YbATInvalidateTableCacheAfterAlter(ybAlteredTableIds);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -4345,7 +4346,7 @@ static void
 ATRewriteCatalogs(List **wqueue,
 				  LOCKMODE lockmode,
 				  List **rollbackHandles,
-				  List *volatile *handles)
+				  List *volatile *ybAlteredTableIds)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4362,12 +4363,13 @@ ATRewriteCatalogs(List **wqueue,
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
-	*handles = YBCPrepareAlterTable(info->subcmds,
+	List *handles = YBCPrepareAlterTable(info->subcmds,
 										 AT_NUM_PASSES,
 										 main_relid,
 										 &rollbackHandle,
-										 false /* isPartitionOfAlteredTable */,
-										 info->rewrite);
+										 false /* isPartitionOfAlteredTable */);
+	if (handles)
+		*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, main_relid);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -4391,13 +4393,14 @@ ATRewriteCatalogs(List **wqueue,
 												   AT_NUM_PASSES,
 												   childrelid,
 												   &childRollbackHandle,
-												   true /*isPartitionOfAlteredTable */,
-												   info->rewrite);
+												   true /*isPartitionOfAlteredTable */);
+		if (child_handles)
+			*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, childrelid);
 		ListCell *listcell = NULL;
 		foreach(listcell, child_handles)
 		{
 			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
-			*handles = lappend(*handles, child);
+			handles = lappend(handles, child);
 		}
 		if (childRollbackHandle)
 			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
@@ -4426,7 +4429,7 @@ ATRewriteCatalogs(List **wqueue,
 		 */
 		if (pass == AT_PASS_ADD_INDEX)
 		{
-			foreach(lc, *handles)
+			foreach(lc, handles)
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCExecAlterTable(handle, main_relid);
@@ -4497,7 +4500,7 @@ ATRewriteCatalogs(List **wqueue,
 		 */
 		if (yb_table_cloned)
 		{
-			foreach (lc, *handles)
+			foreach (lc, handles)
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCPgAlterTableSetTableId(
@@ -19301,9 +19304,9 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
  * Used in YB to re-invalidate table cache entries at the end of an ALTER TABLE
  * operation.
  */
-static void YbATInvalidateTableCacheAfterAlter(List *handles)
+static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds)
 {
-	if (YbDdlRollbackEnabled() && handles)
+	if (YbDdlRollbackEnabled() && ybAlteredTableIds)
 	{
 		/*
 		 * As part of DDL transaction verification, we may have incremented
@@ -19311,10 +19314,23 @@ static void YbATInvalidateTableCacheAfterAlter(List *handles)
 		 * the table cache entries of the affected tables.
 		 */
 		ListCell *lc = NULL;
-		foreach(lc, handles)
+		foreach(lc, ybAlteredTableIds)
 		{
-			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
-			HandleYBStatus(YBCPgAlterTableInvalidateTableCacheEntry(handle));
+			Oid relid = lfirst_oid(lc);
+			Relation rel = RelationIdGetRelation(relid);
+			/*
+			 * The relation may no longer exist if it was dropped as part of
+			 * a legacy rewrite operation. We can skip invalidation in that
+			 * case.
+			 */
+			if (!rel)
+			{
+				Assert(!yb_enable_alter_table_rewrite);
+				continue;
+			}
+			YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOidByRelid(relid),
+				YbGetRelfileNodeIdFromRelId(relid));
+			RelationClose(rel);
 		}
 	}
 }
