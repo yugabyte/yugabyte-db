@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/yql/pggate/pg_select_index.h"
 
 
@@ -28,7 +30,8 @@ class PgSample : public PgDmlRead {
   PgSample(PgSession::ScopedRefPtr pg_session,
            const int targrows,
            const PgObjectId& table_id,
-           bool is_region_local);
+           bool is_region_local,
+           HybridTime read_time);
   virtual ~PgSample();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SAMPLE; }
@@ -50,6 +53,9 @@ class PgSample : public PgDmlRead {
  private:
   // How many sample rows are needed
   const int targrows_;
+
+  // Holds the read time used for executing ANALYZE on the table.
+  HybridTime read_time_;
 };
 
 // Internal class to work as the secondary_index_query_ to select sample tuples.
@@ -87,6 +93,9 @@ class PgSamplePicker : public PgSelectIndex {
   bool reservoir_ready_ = false;
   // Vector of Slices pointing to the values in the reservoir
   std::vector<Slice> ybctids_;
+
+  // Use the same read time on the ybctid sampler as the row fetcher.
+  HybridTime read_time_;
 };
 
 }  // namespace pggate
