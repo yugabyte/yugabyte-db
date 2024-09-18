@@ -225,7 +225,7 @@ Regardless of how much data you decide to migrate, you can choose from the follo
 For more details, see [Offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/).
 {{</lead>}}
 
-**Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the new YugabyteDB while the application is still live, and a final switchover is made after the migration is complete.
+**Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the new YugabyteDB cluster while the application is still live, and a final switchover is made after the migration is complete.
 
 {{<lead link="/preview/yugabyte-voyager/migrate/live-migrate/">}}
 For more details, see [Live migration](/preview/yugabyte-voyager/migrate/live-migrate/).

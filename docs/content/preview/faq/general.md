@@ -107,7 +107,9 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 
 - **Availability vs Resource Requirements**: Being a distributed database, YugabyteDB demands more hardware and networking resources to maintain high availability and fault tolerance compared to traditional monolithic databases that run on a single machine.
 
-- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
+- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
+
+    {{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
 
 ### What is a YugabyteDB universe
 
