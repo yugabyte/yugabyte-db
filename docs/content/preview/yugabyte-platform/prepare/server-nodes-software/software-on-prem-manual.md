@@ -142,7 +142,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
-    If you are using a CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
+    If you are using a RHEL CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
 
     ```sh
     add_cmd = (
