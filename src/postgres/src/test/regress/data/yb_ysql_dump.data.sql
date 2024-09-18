@@ -2099,7 +2099,7 @@ ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uaccount ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner: 
+-- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner:
 --
 
 -- YB: ensure extconfig field for extension: pg_hint_plan in pg_extension catalog is correct
