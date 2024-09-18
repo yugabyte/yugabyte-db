@@ -1669,7 +1669,11 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
 
 // Test that the table cache is correctly invalidated after transaction verification
 // completes for an ALTER TABLE operation that performs a table scan.
-TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
+TEST_F(PgDdlAtomicityTest, TestTableCacheAfterTxnVerification) {
+  // Set report_ysql_ddl_txn_status_to_master to false, so that we can test the schema verification
+  // codepaths on master.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
@@ -1677,21 +1681,35 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test1 PARTITION OF test FOR VALUES IN (1)"));
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4)"));
+      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4, 5)"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1, 'value', 1.0), (2, 'value', 2.0)"));
   ASSERT_OK(conn.TestFailDdl(
     "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
   // Ensure there is no schema version mismatch after a failed ALTER operation that performs
   // a table scan.
-  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (3, 'value', 3.0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test2 VALUES (3, 'value', 3.0); COMMIT;"));
   ASSERT_OK(conn.ExecuteFormat(
     "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
   // Ensure there is no schema version mismatch after a successful ALTER operation that performs
   // a table scan.
-  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (4, 4.0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test2 VALUES (4, 4.0); COMMIT;"));
   auto rows =
       ASSERT_RESULT((conn.FetchRows<int32_t, float, int32_t>("SELECT * FROM test2 ORDER BY key")));
   ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
+  // Ensure there is no schema version mismatch for various ALTERs.
+  // Alter type (with no rewrite).
+  ASSERT_OK(conn.Execute("ALTER TABLE test ALTER COLUMN num TYPE double precision"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test VALUES (5, 5.0); COMMIT;"));
+  // Legacy table rewrite.
+  ASSERT_OK(conn.Execute("CREATE TABLE test3 (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test3 VALUES (1, 'value')"));
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = OFF;"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE test3 ADD PRIMARY KEY (key), ALTER COLUMN value SET NOT NULL"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test3 VALUES (2, 'value2'); COMMIT;"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test3 ALTER COLUMN value TYPE int USING length(value),"
+      "ADD CONSTRAINT check_value CHECK (value > 0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test3 VALUES (3, 6); COMMIT;"));
 }
 
 // Test that DDL-related metadata in TableInfo objects is cleared on drop.
