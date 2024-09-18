@@ -168,9 +168,9 @@ Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't h
 
 To start a secure local YugabyteDB cluster using `yugabyted` refer to [Multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster) 
 
-For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters while adding the database by either of the following 2 ways:
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters along with other connection information while adding the database by either of the following 2 ways:
 
-- Enter the credentials:
+- Provide the connection information in DSN format:
 
     ```sh
     vault write database/config/yugabytedb plugin_name=ysql-plugin  \
@@ -186,7 +186,7 @@ For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set
     allowed_roles="*"
     ```
 
-- Use a connection string:
+- Provide the connection information as a connection string:
 
     ```sh
     vault write database/config/yugabytedb \
