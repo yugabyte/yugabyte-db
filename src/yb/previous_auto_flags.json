@@ -19,6 +19,31 @@
           "is_runtime": true
         },
         {
+          "name": "cdc_write_post_apply_metadata",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_cleanup_of_expired_table_entries",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_dynamic_table_addition_with_table_cleanup",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_dynamic_tables_disable_option",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_identification_of_non_eligible_tables",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "enable_automatic_tablet_splitting",
           "class": 3,
           "is_runtime": true
@@ -35,6 +60,11 @@
         },
         {
           "name": "enable_tablet_split_of_xcluster_replicated_tables",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_xcluster_api_v2",
           "class": 3,
           "is_runtime": true
         },
@@ -69,6 +99,21 @@
           "is_runtime": true
         },
         {
+          "name": "yb_enable_cdc_consistent_snapshot_streams",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ycql_allow_cassandra_drop",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_skip_row_lock_for_update",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
           "name": "ysql_yb_bypass_cond_recheck",
           "class": 1,
           "is_runtime": true
@@ -80,6 +125,11 @@
         },
         {
           "name": "ysql_yb_enable_alter_table_rewrite",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_ddl_atomicity_infra",
           "class": 2,
           "is_runtime": true
         },
@@ -101,6 +151,21 @@
         {
           "name": "ysql_yb_enable_pg_locks",
           "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replica_identity",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replication_commands",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replication_slot_consumption",
+          "class": 2,
           "is_runtime": true
         },
         {
@@ -139,6 +204,21 @@
           "is_runtime": true
         },
         {
+          "name": "cdc_write_post_apply_metadata",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_cleanup_of_expired_table_entries",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "cdcsdk_enable_dynamic_table_addition_with_table_cleanup",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
           "name": "enable_automatic_tablet_splitting",
           "class": 3,
           "is_runtime": true
@@ -169,6 +249,21 @@
           "is_runtime": true
         },
         {
+          "name": "yb_enable_cdc_consistent_snapshot_streams",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ycql_suppress_group_by_error",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_skip_row_lock_for_update",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
           "name": "ysql_yb_bypass_cond_recheck",
           "class": 1,
           "is_runtime": true
@@ -180,6 +275,11 @@
         },
         {
           "name": "ysql_yb_enable_alter_table_rewrite",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_ddl_atomicity_infra",
           "class": 2,
           "is_runtime": true
         },
@@ -201,6 +301,21 @@
         {
           "name": "ysql_yb_enable_pg_locks",
           "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replica_identity",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replication_commands",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_replication_slot_consumption",
+          "class": 2,
           "is_runtime": true
         },
         {
