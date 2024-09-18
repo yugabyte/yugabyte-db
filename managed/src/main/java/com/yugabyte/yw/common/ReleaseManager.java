@@ -656,12 +656,26 @@ public class ReleaseManager {
                   getPackageFilter(
                       "glob:**yugabyte*{centos,alma,linux,el}*{x86_64,aarch64}.tar.gz"))
               .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
-              .forEach(p -> createLocalRelease(p));
+              .forEach(
+                  p -> {
+                    try {
+                      createLocalRelease(p);
+                    } catch (Exception e) {
+                      log.warn("failed to add local release", e);
+                    }
+                  });
           // helm charts
           Files.walk(Paths.get(ybReleasesPath))
               .filter(ybChartFilter)
               .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
-              .forEach(p -> createLocalRelease(p));
+              .forEach(
+                  p -> {
+                    try {
+                      createLocalRelease(p);
+                    } catch (Exception e) {
+                      log.warn("failed to add local release", e);
+                    }
+                  });
         } catch (Exception e) {
           log.error("failed to read local releases", e);
         }
@@ -732,7 +746,18 @@ public class ReleaseManager {
     if (release == null) {
       release = Release.create(metadata.version, metadata.release_type, metadata.releaseTag);
     }
-    release.addArtifact(artifact);
+    try {
+      release.addArtifact(artifact);
+    } catch (PlatformServiceException e) {
+      log.warn(
+          "release {} already has package {}:{}({}), skipping add of local file {}",
+          release.getVersion(),
+          artifact.getPlatform(),
+          artifact.getArchitecture(),
+          artifact.getArtifactUUID(),
+          p.toString());
+      throw e;
+    }
   }
 
   private void importLocalLegacyReleases(

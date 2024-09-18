@@ -129,6 +129,10 @@ class DocHybridTime {
   HybridTime hybrid_time() const { return hybrid_time_; }
   IntraTxnWriteId write_id() const { return write_id_; }
 
+  void IncrementWriteId() {
+    ++write_id_;
+  }
+
   // Returns pointer to byte after last used byte.
   char* EncodedInDocDbFormat(char* dest) const;
 

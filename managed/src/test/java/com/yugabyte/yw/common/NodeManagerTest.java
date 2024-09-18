@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -160,14 +161,14 @@ public class NodeManagerTest extends FakeDBApplication {
   private static final List<String> PRECHECK_CERT_PATHS =
       Arrays.asList(
           "--root_cert_path",
-          "--server_cert_path",
-          "--server_key_path",
-          "--client_cert_path",
-          "--client_key_path",
-          "--root_cert_path_client_to_server",
-          "--server_cert_path_client_to_server",
-          "--server_key_path_client_to_server",
-          "--skip_cert_validation");
+          "--yba_root_cert_checksum",
+          "--node_server_cert_path",
+          "--node_server_key_path",
+          "--client_root_cert_path",
+          "--yba_client_root_cert_checksum",
+          "--client_server_cert_path",
+          "--client_server_key_path",
+          "--skip_hostname_check");
 
   private class TestData {
     public final Customer customer;
@@ -529,11 +530,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
-    when(nodeAgentClient.maybeGetNodeAgent(any(), any())).thenReturn(Optional.empty());
+    when(nodeAgentClient.maybeGetNodeAgent(any(), any(), any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.ybcEnableVervbose)))
-        .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
         .thenReturn("/tmp/nfs,/nfs");
     when(mockConfGetter.getConfForScope(
@@ -589,6 +587,9 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
+        .thenReturn(3600);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -1204,9 +1205,9 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         expectedCommand.add("--replication_config_name");
         expectedCommand.add(txccTaskParams.replicationGroupName);
-        if (txccTaskParams.producerCertsDirOnTarget != null) {
-          expectedCommand.add("--producer_certs_dir");
-          expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
+        if (txccTaskParams.destinationCertsDir != null) {
+          expectedCommand.add("--xcluster_dest_certs_dir");
+          expectedCommand.add(txccTaskParams.destinationCertsDir.toString());
         }
         break;
       case Delete_Root_Volumes:
@@ -1283,6 +1284,10 @@ public class NodeManagerTest extends FakeDBApplication {
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
     }
+    if (type == NodeManager.NodeCommandType.Configure) {
+      expectedCommand.add("--pg_max_mem_mb");
+      expectedCommand.add("0");
+    }
     expectedCommand.add("--remote_tmp_dir");
     expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
@@ -1332,7 +1337,7 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       params.replicationGroupName = "universe-uuid_MyRepl1";
       if (isCustomProducerCertsDir) {
-        params.producerCertsDirOnTarget = new File("custom-producer-dir");
+        params.destinationCertsDir = new File("custom-producer-dir");
       }
       expectedCommand.addAll(
           nodeCommand(
@@ -2060,7 +2065,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 9, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
@@ -3792,7 +3797,7 @@ public class NodeManagerTest extends FakeDBApplication {
             CertConfigType.SelfSigned,
             customerUUID,
             "SS" + RandomStringUtils.randomAlphanumeric(8));
-    List<String> cmds = createPrecheckCommandForCerts(certificateUUID, null);
+    List<String> cmds = createPrecheckCommandForCerts(certificateUUID, null, false);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
 
@@ -3810,7 +3815,7 @@ public class NodeManagerTest extends FakeDBApplication {
             CertConfigType.SelfSigned,
             customerUUID,
             "SS" + RandomStringUtils.randomAlphanumeric(8));
-    List<String> cmds = createPrecheckCommandForCerts(certificateUUID1, certificateUUID2);
+    List<String> cmds = createPrecheckCommandForCerts(certificateUUID1, certificateUUID2, false);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
 
@@ -3819,16 +3824,18 @@ public class NodeManagerTest extends FakeDBApplication {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo certificateInfo =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
-    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null);
+    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null, false);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         certificateInfo.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        certificateInfo.getChecksum(),
+        "--node_server_cert_path",
         certificateInfo.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
+        "--node_server_key_path",
         certificateInfo.getCustomCertPathParams().nodeKeyPath);
   }
 
@@ -3838,21 +3845,19 @@ public class NodeManagerTest extends FakeDBApplication {
     CertificateInfo certificateInfo =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     List<String> cmds =
-        createPrecheckCommandForCerts(certificateInfo.getUuid(), certificateInfo.getUuid());
+        createPrecheckCommandForCerts(certificateInfo.getUuid(), certificateInfo.getUuid(), true);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         certificateInfo.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        certificateInfo.getChecksum(),
+        "--node_server_cert_path",
         certificateInfo.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
-        certificateInfo.getCustomCertPathParams().nodeKeyPath,
-        "--client_cert_path",
-        certificateInfo.getCustomCertPathParams().clientCertPath,
-        "--client_key_path",
-        certificateInfo.getCustomCertPathParams().clientKeyPath);
+        "--node_server_key_path",
+        certificateInfo.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
@@ -3866,21 +3871,19 @@ public class NodeManagerTest extends FakeDBApplication {
             "CS" + RandomStringUtils.randomAlphanumeric(8),
             "",
             true);
-    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null);
+    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null, true);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         certificateInfo.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        certificateInfo.getChecksum(),
+        "--node_server_cert_path",
         certificateInfo.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
-        certificateInfo.getCustomCertPathParams().nodeKeyPath,
-        "--client_cert_path",
-        certificateInfo.getCustomCertPathParams().clientCertPath,
-        "--client_key_path",
-        certificateInfo.getCustomCertPathParams().clientKeyPath);
+        "--node_server_key_path",
+        certificateInfo.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
@@ -3901,22 +3904,26 @@ public class NodeManagerTest extends FakeDBApplication {
             "CS" + RandomStringUtils.randomAlphanumeric(8),
             "",
             true);
-    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
+    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid(), true);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         cert.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        cert.getChecksum(),
+        "--node_server_cert_path",
         cert.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
+        "--node_server_key_path",
         cert.getCustomCertPathParams().nodeKeyPath,
-        "--root_cert_path_client_to_server",
+        "--client_root_cert_path",
         cert2.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path_client_to_server",
+        "--yba_client_root_cert_checksum",
+        cert2.getChecksum(),
+        "--client_server_cert_path",
         cert2.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path_client_to_server",
+        "--client_server_key_path",
         cert2.getCustomCertPathParams().nodeKeyPath);
   }
 
@@ -3936,24 +3943,53 @@ public class NodeManagerTest extends FakeDBApplication {
             customerUUID,
             "CS" + RandomStringUtils.randomAlphanumeric(8),
             "",
-            false);
-    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
+            true);
+    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid(), true);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         cert.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        cert.getChecksum(),
+        "--node_server_cert_path",
         cert.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
+        "--node_server_key_path",
         cert.getCustomCertPathParams().nodeKeyPath,
-        "--root_cert_path_client_to_server",
+        "--client_root_cert_path",
         cert2.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path_client_to_server",
+        "--yba_client_root_cert_checksum",
+        cert2.getChecksum(),
+        "--client_server_cert_path",
         cert2.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path_client_to_server",
+        "--client_server_key_path",
         cert2.getCustomCertPathParams().nodeKeyPath);
+  }
+
+  @Test
+  public void testPrecheckClientOnlyCertificates() throws IOException, NoSuchAlgorithmException {
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
+    CertificateInfo cert =
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            false);
+    List<String> cmds = createPrecheckCommandForCerts(null, cert.getUuid(), true);
+
+    checkArguments(
+        cmds,
+        PRECHECK_CERT_PATHS,
+        "--client_root_cert_path",
+        cert.getCustomCertPathParams().rootCertPath,
+        "--yba_client_root_cert_checksum",
+        cert.getChecksum(),
+        "--client_server_cert_path",
+        cert.getCustomCertPathParams().nodeCertPath,
+        "--client_server_key_path",
+        cert.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
@@ -3978,19 +4014,22 @@ public class NodeManagerTest extends FakeDBApplication {
                             .userIntent;
                     userIntent.tserverGFlags.put(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
                   });
-            });
+            },
+            false);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
         cert.getCustomCertPathParams().rootCertPath,
-        "--server_cert_path",
+        "--yba_root_cert_checksum",
+        cert.getChecksum(),
+        "--node_server_cert_path",
         cert.getCustomCertPathParams().nodeCertPath,
-        "--server_key_path",
+        "--node_server_key_path",
         cert.getCustomCertPathParams().nodeKeyPath,
-        "--skip_cert_validation",
-        "HOSTNAME");
+        "--skip_hostname_check",
+        ""); // Adding empty string since its a boolean flag and should not have a value
   }
 
   @Test
@@ -4096,12 +4135,17 @@ public class NodeManagerTest extends FakeDBApplication {
     }
   }
 
-  private List<String> createPrecheckCommandForCerts(UUID certificateUUID1, UUID certificateUUID2) {
-    return createPrecheckCommandForCerts(certificateUUID1, certificateUUID2, x -> {});
+  private List<String> createPrecheckCommandForCerts(
+      UUID certificateUUID1, UUID certificateUUID2, boolean enableClientToNodeEncrypt) {
+    return createPrecheckCommandForCerts(
+        certificateUUID1, certificateUUID2, x -> {}, enableClientToNodeEncrypt);
   }
 
   private List<String> createPrecheckCommandForCerts(
-      UUID certificateUUID1, UUID certificateUUID2, Consumer<NodeTaskParams> paramsUpdate) {
+      UUID certificateUUID1,
+      UUID certificateUUID2,
+      Consumer<CheckCertificateConfig.Params> paramsUpdate,
+      boolean enableClientToNodeEncrypt) {
     TestData onpremTD =
         testData.stream().filter(t -> t.cloudType == Common.CloudType.onprem).findFirst().get();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
@@ -4115,28 +4159,28 @@ public class NodeManagerTest extends FakeDBApplication {
     onpremTD.provider.getDetails().airGapInstall = true;
     onpremTD.provider.save();
 
-    NodeTaskParams nodeTaskParams =
-        buildValidParams(
-            onpremTD,
-            new NodeTaskParams(),
-            Universe.saveDetails(
-                createUniverse().getUniverseUUID(),
-                ApiUtils.mockUniverseUpdater(onpremTD.cloudType)));
-    nodeTaskParams.rootCA = certificateUUID1;
-    nodeTaskParams.setClientRootCA(certificateUUID2);
-    nodeTaskParams.rootAndClientRootCASame =
-        certificateUUID2 == null || Objects.equals(certificateUUID1, certificateUUID2);
+    CheckCertificateConfig.Params params = new CheckCertificateConfig.Params();
+    buildValidParams(
+        onpremTD,
+        params,
+        Universe.saveDetails(
+            createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(onpremTD.cloudType)));
+    params.rootCA = certificateUUID1;
+    params.setClientRootCA(certificateUUID2);
+    params.rootAndClientRootCASame =
+        enableClientToNodeEncrypt
+            && (certificateUUID2 == null || Objects.equals(certificateUUID1, certificateUUID2));
 
-    paramsUpdate.accept(nodeTaskParams);
+    paramsUpdate.accept(params);
     Universe.saveDetails(
-        nodeTaskParams.getUniverseUUID(),
+        params.getUniverseUUID(),
         universe -> {
-          NodeDetails nodeDetails = universe.getNode(nodeTaskParams.nodeName);
+          NodeDetails nodeDetails = universe.getNode(params.nodeName);
           UserIntent userIntent =
               universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
-          userIntent.enableNodeToNodeEncrypt = true;
+          userIntent.enableNodeToNodeEncrypt = params.rootCA != null;
         });
-    nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, nodeTaskParams);
+    nodeManager.nodeCommand(NodeManager.NodeCommandType.Verify_Certs, params);
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(ShellProcessContext.class));
     return new ArrayList<>(arg.getValue());

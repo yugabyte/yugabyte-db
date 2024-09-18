@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
+Similar to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
 
 {{< note title="Cloud shell" >}}
 
-For security reasons, the YugabyteDB Managed cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
+For security reasons, the YugabyteDB Aeon cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
 
 {{< /note >}}
 

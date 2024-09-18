@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: django-orm
     parent: python-drivers
-    weight: 700
+    weight: 600
 type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">

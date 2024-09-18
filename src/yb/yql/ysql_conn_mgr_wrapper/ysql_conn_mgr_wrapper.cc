@@ -25,6 +25,7 @@
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
+DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -103,6 +104,20 @@ Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
 
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {
+    LOG(INFO) << "Warmup of server connections is enabled in ysql connection manager";
+    if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "random") {
+      LOG(INFO) << "Random allotment of server connections is enabled in ysql connection manager";
+    } else if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "round_robin") {
+      LOG(INFO) << "Round robin allotment of server connections is enabled in ysql connection "
+                << "manager";
+    }
+    if (FLAGS_ysql_conn_mgr_min_conns_per_db < 3)
+      FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
+  } else {
+    LOG(INFO) << "Warmup of server connections is disabled in ysql connection manager";
+  }
+
   std::vector<std::string> argv{
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
   proc_.emplace(ysql_conn_mgr_executable, argv);
@@ -115,6 +130,9 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", conf_.yb_tserver_key_);
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
+
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
+                FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

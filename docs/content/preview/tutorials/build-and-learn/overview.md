@@ -27,6 +27,6 @@ Throughout the following five chapters, you'll gain practical experience in thes
 
 * [Chapter 4: Going geo-distributed](../chapter4-going-global) - Understand various design patterns for global applications to find the balance between availability and performance for your application workloads. Practice using the latency-optimized geo-partitioning pattern so that YugaPlus can achieve low latency reads and writes across distant locations.
 
-* [Chapter 5: Offloading operations](../chapter5-going-cloud-native) - Migrate the YugaPlus streaming platform to YugabyteDB Managed to learn how to offload the management, maintenance, and operations of your database clusters.
+* [Chapter 5: Offloading operations](../chapter5-going-cloud-native) - Migrate the YugaPlus streaming platform to YugabyteDB Aeon to learn how to offload the management, maintenance, and operations of your database clusters.
 
 Ready? Then let's move on to [Chapter 1](../chapter1-debuting-with-postgres)!

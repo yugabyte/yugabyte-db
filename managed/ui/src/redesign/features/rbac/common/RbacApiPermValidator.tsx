@@ -15,7 +15,7 @@ import {
   Operators
 } from '../ApiAndUserPermMapping';
 import { Permission, Resource, ResourceType } from '../permission';
-import { isRbacEnabled } from './RbacUtils';
+import { isRbacEnabled, isSuperAdminUser } from './RbacUtils';
 import { ControlComp, getErrorBoundary } from './validator/ValidatorUtils';
 import { UserPermission } from './rbac_constants';
 
@@ -40,16 +40,25 @@ class RBACLogger {
 const rbacLog = new RBACLogger();
 
 export interface RbacApiPermValidatorProps {
+  // list of resource for which the user is requesting access
   accessRequiredOn?: ApiPermissionProps & { onResource?: OnResourceType };
+  // component to be rendered if the user has the necessary permissions
   children: React.ReactNode;
+  // specify if the component is a control component like button, input etc (Inline component)
   isControl?: boolean;
+  // style overrides for the wrapper component. You can use it to set the float, margin, padding etc
   overrideStyle?: CSSProperties;
+  // bring your own validation function. If this is present, accessRequiredOn is ignored
   customValidateFunction?: (permissions: UserPermission[]) => boolean;
+  // style overrides for the popover component. You can use it to set the Z-index, width, height etc
   popOverOverrides?: CSSProperties;
+  // enable verbose logging
   verbose?: boolean;
 }
 
 type RequireProperty<T, Prop extends keyof T> = T & { [key in Prop]-?: T[key] };
+
+// either accessRequiredOn or customValidateFunction is required
 type RequireAccessReqOrCustomValidateFn =
   | RequireProperty<RbacApiPermValidatorProps, 'accessRequiredOn'>
   | RequireProperty<RbacApiPermValidatorProps, 'customValidateFunction'>;
@@ -66,6 +75,13 @@ const executeOperation = <T,>(operator: keyof typeof Operators, arr: T[]) => {
       throw new Error('Operator not supported');
   }
 };
+
+// get resource id to verify permission on
+// if "permissionValidOnResource" flag is false, return undefined (no resource verification is needed)
+// resource type can be UNIVERSE, DEFAULT, ROLE, USER, "CUSTOMER_ID", string etc
+// if resource type is "CUSTOMER_ID", return the customer id from local storage
+// if resource type is string, return the string itself
+// if resource type is object, return the value of the key matching the resource type
 
 const getResourceId = (permissionDef: Permission, onResource: OnResourceType) => {
   if (!permissionDef.permissionValidOnResource) return undefined;
@@ -102,17 +118,28 @@ const getResourceId = (permissionDef: Permission, onResource: OnResourceType) =>
   return uuid;
 };
 
+// checks if the permissions is satisfied
+
 export const hasNecessaryPerm = (
   accessRequiredOn: RbacApiPermValidatorProps['accessRequiredOn']
 ) => {
+  // if rbac is not enabled, allow the user to perform any action
+
   if (!isRbacEnabled()) {
     return true;
   }
 
   if (!accessRequiredOn) throw new Error('AccessRequired on is not Present');
 
+  // get the api from the api_perm_map
+  // api_perm_map is a list of all the api's and the permissions required to access them
+  // requestType is the type of request like GET, POST, PUT, DELETE etc
+  // endpoint is the endpoint of the api
+  // onResource is the resource on which the permission is required
+
   const { requestType, endpoint, onResource } = accessRequiredOn;
 
+  // find the api from the api_perm_map
   const api = ((window as any).api_perm_map as ApiEndpointPermMappingType).find(
     (resp) => resp.requestType === requestType && endsWith(resp.endpoint, endpoint)
   );
@@ -127,8 +154,15 @@ export const hasNecessaryPerm = (
   const userPermissions: UserPermission[] = (window as any).rbac_permissions;
   const permissionDefinitions: Permission[] = (window as any).all_permissions;
 
+  // if the user has super admin permissions, allow him to perform any action
+  if (isSuperAdminUser(userPermissions)) {
+    return true;
+  }
+
   const listOfAllReqResources = api.rbacPermissionDefinitions.rbacPermissionDefinitionList.map(
+    // reqPermissions is the list of permissions required to access the api
     (reqPermissions) => {
+      // get the permission definition for the required permission
       const resourceList = reqPermissions.rbacPermissionList.map((reqPerm) => {
         const permissionDef = find(permissionDefinitions, {
           action: reqPerm.action,
@@ -182,11 +216,18 @@ export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
     return <>{children}</>;
   }
 
+  // if the user has super admin permissions, allow him to perform any action
+  if (isSuperAdminUser((window as any).rbac_permissions)) {
+    return <>{children}</>;
+  }
+
   rbacLog.enabled = verbose;
 
+  // if custom validation function is provided, use it
   if (customValidateFunction) {
     rbacLog.log('Entering CustomValidateFunction');
 
+    // if the custom validation function returns true, allow the user to perform the action
     if (customValidateFunction((window as any).rbac_permissions)) {
       rbacLog.log('CustomValidateFunction Success');
 

@@ -50,7 +50,7 @@ func (fp *FullProviderContext) SetFullProvider(provider ybaclient.Provider) {
 // NewFullProviderFormat for formatting output
 func NewFullProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultProviderListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -232,6 +232,17 @@ func (fp *FullProviderContext) Write() error {
 		regionContext.Format = NewFullProviderFormat(viper.GetString("output"))
 		regionContext.SetRegion(v)
 		regionContext.Write(code, i)
+	}
+
+	// ImageBundle subSection
+	logrus.Debugf("Number of Linux Versions: %d", len(fp.p.GetImageBundles()))
+	fp.subSection("Linux Version Catalog")
+	for i, v := range fp.p.GetImageBundles() {
+		imageBundleContext := *NewImageBundleContext()
+		imageBundleContext.Output = os.Stdout
+		imageBundleContext.Format = NewFullProviderFormat(viper.GetString("output"))
+		imageBundleContext.SetImageBundle(v)
+		imageBundleContext.Write(code, i)
 	}
 
 	return nil

@@ -144,6 +144,11 @@ extern void index_delete(Relation indexRelation,
 			 Datum ybctid,
 			 Relation heapRelation,
 			 struct IndexInfo *indexInfo);
+extern void yb_index_update(Relation indexRelation,
+							Datum *values, bool *isnull,
+							Datum oldYbctid, Datum newYbctid,
+							Relation heapRelation,
+							struct IndexInfo *indexInfo);
 
 extern IndexScanDesc index_beginscan(Relation heapRelation,
 				Relation indexRelation,
@@ -170,8 +175,7 @@ extern ItemPointer index_getnext_tid(IndexScanDesc scan,
 extern HeapTuple index_fetch_heap(IndexScanDesc scan);
 extern HeapTuple index_getnext(IndexScanDesc scan, ScanDirection direction);
 extern int64 index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap);
-extern int64 yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *bitmap,
-								bool recheck);
+extern int64 yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *bitmap);
 
 extern IndexBulkDeleteResult *index_bulk_delete(IndexVacuumInfo *info,
 				  IndexBulkDeleteResult *stats,

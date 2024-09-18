@@ -68,11 +68,13 @@ Each cluster brings up three nodes each of the type `n1-standard-1` for the Kube
   ...
   ```
 
-- Create a Kubernetes cluster on GKE by running the following in order to create a cluster in the desired zone:
+- Create a private Kubernetes cluster using the following command.
 
   ```sh
-  gcloud container clusters create yugabyte --zone us-west1-b
+  gcloud container clusters create cluster_name --enable-private-nodes
   ```
+
+  Note that you must set up Cloud NAT for a private Kubernetes cluster in Google Cloud to ensure that your cluster can access the internet while its nodes do not have public IP addresses. Refer to [Configuring Private Google Access and Cloud NAT in Google Cloud Platform (GCP)](https://kloudkraft.medium.com/configuring-private-google-access-and-cloud-nat-in-google-cloud-platform-gcp-3c4406b590b3).
 
 - List the available cluster by running the following command:
 

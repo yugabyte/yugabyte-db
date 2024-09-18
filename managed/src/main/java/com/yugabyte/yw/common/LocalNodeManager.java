@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
@@ -224,12 +225,33 @@ public class LocalNodeManager {
             });
   }
 
+  // This does not clear the process map.
   public void killProcess(String nodeName, UniverseTaskBase.ServerType serverType)
       throws IOException, InterruptedException {
     NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
-    Process process = nodeInfo.processMap.get(serverType);
-    log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
-    killProcess(process.pid());
+    if (nodeInfo != null) {
+      Process process = nodeInfo.processMap.get(serverType);
+      if (process != null) {
+        log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
+        killProcess(process.pid());
+      }
+    }
+  }
+
+  public void startProcess(
+      UUID universeUuid, String nodeName, UniverseTaskBase.ServerType serverType) {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    UserIntent userIntent = universe.getCluster(nodeInfo.placementUUID).userIntent;
+    startProcessForNode(userIntent, serverType, nodeInfo);
+  }
+
+  public boolean isProcessRunning(String nodeName, UniverseTaskBase.ServerType serverType) {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    if (nodeInfo == null) {
+      return false;
+    }
+    return nodeInfo.processMap.containsKey(serverType);
   }
 
   public void checkAllProcessesAlive() {
@@ -538,10 +560,10 @@ public class LocalNodeManager {
       UniverseDefinitionTaskParams.UserIntent userIntent) {
     TransferXClusterCerts.Params tParams = (TransferXClusterCerts.Params) taskParams;
     String homeDir = getNodeRoot(userIntent, nodeInfo);
-    String producerCertsDirOnTarget =
-        replaceYbHome(tParams.producerCertsDirOnTarget.getAbsolutePath(), userIntent, nodeInfo);
+    String destinationCertsDir =
+        replaceYbHome(tParams.destinationCertsDir.getAbsolutePath(), userIntent, nodeInfo);
     String replicationGroupName = tParams.replicationGroupName;
-    String path = producerCertsDirOnTarget + "/" + replicationGroupName;
+    String path = destinationCertsDir + "/" + replicationGroupName;
     switch (tParams.action.toString()) {
       case "copy":
         try {
@@ -771,8 +793,9 @@ public class LocalNodeManager {
     if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
-    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
-    File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
+    String fileName = getNodeGFlagsFile(userIntent, serverType, nodeInfo);
+    log.debug("Write gflags {} for {} to file {}", gflagsToWrite, serverType, fileName);
+    File flagFileTmpPath = new File(fileName);
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
       flagFileTmpPath.createNewFile();
@@ -876,7 +899,11 @@ public class LocalNodeManager {
 
   public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String binDir = getCloudInfo(userIntent).getDataHomeDir();
-    return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
+    String suffix = nodeInfo.name.substring(nodeInfo.name.length() - 2);
+    if (nodeInfo.name.contains("readonly")) {
+      suffix = "rr-" + suffix;
+    }
+    return binDir + "/" + nodeInfo.ip + "-" + suffix;
   }
 
   public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, String nodeName) {

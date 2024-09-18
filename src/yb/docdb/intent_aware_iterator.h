@@ -57,8 +57,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
       const rocksdb::ReadOptions& read_opts,
       const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
-      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-      rocksdb::Statistics* intentsdb_statistics = nullptr);
+      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -106,6 +105,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
   Result<const FetchedEntry&> Fetch() override;
+
+  // Utility function to execute Next and retrieve result via Fetch in one call.
+  Result<const FetchedEntry&> FetchNext();
 
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;

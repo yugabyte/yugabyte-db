@@ -44,6 +44,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -307,10 +308,9 @@ Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGet
 }
 
 template <class MiniClusterType>
-Result<scoped_refptr<master::TabletInfo>>
-    TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
-        master::CatalogManagerIf* catalog_mgr) {
-  auto tablet_infos = catalog_mgr->GetTableInfo(this->table_->id())->GetTablets();
+Result<master::TabletInfoPtr> TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
+    master::CatalogManagerIf* catalog_mgr) {
+  auto tablet_infos = VERIFY_RESULT(catalog_mgr->GetTableInfo(this->table_->id())->GetTablets());
 
   SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
   return tablet_infos.front();
@@ -1012,7 +1012,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   RETURN_NOT_OK(FlushTestTable());
 
   // Split tablet should crash before creating either tablet
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "1.0"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "1.0"));
 
   // Retrieve split key from a leader peer
   if (split_partition_key) {
@@ -1027,7 +1027,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   }
 
   RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "0.0"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "0.0"));
 
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(kNumRows * 2, kNumRows));

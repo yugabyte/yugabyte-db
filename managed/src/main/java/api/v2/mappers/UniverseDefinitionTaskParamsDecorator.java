@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,8 +37,6 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     universeSpec.setYbSoftwareVersion(primaryUserIntent.ybSoftwareVersion);
     // time sync
     universeSpec.setUseTimeSync(primaryUserIntent.useTimeSync);
-    // systemd
-    universeSpec.setUseSystemd(primaryUserIntent.useSystemd);
     // fetch networking spec from primary cluster and set it at top-level networking spec in v2
     UniverseNetworkingSpec v2UnivNetworkingSpec = universeSpec.getNetworkingSpec();
     v2UnivNetworkingSpec
@@ -68,6 +67,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
 
     // turn off version checking always
     params.expectedUniverseVersion = -1;
+    // set creatingUser
+    params.creatingUser = CommonUtils.getUserFromContext();
     // set rootCA of encryptionInTransit into top-level of v1 universe
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
@@ -100,10 +101,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
           if (universeSpec != null && universeSpec.getUseTimeSync() != null) {
             cluster.userIntent.useTimeSync = universeSpec.getUseTimeSync();
           }
-          // use systemd into all clusters
-          if (universeSpec != null && universeSpec.getUseSystemd() != null) {
-            cluster.userIntent.useSystemd = universeSpec.getUseSystemd();
-          }
+          // use systemd by default in v2
+          cluster.userIntent.useSystemd = true;
           // set encryptionInTransit into all clusters
           if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
             EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();

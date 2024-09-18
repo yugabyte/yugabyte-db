@@ -14,8 +14,10 @@ import com.yugabyte.yw.forms.TroubleshootingPlatformExt;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TroubleshootingPlatform;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.TroubleshootingPlatformFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -127,7 +129,7 @@ public class TroubleshootingPlatformController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editTroubleshootingPlatform(
@@ -141,6 +143,9 @@ public class TroubleshootingPlatformController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Platform uuids do not match");
     }
     platform.setCustomerUUID(customerUUID);
+    TroubleshootingPlatform currentPlatform =
+        troubleshootingPlatformService.getOrBadRequest(customerUUID, tpUUID);
+    platform = CommonUtils.unmaskObject(currentPlatform, platform);
     platform = troubleshootingPlatformService.save(platform, force);
     auditService()
         .createAuditEntryWithReqBody(
@@ -154,7 +159,7 @@ public class TroubleshootingPlatformController extends AuthenticatedController {
   @ApiOperation(
       notes = "YbaApi Internal.",
       value = "Delete Troubleshooting Platform",
-      response = YBPSuccess.class)
+      response = Boolean.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -176,9 +181,101 @@ public class TroubleshootingPlatformController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "Check if universe is registered with Troubleshooting Platform",
+      response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result checkRegistered(
+      UUID customerUUID, UUID platformUUID, UUID universeUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+
+    TroubleshootingPlatform platform =
+        troubleshootingPlatformService.getOrBadRequest(customerUUID, platformUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    boolean isRegistered = troubleshootingPlatformService.isRegistered(platform, universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.TroubleshootingPlatformRegister);
+    if (isRegistered) {
+      return YBPSuccess.empty();
+    } else {
+      throw new PlatformServiceException(
+          NOT_FOUND, "Universe is not registered with Troubleshooting Platform");
+    }
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "Register universe with Troubleshooting Platform",
+      response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result registerUniverse(
+      UUID customerUUID, UUID platformUUID, UUID universeUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+
+    TroubleshootingPlatform platform =
+        troubleshootingPlatformService.getOrBadRequest(customerUUID, platformUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    troubleshootingPlatformService.putUniverse(platform, universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.TroubleshootingPlatformRegister);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "Unregister universe from Troubleshooting Platform",
+      response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result unregisterUniverse(
+      UUID customerUUID, UUID platformUUID, UUID universeUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+
+    TroubleshootingPlatform platform =
+        troubleshootingPlatformService.getOrBadRequest(customerUUID, platformUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    troubleshootingPlatformService.deleteUniverse(platform, universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.TroubleshootingPlatformUnregister);
+    return YBPSuccess.empty();
+  }
+
   private TroubleshootingPlatformExt enrich(TroubleshootingPlatform platform) {
     TroubleshootingPlatformExt platformExt = new TroubleshootingPlatformExt();
-    platformExt.setTroubleshootingPlatform(platform);
+    platformExt.setTroubleshootingPlatform(CommonUtils.maskObject(platform));
     platformExt.setInUseStatus(troubleshootingPlatformService.getInUseStatus(platform));
     return platformExt;
   }

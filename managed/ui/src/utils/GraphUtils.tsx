@@ -12,7 +12,8 @@ export const getTabContent = (
   title: string,
   currentUser: any,
   isGranularMetricsEnabled: boolean,
-  updateTimestamp: (start: 'object' | number, end: 'object' | number) => void
+  updateTimestamp: (start: 'object' | number, end: 'object' | number) => void,
+  printMode: boolean
 ) => {
   let tabData: any = <YBLoading />;
   if (graph.error?.data && !graph.loading) {
@@ -65,6 +66,7 @@ export const getTabContent = (
             operations={uniqueOperations}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             updateTimestamp={updateTimestamp}
+            printMode={printMode}
           />
         ) : null;
       })

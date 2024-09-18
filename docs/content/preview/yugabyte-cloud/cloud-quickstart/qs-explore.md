@@ -1,7 +1,7 @@
 ---
 title: Explore Yugabyte SQL
 linkTitle: Explore distributed SQL
-description: Use distributed SQL to explore core features of YugabteDB.
+description: Use distributed SQL to explore core features of YugabyteDB.
 headcontent:
 menu:
   preview_yugabyte-cloud:
@@ -16,7 +16,7 @@ After [creating a Sandbox cluster](../../cloud-basics/create-clusters/create-clu
 
 When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a quick start guide, with a series of pre-built queries for you to run.
 
-{{< youtube id="01owTbmSDe8" title="Explore distributed SQL in YugabyteDB Managed" >}}
+{{< youtube id="01owTbmSDe8" title="Explore distributed SQL in YugabyteDB Aeon" >}}
 
 ## Run the tutorial
 

@@ -79,7 +79,7 @@ class CatalogManagerUtil {
       const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
 
   // Returns error if tablet partition is not covered by running inner tablets partitions.
-  static Status CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
+  static Status CheckIfCanDeleteSingleTablet(const TabletInfoPtr& tablet);
 
   enum CloudInfoSimilarity {
     NO_MATCH = 0,
@@ -118,8 +118,8 @@ class CatalogManagerUtil {
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
   template<class LoadState>
-  static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
-    auto tablets = table_info->GetTablets(IncludeInactive::kTrue);
+  static Status FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+    auto tablets = VERIFY_RESULT(table_info->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
       // Ignore if tablet is not running.
@@ -140,6 +140,7 @@ class CatalogManagerUtil {
         state->per_ts_replica_load_[loc.first]++;
       }
     }
+    return Status::OK();
   }
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
@@ -178,6 +179,11 @@ class CatalogManagerUtil {
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
+      tablet::TableInfoPB* pb);
+
+  static void FillTableInfoPB(
+      const TableId& table_id, const std::string& table_name, const TableType& table_type,
+      const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
       tablet::TableInfoPB* pb);
 
  private:

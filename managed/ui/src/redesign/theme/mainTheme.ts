@@ -62,7 +62,10 @@ export const mainTheme = createTheme({
   shape: {
     borderRadius: variables.borderRadius,
     shadowLight: variables.shadowLight,
-    shadowThick: variables.shadowThick
+    shadowThick: variables.shadowThick,
+    ybaShadows: {
+      ...colors.ybaShadows
+    }
   },
   typography: {
     fontSize: 13,

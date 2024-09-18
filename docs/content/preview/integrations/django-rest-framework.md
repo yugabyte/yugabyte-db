@@ -172,7 +172,7 @@ Migrate the changes to the database using the following command:
 python3 manage.py migrate
 ```
 
-A users table should be created in your database. Use the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#list-tables) client shell to verify that the users table has been created in your database.
+A users table should be created in your database. Use the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#tables) client shell to verify that the users table has been created in your database.
 
 ## Run the application
 
@@ -199,4 +199,4 @@ $ curl http://localhost:8080/users
 [{"userId":1,"firstName":"John","lastName":"Smith","email":"jsmith@yb.com"}]
 ```
 
-Alternatively, you can verify using the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#describe-a-table) client shell.
+Alternatively, you can verify using the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#tables) client shell.

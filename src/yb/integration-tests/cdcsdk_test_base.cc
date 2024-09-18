@@ -402,24 +402,29 @@ void CDCSDKTestBase::InitCreateStreamRequest(
     CreateCDCStreamRequestPB* create_req,
     const CDCCheckpointType& checkpoint_type,
     const CDCRecordType& record_type,
-    const std::string& namespace_name) {
+    const std::string& namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   create_req->set_namespace_name(namespace_name);
   create_req->set_checkpoint_type(checkpoint_type);
   create_req->set_record_type(record_type);
   create_req->set_record_format(CDCRecordFormat::PROTO);
   create_req->set_source_type(CDCSDK);
+  create_req->mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
-    CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
+    CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  InitCreateStreamRequest(
+      &req, checkpoint_type, record_type, namespace_name, dynamic_tables_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
   if (resp.has_error()) {
@@ -452,8 +457,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
     const std::string& slot_name,
-    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
-  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name, std::string namespace_name) {
+  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(namespace_name));
 
   std::string snapshot_action;
   switch (snapshot_option) {

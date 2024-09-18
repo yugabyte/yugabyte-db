@@ -143,6 +143,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     setUnderReplicatedTabletsMock();
     setLeaderlessTabletsMock();
     setCheckNodesAreSafeToTakeDown(mockClient);
+    setMockLiveTabletServers(mockClient, defaultUniverse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
@@ -163,6 +164,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -177,6 +179,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -197,6 +200,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -212,6 +216,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -233,6 +238,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -256,6 +262,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -285,6 +292,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -314,6 +322,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -338,6 +347,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.ChangeMasterConfig,
@@ -355,6 +365,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

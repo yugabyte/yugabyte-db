@@ -206,7 +206,7 @@ const config = {
 }
 ```
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+If you have created a cluster on YugabyteDB Managed, [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Create a sample Node.js application with SSL
 

@@ -3,16 +3,18 @@ title: JDBC smart driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB JDBC Smart Driver
+badges: ysql
 aliases:
   - /develop/client-drivers/java/
   - /preview/develop/client-drivers/java/
   - /preview/develop/build-apps/java/
   - /preview/quick-start/build-apps/java/
+  - /preview/integrations/jdbc-drivers/
 menu:
   preview:
-    identifier: yugabyte-jdbc-driver
+    identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 
@@ -64,9 +66,9 @@ type: docs
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -126,7 +128,7 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false'
-| `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
+| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 | `fallback-to-topology-keys-only` | Applicable only when `topology-keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology-keys` | Empty
 | `failed-host-reconnect-delay-secs` | The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if the time specified via this property has elapsed since the time it was last marked as a failed host. | 5 
@@ -169,7 +171,7 @@ The following table describes the connection parameters required to connect usin
 | ssl  | Enable SSL client connection | false
 | sslmode | SSL mode | require
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
-| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Managed clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier
+| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
@@ -178,9 +180,9 @@ jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-ba
     ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Managed, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
+To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Aeon, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
 
 ### Step 3: Write your application
 
@@ -258,8 +260,5 @@ If you receive no output or an error, check the parameters in the connection str
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
-- Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../ebean/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)

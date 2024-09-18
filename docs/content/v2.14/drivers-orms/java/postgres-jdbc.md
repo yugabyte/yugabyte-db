@@ -99,7 +99,7 @@ Connection conn = DriverManager.getConnection(yburl);
 | sslmode | SSL mode | require |
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
+If you created a cluster on YugabyteDB Managed, [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
 
 ## Step 3 -  Query the YugabyteDB cluster from your application
 
@@ -159,4 +159,4 @@ After completing these steps, you should have a working Java application that us
 ## Next Steps
 
 - Learn how to build Java applications using [Hibernate ORM](../hibernate/).
-- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/).
+- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/).

@@ -14,7 +14,7 @@ type: docs
 
 Use the YugabyteDB Anywhere Terraform Provider to deploy and manage universes programmatically. Some examples of what you can accomplish using this provider include:
 
-- Create and manage YBA provider configurations
+- Create and manage YugabyteDB Anywhere provider configurations
 - Deploy and manage universes
 - Pause and resume universes
 - Perform software upgrades

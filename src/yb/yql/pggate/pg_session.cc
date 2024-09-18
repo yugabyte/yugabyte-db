@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,11 +17,8 @@
 
 #include <algorithm>
 #include <future>
-#include <memory>
 #include <optional>
 #include <utility>
-
-#include <boost/functional/hash.hpp>
 
 #include "yb/client/table_info.h"
 
@@ -42,14 +39,12 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -61,6 +56,15 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
+DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
+                 "For new tables without PK, make the ybrowid column ASC and generated using a"
+                 " naive per-node sequential counter. This can fail with collisions for a"
+                 " multi-node cluster, and the ordering can be inconsistent in case multiple"
+                 " connections generate ybrowid at the same time. In case a SPLIT INTO clause is"
+                 " provided, fall back to the old behavior. The primary use case of this flag is"
+                 " for ported pg_regress tests that expect deterministic output ordering based on"
+                 " ctid. This is a best-effort reproduction of that, but it still falls short in"
+                 " case of UPDATEs because PG regenerates ctid while YB doesn't.");
 
 namespace yb::pggate {
 namespace {
@@ -91,7 +95,7 @@ bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowe
   // Last statement inserts row with k = 1 and this is a single row transaction.
   // But row with k = 1 already exists in the t table. As a result the
   // 'duplicate key value violates unique constraint "t_pkey"' will be raised.
-  // But this error contains contraints name which is read from sys table pg_class (in case it
+  // But this error contains constraints name which is read from sys table pg_class (in case it
   // is not yet in the postgres's cache). And this read from sys table will be performed in context
   // of currently running transaction (single row) because the yb_non_ddl_txn_for_sys_tables_allowed
   // GUC variable is true. As a result there will be 2 operations in context of single row
@@ -381,107 +385,34 @@ class PgSession::RunHelper {
 };
 
 //--------------------------------------------------------------------------------------------------
-// Class TableYbctidHasher
-//--------------------------------------------------------------------------------------------------
-
-size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const {
-  size_t hash = 0;
-  boost::hash_combine(hash, value.table_id);
-  boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
-  return hash;
-}
-
-size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
-  return (*this)(static_cast<LightweightTableYbctid>(value));
-}
-
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider)
-    : ybctid_container_provider_(*ybctid_container_provider) {
-}
-
-Status ExplicitRowLockBuffer::Add(
-    Info&& info, const LightweightTableYbctid& key, bool is_region_local,
-    const YbctidReader& reader) {
-  if (info_ && *info_ != info) {
-    RETURN_NOT_OK(DoFlush(reader));
-  }
-  if (!info_) {
-    info_.emplace(std::move(info));
-  } else if (intents_.contains(key)) {
-    return Status::OK();
-  }
-
-  if (is_region_local) {
-    region_local_tables_.insert(key.table_id);
-  }
-  DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
-  intents_.emplace(key.table_id, std::string(key.ybctid));
-  return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-      ? DoFlush(reader) : Status::OK();
-}
-
-Status ExplicitRowLockBuffer::Flush(const YbctidReader& reader) {
-  return IsEmpty() ? Status::OK() : DoFlush(reader);
-}
-
-Status ExplicitRowLockBuffer::DoFlush(const YbctidReader& reader) {
-  DCHECK(!IsEmpty());
-  auto scope = ScopeExit([this] { Clear(); });
-  auto ybctids = ybctid_container_provider_.Get();
-  auto initial_intents_size = intents_.size();
-  ybctids->reserve(initial_intents_size);
-  for (auto it = intents_.begin(); it != intents_.end();) {
-    auto node = intents_.extract(it++);
-    ybctids->push_back(std::move(node.value()));
-  }
-  RETURN_NOT_OK(reader(&*ybctids, *info_, region_local_tables_));
-  SCHECK(initial_intents_size == ybctids->size(), NotFound,
-        "Some of the requested ybctids are missing");
-  return Status::OK();
-}
-
-void ExplicitRowLockBuffer::Clear() {
-  intents_.clear();
-  info_.reset();
-  region_local_tables_.clear();
-}
-
-bool ExplicitRowLockBuffer::IsEmpty() const {
-  return !info_;
-}
-
-//--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
-    PgClient* pg_client,
-    const std::string& database_name,
+    PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState* stats_state)
-    : pg_client_(*pg_client),
+    YBCPgExecStatsState& stats_state,
+    YbctidReader&& ybctid_reader)
+    : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      explicit_row_lock_buffer_(&aux_ybctid_container_provider_),
+      ybctid_reader_(std::move(ybctid_reader)),
+      explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
-      wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional) {
-            return FlushOperations(std::move(ops), transactional);
+          [this](BufferableOperations&& ops, bool transactional)
+              -> Result<PgOperationBuffer::PerformFutureEx> {
+            return PgOperationBuffer::PerformFutureEx{
+                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
-          &metrics_, wait_starter_, buffering_settings_) {
+          metrics_, buffering_settings_) {
   Update(&buffering_settings_);
 }
 
 PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgSession::ConnectDatabase(const std::string& database_name) {
-  connected_database_ = database_name;
-  return Status::OK();
-}
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
@@ -707,6 +638,17 @@ bool PgSession::IsHashBatchingEnabled() {
       GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
 }
 
+std::string PgSession::GenerateNewYbrowid() {
+  if (PREDICT_FALSE(FLAGS_TEST_generate_ybrowid_sequentially)) {
+    unsigned char buf[sizeof(uint64_t)];
+    BigEndian::Store64(buf, MonoTime::Now().ToUint64());
+    return std::string(reinterpret_cast<char*>(buf), sizeof(buf));
+  }
+
+  // Generate a new random and unique v4 UUID.
+  return GenerateObjectId(true /* binary_id */);
+}
+
 Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
@@ -838,11 +780,11 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
   auto future = pg_client_.PerformAsync(&options, &ops.operations);
-  return PerformFuture(std::move(future), this, std::move(ops.relations));
+  return PerformFuture(std::move(future), std::move(ops.relations));
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
-                                                  const YbctidReader& reader) {
+Result<bool> PgSession::ForeignKeyReferenceExists(
+    PgOid database_id, const LightweightTableYbctid& key) {
   if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
     return true;
   }
@@ -874,9 +816,13 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
   }
 
   // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(reader(&ybctids, fk_intent_region_local_tables_));
-  for (auto& ybctid : ybctids) {
-    fk_reference_cache_.insert(std::move(ybctid));
+  RETURN_NOT_OK(ybctid_reader_(
+      database_id, ybctids, fk_intent_region_local_tables_,
+      make_lw_function([](PgExecParameters& params) {
+        params.rowmark = ROW_MARK_KEYSHARE;
+      })));
+  for (const auto& ybctid : ybctids) {
+    fk_reference_cache_.emplace(ybctid.table_id, ybctid.ybctid);
   }
   return fk_reference_cache_.find(key) != fk_reference_cache_.end();
 }
@@ -895,7 +841,7 @@ void PgSession::AddForeignKeyReferenceIntent(
 void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
   if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
       PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
-    fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
+    fk_reference_cache_.emplace(key.table_id, key.ybctid);
   }
 }
 
@@ -1069,14 +1015,14 @@ Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgSession::GetTableKeyRanges(
+Result<TableKeyRanges> PgSession::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   // TODO(ysql_parallel_query): consider async population of range boundaries to avoid blocking
   // calling worker on waiting for range boundaries.
   return pg_client_.GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length, pg_txn_manager_->GetReadTimeSerialNo());
+      max_key_length);
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
@@ -1089,7 +1035,7 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {wait_starter_, wait_event};
+  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

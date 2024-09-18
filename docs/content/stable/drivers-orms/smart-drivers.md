@@ -174,19 +174,19 @@ When a connection reaches the timeout period, the pool re-establishes a new conn
 
 For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
 
-## Using smart drivers with YugabyteDB Managed
+## Using smart drivers with YugabyteDB Aeon
 
-[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
+[YugabyteDB Aeon](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Aeon creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
 When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
 If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
-YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
+YugabyteDB Aeon clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
 ### Deploying applications
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 Applications that use smart drivers from outside the peered network fall back to the upstream driver behavior automatically. You may see a warning similar to the following:
 
@@ -200,7 +200,7 @@ For applications that access the cluster from outside the peered network or usin
 
 ### SSL/TLS verify-full support
 
-YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Managed and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
+YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
 | Smart Driver | Support | Notes |
 | :--- | :--- | :--- |
@@ -209,7 +209,7 @@ YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load b
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 

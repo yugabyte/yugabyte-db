@@ -114,7 +114,11 @@ To register an application, do the following:
 
 1. Select the tenant for the application.
 
-1. Set the redirect URI. This is where the IdP redirects after authentication.
+1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
+
+    ```sh
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient 
+    ```
 
 1. Click **Register**.
 

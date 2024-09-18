@@ -8,8 +8,8 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
@@ -218,5 +218,5 @@ public interface StorageUtil {
 
   // Generate RestorePreflightResponse for yb_backup.py backup locations.
   public RestorePreflightResponse generateYBBackupRestorePreflightResponseWithoutBackupObject(
-      RestorePreflightParams preflightParams, CustomerConfigData configData);
+      AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData);
 }

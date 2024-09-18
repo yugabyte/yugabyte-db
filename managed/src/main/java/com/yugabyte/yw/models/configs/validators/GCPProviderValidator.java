@@ -1,5 +1,7 @@
 package com.yugabyte.yw.models.configs.validators;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.api.services.compute.model.Firewall;
@@ -39,6 +41,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
 
   private final GCPCloudImpl gcpCloudImpl;
   private final RuntimeConfGetter runtimeConfGetter;
+  private final String INSTANCE_TEMPLATE_REGEX = "[a-z]([-a-z0-9]*[a-z0-9])?";
 
   @Inject
   public GCPProviderValidator(
@@ -229,6 +232,12 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
               .get("jsonPath")
               .asText();
       try {
+        if (!instanceTemplate.matches(INSTANCE_TEMPLATE_REGEX)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Instance template must start with a lowercase character and can only contain"
+                  + " alphanumeric characters and '-'");
+        }
         if (!apiClient.checkInstanceTempelate(instanceTemplate)) {
           String errorMsg =
               String.format(

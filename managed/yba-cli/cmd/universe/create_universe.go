@@ -84,7 +84,7 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		enableYbc := true
-		communicationPorts := buildCommunicationPorts(cmd)
+		communicationPorts := buildCommunicationPorts()
 
 		certUUID := ""
 		clientRootCA := v1.GetString("root-ca")
@@ -113,7 +113,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = "ENABLE"
+			opType = util.EnableKMSOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -144,7 +144,12 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		clusters, err := buildClusters(cmd, authAPI, universeName)
+		cpuArch := v1.GetString("cpu-architecture")
+		if len(strings.TrimSpace(cpuArch)) == 0 {
+			cpuArch = util.X86_64
+		}
+
+		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -154,6 +159,7 @@ var createUniverseCmd = &cobra.Command{
 			Clusters:           clusters,
 			CommunicationPorts: communicationPorts,
 			EnableYbc:          util.GetBoolPointer(enableYbc),
+			Arch:               util.GetStringPointer(cpuArch),
 		}
 
 		if enableVolumeEncryption {
@@ -198,8 +204,9 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: universe.NewUniverseFormat(viper.GetString("output")),
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  universe.NewUniverseFormat(viper.GetString("output")),
 			}
 
 			universe.Write(universesCtx, universeData)
@@ -237,6 +244,8 @@ func init() {
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
 		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
+	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
+		"[Optional] CPU architecture for nodes in all clusters.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
 		"[Optional] Add a read replica cluster to the universe. (default false)")
 
@@ -293,6 +302,10 @@ func init() {
 			"by default applied to the read replica cluster.")
 
 	// Device Info per cluster
+	createUniverseCmd.Flags().StringArray("linux-version", []string{},
+		"[Optional] Linux version for the universe nodes. "+
+			"Default linux version is fetched from the provider. "+
+			"corresponding to cpu-architecture of the universe.")
 	createUniverseCmd.Flags().StringArray("instance-type", []string{},
 		"[Optional] Instance Type for the universe nodes. Provide the instance types for each "+
 			"cluster as a separate flag."+

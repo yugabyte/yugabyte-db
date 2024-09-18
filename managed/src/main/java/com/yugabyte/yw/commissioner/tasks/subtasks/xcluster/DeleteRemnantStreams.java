@@ -61,7 +61,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
 
       String namespaceId = getNamespaceInfoResponse.getNamespaceId();
       log.debug(
-          "Namespace id: {} found for with namespace name: {} on universe: {}",
+          "Namespace id: {} found with namespace name: {} on universe: {}",
           namespaceId,
           taskParams().namespaceName,
           universe.getName());

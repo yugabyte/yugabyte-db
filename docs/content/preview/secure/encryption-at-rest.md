@@ -131,3 +131,10 @@ You can disable cluster-wide encryption as follows:
     ```output
     Encryption status: DISABLED
     ```
+
+
+{{< note title="Note" >}}
+
+Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster, 
+you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)
+{{< /note >}}

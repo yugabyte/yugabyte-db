@@ -148,6 +148,7 @@ static void YbExplainDistinctPrefixLen(
 	ExplainState *es, List *ancestors);
 static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
 								  ExplainState *es);
+static Node* yb_fix_indexpr_mutator(Node *node, int *newvarno);
 
 typedef enum YbStatLabel
 {
@@ -5091,6 +5092,7 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 		bool			useprefix;
 		int				keyno;
 		ListCell	   *tlelc;
+		Index			scanrelid;
 
 		initStringInfo(&distinct_prefix_key_buf);
 
@@ -5099,11 +5101,13 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 												(Node *) planstate,
 												ancestors);
 		useprefix = (list_length(es->rtable) > 1 || es->verbose);
+		scanrelid = ((Scan *) planstate->plan)->scanrelid;
 
 		keyno = 0;
 		foreach(tlelc, indextlist)
 		{
 			TargetEntry	*indextle;
+			Node		*indexpr;
 			char 		*exprstr;
 
 			if (keyno >= yb_distinct_prefixlen)
@@ -5111,9 +5115,11 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 
 			indextle = (TargetEntry *) lfirst(tlelc);
 
+			/* Fix the varno of prefix to scanrelid after making a copy. */
+			indexpr = yb_fix_indexpr_mutator(
+				(Node *) indextle->expr, (void *) &scanrelid);
 			/* Deparse the expression, showing any top-level cast */
-			exprstr = deparse_expression((Node *) indextle->expr, context,
-										useprefix, true);
+			exprstr = deparse_expression(indexpr, context, useprefix, true);
 			resetStringInfo(&distinct_prefix_key_buf);
 			appendStringInfoString(&distinct_prefix_key_buf, exprstr);
 			/* Emit one property-list item per key */
@@ -5124,4 +5130,28 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 
 		ExplainPropertyList("Distinct Keys", result, es);
 	}
+}
+
+static Node *
+yb_fix_indexpr_mutator(Node *node, int *newvarno)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (nodeTag(node) == T_Var)
+	{
+		Var *var = palloc(sizeof(Var));
+
+		/* Copy old var into a new one and adjust varno */
+		*var = *((Var *) node);
+		if (!IS_SPECIAL_VARNO(var->varno))
+			var->varno = *newvarno;
+		if (var->varnoold > 0)
+			var->varnoold = *newvarno;
+
+		return (Node *) var;
+	}
+
+	return expression_tree_mutator(
+		node, yb_fix_indexpr_mutator, (void *) newvarno);
 }

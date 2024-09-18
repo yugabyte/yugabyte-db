@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a C# application using PostgreSQL Npgsql driver
 menu:
   preview:
-    identifier: postgres-npgsql-driver
+    identifier: csharp-2-postgres-npgsql-driver
     parent: csharp-drivers
-    weight: 420
+    weight: 500
 type: docs
 ---
 
@@ -111,9 +111,9 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-[YugabyteDB Managed](https://www.yugabyte.com/managed/) clusters require SSL. Refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
+YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+Refer to [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
 ### Step 3: Write your application
 
@@ -290,8 +290,3 @@ John  35   CSharp + SSL
 ```
 
 If you receive no output or an error, check the parameters in the connection string.
-
-## Learn more
-
-- [PostgreSQL Npgsql driver reference](../../../reference/drivers/csharp/postgres-npgsql-reference/)
-- Build C# applications using [EntityFramework ORM](../entityframework)

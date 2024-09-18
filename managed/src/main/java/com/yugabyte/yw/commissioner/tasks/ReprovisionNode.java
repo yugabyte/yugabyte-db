@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -13,6 +14,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@ITask.Retryable
+@ITask.Abortable
 public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -37,6 +40,8 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
   }
 
   @Override

@@ -38,6 +38,7 @@ import {
   DrConfig,
   DrConfigSafetimeResponse
 } from '../../components/xcluster/disasterRecovery/dtos';
+import { XClusterConfigType } from '../../components/xcluster/constants';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -129,7 +130,14 @@ export const suggestedKubernetesConfigQueryKey = {
 
 export const xClusterQueryKey = {
   ALL: ['xCluster'],
-  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid]
+  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid],
+  needBootstrap: (requestParams: {
+    sourceUniverseUuid?: string;
+    targetUniverseUuid?: string;
+    tableUuids?: string[];
+    configType?: XClusterConfigType;
+    includeDetails?: boolean;
+  }) => [...xClusterQueryKey.ALL, requestParams]
 };
 
 export const drConfigQueryKey = {
@@ -193,14 +201,21 @@ export interface CreateDrConfigRequest {
   name: string;
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
-  dbs: string[]; // Database uuids (from source universe) selected for replication.
+  // `dbs` - source universe database UUIDs
+  dbs: string[];
   bootstrapParams: {
     backupRequestParams?: {
       storageConfigUUID: string;
     };
   };
+  pitrParams: {
+    retentionPeriodSec: number;
+    snapshotIntervalSec: number;
+  };
 
-  dryRun?: boolean; // Run the pre-checks without actually running the subtasks
+  // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks
+  dryRun?: boolean;
+  dbScoped?: boolean;
 }
 
 export interface EditDrConfigRequest {
@@ -239,6 +254,10 @@ export interface UpdateTablesInDrRequest {
   tables: string[];
 
   autoIncludeIndexTables?: boolean;
+}
+
+export interface UpdateDbsInDrRequest {
+  dbs: string[];
 }
 
 export interface CreateHaConfigRequest {
@@ -507,6 +526,11 @@ class ApiService {
       .then((response) => response.data);
   };
 
+  updateDbsInDr = (drConfigUuid: string, updateDbsInDrRequest: UpdateDbsInDrRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_dbs`;
+    return axios.put<YBPTask>(requestUrl, updateDbsInDrRequest).then((response) => response.data);
+  };
+
   syncDrConfig = (drConfigUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/sync`;
     return axios.post<YBPTask>(requestUrl).then((response) => response.data);
@@ -683,9 +707,7 @@ class ApiService {
 
   fetchUniverseTasks = (universeUuid: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
-    return axios
-      .get<any>(requestUrl, { params: { uUUID: universeUuid } })
-      .then((response) => response.data);
+    return axios.get<any>(requestUrl, { params: { uUUID: universeUuid } });
   };
 
   getAlerts = (

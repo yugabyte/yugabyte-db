@@ -58,6 +58,7 @@ type Customer struct {
 type User struct {
 	UserId     string `json:"uuid"`
 	CustomerId string `json:"customerUUID"`
+	Email      string `json:"email"`
 	Role       string `json:"role"`
 }
 
@@ -69,6 +70,7 @@ type SessionInfo struct {
 type DisplayInterface interface {
 	Id() string
 	String() string
+	Name() string
 }
 
 // Id implements the method in DisplayInterface.
@@ -81,6 +83,11 @@ func (c Customer) String() string {
 	return fmt.Sprintf("Customer ID: %s, Customer Name: %s", c.CustomerId, c.CustomerCode)
 }
 
+// Name implements the method in DisplayInterface.
+func (c Customer) Name() string {
+	return c.CustomerName
+}
+
 // Id implements the method in DisplayInterface.
 func (u User) Id() string {
 	return u.UserId
@@ -89,6 +96,11 @@ func (u User) Id() string {
 // String implements the method in DisplayInterface.
 func (u User) String() string {
 	return fmt.Sprintf("User ID: %s, Role: %s", u.UserId, u.Role)
+}
+
+// Name implements the method in DisplayInterface.
+func (u User) Name() string {
+	return u.Email
 }
 
 func (err *ResponseError) Error() string {

@@ -58,7 +58,9 @@ struct od_server {
 
 	od_list_t link;
 
+	/* YB */
 	bool yb_sticky_connection;
+	bool reset_timeout;
 };
 
 static const size_t OD_SERVER_DEFAULT_HASHMAP_SZ = 420;
@@ -84,6 +86,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->endpoint_selector = 0;
 	od_stat_state_init(&server->stats_state);
 	server->yb_sticky_connection = false;
+	server->reset_timeout = false;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);

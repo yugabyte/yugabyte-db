@@ -24,7 +24,7 @@
 namespace yb {
 
 namespace client {
-class XClusterRemoteClient;
+class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
@@ -56,6 +56,7 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
   Status WaitForSetupUniverseReplicationToFinish();
   Status RefreshAndGetXClusterSafeTime();
   Status WaitForXClusterSafeTimeCaughtUp();
+  Status CleanupAndComplete();
 
   // Returns nullopt if the namespace is no longer part of xCluster replication, otherwise returns a
   // valid safe time.
@@ -64,7 +65,7 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
   scoped_refptr<UniverseReplicationInfo> universe_;
-  std::shared_ptr<client::XClusterRemoteClient> remote_client_;
+  std::shared_ptr<client::XClusterRemoteClientHolder> remote_client_;
   XClusterManagerIf& xcluster_manager_;
   bool is_db_scoped_ = false;
 };

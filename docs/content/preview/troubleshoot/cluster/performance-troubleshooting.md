@@ -106,7 +106,7 @@ W0325 06:47:13.033341 116514816 inbound_call.cc:208] Trace:
 
 ## yb-ts-cli
 
-You can run various tablet-related commands with `yb-ts-cli` by pointing at the YB-Master, as follows:
+You can run various tablet-related commands with yb-ts-cli by pointing at the YB-Master, as follows:
 
 ```sh
 ./yb-ts-cli list_tablets --server_address=localhost:9000
@@ -115,7 +115,7 @@ You can run various tablet-related commands with `yb-ts-cli` by pointing at the 
 
 ## yb-admin
 
-You can run various commands with `yb-admin`. You need to specify the full set of YB-Master ports `{ip:ports}` with `-master_addresses`, as follows:
+You can run various commands using yb-admin. You need to specify the full set of YB-Master ports `{ip:ports}` with `-master_addresses`, as follows:
 
 ```sh
 # Get all tables
@@ -163,7 +163,7 @@ To enable tracing, you can set the `enable_tracing` flag, as follows:
 ./yb-ts-cli --server_address=localhost:9100 set_flag enable_tracing 1
 ```
 
-To enable tracing for all RPCs (not just the slow ones) including the `enable_tracing` flag, you may also set the `rpc_dump_all_traces` gflag, as follows:
+To enable tracing for all RPCs (not just the slow ones) including the `enable_tracing` flag, you may also set the `rpc_dump_all_traces` flag, as follows:
 
 ```sh
 ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
@@ -171,9 +171,9 @@ To enable tracing for all RPCs (not just the slow ones) including the `enable_tr
 
 ## Dynamic settings for gflags
 
-Although setting string gflags dynamically is not recommended as it is not thread-safe, the `yb-ts-cli` utility allows you to do that.
+Although setting string flags dynamically is not recommended as it is not thread-safe, the yb-ts-cli utility allows you to do that.
 
-Before attempting to set gflags, you need to identify the server using its Remote Procedure Call (RPC) port, as opposed to the HTTP port.
+Before attempting to set flags, you need to identify the server using its Remote Procedure Call (RPC) port, as opposed to the HTTP port.
 
 For example, you can increase the verbose logging level to 2 by executing the following command:
 

@@ -110,6 +110,11 @@ class StreamMetadata {
     SharedLock l(table_ids_mutex_);
     return table_ids_;
   }
+  std::vector<TableId> GetUnqualifiedTableIds() const {
+    DCHECK(loaded_);
+    SharedLock l(table_ids_mutex_);
+    return unqualified_table_ids_;
+  }
   std::optional<uint64_t> GetConsistentSnapshotTime() const {
     DCHECK(loaded_);
     return consistent_snapshot_time_.load(std::memory_order_acquire);
@@ -122,6 +127,10 @@ class StreamMetadata {
     DCHECK(loaded_);
     SharedLock l(table_ids_mutex_);
     return replica_identitity_map_;
+  }
+  std::optional<std::string> GetReplicationSlotName() const {
+    DCHECK(loaded_);
+    return replication_slot_name_;
   }
 
 
@@ -150,12 +159,14 @@ class StreamMetadata {
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
   std::atomic<std::optional<uint64_t>> stream_creation_time_;
+  std::optional<std::string> replication_slot_name_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;
 
   mutable std::shared_mutex table_ids_mutex_;
   std::vector<TableId> table_ids_ GUARDED_BY(table_ids_mutex_);
+  std::vector<TableId> unqualified_table_ids_ GUARDED_BY(table_ids_mutex_);
   std::unordered_map<std::string, PgReplicaIdentity> replica_identitity_map_
       GUARDED_BY(table_ids_mutex_);
 

@@ -29,7 +29,7 @@
 struct ConnectionStats {
   uint64_t active_clients;
   uint64_t queued_clients;
-  uint64_t idle_or_pending_clients;
+  uint64_t waiting_clients;
   uint64_t active_servers;
   uint64_t idle_servers;
   uint64_t query_rate;

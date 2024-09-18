@@ -23,7 +23,9 @@ export const RegisterTroubleshootingService = ({
     defaultValues: {
       tpUrl: '',
       ybaUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : baseUrl,
-      metricsUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9090' : `${baseUrl}:9090`
+      metricsUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9090' : `${baseUrl}:9090`,
+      apiToken: '',
+      metricsScrapePeriodSecs: 10
     },
     mode: 'onChange',
     reValidateMode: 'onChange'
@@ -32,7 +34,13 @@ export const RegisterTroubleshootingService = ({
 
   const registerTpService = useMutation(
     (payload: any) =>
-      TroubleshootingAPI.registerTp(payload.tpUrl, payload.ybaUrl, payload.metricsUrl),
+      TroubleshootingAPI.registerTp(
+        payload.tpUrl,
+        payload.ybaUrl,
+        payload.metricsUrl,
+        payload.apiToken,
+        payload.metricsScrapePeriodSecs
+      ),
     {
       onSuccess: () => {
         onRefetchConfig();
@@ -49,6 +57,7 @@ export const RegisterTroubleshootingService = ({
   );
 
   const handleFormSubmit = handleSubmit((formValues) => {
+    console.warn('formValues', formValues);
     const payload = { ...formValues };
     registerTpService.mutate(payload);
   });
@@ -113,6 +122,40 @@ export const RegisterTroubleshootingService = ({
                 type="text"
                 rules={{
                   required: t('clusterDetail.troubleshoot.urlRequired')
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.apiTokenLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="apiToken"
+                style={{ width: '300px' }}
+                type="text"
+                rules={{
+                  required: t('clusterDetail.troubleshoot.apiTokenRequired')
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.metricsScrapePeriodSecLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsScrapePeriodSecs"
+                style={{ width: '300px' }}
+                type="text"
+                rules={{
+                  required: t('clusterDetail.troubleshoot.metricsScrapePeriodSecsRequired')
                 }}
               />
             </Box>

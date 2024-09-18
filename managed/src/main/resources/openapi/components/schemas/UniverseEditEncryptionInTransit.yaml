@@ -1,0 +1,27 @@
+title: UniverseEditEncryptionInTransit
+description: |
+  UniverseEditEncryptionInTransit
+
+  Request Payload to enable or disable encryption in transit. Encryption in transit can be
+  toggled for either node to node traffic or node to client traffic. Part of 
+  UniverseEncryptionInTransitReq
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"
+  - type: object
+    properties:
+      node_to_node:
+        description: Control encryption in transit between YugabyteDB nodes
+        type: boolean
+      client_to_node:
+        description: Control encryption in transit between YugabyteDB nodes and clients
+        type: boolean
+      root_ca:
+        description: Root CA cert for node to node encryption. Required if node_to_node is true
+        type: string
+        format: uuid
+      client_root_ca:
+        description: Root CA used for node to client encryption. Required if client_to_node is true
+        type: string
+        format: uuid

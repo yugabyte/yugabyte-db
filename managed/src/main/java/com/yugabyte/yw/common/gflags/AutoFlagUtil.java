@@ -228,7 +228,7 @@ public class AutoFlagUtil {
               getPromotedAutoFlags(targetUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
         }
         sourcePromotedAndModifiedAutoFlags.removeAll(targetPromotedAndModifiedAutoFlags);
-        if (sourcePromotedAndModifiedAutoFlags.size() != 0) {
+        if (!sourcePromotedAndModifiedAutoFlags.isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               "Auto Flags: "

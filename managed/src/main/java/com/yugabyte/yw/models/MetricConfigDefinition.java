@@ -272,6 +272,8 @@ public class MetricConfigDefinition {
         if (functionName.startsWith("quantile_over_time")) {
           String percentile = functionName.split("[.]")[1];
           queryStr = String.format("quantile_over_time(0.%s, %s)", percentile, queryStr);
+        } else if (functionName.equals("subtract_metric")) {
+          queryStr = String.format("%s - %s", queryStr, metric);
         } else if (functionName.startsWith("topk") || functionName.startsWith("bottomk")) {
           if (settings.getSplitMode() != SplitMode.NONE) {
             // TopK/BottomK is requested explicitly. Just ignore default split.

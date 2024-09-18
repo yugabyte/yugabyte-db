@@ -1931,6 +1931,12 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	else if (!jumblequery && pstate && pstate->p_sourcetext != p &&
 			 strcmp(pstate->p_sourcetext, p) != 0)
 		p = NULL;
+	/*
+	 * YB note: don't assume it is the top-level query when pstate is NULL and
+	 * the query tree does not have the source location.
+	 */
+	else if (!pstate && query->stmt_location <= 0 && query->stmt_len <= 0)
+		p = NULL;
 
 	return p;
 }

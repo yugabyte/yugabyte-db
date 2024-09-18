@@ -2,7 +2,7 @@
 title: ybm CLI cluster read-replica resource
 headerTitle: ybm cluster read-replica
 linkTitle: cluster read-replica
-description: YugabyteDB Managed CLI reference Cluster Read Replica resource.
+description: YugabyteDB Aeon CLI reference Cluster Read Replica resource.
 headcontent: Manage cluster read replicas
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `cluster read-replica` resource to perform operations on a YugabyteDB Managed cluster [read replica](../../../../cloud-clusters/managed-read-replica/), including the following:
+Use the `cluster read-replica` resource to perform operations on a YugabyteDB Aeon cluster [read replica](../../../../cloud-clusters/managed-read-replica/), including the following:
 
 - create, update, and delete read replicas
 - get information about read replicas

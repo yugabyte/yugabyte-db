@@ -14,7 +14,7 @@ type: docs
 
 Amazon Managed Streaming for Apache Kafka (Amazon MSK) is a fully managed, highly available, and secure Apache Kafka service offered by Amazon Web Services (AWS). Using Amazon MSK, you can build and run applications using Apache Kafka without having to manage and operate your own Kafka clusters.
 
-This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using Debezium connector, and assumes some familiarity with AWS, Apache Kafka, and CDC.
+This tutorial describes how to configure Yugabyte CDC and stream data into Amazon MSK using a Debezium connector, and assumes some familiarity with AWS, Apache Kafka, and CDC.
 
 ![Architecture of YugabyteDB to MSK using Debezium](/images/explore/cdc/aws_msk_images/architecture.jpg)
 
@@ -214,7 +214,7 @@ Create a Security Group with inbound and outbound rules configured to ensure acc
 
 ### Upload Debezium connector Jar file to the S3 bucket
 
-Download the YugabyteDB Debezium connector jar from the [repository](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) and upload it to an S3 bucket.
+Download the connector jar from the [repository](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) and upload it to an S3 bucket.
 
 ![Upload to S3](/images/explore/cdc/aws_msk_images/upload-to-s3.png)
 

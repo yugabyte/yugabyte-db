@@ -38,6 +38,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
@@ -108,7 +109,11 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     setFollowerLagMock();
     this.gFlagsKubernetesUpgrade =
         new GFlagsKubernetesUpgrade(
-            mockBaseTaskDependencies, mockGFlagsValidation, null, mockOperatorStatusUpdaterFactory);
+            mockBaseTaskDependencies,
+            mockGFlagsValidation,
+            null,
+            mockOperatorStatusUpdaterFactory,
+            null);
   }
 
   private TaskInfo submitTask(KubernetesGFlagsUpgradeParams taskParams) {
@@ -118,6 +123,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(

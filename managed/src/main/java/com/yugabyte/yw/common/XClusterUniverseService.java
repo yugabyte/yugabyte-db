@@ -45,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
+import org.yb.client.CDCStreamInfo;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.GetXClusterSafeTimeResponse;
@@ -472,7 +473,14 @@ public class XClusterUniverseService {
    * @return A set of strings representing the CDC stream IDs in the universe.
    * @throws RuntimeException if there is an error listing the CDC streams.
    */
-  public Set<String> getAllCDCStreamsInUniverse(
+  public Set<String> getAllCDCStreamIdsInUniverse(
+      YBClientService ybClientService, Universe universe) {
+    return getAllCDCStreamInfoInUniverse(ybClientService, universe).stream()
+        .map(CDCStreamInfo::getStreamId)
+        .collect(Collectors.toSet());
+  }
+
+  public Set<CDCStreamInfo> getAllCDCStreamInfoInUniverse(
       YBClientService ybClientService, Universe universe) {
     try (YBClient client =
         ybClientService.getClient(
@@ -484,9 +492,7 @@ public class XClusterUniverseService {
                 "Error listing cdc streams for universe %s. Error: %s",
                 universe.getName(), cdcStreamsResponse.errorMessage()));
       }
-      return cdcStreamsResponse.getStreams().stream()
-          .map(cdcStream -> cdcStream.getStreamId())
-          .collect(Collectors.toSet());
+      return cdcStreamsResponse.getStreams().stream().collect(Collectors.toSet());
     } catch (Exception e) {
       log.error("XClusterUniverseService.getCDCStreams hit error : {}", e.getMessage());
       throw new RuntimeException(e);
@@ -608,33 +614,39 @@ public class XClusterUniverseService {
         throw new RuntimeException(errMsg);
       }
       CatalogEntityInfo.SysClusterConfigEntryPB config = clusterConfigResp.getConfig();
-      CdcConsumer.ProducerEntryPB replicationGroup =
-          config.getConsumerRegistry().getProducerMapMap().get(replicationGroupName);
-      if (replicationGroup == null) {
-        throw new RuntimeException(
-            String.format(
-                "No replication group found with name (%s) in universe (%s) cluster config",
-                replicationGroupName, targetUniverse.getUniverseUUID()));
-      }
-
-      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
-          replicationGroup.getStreamMapMap();
-      Map<String, String> sourceTableIdTargetTableIdMap =
-          replicationStreams.values().stream()
-              .collect(
-                  Collectors.toMap(
-                      StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
-      log.debug(
-          "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
-              + "sourceTableIdTargetTableIdMap is {}",
-          sourceTableIdTargetTableIdMap);
-      return sourceTableIdTargetTableIdMap;
+      return getSourceTableIdToTargetTableIdMapFromClusterConfig(
+          targetUniverse, replicationGroupName, config);
     } catch (Exception e) {
       log.error(
           "XClusterUniverseService.getSourceTableIdTargetTableIdMap hit error : {}",
           e.getMessage());
       throw new RuntimeException(e);
     }
+  }
+
+  public Map<String, String> getSourceTableIdToTargetTableIdMapFromClusterConfig(
+      Universe targetUniverse,
+      String replicationGroupName,
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+    CdcConsumer.ProducerEntryPB replicationGroup =
+        config.getConsumerRegistry().getProducerMapMap().get(replicationGroupName);
+    if (replicationGroup == null) {
+      throw new RuntimeException(
+          String.format(
+              "No replication group found with name (%s) in universe (%s) cluster config",
+              replicationGroupName, targetUniverse.getUniverseUUID()));
+    }
+    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        replicationStreams.values().stream()
+            .collect(
+                Collectors.toMap(
+                    StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
+    log.debug(
+        "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
+            + "sourceTableIdTargetTableIdMap is {}",
+        sourceTableIdTargetTableIdMap);
+    return sourceTableIdTargetTableIdMap;
   }
 
   public Set<UUID> getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(Universe universe)

@@ -60,7 +60,7 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
 ### Create the extension
 
-After configuring the YB-TServer and starting the cluster, create the `pgaudit` extension by executing the following statement in ysqlsh:
+After configuring the YB-TServer and starting the cluster, create the pgaudit extension by executing the following statement in ysqlsh:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -70,7 +70,7 @@ You only need to run this statement on a single node, and it will apply across y
 
 ## Customize audit logging
 
-By default, audit logging includes the statement text for all statements in the classes of statements that you specify using the `pgaudit.log` flag. You can customize YSQL audit logging using the `pgaudit` flags, as per the following table.
+By default, audit logging includes the statement text for all statements in the classes of statements that you specify using the `pgaudit.log` flag. You can customize YSQL audit logging using the pgaudit flags, as per the following table.
 
 | Option | Description | Default |
 | :----- | :----- | :------ |
@@ -92,7 +92,7 @@ By default, audit logging includes the statement text for all statements in the 
 
 {{% explore-setup-single %}}
 
-Using ysqlsh, connect to the database and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
+Using ysqlsh, connect to the database and enable the pgaudit extension on the YugabyteDB cluster as follows:
 
 ```sql
 \c yugabyte yugabyte;
@@ -135,7 +135,7 @@ For this example, start a new cluster with the following audit logging configura
 --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] ',pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on"
 ```
 
-Enable the `pgaudit` extension on any node as follows:
+Enable the pgaudit extension on any node as follows:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -224,6 +224,6 @@ cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,
 
 ## Learn more
 
-- [Audit logging in YugabteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
+- [Audit logging in YugabyteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
 - [pgaudit GitHub project](https://github.com/pgaudit/pgaudit/)
 - [PostgreSQL Extensions](../../../explore/ysql-language-features/pg-extensions/)

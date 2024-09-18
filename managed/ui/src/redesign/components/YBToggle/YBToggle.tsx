@@ -67,7 +67,7 @@ interface ToggleFormControlProps {
 }
 
 export interface YBToggleProps extends SwitchProps {
-  label?: string;
+  label?: string | JSX.Element;
   labelVariant?: TypographyVariant;
   FormControlProps?: ToggleFormControlProps;
   inputProps?: InputProps['inputProps'];

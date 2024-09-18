@@ -123,7 +123,7 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
-// GetStringArrayPointer returns the pointer to a string array
+// GetArrayPointer returns the pointer to a string array
 func GetArrayPointer(in []interface{}) *[]interface{} {
 	return &in
 }
@@ -131,6 +131,24 @@ func GetArrayPointer(in []interface{}) *[]interface{} {
 // CreateSingletonList returns a list of single entry from an interface
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
+}
+
+// GetFloat64SliceFromString returns a slice of float64 from a string
+func GetFloat64SliceFromString(in string) ([]float64, error) {
+	if in == "" {
+		return nil, nil
+	}
+	in = strings.Trim(in, "[ ]")
+	s := strings.Split(in, ",")
+	var out []float64
+	for _, v := range s {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }
 
 // YbaStructuredError is a structure mimicking YBPError, with error being an interface{}
@@ -282,6 +300,9 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	return 0, errors.New("Unable to parse YB version strings")
 }
 
+// IsVersionStable returns true if the version string is stable
+// A stable version is a version with an even minor number
+// or a version with a 4 digit major version
 func IsVersionStable(version string) bool {
 	v := strings.Split(version, ".")
 	v1, err := strconv.Atoi(v[1])

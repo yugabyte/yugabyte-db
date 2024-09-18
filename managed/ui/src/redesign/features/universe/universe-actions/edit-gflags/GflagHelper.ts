@@ -1,10 +1,11 @@
+import { isEmpty } from 'lodash';
 import {
   getPrimaryCluster,
   getAsyncCluster,
   transformSpecificGFlagToFlagsArray,
   transformGFlagToFlagsArray
 } from '../../universe-form/utils/helpers';
-import { Universe, Gflag, Cluster } from '../../universe-form/utils/dto';
+import { Universe, Gflag, Cluster, RollMaxBatchSize } from '../../universe-form/utils/dto';
 
 export enum UpgradeOptions {
   Rolling = 'Rolling',
@@ -17,6 +18,7 @@ export interface EditGflagsFormValues {
   inheritFlagsFromPrimary?: boolean;
   asyncGflags: Gflag[] | [];
   timeDelay: number;
+  numNodesToUpgradePrimary: number;
   upgradeOption: UpgradeOptions;
 }
 
@@ -29,6 +31,23 @@ export interface EditGflagPayload {
   universeUUID: string;
   upgradeOption: UpgradeOptions;
   ybSoftwareVersion: string;
+  rollMaxBatchSize?: RollMaxBatchSize;
+}
+
+export interface GFlagGroupObject {
+  group_name: string;
+  flags: {
+    MASTER: Record<string, string>;
+    TSERVER: Record<string, string>;
+  };
+}
+
+export interface GFlagGroupObject {
+  group_name: string;
+  flags: {
+    MASTER: Record<string, string>;
+    TSERVER: Record<string, string>;
+  };
 }
 
 export const transformToEditFlagsForm = (universeData: Universe) => {
@@ -58,4 +77,16 @@ export const transformToEditFlagsForm = (universeData: Universe) => {
     }
   }
   return editGflagsFormData;
+};
+
+export const getFlagsByGroupName = (
+  gFlagGroupsArray: GFlagGroupObject[] | undefined,
+  groupName: string
+) => {
+  if (!gFlagGroupsArray) return {};
+  const currentGroup = gFlagGroupsArray.find((gf) => gf.group_name === groupName);
+  let gFlagList = {};
+  if (currentGroup?.flags?.MASTER) gFlagList = { ...gFlagList, ...currentGroup.flags.MASTER };
+  if (currentGroup?.flags?.TSERVER) gFlagList = { ...gFlagList, ...currentGroup.flags.TSERVER };
+  return gFlagList;
 };

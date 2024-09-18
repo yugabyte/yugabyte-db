@@ -16,7 +16,9 @@ type FeatureFlag string
 
 const (
 	// TOOLS is a feature flag enabling doc generation
-	TOOLS   FeatureFlag = "TOOLS"
+	TOOLS FeatureFlag = "TOOLS"
+
+	// PREVIEW is a feature flag enabling preview features
 	PREVIEW FeatureFlag = "PREVIEW"
 )
 

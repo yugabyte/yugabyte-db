@@ -84,11 +84,7 @@ func NewRPCServer(
 			// Create a new listener with TLS for both RPC and metrics server.
 			listener = tls.NewListener(
 				listener,
-				&tls.Config{
-					Certificates: tlsConfig.Certificates,
-					MinVersion:   tls.VersionTLS12,
-					NextProtos:   []string{http2.NextProtoTLS, "http/1.1"},
-				},
+				util.TlsConfig(tlsConfig.Certificates, []string{"http/1.1", http2.NextProtoTLS}),
 			)
 		}
 	}
@@ -121,8 +117,10 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
+
 	}()
 	// Start RPC server.
 	go func() {
@@ -132,8 +130,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	// Start the root listener.
 	go func() {
@@ -143,8 +142,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	return server, nil
 }
@@ -157,12 +157,7 @@ func loadTLSConfig() (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.NoClientCert,
-		MinVersion:   tls.VersionTLS12,
-	}
-	return tlsConfig, nil
+	return util.TlsConfig([]tls.Certificate{serverCert}, nil), nil
 }
 
 func removeFileIfPresent(filename string) error {

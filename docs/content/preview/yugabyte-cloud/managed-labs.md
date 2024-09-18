@@ -2,7 +2,7 @@
 title: Product labs
 linkTitle: Product labs
 description: Discover how YugabyteDB solves latency and performance issues.
-headcontent: Test YugabyteDB Managed features using a demo application in real time
+headcontent: Test YugabyteDB Aeon features using a demo application in real time
 menu:
   preview_yugabyte-cloud:
     identifier: managed-labs
@@ -30,7 +30,7 @@ The following lab is available (with more in development).
 
 Learn how you can minimize application latencies for users in widely dispersed geographies using [read replicas](../cloud-basics/create-clusters-topology/#read-replicas) and [partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployments.
 
-{{< youtube id="jqZxUydBaMQ" title="Global Applications with YugabyteDB Managed" >}}
+{{< youtube id="jqZxUydBaMQ" title="Global Applications with YugabyteDB Aeon" >}}
 
 ## Limitations
 

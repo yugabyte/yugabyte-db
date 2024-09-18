@@ -292,6 +292,15 @@ SnapMgrInit(void)
 	}
 }
 
+static void
+YBCOnActiveSnapshotChange()
+{
+	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
+	if (snap && snap->yb_read_time_point_handle.has_value)
+		HandleYBStatus(YBCRestoreReadTimePoint(
+			snap->yb_read_time_point_handle.value));
+}
+
 /*
  * GetTransactionSnapshot
  *		Get the appropriate snapshot for a new query in a transaction.
@@ -366,18 +375,14 @@ GetTransactionSnapshot(void)
 	/* Don't allow catalog snapshot to be older than xact snapshot. */
 	InvalidateCatalogSnapshot();
 
-	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
-
 	/*
 	 * YB: We have to RESET read point in YSQL for READ COMMITTED isolation level.
 	 * A read point is analogous to the snapshot in PostgreSQL.
 	 *
 	 * We also need to flush all earlier operations so that they complete on the
 	 * previous snapshot.
-	 *
-	 * READ COMMITTED semantics don't apply to DDLs.
 	 */
-	if (IsYBReadCommitted() && !YBCPgIsDdlMode())
+	if (YbIsReadCommittedTxn())
 	{
 		HandleYBStatus(YBCPgFlushBufferedOperations());
 		/* If this is a retry for a kReadRestart error, avoid resetting the read point */
@@ -387,6 +392,8 @@ GetTransactionSnapshot(void)
 			HandleYBStatus(YBCPgResetTransactionReadPoint());
 		}
 	}
+
+	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
 
 	return CurrentSnapshot;
 }
@@ -788,6 +795,8 @@ PushActiveSnapshot(Snapshot snap)
 	ActiveSnapshot = newactive;
 	if (OldestActiveSnapshot == NULL)
 		OldestActiveSnapshot = ActiveSnapshot;
+
+	YBCOnActiveSnapshotChange();
 }
 
 /*
@@ -862,6 +871,7 @@ PopActiveSnapshot(void)
 		OldestActiveSnapshot = NULL;
 
 	SnapshotResetXmin();
+	YBCOnActiveSnapshotChange();
 }
 
 void
@@ -1088,6 +1098,7 @@ AtSubAbort_Snapshot(int level)
 	}
 
 	SnapshotResetXmin();
+	YBCOnActiveSnapshotChange();
 }
 
 /*
@@ -2194,6 +2205,7 @@ RestoreSnapshot(char *start_address)
 	snapshot->curcid = serialized_snapshot.curcid;
 	snapshot->whenTaken = serialized_snapshot.whenTaken;
 	snapshot->lsn = serialized_snapshot.lsn;
+	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)

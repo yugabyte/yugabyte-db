@@ -16,6 +16,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
+// DeleteProviderValidation validates the delete provider command
 func DeleteProviderValidation(cmd *cobra.Command) {
 	viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 	providerNameFlag, err := cmd.Flags().GetString("name")
@@ -38,6 +39,7 @@ func DeleteProviderValidation(cmd *cobra.Command) {
 	}
 }
 
+// DeleteProviderUtil deletes a provider
 func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

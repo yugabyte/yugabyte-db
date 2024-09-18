@@ -204,6 +204,8 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
 									 		 * within a certain transaction (e.g. TEMP
 									 		 * TABLES/WITH HOLD CURSORS)*/
+	bool		ybIsInternalRcSubTransaction; /* Whether this sub transaction was started internally for
+																				* READ COMMITTED isolation */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -239,6 +241,7 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* ybDataSentForCurrQuery */
 	false,						/* isYBTxnWithPostgresRel */
 	NULL,						/* YBPostponedDdlOps */
+	false,					/* ybIsInternalRcSubTransaction */
 };
 
 /*
@@ -1944,7 +1947,8 @@ YBInitializeTransaction(void)
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
@@ -4629,6 +4633,7 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 
 	StartSubTransaction();
 	s->blockState = TBLOCK_SUBINPROGRESS;
+	s->ybIsInternalRcSubTransaction = true;
 }
 
 /*
@@ -6313,6 +6318,22 @@ void YbClearCurrentTransactionId()
 }
 
 /*
+ * YbClearParallelContexts
+ * Clean up parallel contexts as a part of transparent query restart.
+ */
+void
+YbClearParallelContexts()
+{
+	TransactionState s = CurrentTransactionState;
+	Assert(IsInParallelMode());
+	if (s->subTransactionId == InvalidSubTransactionId)
+		AtEOXact_Parallel(false);
+	else
+		AtEOSubXact_Parallel(false, s->subTransactionId);
+	ExitParallelMode();
+}
+
+/*
  * ```increment_sticky_object_count()``` is called when any database object which requires
  * stickiness is created.
  */
@@ -6328,4 +6349,18 @@ void increment_sticky_object_count()
 void decrement_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
+}
+
+/*
+ * Check if all sub transactions are internal ones started before each statement for READ COMMITTED
+ * isolation level.
+ */
+bool YbHasOnlyInternalRcSubTransactions()
+{
+	for (TransactionState s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		if (s->nestingLevel >= 2 && !s->ybIsInternalRcSubTransaction)
+			return false;
+	}
+	return true;
 }

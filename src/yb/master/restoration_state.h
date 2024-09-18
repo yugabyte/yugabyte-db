@@ -113,6 +113,8 @@ class RestorationState : public StateWithTablets {
     return &master_metadata_;
   }
 
+  Result<bool> RestorationComplete() const;
+
   bool ShouldUpdate(const RestorationState& other) const {
     // Backward compatibility mode
     int64_t other_version = other.version() == 0 ? version() + 1 : other.version();

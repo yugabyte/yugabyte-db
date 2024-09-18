@@ -13,8 +13,7 @@ import org.junit.Test;
 public class TaskTypeTest {
 
   private static final Set<TaskType> SKIP_CUSTOMER_TASK_ID_CHECK_TASKS =
-      ImmutableSet.of(
-          TaskType.RestorePitrConfig, TaskType.UpgradeUniverse, TaskType.AddGFlagMetadata);
+      ImmutableSet.of(TaskType.UpgradeUniverse, TaskType.AddGFlagMetadata);
 
   @Test
   // A simple test to enforce parent tasks to be defined together first.

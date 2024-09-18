@@ -48,7 +48,7 @@ Before you start, ensure that you have created the [kubeconfig file](../../prepa
 
 ## Configure TKG
 
-To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
+To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Integrations > Infrastructure > VMware Tanzu**.
 
 This lists all currently configured VMware Tanzu providers.
 

@@ -27,6 +27,10 @@ public class IsLoadBalancerIdleResponse extends YRpcResponse {
     serverError = error;
   }
 
+  public MasterTypes.MasterErrorPB getError() {
+    return serverError;
+  }
+
   public boolean hasError() {
     return serverError != null;
   }

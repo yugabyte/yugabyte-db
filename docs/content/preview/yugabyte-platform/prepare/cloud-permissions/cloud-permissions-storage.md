@@ -12,34 +12,34 @@ menu:
 type: docs
 ---
 
-When backing up to and/or restoring from external cloud storage, generally speaking, both YubayteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
+When backing up to and/or restoring from external cloud storage, generally speaking, both YugabyteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
 
 When backing up to an NFS storage target, only database nodes need access to the NFS storage.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#onprem" class="nav-link active" id="onprem-tab" data-toggle="tab"
+    <a href="#onprem" class="nav-link active" id="onprem-tab" data-bs-toggle="tab"
       role="tab" aria-controls="onprem" aria-selected="true">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
   <li>
-    <a href="#aws" class="nav-link" id="aws-tab" data-toggle="tab"
+    <a href="#aws" class="nav-link" id="aws-tab" data-bs-toggle="tab"
       role="tab" aria-controls="aws" aria-selected="false">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="#gcp" class="nav-link" id="gcp-tab" data-toggle="tab"
+    <a href="#gcp" class="nav-link" id="gcp-tab" data-bs-toggle="tab"
       role="tab" aria-controls="gcp" aria-selected="false">
       <i class="fa-brands fa-google"></i>
       GCP
     </a>
   </li>
   <li>
-    <a href="#azure" class="nav-link" id="azure-tab" data-toggle="tab"
+    <a href="#azure" class="nav-link" id="azure-tab" data-bs-toggle="tab"
       role="tab" aria-controls="azure" aria-selected="false">
       <i class="fa-brands fa-microsoft"></i>
       Azure
@@ -78,11 +78,11 @@ The following permissions are required:
 "s3:GetBucketLocation"
 ```
 
-The Access key ID and Secret Access Key for the service account are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3.
+The Access key ID and Secret Access Key for the service account are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Service account Access key ID and Secret Access Key | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3 |
+| Service account Access key ID and Secret Access Key | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3 |
 
   </div>
 
@@ -96,11 +96,11 @@ To grant the required access, create a GCP service account with [IAM roles for c
 roles/storage.admin
 ```
 
-The credentials for this account (in JSON format) are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS.
+The credentials for this account (in JSON format) are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Storage service account JSON credentials | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
+| Storage service account JSON credentials | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
 
 For database clusters deployed to GKE, you can alternatively assign the appropriate IAM roles to the YugabyteDB Anywhere VM and the YugabyteDB nodes.
 
@@ -114,11 +114,11 @@ To grant the required access, create a [Shared Access Signature (SAS)](https://l
 
 ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-The Connection string and SAS token are used when creating a [backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure.
+The Connection string and SAS token are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Azure storage Connection string and SAS token | [Backup storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
+| Azure storage Connection string and SAS token | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
 
   </div>
 

@@ -9,12 +9,9 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,45 +20,18 @@ import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
-public class DRLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(300, 330);
-  }
-
-  private Result createDrConfig(DrConfigCreateForm formData) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        app,
-        "POST",
-        "/api/customers/" + customer.getUuid() + "/dr_configs",
-        user.createAuthToken(),
-        Json.toJson(formData));
-  }
-
-  private Result deleteDrConfig(UUID drConfigUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
-        app,
-        "DELETE",
-        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID,
-        user.createAuthToken());
-  }
-
-  @Before
-  public void setupDr() {
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.xcluster.dr.enabled", "true");
-  }
+public class DRLocalTest extends DRLocalTestBase {
 
   @Test
   public void testDrConfigSetup() throws InterruptedException {
@@ -81,7 +51,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     // Set up the storage config.
     CustomerConfig customerConfig =
         ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
-    log.info("Customer config here: {}", customerConfig.toString());
+    log.info("Customer config here: {}", customerConfig);
 
     // Get the table info for the source universe.
     List<TableInfoForm.NamespaceInfoResp> resp =
@@ -92,7 +62,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     formData.targetUniverseUUID = target.getUniverseUUID();
     formData.name = "DisasterRecovery-1";
     formData.dbScoped = false;
-    formData.dbs = new HashSet<String>();
+    formData.dbs = new HashSet<>();
     for (TableInfoForm.NamespaceInfoResp namespaceInfo : resp) {
       if (namespaceInfo.name.equals("yugabyte")) {
         formData.dbs.add(namespaceInfo.namespaceUUID.toString());
@@ -100,7 +70,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigRestartFormData.RestartBootstrapParams();
     formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createDrConfig(formData);
@@ -129,7 +99,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
         localNodeUniverseManager.runYsqlCommand(
             details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
 
     Result deleteResult = deleteDrConfig(UUID.fromString(json.get("resourceUUID").asText()));
@@ -158,6 +128,6 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
         localNodeUniverseManager.runYsqlCommand(
             details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }
 }

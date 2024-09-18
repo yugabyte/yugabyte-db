@@ -330,7 +330,7 @@ TEST_P(CreateMultiHBTableStressTest, CreateAndDeleteBigTable) {
   // messages have a max size.
   std::cout << "Response:\n" << resp.DebugString();
   std::cout << "CatalogManager state:\n";
-  cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
 
   // Store all relevant tablets for this big table we've created.
   std::vector<string> big_table_tablets;
@@ -386,7 +386,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
     CHECK_OK(s);
   }
 }
@@ -438,7 +438,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
     CHECK_OK(s);
   }
 }
@@ -591,8 +591,8 @@ DontVerifyClusterBeforeNextTearDown();
       master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
-    auto tablets = table_info->GetTablets();
-    for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
+    auto tablets = ASSERT_RESULT(table_info->GetTablets());
+    for (const auto& tablet_info : tablets) {
       auto l_tablet = tablet_info->LockForRead();
       const master::SysTabletsEntryPB& metadata = l_tablet->pb;
       LOG(INFO) << "  Tablet: " << tablet_info->ToString()

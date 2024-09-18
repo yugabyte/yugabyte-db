@@ -3,29 +3,47 @@ title: Set up transactional xCluster replication
 headerTitle: Set up transactional xCluster replication
 linkTitle: Set up replication
 description: Setting up transactional (active-standby) replication between universes
-headContent: Set up unidirectional transactional replication
+headContent: Set up transactional replication manually
 menu:
   stable:
     parent: async-replication-transactional
-    identifier: async-transactional-setup
+    identifier: async-transactional-setup-2-manual
     weight: 10
+badges: ysql
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../async-transactional-setup-dblevel/" class="nav-link">
+      <i class="icon-shell"></i>
+      Semi-Automatic
+    </a>
+  </li>
+  <li >
+    <a href="../async-transactional-setup/" class="nav-link active">
+      <i class="icon-shell"></i>
+      Manual
+    </a>
+  </li>
+</ul>
+
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
-## Set up replication
+Note that when making DDL changes on universes in manually-configured transactional xCluster, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated. See [Make manual DDL changes](../async-transactional-tables/).
+
+## Set up replication manually
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -72,7 +90,7 @@ To set up unidirectional transactional replication manually, do the following:
       name text,
       salary int,
       primary key (id)
-    ) split into 8 tablets; 
+    ) split into 8 tablets;
 
     create index account_balance_secondary_index on account_balance(name)
     split into 8 tablets;
@@ -108,7 +126,7 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \ 
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```
@@ -139,8 +157,8 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
     create table customers (customer_id UUID, company_name text, customer_state text, primary key (customer_id));
 
     create table orders(customer_id uuid, order_id int primary key, order_details jsonb, product_name text,product_code text, order_qty int, constraint fk_customer foreign key(customer_id) references customers(customer_id));
-    create index order_covering_index on orders (customer_id, order_id) include( order_qty); 
-    create table if not exists account_balance (id uuid, name text, salary int, primary key (id)); 
+    create index order_covering_index on orders (customer_id, order_id) include( order_qty);
+    create table if not exists account_balance (id uuid, name text, salary int, primary key (id));
 
     create index account_balance_secondary_index on account_balance(name);
 
@@ -188,7 +206,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
     This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the Standby. Close any connections to the Standby database and retry the replication setup operation.
 
-    For more information on setting up replication in YugabyteDB Anywhere, refer to [Set up replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#set-up-replication).
+    For more information on setting up replication in YugabyteDB Anywhere, refer to [xCluster replication](../../../../yugabyte-platform/manage-deployments/xcluster-replication/).
 
 **Adding a database to an existing replication**
 

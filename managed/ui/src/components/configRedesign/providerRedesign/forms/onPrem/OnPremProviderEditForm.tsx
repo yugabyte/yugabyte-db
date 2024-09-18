@@ -99,9 +99,12 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  sshUser: string().required('SSH user is required.'),
-  sshPrivateKeyContent: mixed().when('editSSHKeypair', {
-    is: true,
+  sshUser: string().when('skipProvisioning', {
+    is: false,
+    then: string().required('SSH user is required.')
+  }),
+  sshPrivateKeyContent: mixed().when(['editSSHKeypair', 'skipProvisioning'], {
+    is: (editSSHKeypair, skipProvisioning) => editSSHKeypair && !skipProvisioning,
     then: mixed().required('SSH private key is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
@@ -222,7 +225,7 @@ export const OnPremProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
   const isProviderInUse = linkedUniverses.length > 0;

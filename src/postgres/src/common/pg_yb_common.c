@@ -187,6 +187,15 @@ int YBGetMaxClockSkewUsec() {
 	return kDefaultClockSkewUsec;
 }
 
+int YBGetHeartbeatIntervalMs() {
+	const int kDefaultHeartbeatIntervalMs = 1000;  // from heartbeater.cc
+	const char *yb_heartbeat_interval_ms_str = getenv("FLAGS_heartbeat_interval_ms");
+	if (yb_heartbeat_interval_ms_str) {
+		return atoi(yb_heartbeat_interval_ms_str);
+	}
+	return kDefaultHeartbeatIntervalMs;
+}
+
 int YBGetYsqlOutputBufferSize() {
 	const char *output_buffer_size_str = getenv("FLAGS_ysql_output_buffer_size");
 	if (output_buffer_size_str) {
@@ -226,6 +235,23 @@ YBColocateDatabaseByDefault()
 	{
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_colocate_database_by_default",
 												  false /* default_value */);
+	}
+	return cached_value;
+}
+
+/*
+ * Note: This function is used for the test flag only. 
+ * Once the associated feature is fully developed and stable, this function will be removed.
+ * The flag is defined this way and not in ybc_pggate.cc because it is used in the ipic.c file,
+ * which is initialized before the pggate api.
+ */
+bool
+YBIsQueryDiagnosticsEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_enable_query_diagnostics");
 	}
 	return cached_value;
 }

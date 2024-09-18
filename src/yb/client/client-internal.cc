@@ -136,9 +136,8 @@ using master::MasterErrorPB;
 
 namespace client {
 
-using internal::GetTableSchemaRpc;
 using internal::GetTablegroupSchemaRpc;
-using internal::GetColocatedTabletSchemaRpc;
+using internal::GetTableSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
@@ -306,6 +305,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RemoveTablesFromCDCSDKStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsObjectPartOfXRepl);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
@@ -1151,7 +1151,7 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
   }
   auto state = resp.entries(0).aggregate_state();
   *create_in_progress =
-      !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::RESTORED);
+      !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::COMPLETE);
 
   if (state == master::SysCloneStatePB_State_ABORTED) {
     return STATUS_FORMAT(
@@ -1417,40 +1417,6 @@ class GetTablegroupSchemaRpc
   vector<YBTableInfo>* info_;
 };
 
-// Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
-class GetColocatedTabletSchemaRpc : public ClientMasterRpc<GetColocatedTabletSchemaRequestPB,
-    GetColocatedTabletSchemaResponsePB> {
- public:
-  GetColocatedTabletSchemaRpc(YBClient* client,
-                              StatusCallback user_cb,
-                              const YBTableName& parent_colocated_table,
-                              vector<YBTableInfo>* info,
-                              CoarseTimePoint deadline);
-  GetColocatedTabletSchemaRpc(YBClient* client,
-                              StatusCallback user_cb,
-                              const TableId& parent_colocated_table_id,
-                              vector<YBTableInfo>* info,
-                              CoarseTimePoint deadline);
-
-  std::string ToString() const override;
-
-  virtual ~GetColocatedTabletSchemaRpc();
-
- private:
-  GetColocatedTabletSchemaRpc(YBClient* client,
-                              StatusCallback user_cb,
-                              const master::TableIdentifierPB& parent_colocated_table_identifier,
-                              vector<YBTableInfo>* info,
-                              CoarseTimePoint deadline);
-
-  void CallRemoteMethod() override;
-  void ProcessResponse(const Status& status) override;
-
-  StatusCallback user_cb_;
-  master::TableIdentifierPB table_identifier_;
-  vector<YBTableInfo>* info_;
-};
-
 namespace {
 
 master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
@@ -1637,68 +1603,6 @@ void GetTablegroupSchemaRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(new_status);
 }
 
-GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(YBClient* client,
-                                                         StatusCallback user_cb,
-                                                         const YBTableName& table_name,
-                                                         vector<YBTableInfo>* info,
-                                                         CoarseTimePoint deadline)
-    : GetColocatedTabletSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_name), info, deadline) {
-}
-
-GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(YBClient* client,
-                                                         StatusCallback user_cb,
-                                                         const TableId& table_id,
-                                                         vector<YBTableInfo>* info,
-                                                         CoarseTimePoint deadline)
-    : GetColocatedTabletSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_id), info, deadline) {}
-
-GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(
-    YBClient* client,
-    StatusCallback user_cb,
-    const master::TableIdentifierPB& table_identifier,
-    vector<YBTableInfo>* info,
-    CoarseTimePoint deadline)
-    : ClientMasterRpc(client, deadline),
-      user_cb_(std::move(user_cb)),
-      table_identifier_(table_identifier),
-      info_(DCHECK_NOTNULL(info)) {
-  req_.mutable_parent_colocated_table()->CopyFrom(table_identifier_);
-}
-
-GetColocatedTabletSchemaRpc::~GetColocatedTabletSchemaRpc() {
-}
-
-void GetColocatedTabletSchemaRpc::CallRemoteMethod() {
-  master_ddl_proxy()->GetColocatedTabletSchemaAsync(
-      req_, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&GetColocatedTabletSchemaRpc::Finished, this, Status::OK()));
-}
-
-string GetColocatedTabletSchemaRpc::ToString() const {
-  return Format(
-      "GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
-      table_identifier_.ShortDebugString(), num_attempts());
-}
-
-void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
-  auto new_status = status;
-  if (new_status.ok()) {
-    for (const auto& resp : resp_.get_table_schema_response_pbs()) {
-      info_->emplace_back();
-      new_status = CreateTableInfoFromTableSchemaResp(resp, &info_->back());
-      if (!new_status.ok()) {
-        break;
-      }
-    }
-  }
-  if (!new_status.ok()) {
-    LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
-  }
-  user_cb_.Run(new_status);
-}
-
 class CreateXClusterStreamRpc
     : public ClientMasterRpc<CreateCDCStreamRequestPB, CreateCDCStreamResponsePB> {
  public:
@@ -1819,7 +1723,6 @@ class CreateSnapshotRpc
       table.SetIntoTableIdentifierPB(&id);
       req_.mutable_tables()->Add()->Swap(&id);
     }
-    req_.set_transaction_aware(true);
     return Status::OK();
   }
 
@@ -2231,6 +2134,17 @@ class GetXClusterStreamsRpc
     return Status::OK();
   }
 
+  Status Init(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids) {
+    req_.set_replication_group_id(replication_group_id.ToString());
+    req_.set_namespace_id(namespace_id);
+    for (const auto& table_id : source_table_ids) {
+      req_.add_source_table_ids(table_id);
+    }
+    return Status::OK();
+  }
+
   string ToString() const override {
     return Format(
         "GetXClusterStreamsRpc(replication_group_id: $0, num_attempts: $1)",
@@ -2404,21 +2318,6 @@ Status YBClient::Data::GetTablegroupSchemaById(
       client,
       callback,
       tablegroup_id,
-      info.get(),
-      deadline);
-  return Status::OK();
-}
-
-Status YBClient::Data::GetColocatedTabletSchemaByParentTableId(
-    YBClient* client,
-    const TableId& parent_colocated_table_id,
-    CoarseTimePoint deadline,
-    std::shared_ptr<std::vector<YBTableInfo>> info,
-    StatusCallback callback) {
-  auto rpc = StartRpc<GetColocatedTabletSchemaRpc>(
-      client,
-      callback,
-      parent_colocated_table_id,
       info.get(),
       deadline);
   return Status::OK();
@@ -3021,6 +2920,19 @@ Status YBClient::Data::GetXClusterStreams(
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, table_names, pg_schema_names));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
+}
+
+Status YBClient::Data::GetXClusterStreams(
+    YBClient* client, CoarseTimePoint deadline,
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableId>& source_table_ids,
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb) {
+  auto rpc =
+      std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
+  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, source_table_ids));
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
 
   return Status::OK();

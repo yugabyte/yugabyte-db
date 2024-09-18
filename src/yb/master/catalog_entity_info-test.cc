@@ -87,7 +87,7 @@ TEST_F(CatalogEntityInfoTest, TestTableInfoCommit) {
 
 // Verify that data mutations are not available from metadata() until commit.
 TEST_F(CatalogEntityInfoTest, TestTabletInfoCommit) {
-  scoped_refptr<TabletInfo> tablet(new TabletInfo(nullptr, "123"));
+  auto tablet = std::make_shared<TabletInfo>(nullptr, "123");
 
   // Mutate the tablet, the changes should not be visible
   auto l = tablet->LockForWrite();

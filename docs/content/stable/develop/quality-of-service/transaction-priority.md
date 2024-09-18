@@ -48,8 +48,8 @@ Currently, transaction priorities work in the following scenarios:
 
 Create a [YugabyteDB universe](/preview/quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
-{{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a free cluster with [YugabyteDB Managed](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
+{{< tip title="Tip - Use YugabyteDB Aeon" >}}
+You can create a free cluster with [YugabyteDB Aeon](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 

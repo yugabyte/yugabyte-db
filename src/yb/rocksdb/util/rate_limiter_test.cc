@@ -40,7 +40,32 @@ namespace rocksdb {
 class RateLimiterTest : public RocksDBTest {};
 
 TEST_F(RateLimiterTest, StartStop) {
-  std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(100, 100, 10));
+  ASSERT_DEATH(
+      std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(100, 100, 10)),
+      "Check failed: refill_bytes_per_period_ > 0");
+
+  std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(1000, 1000, 10));
+}
+
+TEST_F(RateLimiterTest, LargeRequests) {
+  // Allow 1000 bytes per second. This gives us 1 byte every micro second, and a request of 1000
+  // should take 1s.
+  std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(1000, 1000, 10));
+
+  auto now = yb::CoarseMonoClock::Now();
+  limiter->Request(1000, yb::IOPriority::kHigh);
+  auto duration_waited = yb::ToMilliseconds(yb::CoarseMonoClock::Now() - now);
+  ASSERT_GT(duration_waited, 500);
+
+#if defined(OS_MACOSX)
+  // MacOS tests are much slower, so use a larger timeout.
+  ASSERT_LT(duration_waited, 10000);
+#else
+  ASSERT_LT(duration_waited, 1500);
+#endif
+
+  ASSERT_EQ(limiter->GetTotalBytesThrough(), 1000);
+  ASSERT_EQ(limiter->GetTotalRequests(), 1000);
 }
 
 #ifndef OS_MACOSX

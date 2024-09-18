@@ -48,10 +48,10 @@ import algoliasearch from 'algoliasearch';
    * Create a URL that contains query, tab, items etc.
    */
   function createSearchUrl(pager = 1) {
-    const searchText = searchInput.value.trim();
+    const searchText = encodedSearchedTerm();
     if (history.pushState) {
       let addQueryParams = '';
-      if (searchText && searchText.trim().length > 0) {
+      if (searchText.length > 0) {
         searchInput.classList.add('have-text');
         addQueryParams = `?query=${searchText.trim()}`;
       } else {
@@ -163,21 +163,31 @@ import algoliasearch from 'algoliasearch';
    * Show Message when Search is empty.
    */
   function emptySearch() {
-    setTimeout(() => {
-      if (document.querySelector('body').classList.contains('td-searchpage--')) {
-        document.querySelector('#doc-hit').innerHTML = '<li class="no-result">Search data related to <b>YugabyteDB</b> in our Documentation</li>';
-        document.querySelector('#pagination-docs').style.display = 'none';
-      } else {
-        document.querySelector('.search-result').style.display = 'none';
-      }
-    }, 800);
+    const searchSummary = document.querySelector('#search-summary');
+    if (searchSummary) {
+      searchSummary.innerHTML = '';
+    }
+
+    document.querySelector('.search-result').style.display = 'none';
+  }
+
+  /**
+   * Encode user searched term to avoid XSS.
+   *
+   * @returns string
+   */
+  function encodedSearchedTerm() {
+    const searchedValue = searchInput.value.trim();
+    const encodedValue = searchedValue.replace(/[\u00A0-\u9999<>&]/g, i => `&#${i.charCodeAt(0)};`);
+
+    return encodedValue;
   }
 
   /**
    * Main Docs section HTML.
    */
   function docsSection(queryID, hitIs, resultPosition) {
-    const searchText = searchInput.value.trim();
+    const searchText = encodedSearchedTerm();
 
     let content = '';
     hitIs.forEach((hit, index) => {
@@ -353,10 +363,62 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Trigger AI Search on clicking custom button.
+   */
+  function kapaSearch() {
+    const aiSearch = document.getElementById('ai-search');
+    if (aiSearch) {
+      aiSearch.addEventListener('click', () => {
+        const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
+        if (kapaWidgetButton) {
+          kapaWidgetButton.click();
+
+          const aiSearchInput = new MutationObserver(() => {
+            const mantineTextInput = document.querySelector('.mantine-TextInput-input');
+            if (mantineTextInput) {
+              const event = new Event('input', {
+                bubbles: true,
+              });
+
+              // Add the original searched input.
+              mantineTextInput.setAttribute('value', searchInput.value.trim());
+
+              mantineTextInput.dispatchEvent(event);
+
+              aiSearchInput.disconnect();
+            }
+          });
+
+          const aiSearchTab = new MutationObserver(() => {
+            const mantineSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
+            if (mantineSearchTab) {
+              mantineSearchTab.click();
+
+              aiSearchTab.disconnect();
+            }
+          });
+
+          aiSearchInput.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+
+          aiSearchTab.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      });
+    }
+  }
+
+  /**
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
-    const searchValue = searchInput.value.trim();
+    const searchedTerm = encodedSearchedTerm();
+
+    let searchValue = searchedTerm;
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
       setTimeout(() => {
@@ -364,6 +426,7 @@ import algoliasearch from 'algoliasearch';
       }, 800);
     } else {
       emptySearch();
+      setTimeout(emptySearch, 800);
       return;
     }
 
@@ -381,6 +444,16 @@ import algoliasearch from 'algoliasearch';
       page: 0,
       clickAnalytics: true,
     };
+    const searchSummary = document.getElementById('search-summary');
+
+    if (searchValue.includes('_')) {
+      const searchScript = document.getElementById('algolia-search-script');
+      const sequenceExpressions = searchScript.getAttribute('data-sequence-expressions');
+
+      if (sequenceExpressions) {
+        searchValue = searchValue.replace(/_/g, '-');
+      }
+    }
 
     if (pageItems && pageItems > 0) {
       searchOptions.page = pageItems - 1;
@@ -395,26 +468,43 @@ import algoliasearch from 'algoliasearch';
 
         let pagerDetails = {};
         let sectionHTML = '';
+        let totalResults = nbHits;
         sectionHTML += docsSection(queryID, hits, startResultPosition);
-        if (hits.length > 0 && sectionHTML !== '') {
-          searchResults.innerHTML = sectionHTML;
-        } else {
-          searchResults.innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
+
+        if (totalResults > 1000) {
+          totalResults = 1000;
         }
+
+        document.getElementById('doc-hit').innerHTML = sectionHTML;
+
+        if (hits.length > 0 && sectionHTML !== '') {
+          if (searchSummary !== null) {
+            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          }
+        } else {
+          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          if (searchSummary) {
+            searchSummary.innerHTML = noResultMessage;
+          } else {
+            document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
+          }
+        }
+
+        kapaSearch();
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
           pagerDetails = {
             currentPage: page + 1,
             pagerId: 'pagination-docs',
             pagerType: 'docs',
-            totalHits: nbHits,
+            totalHits: totalResults,
             totalPages: nbPages,
           };
 
           searchPager(pagerDetails);
-          searchpagerparent.className = `pager results-${nbHits}`;
+          searchpagerparent.className = `pager results-${totalResults}`;
         } else {
-          searchpagerparent.className = `pager results-${nbHits}`;
+          searchpagerparent.className = `pager results-${totalResults}`;
           let viewAll = '';
           if (nbPages > 1) {
             viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
@@ -422,7 +512,7 @@ import algoliasearch from 'algoliasearch';
 
           document.getElementById('pagination-docs').innerHTML = `<nav class="pager-area">
             <div class="pager-area">
-              <span class="total-result">${nbHits} Results</span>
+              <span class="total-result">${totalResults} Results</span>
             </div>
             ${viewAll}
           </nav>`;
@@ -510,9 +600,9 @@ import algoliasearch from 'algoliasearch';
 
   const inputReset = document.querySelector('.reset-input');
   inputReset.addEventListener('click', () => {
-    document.querySelector('.td-search-input').value = '';
+    searchInput.value = '';
     emptySearch();
-    document.querySelector('.td-search-input').classList.remove('have-text');
+    searchInput.classList.remove('have-text');
     if (document.querySelector('body').classList.contains('td-searchpage')) {
       window.history.pushState({}, '', '/search/');
     }

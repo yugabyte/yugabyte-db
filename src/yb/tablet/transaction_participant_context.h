@@ -48,6 +48,8 @@ class TransactionParticipantContext {
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
 
+  virtual Result<OpId> MaxPersistentOpId() const = 0;
+
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
   std::string LogPrefix() const;

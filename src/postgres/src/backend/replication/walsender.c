@@ -1213,7 +1213,7 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("StartReplication is unavailable"),
 				 errdetail("StartReplication can only be called with "
-						   "ysql_TEST_enable_replication_slot_consumption "
+						   "ysql_yb_enable_replication_slot_consumption "
 						   "and ysql_yb_enable_replica_identity set to "
 						   "true.")));
 
@@ -1344,9 +1344,6 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 	if (IsYugaByteEnabled())
 		yb_start_time = GetCurrentTimestamp();
 
-	/* output previously gathered data in a CopyData packet */
-	pq_putmessage_noblock('d', ctx->out->data, ctx->out->len);
-
 	/*
 	 * Fill the send timestamp last, so that it is taken as late as possible.
 	 * This is somewhat ugly, but the protocol is set as it's already used for
@@ -1357,6 +1354,9 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 	pq_sendint64(&tmpbuf, now);
 	memcpy(&ctx->out->data[1 + sizeof(int64) + sizeof(int64)],
 		   tmpbuf.data, sizeof(int64));
+
+	/* output previously gathered data in a CopyData packet */
+	pq_putmessage_noblock('d', ctx->out->data, ctx->out->len);
 
 	CHECK_FOR_INTERRUPTS();
 

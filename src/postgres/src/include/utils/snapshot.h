@@ -33,6 +33,12 @@ typedef struct SnapshotData *Snapshot;
 typedef bool (*SnapshotSatisfiesFunc) (HeapTuple htup,
 									   Snapshot snapshot, Buffer buffer);
 
+typedef struct YbReadTimePointHandle
+{
+	bool has_value;
+	uint64 value;
+} YbReadTimePointHandle;
+
 /*
  * Struct representing all kind of possible snapshots.
  *
@@ -112,6 +118,7 @@ typedef struct SnapshotData
 
 	TimestampTz whenTaken;		/* timestamp when snapshot was taken */
 	XLogRecPtr	lsn;			/* position in the WAL stream when taken */
+	YbReadTimePointHandle yb_read_time_point_handle;
 } SnapshotData;
 
 /*

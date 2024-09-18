@@ -138,7 +138,7 @@ public class UniverseMetricProvider implements MetricsProvider {
                   .setLabel(KnownAlertLabels.DB_VERSION, dbVersion);
           if (activeTaskCodeMetric.getValue() > 0) {
             UUID taskUuid = universe.getUniverseDetails().updatingTaskUUID;
-            activeTaskCodeMetric.setLabel(KnownAlertLabels.TASK_UUID, taskUuid.toString());
+            activeTaskCodeMetric.setKeyLabel(KnownAlertLabels.TASK_UUID, taskUuid.toString());
           }
           universeGroup.metric(activeTaskCodeMetric);
           universeGroup.metric(

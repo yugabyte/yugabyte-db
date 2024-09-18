@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS restore (
   restore_uuid          UUID NOT NULL,
   universe_uuid         UUID NOT NULL,
   customer_uuid         UUID NOT NULL,
-  task_uuid             UUID NOT NULL UNIQUE,
+  task_uuid             UUID NOT NULL,
   source_universe_uuid  UUID,
   storage_config_uuid   UUID,
   source_universe_name  varchar(255),
@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS restore (
   update_time           timestamp,
   restore_size_in_bytes int8,
   state                 varchar(20) NOT NULL,
-  CONSTRAINT pk_restore PRIMARY KEY (restore_uuid)
+  CONSTRAINT pk_restore PRIMARY KEY (restore_uuid),
+  CONSTRAINT restore_task_uuid_key unique (task_uuid)
 );
 CREATE TABLE IF NOT EXISTS restore_keyspace (
   uuid                  UUID NOT NULL,

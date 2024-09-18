@@ -1,0 +1,15 @@
+title: JobConfigSpec
+description: Job config spec for a schedule that is a part of JobScheduleSpec
+type: object
+properties:
+  classname:
+    description: Class name of the job config.
+    type: string
+    readOnly: true
+  config:
+    description: Additional custom configuration.
+    type: object
+    additionalProperties:
+      type: object
+required:
+  - classname

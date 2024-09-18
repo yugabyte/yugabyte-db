@@ -112,7 +112,7 @@
 # doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
 - name: Remove older yb software folders
   shell: "ls --ignore='ybc*' \"{{ yb_software_dir }}\" -t | \
-      tail -n +{{ num_releases_to_keep + 2 }} | \
+      tail -n +{{ num_releases_to_keep + 3 }} | \
       xargs -I{} --no-run-if-empty rm -rv \"{{ yb_software_dir }}/{}\" --"
   register: rm_yb_softwares_result
   tags:

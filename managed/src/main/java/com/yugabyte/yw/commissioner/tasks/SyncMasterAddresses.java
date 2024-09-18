@@ -3,12 +3,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -21,6 +22,8 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
 
   private final Set<String> nodesToStop = ConcurrentHashMap.newKeySet();
 
+  private boolean isLocalProvider = false;
+
   @Inject
   protected SyncMasterAddresses(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -30,19 +33,26 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     if (isFirstTry()) {
-      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
       Set<NodeDetails> nonMasterNodes =
           universe.getNodes().stream()
-              .filter(n -> !masterNodes.contains(n))
+              .filter(n -> !n.isMaster && n.cloudInfo.private_ip != null)
               .filter(n -> n.autoSyncMasterAddrs)
               .collect(Collectors.toSet());
-      createCheckProcessStateTask(
-              universe,
-              nonMasterNodes,
-              ServerType.MASTER,
-              false /* ensureRunning */,
-              n -> nodesToStop.add(n.nodeName))
-          .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      if (primaryCluster.userIntent.providerType == CloudType.local) {
+        isLocalProvider = true;
+        nonMasterNodes.stream().map(NodeDetails::getNodeName).forEach(n -> nodesToStop.add(n));
+      } else {
+        // Disable this on local provider as the check cannot be done properly as there are multiple
+        // master processes.
+        createCheckProcessStateTask(
+                universe,
+                nonMasterNodes,
+                ServerType.MASTER,
+                false /* ensureRunning */,
+                n -> nodesToStop.add(n.nodeName))
+            .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      }
     }
   }
 
@@ -67,9 +77,11 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
               ServerType.MASTER,
               params -> {
                 params.deconfigure = true;
+                params.isIgnoreError = isLocalProvider;
               })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      createMasterAddressUpdateTask(universe, universe.getMasters(), universe.getTServers());
+      createMasterAddressUpdateTask(
+          universe, universe.getMasters(), universe.getTServers(), false /* ignore error */);
       createUpdateUniverseFieldsTask(u -> u.getNodes().forEach(n -> n.autoSyncMasterAddrs = false));
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();

@@ -243,6 +243,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_UPGRADE_SOFTWARE_TASKS =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
@@ -298,6 +299,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.UpdateAndPersistGFlags,
           TaskType.KubernetesCommandExecutor,
@@ -353,6 +355,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   private static List<JsonNode> createUpgradeSoftwareResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
@@ -449,6 +452,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   private static List<JsonNode> createUpdateGflagsResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(

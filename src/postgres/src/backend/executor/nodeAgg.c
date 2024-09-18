@@ -1573,6 +1573,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
 		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
 		  IsA(outerPlanState(aggstate), IndexScanState) ||
+		  IsA(outerPlanState(aggstate), YbBitmapTableScanState) ||
 		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
@@ -1599,6 +1600,25 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	{
 		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
 		if (ioss->yb_ioss_might_recheck)
+			return;
+	}
+	else if (IsA(ss, YbBitmapTableScanState))
+	{
+		YbBitmapTableScanState *btss = castNode(YbBitmapTableScanState, ss);
+
+		/*
+		 * We can pushdown recheck conditions, so the only time we can't
+		 * pushdown the aggregate is if we have local recheck conditions
+		 */
+		if (btss->recheck_required && btss->recheck_local_quals)
+			return;
+
+		/*
+		 * We can't pushdown the aggregate if we'd have local conditions to
+		 * check if we exceed work_mem. We don't yet know whether or not
+		 * work_mem will be exceeded, but we must assume the worst.
+		 */
+		if (btss->fallback_local_quals)
 			return;
 	}
 
@@ -2606,16 +2626,17 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	outerPlan = outerPlan(node);
 
 	/*
-	 * For YB IndexScan/IndexOnlyScan outer plan, we need to collect recheck
-	 * information, so set that eflag.  Ideally, the flag is only set for YB
-	 * relations since, later on, agg pushdown is disabled anyway for non-YB
-	 * relations, but we don't have that information at this point: the
-	 * relation is opened in the IndexScan/IndexOnlyScan node.  So set the flag
+	 * For YB IndexScan/IndexOnlyScan/BitmapScan outer plan, we need to collect
+	 * recheck information, so set that eflag.  Ideally, the flag is only set
+	 * for YB relations since, later on, agg pushdown is disabled anyway for
+	 * non-YB relations, but we don't have that information at this point: the
+	 * relation is opened in the child node.  So set the flag
 	 * in all cases, and move the YB-relation check down there.
 	 */
 	int yb_eflags = 0;
 	if (IsYugaByteEnabled() &&
-		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan)))
+		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan) ||
+		 IsA(outerPlan, YbBitmapTableScan)))
 		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
 
 	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,

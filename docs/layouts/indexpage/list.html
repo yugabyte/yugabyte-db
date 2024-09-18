@@ -19,7 +19,10 @@
 
   {{- if and (.Site.Params.yb.heading_icons) (.Params.image) (not .Params.hideHeadingIcon) -}}
     {{- if in .Params.image "/" -}}
-      {{- $headingImage = true -}}
+      {{ $checkImagePath := printf "public%s" .Params.image }}
+      {{- if fileExists $checkImagePath }}
+        {{- $headingImage = true -}}
+      {{- end -}}
     {{- else -}}
       {{- $headingIcon = true -}}
     {{- end -}}
@@ -42,7 +45,10 @@
       </div>
     </div>
   </div>
-  {{ partial "contribute_list" . }}
+
+  {{- if ne .Params.showRightNav true -}}
+    {{- partial "contribute_list" . -}}
+  {{- end -}}
   {{ partial "earlier-version-warning" . }}
   <!-- Wrap table in div for responsive -->
   {{ .Content | replaceRE "(<table(?:.|\n)+?</table>)" "<div class=table-responsive> ${1} </div>"  | safeHTML }}

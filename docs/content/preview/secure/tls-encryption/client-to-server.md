@@ -30,7 +30,7 @@ Configuration flag                   | Process    | Description                 
 [`--allow_insecure_connections`](../../../reference/configuration/yb-tserver/#allow-insecure-connections) | YB-TServer | Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `--use_client_to_server_encryption` to be enabled. |
 [`--certs_for_client_dir`](../../../reference/configuration/yb-tserver/#certs-for-client-dir) | YB-TServer | Optional. Defaults to the same directory as the server-to-server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for YB-TServer is `<data drive>/yb-data/tserver/data/certs` |
 
-To enable access control, follow these steps, start the `yb-tserver` services with the following flag (described above):
+To enable access control, follow these steps, start the yb-tserver services with the following flag (described above):
 
 ```output
 --use_client_to_server_encryption=true

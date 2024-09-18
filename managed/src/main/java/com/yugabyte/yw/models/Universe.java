@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -62,7 +64,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -87,6 +91,7 @@ public class Universe extends Model {
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
   public static final String IS_MULTIREGION = "isMultiRegion";
+  public static final String NEW_INSTALL_GFLAGS = "new_install_gflags";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
   // Whether all the Kubernetes resources are labeled with universe
@@ -98,7 +103,6 @@ public class Universe extends Model {
 
   // Key to indicate if a universe cert is hot reloadable
   public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
-  public static final String USE_USER_LEVEL_NODE_EXPORTER = "use_user_level_node_exporter";
 
   public static Universe getOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
@@ -495,6 +499,33 @@ public class Universe extends Model {
   }
 
   /**
+   * Run universe updater and invoke the version increment callback.
+   *
+   * @param universeUUID the universe UUID.
+   * @param versionIncrementCallback the version increment callback.
+   * @param updater the universe updater.
+   * @return the updated universe.
+   */
+  public static Universe saveUniverseDetails(
+      UUID universeUUID,
+      @Nullable Function<UUID, Boolean> versionIncrementCallback,
+      UniverseUpdater updater) {
+    UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      if (updater.getConfig().isIgnoreAbsence() && !Universe.maybeGet(universeUUID).isPresent()) {
+        return null;
+      }
+      boolean shouldIncrementVersion = false;
+      if (versionIncrementCallback != null) {
+        shouldIncrementVersion = versionIncrementCallback.apply(universeUUID);
+      }
+      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
+    } finally {
+      UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
+    }
+  }
+
+  /**
    * Deletes the universe entry with the given UUID.
    *
    * @param universeUUID : uuid of the universe.
@@ -631,6 +662,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of tservers for this universe in a given cluster.
+   *
+   * @return a list of tserver nodes
+   */
+  public List<NodeDetails> getTserversInCluster(UUID clusterUUID) {
+    return getServers(ServerType.TSERVER).stream()
+        .filter(server -> server.isInPlacement(clusterUUID))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
    * read replica will not be included.
    *
@@ -761,6 +803,15 @@ public class Universe extends Model {
       }
     }
     return true;
+  }
+
+  /** Verify all nodes are considered running. */
+  public boolean verifyTserverRunningOnNodes() {
+    return !(getTServers().stream()
+        .filter(nD -> nD.cloudInfo != null && nD.cloudInfo.private_ip != null)
+        .filter(nD -> !nD.isConsideredRunning())
+        .findAny()
+        .isPresent());
   }
 
   public String getKubernetesMasterAddresses() {
@@ -1240,5 +1291,29 @@ public class Universe extends Model {
   @PostRemove
   public void cleanupUniverse() {
     RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
+  }
+
+  @JsonIgnore
+  public void setNewInstallGFlags(PerProcessFlags newInstallGFlags) {
+    updateConfig(Map.of(Universe.NEW_INSTALL_GFLAGS, Json.toJson(newInstallGFlags).toString()));
+  }
+
+  @JsonIgnore
+  public Map<String, String> getNewInstallGFlags(ServerType serverType) {
+    Map<String, String> newInstallGFlags = new HashMap<>();
+    if (config != null && config.containsKey(Universe.NEW_INSTALL_GFLAGS)) {
+      try {
+        PerProcessFlags allnewInstallGFlags =
+            Json.mapper().readValue(config.get(Universe.NEW_INSTALL_GFLAGS), PerProcessFlags.class);
+        newInstallGFlags = allnewInstallGFlags.value.getOrDefault(serverType, new HashMap<>());
+      } catch (JsonProcessingException jex) {
+        LOG.warn(
+            "Unexpected error reading new install gflags json {} in universe config {} {}",
+            config.get(Universe.NEW_INSTALL_GFLAGS),
+            getName(),
+            jex);
+      }
+    }
+    return newInstallGFlags;
   }
 }

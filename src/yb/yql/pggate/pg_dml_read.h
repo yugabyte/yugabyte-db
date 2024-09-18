@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "yb/common/pgsql_protocol.fwd.h"
@@ -57,12 +57,12 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
-  PgDmlRead(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-           const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
-           bool is_region_local);
-  virtual ~PgDmlRead();
+  PgDmlRead(
+      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
+      bool is_region_local, const PrepareParameters& prepare_params = {},
+      const PgObjectId& index_id = {});
 
-  StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
+  [[nodiscard]] StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
 
   virtual Status Prepare() = 0;
 
@@ -70,56 +70,52 @@ class PgDmlRead : public PgDml {
   virtual void PrepareBinds();
 
   // Set forward (or backward) scan.
-  void SetForwardScan(const bool is_forward_scan);
+  void SetForwardScan(bool is_forward_scan);
 
-  bool KeepOrder() const;
+  [[nodiscard]] bool KeepOrder() const;
 
   // Set prefix length, in columns, of distinct index scans.
-  void SetDistinctPrefixLength(const int distinct_prefix_length);
+  void SetDistinctPrefixLength(int distinct_prefix_length);
 
   // Set scan bounds
-  void SetHashBounds(const uint16_t low_bound, const uint16_t high_bound);
+  void SetHashBounds(uint16_t low_bound, uint16_t high_bound);
 
   // Bind a range column with a BETWEEN condition.
-  Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
-                               bool start_inclusive,
-                               PgExpr *attr_value_end,
-                               bool end_inclusive);
+  Status BindColumnCondBetween(
+      int attr_num, PgExpr* attr_value, bool start_inclusive,
+      PgExpr* attr_value_end, bool end_inclusive);
 
   // Bind a column with an IN condition.
-  Status BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr_values);
+  Status BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr_values);
 
   // Bind a column with an IS NOT NULL condition.
   Status BindColumnCondIsNotNull(int attr_num);
 
-  Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
+  void BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
   // remaining from the previous range scan.
-  Status BindRange(const Slice &lower_bound, bool lower_bound_inclusive,
-                   const Slice &upper_bound, bool upper_bound_inclusive);
+  Status BindRange(
+      Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.
-  Status AddRowLowerBound(YBCPgStatement handle, int n_col_values,
-                                    PgExpr **col_values, bool is_inclusive);
+  Status AddRowLowerBound(
+      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Add an upper bound to the scan. If an upper bound has already been added
   // this call will set the upper bound to the stricter of the two bounds.
-  Status AddRowUpperBound(YBCPgStatement handle, int n_col_values,
-                                    PgExpr **col_values, bool is_inclusive);
+  Status AddRowUpperBound(
+      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Execute.
-  virtual Status Exec(const PgExecParameters *exec_params);
-  Status SetRequestedYbctids(const std::vector<Slice> *ybctids);
-  Status RetrieveYbctidsFromSecondaryIndex(const PgExecParameters *exec_params,
-                                           std::vector<Slice> *ybctids,
-                                           bool *exceeded_work_mem);
-  Status InitDocOpWithRowMark();
+  virtual Status Exec(const PgExecParameters* exec_params);
+  Status SetRequestedYbctids(const std::vector<Slice>* ybctids);
+  Status RetrieveYbctidsFromSecondaryIndex(
+      const PgExecParameters* exec_params, std::vector<Slice>* ybctids, bool* exceeded_work_mem);
 
-
-  Status ANNBindVector(PgExpr *vector);
+  Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
@@ -128,32 +124,32 @@ class PgDmlRead : public PgDml {
 
   void UpgradeDocOp(PgDocOp::SharedPtr doc_op);
 
-  const LWPgsqlReadRequestPB* read_req() const { return read_req_.get(); }
+  [[nodiscard]] const LWPgsqlReadRequestPB* read_req() const { return read_req_.get(); }
 
-  bool IsReadFromYsqlCatalog() const;
+  [[nodiscard]] bool IsReadFromYsqlCatalog() const;
 
-  bool IsIndexOrderedScan() const;
+  [[nodiscard]] bool IsIndexOrderedScan() const;
 
  protected:
   // Allocate column protobuf.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
-  LWPgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
-  LWPgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
+  LWPgsqlExpressionPB* AllocColumnBindConditionExprPB(PgColumn* col);
+  LWPgsqlExpressionPB* AllocIndexColumnBindPB(PgColumn* col);
 
   // Allocate protobuf for target.
-  LWPgsqlExpressionPB *AllocTargetPB() override;
+  LWPgsqlExpressionPB* AllocTargetPB() override;
 
   // Allocate protobuf for a qual in the read request's where_clauses list.
-  LWPgsqlExpressionPB *AllocQualPB() override;
+  LWPgsqlExpressionPB* AllocQualPB() override;
 
   // Allocate protobuf for a column reference in the read request's col_refs list.
-  LWPgsqlColRefPB *AllocColRefPB() override;
+  LWPgsqlColRefPB* AllocColRefPB() override;
 
   // Clear the read request's col_refs list.
   void ClearColRefPBs() override;
 
   // Allocate column expression.
-  LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+  LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn* col) override;
 
   // Add column refs to protobuf read request.
   void SetColumnRefs();
@@ -163,7 +159,7 @@ class PgDmlRead : public PgDml {
 
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
-  bool IsConcreteRowRead() const;
+  [[nodiscard]] bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
   [[nodiscard]] bool IsAllPrimaryKeysBound() const;
   Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
@@ -171,7 +167,9 @@ class PgDmlRead : public PgDml {
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
                                            const std::vector<Slice>& ybctids);
   Result<dockv::DocKey> EncodeRowKeyForBound(
-      YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
+      YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
+
+  Status InitDocOp();
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

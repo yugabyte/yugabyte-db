@@ -159,7 +159,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
   // the first tablet whose bootstrap failed.
-  Status WaitForAllBootstrapsToFinish();
+  Status WaitForAllBootstrapsToFinish(MonoDelta timeout = MonoDelta());
 
   // Starts shutdown process.
   void StartShutdown();
@@ -532,6 +532,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
+
+  Status DoApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config);
 
   // Creates tablet peer and schedules opening the tablet.
   // See CreateAndRegisterTabletPeer and OpenTablet.

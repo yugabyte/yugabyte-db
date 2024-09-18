@@ -106,7 +106,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
           com.yugabyte.yw.models.Release.getByVersion(version);
       if (ybRelease != null) {
         log.error("release version already exists, cannot create: " + version);
-        updateStatus(release, "Release version " + version + "already exists", false);
+        // If it already exists, we should just use it.
+        updateStatus(release, "Release version " + version + "already exists", true);
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
@@ -117,6 +118,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         }
         releaseManager.downloadYbHelmChart(version, ybRelease);
         transaction.commit();
+        // We downloaded it, so we should update the current releases and mark them available.
+        updateStatus(release, "Available", true);
       } catch (Exception e) {
         log.error("failed to add release", e);
         updateStatus(release, "unable to add release: " + e.getMessage(), false);

@@ -204,6 +204,8 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
+
 /* Uncomment the next line to test the graceful degradation code. */
 /* #define TEST_OLDSERXID */
 
@@ -1608,8 +1610,28 @@ GetSerializableTransactionSnapshot(Snapshot snapshot)
 	 * A special optimization is available for SERIALIZABLE READ ONLY
 	 * DEFERRABLE transactions -- we can wait for a suitable snapshot and
 	 * thereby avoid all SSI overhead once it's running.
+	 *
+	 * YB: PG uses SSI to implement serializable isolation level.
+	 * YB uses 2PL (i.e., two phase locking) for the same.
+	 * Both YB and PG expose a different functionality using
+	 * the same DEFERRABLE keyword.
+	 *
+	 * In PG, READ ONLY DEFERRABLE allows a read only transaction
+	 * to avoid serialization errors with concurrent serializable
+	 * transactions, by waiting for the concurrent transactions to
+	 * complete first.
+	 *
+	 * In YB, there is no cycle detection algorithm. Instead READ ONLY
+	 * serializable transactions are essentially equivalent to a
+	 * READ ONLY snapshot isolation transaction (see #23213).
+	 * YB uses DEFERRABLE to allow READ ONLY transactions to wait out
+	 * the maximum possible clock skew (i.e., max_clock_skew_usec)
+	 * so as to avoid read restart errors.
+	 *
+	 * Given this difference, YB need not wait for a safe snapshot
+	 * i.e., concurrent transactions need not be waited for.
 	 */
-	if (XactReadOnly && XactDeferrable)
+	if (!YBTransactionsEnabled() && XactReadOnly && XactDeferrable)
 		return GetSafeSnapshot(snapshot);
 
 	return GetSerializableTransactionSnapshotInt(snapshot,

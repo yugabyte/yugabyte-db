@@ -25,6 +25,9 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 
+DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
+    "Injects an error after updating a tablet's replication index entry");
+
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
 namespace yb {
@@ -112,6 +115,9 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   RETURN_NOT_OK(VerifyTabletOpIds());
 
   LOG_WITH_FUNC(INFO) << "Updating OpIDs for Log Retention.";
+  SCHECK(
+      !FLAGS_TEST_cdc_inject_replication_index_update_failure, InternalError,
+      "Simulated error when setting the replication index");
   RETURN_NOT_OK(SetLogRetentionForLocalTabletPeers());
   RETURN_NOT_OK(SetLogRetentionForRemoteTabletPeers());
 

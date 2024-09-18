@@ -49,7 +49,7 @@ export interface ConnectionStatsItem  {
    * @type {number}
    * @memberof ConnectionStatsItem
    */
-  idle_or_pending_logical_connections: number;
+  waiting_logical_connections: number;
   /**
    * 
    * @type {number}

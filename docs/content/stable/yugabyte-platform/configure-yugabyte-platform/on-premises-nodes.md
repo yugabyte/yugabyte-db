@@ -14,20 +14,20 @@ type: docs
 
 After creating the on-premises provider, you can add instances to its free pool of nodes.
 
-1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
+1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
 1. Select **Instances**.
 
 This displays the configured instance types and instances for the selected provider.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#automatic" class="nav-link active" id="automatic-tab" data-toggle="tab"
+    <a href="#automatic" class="nav-link active" id="automatic-tab" data-bs-toggle="tab"
       role="tab" aria-controls="automatic" aria-selected="true">
       Automatic Provisioning
     </a>
   </li>
   <li>
-    <a href="#manual" class="nav-link" id="manual-tab" data-toggle="tab"
+    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
       role="tab" aria-controls="manual" aria-selected="false">
       Manual Provisioning
     </a>

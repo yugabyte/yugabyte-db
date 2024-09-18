@@ -1,0 +1,37 @@
+title: UserInfo
+description: System generated properties of a User. Part of User.
+type: object
+properties:
+  uuid:
+    description: User UUID
+    type: string
+    format: uuid
+    readOnly: true
+  user_type:
+    description: User Type
+    type: string
+    enum:
+      - local
+      - ldap
+      - oidc
+  creation_date:
+    description: User creation date
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  customer_uuid:
+    description: Customer account to which this User belongs to
+    type: string
+    format: uuid
+    readOnly: true
+  is_primary:
+    description: True if the user is the primary local user in this YBA
+    type: boolean
+    readOnly: true
+  ldap_specified_role:
+    description: Whether the user's role is inherited from LDAP
+    type: boolean
+  timezone:
+    description: User timezone
+    type: string

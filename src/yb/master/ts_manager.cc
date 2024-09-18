@@ -52,45 +52,12 @@ DEFINE_NON_RUNTIME_bool(
     "of on all. The used host/port combination depends on the value of --use_private_ip.");
 TAG_FLAG(master_register_ts_check_desired_host_port, advanced);
 
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
 namespace yb {
 namespace master {
 
-Status TSManager::LookupTS(const NodeInstancePB& instance,
-                           TSDescriptorPtr* ts_desc) {
-  SharedLock<decltype(lock_)> l(lock_);
-
-  const TSDescriptorPtr* found_ptr =
-    FindOrNull(servers_by_id_, instance.permanent_uuid());
-  if (!found_ptr || (*found_ptr)->IsRemoved()) {
-    return STATUS_FORMAT(
-        NotFound,
-        "unknown tablet server ID, server is in map: $0, server is removed: $1, instance data: $2",
-        found_ptr != nullptr, found_ptr ? (*found_ptr)->IsRemoved() : false,
-        instance.ShortDebugString());
-  }
-  const TSDescriptorPtr& found = *found_ptr;
-
-  if (instance.instance_seqno() != found->latest_seqno()) {
-    return STATUS_FORMAT(
-        NotFound, "mismatched instance sequence number $0, instance $1", found->latest_seqno(),
-        instance.ShortDebugString());
-  }
-
-  *ts_desc = found;
-  return Status::OK();
-}
-
-bool TSManager::LookupTSByUUID(const std::string& uuid,
-                               TSDescriptorPtr* ts_desc) {
-  SharedLock<decltype(lock_)> l(lock_);
-  const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, uuid);
-  if (!found_ptr || (*found_ptr)->IsRemoved()) {
-    return false;
-  }
-  *ts_desc = *found_ptr;
-  return true;
-}
-
+namespace {
 bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
   return lhs.host() == rhs.host() && lhs.port() == rhs.port();
 }
@@ -128,106 +95,224 @@ bool HasSameHostPort(
   return find_it != perspectives.end();
 }
 
-std::vector<std::pair<TSDescriptor*, std::shared_ptr<TSInformationPB>>>
-TSManager::FindHostPortMatches(
-    const NodeInstancePB& instance,
-    const TSRegistrationPB& registration,
-    const CloudInfoPB& local_cloud_info) const {
-  // Function to determine whether a registered ts matches the host port of the registering ts.
-  std::function<bool(const ServerRegistrationPB&)> hostport_checker;
+// Returns a function to determine whether a registered ts matches the host port of the registering
+// ts.
+std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
+    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info) {
+  // This pivots on a runtime flag so we cannot return a static function.
   if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))) {
     // When desired host-port check is enabled, we do the following checks:
     // 1. For master, the host-port for existing and registering tservers are different.
     // 2. The existing and registering tservers have distinct host-port from each others
     // perspective.
-    hostport_checker = [&registration,
-                        &local_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
-      auto cloud_info_perspectives = {
-          local_cloud_info,                       // master's perspective
-          existing_ts_registration.cloud_info(),  // existing ts' perspective
-          registration.common().cloud_info()};    // registering ts' perspective
-      return HasSameHostPort(
-          existing_ts_registration, registration.common(), cloud_info_perspectives);
-    };
+    return
+        [&registration, &local_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
+          auto cloud_info_perspectives = {
+              local_cloud_info,                       // master's perspective
+              existing_ts_registration.cloud_info(),  // existing ts' perspective
+              registration.common().cloud_info()};    // registering ts' perspective
+          return HasSameHostPort(
+              existing_ts_registration, registration.common(), cloud_info_perspectives);
+        };
   } else {
-    hostport_checker = [&registration](const ServerRegistrationPB& existing_ts_registration) {
+    return [&registration](const ServerRegistrationPB& existing_ts_registration) {
       return HasSameHostPort(existing_ts_registration, registration.common());
     };
   }
-  std::vector<std::pair<TSDescriptor*, std::shared_ptr<TSInformationPB>>> matches;
+}
+
+}  // namespace
+
+Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) const {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+
+  const TSDescriptorPtr* found_ptr =
+    FindOrNull(servers_by_id_, instance.permanent_uuid());
+  if (!found_ptr) {
+    return STATUS_FORMAT(
+        NotFound, "Unknown tablet server ID not in map, instance data: $0",
+        instance.ShortDebugString());
+  }
+  const TSDescriptorPtr& found = *found_ptr;
+  auto desc_lock = found->LockForRead();
+  if (desc_lock->pb.state() == SysTServerEntryPB::REPLACED) {
+    return STATUS_FORMAT(
+        NotFound,
+        "Trying to lookup replaced tablet server, instance data: $0, entry: $1",
+        instance.ShortDebugString(), found->ToString());
+  }
+
+  if (instance.instance_seqno() != desc_lock->pb.instance_seqno()) {
+    return STATUS_FORMAT(
+        NotFound, "mismatched instance sequence number $0, instance $1", found->latest_seqno(),
+        instance.ShortDebugString());
+  }
+
+  return *found_ptr;
+}
+
+// todo(zdrudi): this function can create dangling references when we begin removing TSDescriptors
+// from the registry.
+bool TSManager::LookupTSByUUID(const std::string& uuid,
+                               TSDescriptorPtr* ts_desc) {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+  const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, uuid);
+  if (!found_ptr || (*found_ptr)->IsRemoved()) {
+    return false;
+  }
+  *ts_desc = *found_ptr;
+  return true;
+}
+
+Result<std::pair<std::vector<TSDescriptorPtr>, std::vector<TSDescriptor::WriteLock>>>
+TSManager::FindHostPortCollisions(
+    const NodeInstancePB& instance, const TSRegistrationPB& registration,
+    const CloudInfoPB& local_cloud_info) const {
+  auto hostport_checker = GetHostPortCheckerFunction(registration, local_cloud_info);
+  std::vector<TSDescriptorPtr> descs;
+  std::vector<TSDescriptor::WriteLock> locks;
   for (const auto& [_, ts_desc] : servers_by_id_) {
     if (ts_desc->permanent_uuid() == instance.permanent_uuid()) {
       continue;
     }
-    auto existing_ts_info = ts_desc->GetTSInformationPB();
-    if (hostport_checker(existing_ts_info->registration().common())) {
-      matches.push_back(std::pair(ts_desc.get(), std::move(existing_ts_info)));
+    // Acquire write locks because we may have to mutate later.
+    auto l = ts_desc->LockForWrite();
+    if (!hostport_checker(l->pb.registration())) {
+      continue;
     }
+    if (l->pb.instance_seqno() >= instance.instance_seqno()) {
+      return STATUS_FORMAT(
+          AlreadyPresent, "Cannot register TS $0 $1, host port collision with existing TS $2",
+          instance.ShortDebugString(), registration.common().ShortDebugString(),
+          l->pb.ShortDebugString());
+    }
+    l.mutable_data()->pb.set_state(SysTServerEntryPB::REPLACED);
+    descs.push_back(ts_desc);
+    locks.push_back(std::move(l));
   }
-  return matches;
+  return std::make_pair(std::move(descs), std::move(locks));
 }
 
-Status TSManager::RegisterTS(
-    const NodeInstancePB& instance,
-    const TSRegistrationPB& registration,
-    CloudInfoPB local_cloud_info,
-    rpc::ProxyCache* proxy_cache,
+Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutationData(
+    const NodeInstancePB& instance, const TSRegistrationPB& registration,
+    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
-  TSCountCallback callback_to_call;
+  TSManager::RegistrationMutationData reg_data;
   {
-    std::lock_guard l(lock_);
+    SharedLock<decltype(map_lock_)> map_l(map_lock_);
     const std::string& uuid = instance.permanent_uuid();
-    auto duplicate_hostport_ts_descriptors =
-        FindHostPortMatches(instance, registration, local_cloud_info);
-    for (const auto& [ts, ts_info] : duplicate_hostport_ts_descriptors) {
-      if (ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
-        // Skip adding the node since we already have a node with the same rpc address and
-        // a higher sequence number.
-        LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
-                     << " since an entry with same host/port but a higher sequence number exists "
-                     << ts_info->ShortDebugString();
-        return Status::OK();
-      } else {
-        LOG(WARNING)
-            << "Removing entry: " << ts_info->ShortDebugString()
-            << " since we received registration for a tserver with a higher sequence number: "
-            << instance.ShortDebugString();
-        // Mark the old node to be removed, since we have a newer sequence number.
-        ts->SetRemoved();
-      }
-    }
+    // Find any already registered tservers that have conflicting addresses with the registering
+    // tserver.
+    std::tie(reg_data.replaced_descs, reg_data.replaced_desc_locks) =
+        VERIFY_RESULT(FindHostPortCollisions(instance, registration, local_cloud_info));
     auto it = servers_by_id_.find(uuid);
     if (it == servers_by_id_.end()) {
-      auto new_desc = VERIFY_RESULT(TSDescriptor::RegisterNew(
-          instance, registration, std::move(local_cloud_info), proxy_cache,
-          registered_through_heartbeat));
-      InsertOrDie(&servers_by_id_, uuid, std::move(new_desc));
-      LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
-                << " } with Master, full list: " << yb::ToString(servers_by_id_);
+      // We have no entry for this uuid. Create a new TSDescriptor and make a note to add it
+      // to the registry.
+      std::tie(reg_data.desc, reg_data.registered_desc_lock) =
+          VERIFY_RESULT(TSDescriptor::CreateNew(
+              instance, registration, std::move(local_cloud_info), proxy_cache,
+              registered_through_heartbeat));
+      reg_data.insert_into_map = true;
     } else {
-      RETURN_NOT_OK(
-          it->second->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
-      it->second->SetRemoved(false);
-      LOG(INFO) << "Re-registered known tablet server { " << instance.ShortDebugString()
-                << " }: " << registration.ShortDebugString();
+      // This tserver has registered before. We just need to update its registration metadata.
+      reg_data.registered_desc_lock = VERIFY_RESULT(it->second->UpdateRegistration(
+          instance, registration, std::move(local_cloud_info), proxy_cache));
+      reg_data.desc = it->second;
     }
+  }
+  return reg_data;
+}
+
+Status TSManager::RegisterFromRaftConfig(
+    const NodeInstancePB& instance, const TSRegistrationPB& registration,
+    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
+  // todo(zdrudi): what happens if the registration through raft config is blocked because of a host
+  // port collision? add a test.
+  VERIFY_RESULT(
+      RegisterInternal(instance, registration, {}, std::move(local_cloud_info), proxy_cache));
+  return Status::OK();
+}
+
+Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
+    const TSHeartbeatRequestPB& heartbeat_request) const {
+  auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
+  auto lock = desc->LockForWrite();
+  RETURN_NOT_OK(desc->UpdateTSMetadataFromHeartbeat(heartbeat_request, &lock));
+  // todo(zdrudi): write to sys catalog here. The write may be a no-op if the TServer was already
+  // live.
+  lock.Commit();
+  return desc;
+}
+
+Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
+    const TSHeartbeatRequestPB& heartbeat_request, CloudInfoPB&& local_cloud_info,
+    rpc::ProxyCache* proxy_cache) {
+  return RegisterInternal(
+      heartbeat_request.common().ts_instance(), heartbeat_request.registration(),
+      std::cref(heartbeat_request), std::move(local_cloud_info), proxy_cache);
+}
+
+Result<TSDescriptorPtr> TSManager::RegisterInternal(
+    const NodeInstancePB& instance, const TSRegistrationPB& registration,
+    std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
+    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
+  TSCountCallback callback;
+  TSDescriptorPtr result;
+  auto registered_through_heartbeat = RegisteredThroughHeartbeat(request.has_value());
+  {
+    MutexLock l(registration_lock_);
+    auto reg_data = VERIFY_RESULT(ComputeRegistrationMutationData(
+        instance, registration, std::move(local_cloud_info), proxy_cache,
+        registered_through_heartbeat));
+    if (request.has_value()) {
+      RETURN_NOT_OK(reg_data.desc->UpdateTSMetadataFromHeartbeat(
+          *request, &reg_data.registered_desc_lock));
+    }
+    std::tie(result, callback) =
+        VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data)));
+  }
+  if (callback) {
+    callback();
+  }
+  return result;
+}
+
+Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMutation(
+    const NodeInstancePB& new_ts_instance, const TSRegistrationPB& registration,
+    TSManager::RegistrationMutationData&& registration_data) {
+  TSCountCallback callback;
+  // todo(zdrudi): write all descs in registration to sys catalog here.
+  registration_data.registered_desc_lock.Commit();
+  for (auto& l : registration_data.replaced_desc_locks) {
+    LOG(WARNING) << "Removing entry: " << l->pb.ShortDebugString()
+                 << " since we received registration for a tserver with a higher sequence number: "
+                 << new_ts_instance.ShortDebugString();
+    l.Commit();
+  }
+  if (registration_data.insert_into_map) {
+    std::lock_guard map_l(map_lock_);
+    InsertOrDie(&servers_by_id_, new_ts_instance.permanent_uuid(), registration_data.desc);
+    LOG(INFO) << "Registered new tablet server { " << new_ts_instance.ShortDebugString()
+              << " } with Master, full list: " << yb::ToString(servers_by_id_);
     if (ts_count_callback_) {
       auto new_count = NumDescriptorsUnlocked();
       if (new_count >= ts_count_callback_min_count_) {
-        callback_to_call = std::move(ts_count_callback_);
+        callback = std::move(ts_count_callback_);
         ts_count_callback_min_count_ = 0;
       }
     }
+  } else {
+    LOG(INFO) << "Re-registered known tablet server { " << new_ts_instance.ShortDebugString()
+              << " }: " << registration.ShortDebugString();
   }
-  if (callback_to_call) {
-    callback_to_call();
-  }
-  return Status::OK();
+
+  return std::make_pair(std::move(registration_data.desc), std::move(callback));
 }
 
 void TSManager::GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
                                TSDescriptorVector* descs) const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(map_lock_)> l(map_lock_);
   GetDescriptorsUnlocked(condition, descs);
 }
 
@@ -248,7 +333,7 @@ void TSManager::GetDescriptorsUnlocked(
 }
 
 void TSManager::GetAllDescriptors(TSDescriptorVector* descs) const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(map_lock_)> l(map_lock_);
   GetAllDescriptorsUnlocked(descs);
 }
 
@@ -287,7 +372,7 @@ void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
     const std::optional<BlacklistSet>& blacklist,
     bool primary_cluster) const {
   descs->clear();
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(map_lock_)> l(map_lock_);
 
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
@@ -310,21 +395,44 @@ size_t TSManager::NumDescriptorsUnlocked() const {
 
 // Register a callback to be called when the number of tablet servers reaches a certain number.
 void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(registration_lock_);
   ts_count_callback_ = std::move(callback);
   ts_count_callback_min_count_ = min_count;
 }
 
 size_t TSManager::NumDescriptors() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(map_lock_)> l(map_lock_);
   return NumDescriptorsUnlocked();
 }
 
 size_t TSManager::NumLiveDescriptors() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(map_lock_)> l(map_lock_);
   return std::count_if(
       servers_by_id_.cbegin(), servers_by_id_.cend(),
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
+}
+
+void TSManager::MarkUnresponsiveTServers() {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+  auto current_time = MonoTime::Now();
+  auto unresponsive_timeout_millis = GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms);
+  std::vector<TSDescriptor::WriteLock> locks;
+  for (const auto& [id, desc] : servers_by_id_) {
+    auto last_heartbeat_time = desc->LastHeartbeatTime();
+    if (last_heartbeat_time && current_time.GetDeltaSince(last_heartbeat_time).ToMilliseconds() <
+                                   unresponsive_timeout_millis) {
+      continue;
+    }
+    auto desc_lock = desc->LockForWrite();
+    if (desc_lock->pb.state() == SysTServerEntryPB::MAYBE_LIVE) {
+      desc_lock.mutable_data()->pb.set_state(SysTServerEntryPB::UNRESPONSIVE);
+      locks.push_back(std::move(desc_lock));
+    }
+  }
+  // todo(zdrudi): write to sys catalog here
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
 }
 
 } // namespace master

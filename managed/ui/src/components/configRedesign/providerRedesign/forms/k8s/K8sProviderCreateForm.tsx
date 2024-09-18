@@ -260,7 +260,7 @@ export const K8sProviderCreateForm = ({
         )
       };
     } catch {
-      toast.error('An error occured while reading the form input files.');
+      toast.error('An error occurred while reading the form input files.');
     }
     if (providerPayload) {
       setValidationErrorExist(false);

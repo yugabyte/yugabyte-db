@@ -1,5 +1,8 @@
 package openapitools;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.yugabyte.yw.common.PlatformServiceException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -33,7 +36,7 @@ public class OpenAPIUtils {
                 contraintes.getPropertyPath(),
                 contraintes.getMessage()));
       }
-      throw new RuntimeException("Bean validation : " + errors);
+      throw new PlatformServiceException(BAD_REQUEST, "Bean validation : " + errors);
     }
   }
 

@@ -11,6 +11,11 @@ menu:
 type: docs
 ---
 
+<!-- {{<tabs>}}
+{{<tabitem href="../pg-stat-statements/" text="YSQL" icon="postgres" active="true">}}
+{{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}} -->
+
 Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The `pg_stat_statements` module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.
 
 The columns of the `pg_stat_statements` view are described in the following table.
@@ -449,4 +454,4 @@ yugabyte=# select pg_stat_statements_reset();
 ## Learn more
 
 - [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
-- [Active Session History](../../observability/active-session-history)
+<!-- - [Active Session History](../../observability/active-session-history) -->

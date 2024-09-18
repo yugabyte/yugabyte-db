@@ -352,7 +352,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_MATVIEW:
 		case OBJECT_INDEX:
 		case OBJECT_FOREIGN_TABLE:
-			return RenameRelation(stmt);
+			return RenameRelation(stmt, false /* yb_is_internal_clone_rename */);
 
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:

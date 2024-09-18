@@ -389,7 +389,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(enableYSQL, getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
@@ -592,7 +592,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     Set<String> expectedMasters = new HashSet<>(masterNames);
     // We do process inactive masters, so for each tserver we also process masters
+    // (but not for "onlyMasterUpdated" node)
     expectedMasters.addAll(tserverNames);
+    expectedMasters.remove(onlyMasterUpdated.getNodeName());
 
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
     assertEquals("Upgraded tservers", tserverNames, configuredTservers);

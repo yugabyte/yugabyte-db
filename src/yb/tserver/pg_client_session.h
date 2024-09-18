@@ -17,18 +17,21 @@
 
 #include <array>
 #include <functional>
+#include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <optional>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/range/iterator_range.hpp>
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -45,14 +48,12 @@
 #include "yb/util/locks.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
+#include "yb/util/tostring.h"
 #include "yb/util/write_buffer.h"
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
-namespace yb {
-class ConsistentReadPoint;
-
-namespace tserver {
+namespace yb::tserver {
 
 class PgMutationCounter;
 class TserverXClusterContextIf;
@@ -104,14 +105,28 @@ class PgClientSession {
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
-  struct UsedReadTimeData {
+  class PrefixLogger {
+   public:
+    explicit PrefixLogger(uint64_t id) : id_(id) {}
+
+    friend std::ostream& operator<<(std::ostream&, const PrefixLogger&);
+
+   private:
+     const uint64_t id_;
+  };
+
+  struct ReadTimeData {
     ReadHybridTime value;
     TabletId tablet_id;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(value, tablet_id);
+    }
   };
 
   struct UsedReadTime {
     simple_spinlock lock;
-    std::optional<UsedReadTimeData> data GUARDED_BY(lock);
+    std::optional<ReadTimeData> data GUARDED_BY(lock);
     size_t signature GUARDED_BY(lock) = {};
   };
 
@@ -120,7 +135,7 @@ class PgClientSession {
     client::YBTransactionPtr transaction;
   };
 
-  using UsedReadTimeApplier = std::function<void(UsedReadTimeData&&)>;
+  using UsedReadTimeApplier = std::function<void(ReadTimeData&&)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
@@ -174,7 +189,13 @@ class PgClientSession {
   }
 
  private:
-  std::string LogPrefix();
+  struct SetupSessionResult {
+    SessionData session_data;
+    UsedReadTimeApplier used_read_time_applier;
+    bool is_plain;
+  };
+
+  auto LogPrefix() const { return PrefixLogger(id_); }
 
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, CoarseTimePoint deadline);
@@ -186,13 +207,14 @@ class PgClientSession {
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
-  Result<std::pair<SessionData, UsedReadTimeApplier>> SetupSession(
+  Result<SetupSessionResult> SetupSession(
       const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
-  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation, uint64_t txn_serial_no,
-                                   ClampUncertaintyWindow clamp);
+  void ProcessReadTimeManipulation(
+      ReadTimeManipulation manipulation, uint64_t read_time_serial_no,
+      ClampUncertaintyWindow clamp);
 
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);
@@ -270,15 +292,29 @@ class PgClientSession {
       client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
-      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback,
-      UsedReadTimeApplier&& applier);
+      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback);
 
-  Status CheckPlainSessionPendingUsedReadTime();
+  Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no);
   Status CheckPlainSessionReadTimeIsSet() const;
 
   struct PendingUsedReadTime {
     UsedReadTime value;
     bool pending_update = {false};
+  };
+
+  class ReadPointHistory {
+   public:
+    explicit ReadPointHistory(const PrefixLogger& prefix_logger) : prefix_logger_(prefix_logger) {}
+
+    [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no);
+    void Save(const ConsistentReadPoint& read_point, uint64_t read_time_serial_no);
+    void Clear();
+
+   private:
+    const auto& LogPrefix() const { return prefix_logger_; }
+
+    const PrefixLogger prefix_logger_;
+    std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
   };
 
   const std::weak_ptr<PgClientSession> shared_this_;
@@ -295,6 +331,7 @@ class PgClientSession {
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
   uint64_t read_time_serial_no_ = 0;
+  ReadPointHistory read_point_history_;
   std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
   PendingUsedReadTime plain_session_used_read_time_;
@@ -303,5 +340,4 @@ class PgClientSession {
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

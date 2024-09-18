@@ -1,4 +1,4 @@
-// Font Awesome Pro
+// Font Awesome Pro 6
 @import "../vendor/Font-Awesome-Pro/scss/fontawesome.scss";
 @import "../vendor/Font-Awesome-Pro/scss/brands.scss";
 @import "../vendor/Font-Awesome-Pro/scss/duotone.scss";
@@ -46,6 +46,45 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+a {
+  color: #3176d9;
+  text-decoration: none;
+  background-color: transparent;
+}
+
+.tab-body {
+  color: inherit;
+}
+
+.tab-body > :last-child {
+  margin-bottom: inherit;
+}
+.td-content {
+  .highlight {
+    .click-to-copy {
+      display: none;
+    }
+  }
+}
+
+.dropdown-list .dropdown-menu[data-popper-placement="top-start"] {
+  margin-bottom: -2px !important;
+}
+
+.dropdown-list .dropdown-menu[data-popper-placement="bottom-start"] {
+  margin-top: -1px !important;
+}
+
+.navbar-expand > .container,
+.navbar-expand > .container-fluid,
+.navbar-expand > .container-sm,
+.navbar-expand > .container-md,
+.navbar-expand > .container-lg,
+.navbar-expand > .container-xl {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 /******* Variables for Color Theme Switcher **********/
 :root {
   --theme-color: #312965;
@@ -64,6 +103,11 @@ html {
 /******* Variables for Color Theme Switcher **********/
 .td-breadcrumbs {
   margin-bottom: 20px;
+  padding-right: 120px;
+  @media(max-width:991px){
+    padding-right: 0;
+
+  }
 
   &:has(.breadcrumb-item:only-child) {
     height: 0;
@@ -75,9 +119,13 @@ html {
 
     .breadcrumb-item {
       font-size: 12px;
-      line-height: 28px;
+      line-height: 22px;
       display: flex;
       align-items: center;
+
+      &.active {
+        color: #4e5f6d;
+      }
 
       &:only-child {
         visibility: hidden;
@@ -118,7 +166,8 @@ html {
 @media (min-width: 992px) {
   .td-main main {
     padding-top: 116px;
-    margin-top: 32px;
+    //margin-top: 32px;
+    margin-top: 52px;
   }
 }
 
@@ -408,10 +457,11 @@ body:not(.td-home) .td-main main {
 
     @media (max-width: 991px) {
       margin-top: 0;
+      margin-bottom: 72px;
     }
 
     @media (min-width: 991px) {
-      margin: 20px 0;
+      margin: 20px 0 72px;
     }
   }
 }

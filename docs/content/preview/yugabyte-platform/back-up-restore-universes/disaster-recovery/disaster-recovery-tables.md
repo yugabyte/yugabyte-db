@@ -15,7 +15,7 @@ type: docs
 When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
 
 - performed at the SQL level on both the DR primary and replica, and then
-- updated at the YBA level in the DR configuration.
+- updated at the YugabyteDB Anywhere level in the DR configuration.
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
@@ -34,6 +34,7 @@ In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
+- TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 

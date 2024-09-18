@@ -84,7 +84,7 @@ YbSeqNext(YbSeqScanState *node)
 			 * For aggregate pushdown, we read just the aggregates from DocDB
 			 * and pass that up to the aggregate node (agg pushdown wouldn't be
 			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold that as many attributes as there are pushed
+			 * scan slot to hold as many attributes as there are pushed
 			 * aggregates.
 			 */
 			TupleDesc tupdesc =
@@ -143,9 +143,8 @@ YbSeqNext(YbSeqScanState *node)
 			{
 				scandesc->ybscan->exec_params->rowmark = erm->markType;
 				scandesc->ybscan->exec_params->pg_wait_policy = erm->waitPolicy;
-				YBSetRowLockPolicy(
-					&scandesc->ybscan->exec_params->docdb_wait_policy,
-					erm->waitPolicy);
+				scandesc->ybscan->exec_params->docdb_wait_policy =
+					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
 			break;
 		}

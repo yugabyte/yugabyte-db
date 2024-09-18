@@ -101,7 +101,7 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kTServerWait)
 
     // QL/YB Client classes
-    (kYCQLQueryProcessing)
+    (kYCQLQuery)
     (kClient)
 
     // Docdb related classes
@@ -131,15 +131,18 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
-    (kStorageRead)
+    (kTableRead)
     (kStorageFlush)
+    (kCatalogWrite)
+    (kIndexWrite)
+    (kTableWrite)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
     (kOnCpu_Passive)
     (kIdle)
     (kRpc_Done)
-    (kRpcs_WaitOnMutexInShutdown)
+    (kDeprecated_Rpcs_WaitOnMutexInShutdown)
     (kRetryableRequests_SaveToDisk)
 
     // Wait states related to tablet wait
@@ -176,7 +179,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_NewIterator)
 
     // Wait states related to YCQL
-    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
+    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQuery)))
     (kYCQL_Read)
     (kYCQL_Write)
     (kYCQL_Analyze)
@@ -207,13 +210,21 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kWaitOnCondition)
 );
 
+struct WaitStatesDescription {
+  ash::WaitStateCode code;
+  std::string description;
+
+  WaitStatesDescription(ash::WaitStateCode code_, std::string&& description_)
+      : code(code_), description(std::move(description_)) {}
+};
+
 WaitStateType GetWaitStateType(WaitStateCode code);
 
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
-  Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
+  Uuid top_level_node_id = Uuid::Nil();
   uint64_t query_id = 0;
-  uint64_t session_id = 0;
+  pid_t pid = 0;
   uint32_t database_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
@@ -227,14 +238,14 @@ struct AshMetadata {
     if (!other.root_request_id.IsNil()) {
       root_request_id = other.root_request_id;
     }
-    if (!other.yql_endpoint_tserver_uuid.IsNil()) {
-      yql_endpoint_tserver_uuid = other.yql_endpoint_tserver_uuid;
+    if (!other.top_level_node_id.IsNil()) {
+      top_level_node_id = other.top_level_node_id;
     }
     if (other.query_id != 0) {
       query_id = other.query_id;
     }
-    if (other.session_id != 0) {
-      session_id = other.session_id;
+    if (other.pid != 0) {
+      pid = other.pid;
     }
     if (other.database_id != 0) {
       database_id = other.database_id;
@@ -257,20 +268,20 @@ struct AshMetadata {
     } else {
       pb->clear_root_request_id();
     }
-    if (!yql_endpoint_tserver_uuid.IsNil()) {
-      yql_endpoint_tserver_uuid.ToBytes(pb->mutable_yql_endpoint_tserver_uuid());
+    if (!top_level_node_id.IsNil()) {
+      top_level_node_id.ToBytes(pb->mutable_top_level_node_id());
     } else {
-      pb->clear_yql_endpoint_tserver_uuid();
+      pb->clear_top_level_node_id();
     }
     if (query_id != 0) {
       pb->set_query_id(query_id);
     } else {
       pb->clear_query_id();
     }
-    if (session_id != 0) {
-      pb->set_session_id(session_id);
-    } else { // valid PgClient session id cannot be zero
-      pb->clear_session_id();
+    if (pid != 0) {
+      pb->set_pid(pid);
+    } else {
+      pb->clear_pid();
     }
     if (database_id != 0) {
       pb->set_database_id(database_id);
@@ -304,19 +315,19 @@ struct AshMetadata {
         root_request_id = *result;
       }
     }
-    Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
-    if (pb.has_yql_endpoint_tserver_uuid()) {
-      Result<Uuid> result = Uuid::FromSlice(pb.yql_endpoint_tserver_uuid());
+    Uuid top_level_node_id = Uuid::Nil();
+    if (pb.has_top_level_node_id()) {
+      Result<Uuid> result = Uuid::FromSlice(pb.top_level_node_id());
       WARN_NOT_OK(result, "Could not decode uuid from protobuf.");
       if (result.ok()) {
-        yql_endpoint_tserver_uuid = *result;
+        top_level_node_id = *result;
       }
     }
     return AshMetadata{
         root_request_id,                       // root_request_id
-        yql_endpoint_tserver_uuid,             // yql_endpoint_tserver_uuid
+        top_level_node_id,                     // top_level_node_id
         pb.query_id(),                         // query_id
-        pb.session_id(),                       // session_id
+        pb.pid(),                              // pid
         pb.database_id(),                      // database_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
@@ -357,11 +368,9 @@ class WaitStateInfo {
   std::atomic<WaitStateCode>& mutable_code();
 
   void set_root_request_id(const Uuid& id) EXCLUDES(mutex_);
-  void set_yql_endpoint_tserver_uuid(const Uuid& yql_endpoint_tserver_uuid) EXCLUDES(mutex_);
+  void set_top_level_node_id(const Uuid& top_level_node_id) EXCLUDES(mutex_);
   uint64_t query_id() EXCLUDES(mutex_);
   void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
-  uint64_t session_id() EXCLUDES(mutex_);
-  void set_session_id(uint64_t session_id) EXCLUDES(mutex_);
   int64_t rpc_request_id() EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
@@ -420,6 +429,9 @@ class WaitStateInfo {
 
   void EnableConcurrentUpdates();
   bool IsConcurrentUpdatesEnabled();
+
+  static std::vector<WaitStatesDescription> GetWaitStatesDescription();
+  static int GetCircularBufferSizeInKiBs();
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);

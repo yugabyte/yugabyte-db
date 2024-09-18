@@ -373,7 +373,9 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
         yb_table.set_table_name(table_name);
         yb_table.set_namespace_id(table.namespace_().id());
         yb_table.set_namespace_name(namespace_name);
-        yb_table.set_pgschema_name(table.has_pgschema_name() ? table.pgschema_name() : "");
+        if (!table.pgschema_name().empty()) {
+          yb_table.set_pgschema_name(table.pgschema_name());
+        }
         return yb_table;
       }
     }
@@ -886,10 +888,11 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id, bool automatic_ddl_mode) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .CreateOutboundReplicationGroup(replication_group_id, {producer_namespace_id}));
+                    .CreateOutboundReplicationGroup(
+                        replication_group_id, {producer_namespace_id}, automatic_ddl_mode));
 
   auto bootstrap_required =
       VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));

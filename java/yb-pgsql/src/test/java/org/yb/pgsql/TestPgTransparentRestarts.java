@@ -108,7 +108,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    * This should be way more than average local execution time of a single test, to account for slow
    * CI machines.
    */
-  private static final int INSERTS_AWAIT_TIME_SEC = (int) (150 * getTimeoutMultiplier());
+  private static final int INSERTS_AWAIT_TIME_SEC = (int) (300 * getTimeoutMultiplier());
 
   /**
    * How long do we wait for {@code SELECT}s to finish after {@code INSERT}s are completed and
@@ -565,6 +565,32 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     ).runTest();
   }
 
+  @Test
+  public void parallel() throws Exception {
+    final String COLOCATED_DB = "co";
+    final String COLOCATED_TABLE = "test_rr";
+    final int NUM_INIT_ROWS = 15000;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE %s WITH colocation = true", COLOCATED_DB));
+    }
+
+    ConnectionBuilder cb = getConnectionBuilder().withDatabase(COLOCATED_DB);
+    try (Connection co_conn = cb.connect();
+         Statement stmt = co_conn.createStatement()) {
+      stmt.execute(String.format("CREATE TABLE %s (id SERIAL PRIMARY KEY, t TEXT, i INT)",
+                                 COLOCATED_TABLE));
+
+      stmt.execute(String.format("INSERT INTO %s(t, i) SELECT 'longish text value ' || n::text, " +
+                                 "n %% %d FROM generate_series(1, %d) n",
+                                 COLOCATED_TABLE, MAX_INT_TO_INSERT, NUM_INIT_ROWS));
+      stmt.execute(String.format("ANALYZE %s", COLOCATED_TABLE));
+    }
+    new ConcurrentInsertParallelSelectTester(
+        cb,
+        String.format("SELECT * FROM %s WHERE i = 1", COLOCATED_TABLE)
+    ).runTest();
+  }
+
   //
   // Helpers methods
   //
@@ -940,7 +966,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       String enable_wait_queues = client.getFlag(
           miniCluster.getTabletServers().keySet().iterator().next(), "enable_wait_queues");
 
-      boolean is_wait_on_conflict_concurrency_control = (enable_wait_queues == "true");
+      boolean is_wait_on_conflict_concurrency_control = (enable_wait_queues.equals("true"));
 
       // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict" for pure
       // reads.
@@ -1446,6 +1472,239 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     @Override
     public boolean execute(PreparedStatement stmt) throws Exception {
       return stmt.execute();
+    }
+  }
+
+  private class ConcurrentInsertParallelSelectTester
+      extends ConcurrentInsertQueryTester<Statement>{
+    private String queryString;
+
+    public ConcurrentInsertParallelSelectTester(
+        ConnectionBuilder cb,
+        String queryString) {
+      super(cb, getLongString(), 50);
+      this.queryString = queryString;
+    }
+
+    protected void forceParallel(Statement stmt) throws Exception {
+      stmt.execute("SET yb_enable_base_scans_cost_model TO true");
+      stmt.execute("SET yb_parallel_range_rows TO 1");
+      stmt.execute("SET parallel_setup_cost TO 0");
+      stmt.execute("SET parallel_tuple_cost TO 0");
+    }
+
+    public Statement createStatement(Connection conn) throws Exception {
+      Statement stmt = conn.createStatement();
+      forceParallel(stmt);
+      stmt.execute(LOG_RESTARTS_SQL);
+      return stmt;
+    }
+
+    public ResultSet executeQuery(Statement stmt) throws Exception {
+      return stmt.executeQuery(queryString);
+    }
+
+    @Override
+    public List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      List<ThrowingRunnable> runnables = new ArrayList<>();
+      //
+      // Singular SELECT statement (equal probability of being either serializable/repeatable read/
+      // /read committed isolation level)
+      //
+      runnables.add(() -> {
+        Map<IsolationLevel, Integer> selectsAttempted =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsSucceeded =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsRestartRequired =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsRetriesExhausted =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsWithAbortError =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsWithConflictError =
+            new HashMap<>(emptyIsolationCounterMap);
+
+        boolean onlyEmptyResults = true;
+
+        try (Connection serializableConn =
+                cb.withIsolationLevel(IsolationLevel.SERIALIZABLE).connect();
+             Connection rrConn =
+                cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+             Connection rcConn =
+                cb.withIsolationLevel(IsolationLevel.READ_COMMITTED).connect();
+
+             Statement serializableStmt = createStatement(serializableConn);
+             Statement rrStmt = createStatement(rrConn);
+             Statement rcStmt = createStatement(rcConn)) {
+
+          while (!isExecutionDone.getAsBoolean()) {
+            IsolationLevel isolation =
+                RandomUtil.getRandomElement(isolationLevels);
+            Statement stmt =
+                chooseForIsolation(isolation, serializableStmt, rrStmt, rcStmt);
+
+            try {
+              inc(selectsAttempted, isolation);
+              List<Row> rows = getRowList(executeQuery(stmt));
+              if (!rows.isEmpty()) {
+                onlyEmptyResults = false;
+              }
+              inc(selectsSucceeded, isolation);
+            } catch (Exception ex) {
+              if (!isTxnError(ex)) {
+                fail("SELECT thread failed: " + ex.getMessage());
+              } else if (isRetriesExhaustedError(ex)) {
+                inc(selectsRetriesExhausted, isolation);
+              } else if (isRestartReadError(ex)) {
+                inc(selectsRestartRequired, isolation);
+              } else if (isAbortError(ex)) {
+                inc(selectsWithAbortError, isolation);
+              } else if (isConflictError(ex)) {
+                inc(selectsWithConflictError, isolation);
+              } else {
+                fail("SELECT thread failed: " + ex.getMessage());
+              }
+            }
+          }
+        } catch (Exception ex) {
+          LOG.error("Connection-wide exception! This shouldn't happen", ex);
+          fail("Connection-wide exception! This shouldn't happen: " + ex.getMessage());
+        }
+        LOG.info("SELECT (single-stmt):\n" +
+            " selectsAttempted=" + selectsAttempted + "\n" +
+            " selectsSucceeded=" + selectsSucceeded + "\n" +
+            " selectsRestartRequired=" + selectsRestartRequired + "\n" +
+            " selectsRetriesExhausted=" + selectsRetriesExhausted + "\n" +
+            " selectsWithAbortError=" + selectsWithAbortError + "\n" +
+            " selectsWithConflictError=" + selectsWithConflictError);
+
+        for (Entry<IsolationLevel, Integer> e : selectsRestartRequired.entrySet()) {
+          IsolationLevel isolation = e.getKey();
+          int numReadRestarts = e.getValue();
+
+          assertEquals("SELECT (single-stmt): unexpected " + numReadRestarts +
+              " read restarts at " + isolation + " level!",
+              0, numReadRestarts);
+        }
+
+        for (Entry<IsolationLevel, Integer> e : selectsWithConflictError.entrySet()) {
+          IsolationLevel isolation = e.getKey();
+          int numConflictRestarts = e.getValue();
+
+          assertEquals("SELECT (single-stmt): unexpected " + numConflictRestarts +
+              " conflict errors at " + isolation + " level!",
+              0, numConflictRestarts);
+        }
+
+        if (onlyEmptyResults) {
+          fail("SELECT (single-stmt) thread didn't yield any meaningful result! Flawed test?");
+        }
+      });
+
+      // Two SELECTs grouped in a transaction.
+      for (IsolationLevel isolation : isolationLevels) {
+        // if (isolation != IsolationLevel.READ_UNCOMMITTED) {
+        //   continue;
+        // }
+        runnables.add(() -> {
+          int txnsAttempted = 0;
+          int selectsRetriesExhausted = 0;
+          int selectsFirstOpRestartRequired = 0;
+          int selectsSecondOpRestartRequired = 0;
+          int selectsFirstOpConflictDetected = 0;
+          int txnsSucceeded = 0;
+          int selectsWithAbortError = 0;
+          int commitOfTxnThatRequiresRestart = 0;
+
+          try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
+              Statement stmt = createStatement(selectTxnConn)) {
+            selectTxnConn.setAutoCommit(false);
+            while (!isExecutionDone.getAsBoolean()) {
+              int numCompletedOps = 0;
+              ++txnsAttempted;
+              try {
+                List<Row> rows1 = getRowList(executeQuery(stmt));
+                ++numCompletedOps;
+                List<Row> rows2 = getRowList(executeQuery(stmt));
+                ++numCompletedOps;
+                selectTxnConn.commit();
+                assertTrue("Two SELECTs done within same transaction mismatch" +
+                           ", " + isolation + " transaction isolation breach!",
+                           rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
+                ++txnsSucceeded;
+              } catch (Exception ex) {
+                if (!isTxnError(ex)) {
+                  throw ex;
+                }
+                if (isRetriesExhaustedError(ex)) {
+                  ++selectsRetriesExhausted;
+                } else if (isRestartReadError(ex)) {
+                  if (numCompletedOps == 0) ++selectsFirstOpRestartRequired;
+                  if (numCompletedOps == 1) ++selectsSecondOpRestartRequired;
+                } else if (isConflictError(ex)) {
+                  if (numCompletedOps == 0) ++selectsFirstOpConflictDetected;
+                } else if (isAbortError(ex)) {
+                  ++selectsWithAbortError;
+                }
+                try {
+                  selectTxnConn.rollback();
+                } catch (SQLException ex1) {
+                  LOG.error("Rollback failed", ex1);
+                  fail("Rollback failed: " + ex1.getMessage());
+                }
+              }
+            }
+          } catch (Exception ex) {
+            LOG.error("SELECT (" + isolation + ") thread failed", ex);
+            fail("SELECT in " + isolation + " thread failed: " + ex.getMessage());
+          }
+          LOG.info("SELECT (" + isolation + "):" +
+              " txnsAttempted=" + txnsAttempted +
+              " selectsRetriesExhausted=" + selectsRetriesExhausted +
+              " selectsFirstOpRestartRequired=" + selectsFirstOpRestartRequired +
+              " selectsSecondOpRestartRequired=" + selectsSecondOpRestartRequired +
+              " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
+              " txnsSucceeded=" + txnsSucceeded +
+              " selectsWithAbortError=" + selectsWithAbortError +
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
+
+          assertEquals("SELECT (" + isolation + "): Unexpected restarts!",
+              0, selectsFirstOpRestartRequired);
+
+          // Assertions for the second statement vary based on the isolation level.
+          switch (isolation) {
+            case SERIALIZABLE:
+              // Read restarts can't occur in SERIALIZABLE isolation
+              assertEquals(0, selectsSecondOpRestartRequired);
+              break;
+            case REPEATABLE_READ:
+              // Read restart errors are retried transparently only for the first statement in the
+              // transaction. So, we can expect some read restart errors in the second statement.
+              // However, it is highly unlikely that we see them because all tservers holding data
+              // would have responded with a local limit during the first statement, hence
+              // reducing the scope of ambiguity that results in a read restart in the second
+              // statement. Moreover, the first statement might have faced a read restart error
+              // and moved the read time ahead to reduce the scope of ambiguity even further.
+              break;
+            case READ_COMMITTED:
+              // Read restarts retries are performed transparently for each statement in
+              // READ COMMITTED isolation
+              assertEquals(0, selectsSecondOpRestartRequired);
+              break;
+            default:
+              fail("Unexpected isolation level: " + isolation);
+          }
+
+          assertEquals(0, selectsFirstOpConflictDetected);
+
+          assertGreaterThan("No txns in " + isolation + " succeeded, ever! Flawed test?",
+                            txnsSucceeded, 0);
+        });
+      }
+
+      return runnables;
     }
   }
 }

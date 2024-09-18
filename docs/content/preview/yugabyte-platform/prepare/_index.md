@@ -19,7 +19,7 @@ To prepare your infrastructure for YugabyteDB Anywhere, you need to do the follo
 
 - [Configure cloud permissions](./cloud-permissions/)
 
-  If you are using a public cloud provider (AWS, GCP, or Azure) or Kubernetes, you need to configure your cloud environment with the appropriate users and security permissions required by YBA.
+  If you are using a public cloud provider (AWS, GCP, or Azure) or Kubernetes, you need to configure your cloud environment with the appropriate users and security permissions required by YugabyteDB Anywhere.
 
   If you are using an on-premises provider, no cloud permissions are required. However, if you back up to a cloud object store, use a cloud KMS, or export logs, metrics, or data to a cloud service, you may need to set up some permissions.
 

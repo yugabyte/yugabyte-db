@@ -153,13 +153,13 @@ class PgTableRow {
   void SetBinary(size_t column_idx, Slice value, bool append_zero);
 
   static PackedColumnDecoderEntry GetPackedColumnDecoderV1(
-    bool last, DataType data_type, ssize_t packed_index);
+      bool last, DataType data_type, ssize_t packed_index);
 
   static PackedColumnDecoderEntry GetPackedColumnDecoderV2(
-    bool last, DataType data_type, ssize_t packed_index);
+      bool last, DataType data_type, ssize_t packed_index);
 
   static PackedColumnDecoderEntry GetPackedColumnSkipperV2(
-      DataType data_type, ssize_t packed_index);
+      bool last, bool skip_projection_column, DataType data_type, ssize_t packed_index);
 
  private:
   PgValueDatum GetDatum(size_t idx) const;

@@ -7,13 +7,21 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper
+@Mapper(config = CentralConfig.class)
 public interface UniverseSoftwareUpgradeStartMapper {
   UniverseSoftwareUpgradeStartMapper INSTANCE =
       Mappers.getMapper(UniverseSoftwareUpgradeStartMapper.class);
 
   @Mapping(target = "sleepAfterTServerRestartMillis", source = "sleepAfterTserverRestartMillis")
   @Mapping(target = "ybSoftwareVersion", source = "version")
-  SoftwareUpgradeParams copyToV1SoftwareUpgradeParams(
+  @Mapping(target = "upgradeOption", source = "source")
+  public SoftwareUpgradeParams copyToV1SoftwareUpgradeParams(
       UniverseSoftwareUpgradeStart source, @MappingTarget SoftwareUpgradeParams target);
+
+  default SoftwareUpgradeParams.UpgradeOption mapUpgradeOption(
+      UniverseSoftwareUpgradeStart source) {
+    return source.getRollingUpgrade()
+        ? SoftwareUpgradeParams.UpgradeOption.ROLLING_UPGRADE
+        : SoftwareUpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
+  }
 }

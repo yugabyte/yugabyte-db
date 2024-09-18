@@ -124,6 +124,9 @@ message CreateTableRequestPB {
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   optional bool is_truncate = 31;
   optional PgVectorIdxOptionsPB vector_idx_options = 32;
+
+  // Set by DDL Replication to link the table to the original table in the source cluster.
+  optional bytes xcluster_source_table_id = 33;
 }
 
 message CreateTableResponsePB {

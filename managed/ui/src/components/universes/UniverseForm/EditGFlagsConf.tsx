@@ -372,6 +372,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
+                            onBlur={() => buildGFlagConf()}
                           >
                             <Box display="flex" flexDirection="column">
                               <Box display="flex" flexDirection="row">
@@ -391,7 +392,6 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                       : CONST_VALUES.EMPTY_STRING
                                   }
                                   onChange={(e: any) => handleChange(e.target.value, index)}
-                                  onBlur={() => buildGFlagConf()}
                                   error={GFlagRows[index]?.error}
                                   helperText={t(GFlagRows[index].errorMessageKey!)}
                                   inputProps={{

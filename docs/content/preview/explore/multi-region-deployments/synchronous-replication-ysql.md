@@ -34,7 +34,7 @@ This deployment provides the following advantages:
   <li>
     <a href="../synchronous-replication-cloud/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
@@ -45,7 +45,7 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
-The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](#clean-up) any running local universes.
+The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
 
 You can also use the described steps for deploying universes in any public cloud, private data center, or in separate virtual machines. The following are the only differences:
 

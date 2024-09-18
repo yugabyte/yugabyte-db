@@ -109,6 +109,15 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> enableDownloadMetricsPdf =
+      new ConfKeyInfo<>(
+          "yb.ui.metrics.enable_download_pdf",
+          ScopeType.CUSTOMER,
+          "Enable downloading metrics as a PDF",
+          "When enabled, the download metrics option is shown on the universe metrics page.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> useNewProviderUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.provider_redesign",
@@ -197,6 +206,24 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ScopeType.CUSTOMER,
           "Backup Garbage Collector Number of Retries",
           "Number of retries during backup deletion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> CheckCertificateConfig =
+      new ConfKeyInfo<>(
+          "yb.tls.enable_config_validation",
+          ScopeType.CUSTOMER,
+          "Enable Certificate Config Validation",
+          "Certificate configuration validation during the addition of new certificates.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> MetricsDefaultPoints =
+      new ConfKeyInfo<>(
+          "yb.metrics.default_points",
+          ScopeType.CUSTOMER,
+          "Default Metric Graph Point Count",
+          "Default Metric Graph Point Count, if step is not defined in the query",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

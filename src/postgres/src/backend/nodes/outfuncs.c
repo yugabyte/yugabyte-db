@@ -399,7 +399,8 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(ybPushdownTlist);
 	WRITE_NODE_FIELD(ybReturningColumns);
 	WRITE_NODE_FIELD(ybColumnRefs);
-	WRITE_NODE_FIELD(no_update_index_list);
+	WRITE_NODE_FIELD(yb_skip_entities);
+	WRITE_NODE_FIELD(yb_update_affected_entities);
 	WRITE_BOOL_FIELD(no_row_trigger);
 }
 
@@ -3851,6 +3852,43 @@ _outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 	WRITE_OID_FIELD(collid);
 }
 
+static void
+_outYbSkippableEntities(StringInfo str, const YbSkippableEntities *node)
+{
+	WRITE_NODE_TYPE("YBSKIPPABLEENTITIES");
+
+	WRITE_NODE_FIELD(index_list);
+	WRITE_NODE_FIELD(referencing_fkey_list);
+	WRITE_NODE_FIELD(referenced_fkey_list);
+}
+
+static void
+_outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *node)
+{
+	int nfields = node->matrix.nrows;
+	int nentities = node->matrix.ncols;
+
+	WRITE_NODE_TYPE("YBUPDATEAFFECTEDENTITIES");
+
+	/* Write out the number of fields and entities to support deserialization */
+	WRITE_INT_FIELD(matrix.nrows); /* Number of fields */
+	WRITE_INT_FIELD(matrix.ncols); /* Number of entities */
+
+	for (int i = 0; i < nentities; i++)
+	{
+		WRITE_OID_FIELD(entity_list[i].oid);
+		WRITE_ENUM_FIELD(entity_list[i].etype, YbSkippableEntityType);
+	}
+
+	for (int i = 0; i < nfields; i++)
+	{
+		WRITE_INT_FIELD(col_info_list[i].attnum);
+		WRITE_NODE_FIELD(col_info_list[i].entity_refs);
+	}
+
+	WRITE_BITMAPSET_FIELD(matrix.data);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4528,6 +4566,12 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_YbExprColrefDesc:
 				_outYbExprColrefDesc(str, obj);
+				break;
+			case T_YbSkippableEntities:
+				_outYbSkippableEntities(str, obj);
+				break;
+			case T_YbUpdateAffectedEntities:
+				_outYbUpdateAffectedEntities(str, obj);
 				break;
 
 			default:

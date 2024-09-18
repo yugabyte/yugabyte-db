@@ -16,30 +16,16 @@
 
 #include "yb/yql/pggate/pg_dml_read.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// SELECT
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgSelect : public PgDmlRead {
  public:
-  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-           const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
-           bool is_region_local);
-  virtual ~PgSelect();
+  PgSelect(
+      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local,
+      const PrepareParameters& prepare_params, const PgObjectId& index_id = {});
 
   // Prepare query before execution.
   Status Prepare() override;
-
-  // Prepare secondary index if that index is used by this query.
-  Status PrepareSecondaryIndex();
-
-  virtual Result<PgTableDescPtr> LoadTable();
-
-  virtual bool UseSecondaryIndex() const;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

@@ -50,19 +50,30 @@ extern void YbAshRegister(void);
 extern void YbAshMain(Datum main_arg);
 
 extern void YbAshInit(void);
-extern void YbAshSetSessionId(uint64 session_id);
 extern void YbAshSetDatabaseId(Oid database_id);
 extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 
-extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
+extern void YbAshMaybeIncludeSample(PGPROC *proc, int num_procs,
+									TimestampTz sample_time,
+									int *samples_considered);
+extern void YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,
-							 int *samples_stored);
+							 int index);
+extern void YbAshFillSampleWeight(int samples_considered);
 
 extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
+extern bool yb_ash_circular_buffer_size_check_hook(int *newval,
+												   void **extra,
+												   GucSource source);
 
 extern void YbAshSetMetadata(void);
 extern void YbAshUnsetMetadata(void);
+
+extern void YbAshSetOneTimeMetadata(void);
+extern void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
+												int64 query_id, StringInfo output_buffer,
+												char *description);
 
 #endif							/* YB_ASH_H */

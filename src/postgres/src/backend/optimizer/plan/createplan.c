@@ -52,9 +52,10 @@
 #include "utils/syscache.h"
 #include "utils/rel.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "optimizer/ybcplan.h"
+#include "pg_yb_utils.h"
 
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().
@@ -134,9 +135,6 @@ static SeqScan *create_seqscan_plan(PlannerInfo *root, Path *best_path,
 					List *tlist, List *scan_clauses);
 static SampleScan *create_samplescan_plan(PlannerInfo *root, Path *best_path,
 					   List *tlist, List *scan_clauses);
-static Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
-					  List *tlist, List *scan_clauses, bool indexonly,
-					  bool bitmapindex);
 static BitmapHeapScan *create_bitmap_scan_plan(PlannerInfo *root,
 						BitmapHeapPath *best_path,
 						List *tlist, List *scan_clauses);
@@ -144,8 +142,8 @@ static YbBitmapTableScan *create_yb_bitmap_scan_plan(PlannerInfo *root,
 						YbBitmapTablePath *best_path,
 						List *tlist, List *scan_clauses);
 static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
-					  List **qual, List **indexqual, List **indexpushdownqual,
-					  List **indexECs, List *tlist, List **scan_clauses);
+					  List **qual, List **indexqual, List **indexECs,
+					  List *tlist, List **scan_clauses);
 static void bitmap_subplan_mark_shared(Plan *plan);
 static List *flatten_partitioned_rels(List *partitioned_rels);
 static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
@@ -3364,6 +3362,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	List	   *column_refs = NIL;
 	bool		no_row_trigger = false;
 	List	   *no_update_index_list = NIL;
+	bool		yb_is_single_row_update_or_delete;
 
 	/*
 	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
@@ -3371,11 +3370,11 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	if (yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
-											&column_refs, &result_tlist,
-											&returning_cols, &no_row_trigger,
-											best_path->operation == CMD_UPDATE ?
-												&no_update_index_list : NULL))
+	yb_is_single_row_update_or_delete = yb_single_row_update_or_delete_path(
+		root, best_path, &modify_tlist, &column_refs, &result_tlist,
+		&returning_cols, &no_row_trigger,
+		best_path->operation == CMD_UPDATE ? &no_update_index_list : NULL);
+	if (yb_is_single_row_update_or_delete)
 	{
 		Plan *subplan = (Plan *) make_result(result_tlist, NULL, NULL);
 		copy_generic_path_info(subplan, linitial(best_path->subpaths));
@@ -3430,10 +3429,65 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybPushdownTlist = modify_tlist;
 	plan->ybReturningColumns = returning_cols;
 	plan->ybColumnRefs = column_refs;
-	plan->no_update_index_list = no_update_index_list;
 	plan->no_row_trigger = no_row_trigger;
+	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
+
+	/*
+	 * TODO(kramanathan): Evaluate whether the equivalent of "is single row
+	 * update" is need for ON CONFLICT DO UPDATE.
+	 */
+	if (YbIsUpdateOptimizationEnabled() &&
+		((!yb_is_single_row_update_or_delete && plan->operation == CMD_UPDATE) ||
+		 (plan->operation == CMD_INSERT && plan->onConflictAction == ONCONFLICT_UPDATE)))
+	{
+		RangeTblEntry *rte = NULL;
+		if (!root->simple_rel_array_size)
+		{
+			/*
+			 * This is a simple INSERT ON CONFLICT with an empty join tree.
+			 * This query involves exactly one relation. It may however have
+			 * several range table entries, but the first entry always contains
+			 * information about the ON CONFLICT DO UPDATE.
+			 */
+			rte = lfirst(list_head(root->parse->rtable));
+		}
+		else
+		{
+			/*
+			 * During execution of ModifyTable, the first entry in
+			 * resultRelations is hardcoded to be always used. Use the
+			 * same relation to compute the list of affected entities.
+			 * This also handles situations when the modifyTable is being run on
+			 * a view rather than a relation.
+			 */
+			int rt_index = lfirst_int(list_head(plan->resultRelations));
+			rte = root->simple_rte_array[rt_index];
+		}
+
+		Relation rel = RelationIdGetRelation(rte->relid);
+		/*
+		 * The memory allocations here are made in the context of the plan's
+		 * memory context and will be freed up when the plan is destroyed:
+		 * - if it is decided that the plan will not be cached and subsequently
+		 * dropped (see prepare.c for more details).
+		 * - if the plan is chosen to be cached, the plan's memory context
+		 * is re-parented under the CacheMemoryContext, in which case it is
+		 * destroyed via DEALLOCATE of the prepared statement.
+		 * An exception to this is one-shot plans, which is currently used only
+		 * by SPI. In this case, it is the responsibility of the caller to drop
+		 * the memory context associated with the plan.
+		 * TODO(kramanathan): Reevaluate this in the context of plan_cache_mode
+		 * in PG15. (#23350)
+		 * TODO(kramanathan): Add support for partitioned tables. (#23348)
+		 */
+		if (rel->rd_rel->relkind == RELKIND_RELATION)
+			plan->yb_update_affected_entities =
+				YbComputeAffectedEntitiesForRelation(plan, rel, rte->updatedCols);
+
+		RelationClose(rel);
+	}
 
 	return plan;
 }
@@ -3674,7 +3728,7 @@ YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
  * us which to build --- we don't look at best_path->path.pathtype, because
  * create_bitmap_subplan needs to be able to override the prior decision.
  */
-static Scan *
+Scan *
 create_indexscan_plan(PlannerInfo *root,
 					  IndexPath *best_path,
 					  List *tlist,
@@ -3957,7 +4011,6 @@ create_bitmap_scan_plan(PlannerInfo *root,
 	/* Process the bitmapqual tree into a Plan tree and qual lists */
 	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
 										   &bitmapqualorig, &indexquals,
-										   NULL /* indexpushdownquals */,
 										   &indexECs, tlist, &scan_clauses);
 
 	if (best_path->path.parallel_aware)
@@ -4061,7 +4114,7 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	Plan	   *bitmapqualplan;
 	List	   *indexqual;
 	List	   *indexquals;
-	List	   *indexpushdownquals;
+	List	   *allindexquals;
 	List	   *indexECs;
 	List	   *qpqual;
 	ListCell   *l;
@@ -4074,8 +4127,10 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	/* Process the bitmapqual tree into a Plan tree and qual lists */
 	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
 										   &indexqual, &indexquals,
-										   &indexpushdownquals, &indexECs,
-										   tlist, &scan_clauses);
+										   &indexECs, tlist, &scan_clauses);
+
+	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
+												   scan_clauses);
 
 	/*
 	 * The qpqual list must contain all restrictions not automatically handled
@@ -4111,15 +4166,12 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 
 		if (rinfo->pseudoconstant)
 			continue;			/* we may drop pseudoconstants here */
-		if (list_member(indexquals, clause))
-			continue;			/* simple duplicate */
-		if (list_member(indexpushdownquals, clause))
+		if (list_member(allindexquals, clause))
 			continue;			/* simple duplicate */
 		if (rinfo->parent_ec && list_member_ptr(indexECs, rinfo->parent_ec))
 			continue;			/* derived from same EquivalenceClass */
 		if (!contain_mutable_functions(clause) &&
-			(predicate_implied_by(list_make1(clause), indexquals, false) ||
-			 predicate_implied_by(list_make1(clause), indexpushdownquals, false)))
+			predicate_implied_by(list_make1(clause), allindexquals, false))
 			continue;			/* provably implied by indexquals or
 			                     * indexpushdownquals */
 		qpqual = lappend(qpqual, rinfo);
@@ -4244,8 +4296,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
  */
 static Plan *
 create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
-					  List **qual, List **indexqual, List **indexpushdownquals,
-					  List **indexECs, List *tlist, List **scan_clauses)
+					  List **qual, List **indexqual, List **indexECs,
+					  List *tlist, List **scan_clauses)
 {
 	Plan	   *plan;
 
@@ -4255,7 +4307,6 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		List	   *subplans = NIL;
 		List	   *subquals = NIL;
 		List	   *subindexquals = NIL;
-		List	   *subindexpushdownquals = NIL;
 		List	   *subindexECs = NIL;
 		ListCell   *l;
 
@@ -4271,18 +4322,14 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			Plan	   *subplan;
 			List	   *subqual;
 			List	   *subindexqual;
-			List	   *subindexpushdownqual;
 			List	   *subindexEC;
 
 			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
 											&subqual, &subindexqual,
-											&subindexpushdownqual, &subindexEC,
-											tlist, scan_clauses);
+											&subindexEC, tlist, scan_clauses);
 			subplans = lappend(subplans, subplan);
 			subquals = list_concat_unique(subquals, subqual);
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
-			subindexpushdownquals = list_concat_unique(subindexpushdownquals,
-													   subindexpushdownqual);
 			/* Duplicates in indexECs aren't worth getting rid of */
 			subindexECs = list_concat(subindexECs, subindexEC);
 		}
@@ -4296,8 +4343,6 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		plan->parallel_safe = apath->path.parallel_safe;
 		*qual = subquals;
 		*indexqual = subindexquals;
-		if (indexpushdownquals)
-			*indexpushdownquals = subindexpushdownquals;
 		*indexECs = subindexECs;
 	}
 	else if (IsA(bitmapqual, BitmapOrPath))
@@ -4306,7 +4351,6 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		List	   *subplans = NIL;
 		List	   *subquals = NIL;
 		List	   *subindexquals = NIL;
-		List	   *subindexpushdownquals = NIL;
 		bool		const_true_subqual = false;
 		bool		const_true_subindexqual = false;
 		ListCell   *l;
@@ -4325,13 +4369,11 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			Plan	   *subplan;
 			List	   *subqual;
 			List	   *subindexqual;
-			List	   *subindexpushdownqual;
 			List	   *subindexEC;
 
 			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
 											&subqual, &subindexqual,
-											&subindexpushdownqual, &subindexEC,
-											tlist, scan_clauses);
+											&subindexEC, tlist, scan_clauses);
 			subplans = lappend(subplans, subplan);
 			if (subqual == NIL)
 				const_true_subqual = true;
@@ -4341,12 +4383,8 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			if (subindexqual == NIL)
 				const_true_subindexqual = true;
 			else if (!const_true_subindexqual)
-			{
 				subindexquals = lappend(subindexquals,
 										make_ands_explicit(subindexqual));
-				subindexpushdownquals = lappend(subindexpushdownquals,
-										   make_ands_explicit(subindexpushdownqual));
-			}
 		}
 
 		/*
@@ -4381,24 +4419,11 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		else
 			*qual = list_make1(make_orclause(subquals));
 		if (const_true_subindexqual)
-		{
 			*indexqual = NIL;
-			if (indexpushdownquals)
-				*indexpushdownquals = NIL;
-		}
 		else if (list_length(subindexquals) <= 1)
-		{
 			*indexqual = subindexquals;
-			if (indexpushdownquals)
-				*indexpushdownquals = subindexpushdownquals;
-		}
 		else
-		{
 			*indexqual = list_make1(make_orclause(subindexquals));
-			if (indexpushdownquals)
-				*indexpushdownquals = list_make1(
-					make_orclause(subindexpushdownquals));
-		}
 		*indexECs = NIL;
 	}
 	else if (IsA(bitmapqual, IndexPath))
@@ -4445,11 +4470,6 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		plan->parallel_safe = ipath->path.parallel_safe;
 		*qual = get_actual_clauses(ipath->indexclauses);
 		*indexqual = get_actual_clauses(ipath->indexquals);
-
-		if (indexpushdownquals)
-			*indexpushdownquals = ipath->indexinfo->rel->is_yb_relation
-				? ((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals
-				: NIL;
 
 		foreach(l, ipath->indexinfo->indpred)
 		{
@@ -8341,7 +8361,8 @@ make_modifytable(PlannerInfo *root,
 	/* These are set separately only if needed. */
 	node->ybPushdownTlist = NIL;
 	node->ybReturningColumns = NIL;
-	node->no_update_index_list = NIL;
+	node->yb_skip_entities = NULL;
+	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
 	return node;
 }

@@ -129,7 +129,7 @@ The following is an example for connecting to YugabyteDB with SSL encryption ena
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
 ```
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
+If you have created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
 
 ### Step 3: Write your application
 

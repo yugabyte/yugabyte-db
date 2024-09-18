@@ -81,6 +81,8 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     when(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion))
         .thenReturn(getVersionMap("2024.1.0.0-b23"));
     when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
+        .thenReturn(false);
 
     // Should pass
     releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b23");

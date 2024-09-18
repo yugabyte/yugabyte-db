@@ -91,6 +91,10 @@ class ConsistentReadPoint {
   void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
 
   class Momento {
+   public:
+    const ReadHybridTime& read_time() const { return read_time_; }
+
+   private:
     Momento(const ReadHybridTime& read_time,
           HybridTime restart_read_ht,
           const HybridTimeMap& local_limits,
@@ -109,7 +113,7 @@ class ConsistentReadPoint {
   };
 
   [[nodiscard]] Momento GetMomento() const EXCLUDES(mutex_);
-  void SetMomento(ConsistentReadPoint::Momento&& momento) EXCLUDES(mutex_);
+  void SetMomento(const ConsistentReadPoint::Momento& momento) EXCLUDES(mutex_);
 
  private:
   inline void SetReadTimeUnlocked(

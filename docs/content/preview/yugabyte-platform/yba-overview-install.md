@@ -20,13 +20,13 @@ At a high level, you perform the following tasks to install and use YugabyteDB A
 
 1. Prepare your infrastructure.
 
-    Set up the necessary VMs, cloud permissions, users, and networking to install YBA and deploy universes. How you prepare your infrastructure depends on the types of providers you want to support.
+    Set up the necessary VMs, cloud permissions, users, and networking to install YugabyteDB Anywhere and deploy universes. How you prepare your infrastructure depends on the types of providers you want to support.
 
     See [Prepare your infrastructure](../prepare/).
 
 1. Install the management software (that is, YugabyteDB Anywhere).
 
-    Using YBA Installer, install YBA on a VM.
+    Using YBA Installer, install YugabyteDB Anywhere on a VM.
 
     See [Install YugabyteDB Anywhere](../install-yugabyte-platform/).
 
@@ -38,7 +38,7 @@ At a high level, you perform the following tasks to install and use YugabyteDB A
 
 1. Create a database cluster (also referred to as a Universe) using YugabyteDB Anywhere.
 
-    YBA uses the details in the provider configuration to configure and deploy the universe. If using Kubernetes, using Helm charts or the [Kubernetes operator](../../deploy/kubernetes/single-zone/oss/yugabyte-operator/) is also possible.
+    YugabyteDB Anywhere uses the details in the provider configuration to configure and deploy the universe. If using Kubernetes, using Helm charts or the [Kubernetes operator](../../deploy/kubernetes/single-zone/oss/yugabyte-operator/) is also possible.
 
     See [Create universes](../create-deployments/).
 
@@ -52,7 +52,7 @@ To install YugabyteDB Anywhere and be able to deploy YugabyteDB universes requir
 
 - [Networking connectivity](../prepare/networking/)
 
-  - Between YBA and all of the database cluster nodes
+  - Between YugabyteDB Anywhere and all of the database cluster nodes
   - Between all the DB nodes
   - Optionally, network connectivity to the Internet for access to resources as required, including the following:
     - Linux OS disk images from cloud service providers
@@ -72,8 +72,8 @@ See [Prepare your infrastructure](../prepare/) for instructions on meeting these
 
 <!--Fill out the pre-requisites form as you go along. Start installing only after the pre-requisites form is completed. To obtain the form, contact {{% support-platform %}}.-->
 
-If you have development, staging, and production environments (with multiple clusters per environment), deploy one YBA instance (or active/passive high availability pair) for each environment.
+If you have development, staging, and production environments (with multiple clusters per environment), deploy one YugabyteDB Anywhere instance (or active/passive high availability pair) for each environment.
 
 ## Limitations
 
-YBA can be deployed to on-premises VMs, public cloud VMs, or Kubernetes. The same is true for database clusters. While these are usually de-coupled and independent deployment decisions, if you want to deploy a database cluster to Kubernetes, YBA must also be deployed on Kubernetes.
+YugabyteDB Anywhere can be deployed to on-premises VMs, public cloud VMs, or Kubernetes. The same is true for database clusters. While these are usually de-coupled and independent deployment decisions, if you want to deploy a database cluster to Kubernetes, YugabyteDB Anywhere must also be deployed on Kubernetes.

@@ -591,13 +591,21 @@ extern List *ExecInsertIndexTuples(TupleTableSlot *slot, HeapTuple tuple,
 					  List *arbiterIndexes);
 extern List *ExecInsertIndexTuplesOptimized(TupleTableSlot *slot, HeapTuple tuple,
 					  EState *estate, bool noDupErr, bool *specConflict,
-					  List *arbiterIndexes, List *no_update_index_list);
+					  List *arbiterIndexes);
 extern void ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate);
-extern void ExecDeleteIndexTuplesOptimized(Datum ybctid, HeapTuple tuple, EState *estate,
-					  List *no_update_index_list);
-extern bool ContainsIndexRelation(Oid indexrelid, List *no_update_index_list);
+extern void ExecDeleteIndexTuplesOptimized(Datum ybctid, HeapTuple tuple,
+										   EState *estate);
+extern List *YbExecUpdateIndexTuples(TupleTableSlot *slot,
+									 Datum ybctid,
+									 HeapTuple oldtuple,
+									 HeapTuple tuple,
+									 EState *estate,
+									 Bitmapset *updatedCols,
+									 bool is_pk_updated);
+
 extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
-						  ItemPointer conflictTid, List *arbiterIndexes);
+						  ItemPointer conflictTid, List *arbiterIndexes,
+						  TupleTableSlot **ybConflictSlot);
 extern void check_exclusion_constraint(Relation heap, Relation index,
 						   IndexInfo *indexInfo,
 						   ItemPointer tupleid,

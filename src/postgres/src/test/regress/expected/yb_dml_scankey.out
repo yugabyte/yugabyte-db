@@ -175,7 +175,7 @@ ERROR:  indexqual doesn't have key on left side
  3 | 4 | 5
 (3 rows)
 
--- TODO(#18360): fix output.
+-- #18360
 \set one 'yb_hash_code(k) > -1'
 :explain :is :query; :is :query;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN
@@ -188,4 +188,7 @@ ERROR:  indexqual doesn't have key on left side
 
  i | j | k
 ---+---+---
-(0 rows)
+ 1 | 2 | 4
+ 2 | 3 | 4
+ 3 | 4 | 5
+(3 rows)

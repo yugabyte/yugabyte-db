@@ -96,6 +96,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
@@ -108,6 +109,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -194,6 +196,7 @@ static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
+bool yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
 bool
@@ -898,14 +901,14 @@ YBInitPostgresBackend(
 		if (yb_ash_enable_infra)
 			YbAshInit();
 
+		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			YbQueryDiagnosticsInstallHook();
+
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
-		 *
-		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
-										&yb_session_stats.current_state));
+		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
@@ -915,8 +918,6 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
-		if (yb_ash_enable_infra)
-			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
 
@@ -972,6 +973,10 @@ YBCAbortTransaction()
 	 * scenarios to avoid a recursive loop of aborting again and again as part
 	 * of error handling in PostgresMain() because of the error faced during
 	 * abort.
+	 *
+	 * Note - If you are changing the behavior to not terminate the backend,
+	 * please consider its impact on sub-transaction abort failures
+	 * (YBCRollbackToSubTransaction) as well.
 	 */
 	if (unlikely(status))
 		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
@@ -990,7 +995,27 @@ YBCSetActiveSubTransaction(SubTransactionId id)
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	/*
+	 * This function is invoked:
+	 * - explicitly by user flows ("ROLLBACK TO <savepoint>" commands)
+	 * - implicitly as a result of abort/commit flows
+	 * - implicitly to implement exception handling in procedures and statement
+	 *   retries for YugabyteDB's read committed isolation level
+	 * An error in rolling back to a subtransaction is likely due to issues in
+	 * communicating with the tserver. Closing the backend connection
+	 * here prevents Postgres from attempting transaction error recovery, which
+	 * invokes the AbortCurrentTransaction flow (via the top level error handler
+	 * in PostgresMain()), and likely ending up in a PANIC'ed state due to
+	 * repeated failures caused by AbortSubTransaction not being reentrant.
+	 * Closing the backend here is acceptable because alternate ways of
+	 * handling this failure end up trying to abort the transaction which
+	 * would anyway terminate the backend on failure. Revisit this approach in
+	 * case the behavior of YBCAbortTransaction changes.
+	 */
+	YBCStatus status = YBCPgRollbackToSubTransaction(id);
+	if (unlikely(status))
+		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
+			id, YBCMessageAsCString(status));
 }
 
 bool
@@ -1351,6 +1376,7 @@ bool yb_enable_index_aggregate_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
+bool yb_make_next_ddl_statement_nonincrementing = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
@@ -1361,6 +1387,11 @@ bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
+
+YBUpdateOptimizationOptions yb_update_optimization_options = {
+	.num_cols_to_compare = 50,
+	.max_cols_size_to_compare = 10 * 1024
+};
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1525,18 +1556,29 @@ MergeCatalogModificationAspects(
 }
 
 static void
-YBResetEnableNonBreakingDDLMode()
+YBResetEnableSpecialDDLMode()
 {
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
-	 * 
+	 *
 	 * Also, reset Connection Manager cache if the value was cached to begin
 	 * with.
 	 */
 	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonbreaking)
 		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonbreaking", "false");
 	yb_make_next_ddl_statement_nonbreaking = false;
+
+	/*
+	 * Reset yb_make_next_ddl_statement_nonincrementing to avoid its further side
+	 * effect that may not be intended.
+	 *
+	 * Also, reset Connection Manager cache if the value was cached to begin
+	 * with.
+	 */
+	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonincrementing)
+		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonincrementing", "false");
+	yb_make_next_ddl_statement_nonincrementing = false;
 }
 
 /*
@@ -1580,7 +1622,7 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
-	YBResetEnableNonBreakingDDLMode();
+	YBResetEnableSpecialDDLMode();
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1654,7 +1696,7 @@ YBDecrementDdlNestingLevel()
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
-		YBResetEnableNonBreakingDDLMode();
+		YBResetEnableSpecialDDLMode();
 		bool increment_done = false;
 		bool is_silent_altering = false;
 		if (has_write)
@@ -1685,7 +1727,19 @@ YBDecrementDdlNestingLevel()
 		 * if DDL txn commit succeeds.)
 		 */
 		if (increment_done)
+		{
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			if (YbIsClientYsqlConnMgr())
+			{
+				/* Wait for tserver hearbeat */
+				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+				elog(LOG,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
+		}
 
 		List *handles = YBGetDdlHandles();
 		ListCell *lc = NULL;
@@ -2199,6 +2253,18 @@ YbDdlModeOptional YbGetDdlMode(
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
+	/*
+	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
+	 * will cause a catalog version to increment. Note that we also disable breaking
+	 * catalog change as well because it does not make sense to only increment
+	 * breaking breaking catalog version.
+	 */
+	if (yb_make_next_ddl_statement_nonincrementing)
+	{
+		is_version_increment = false;
+		is_breaking_change = false;
+	}
+
 
 	is_altering_existing_data |= is_version_increment;
 
@@ -2322,6 +2388,10 @@ bool YBEnableTracing() {
 
 bool YBReadFromFollowersEnabled() {
 	return yb_read_from_followers;
+}
+
+bool YBFollowerReadsBehaviorBefore20482() {
+	return yb_follower_reads_behavior_before_fixing_20482;
 }
 
 int32_t YBFollowerReadStalenessMs() {
@@ -3176,7 +3246,7 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	 *
 	 * For YB backup, if an error is thrown from a PG backend, ysql_dump will
 	 * exit, generate an empty YSQLDUMP file, and block YB backup workflow.
-	 * Currently, we don't have the functionality to adjust options used for 
+	 * Currently, we don't have the functionality to adjust options used for
 	 * ysql_dump on YBA and YBM, so we don't have a way to to turn on/off
 	 * a backup-related feature used in ysql_dump.
 	 * There are known cases which caused decoding of split points to fail in
@@ -4377,8 +4447,10 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
+LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
+	LockWaitPolicy result = pg_wait_policy;
+
 	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
 	{
 		/* The user requested NOWAIT, which isn't allowed in RR. */
@@ -4397,14 +4469,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 						  "(GH issue #11761)",
 						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
 
-		*docdb_wait_policy = LockWaitBlock;
-	}
-	else
-	{
-		*docdb_wait_policy = pg_wait_policy;
+		result = LockWaitBlock;
 	}
 
-	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
+	if (result == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -4413,9 +4481,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
 		elog(DEBUG1, "Falling back to LockWaitError since wait-queues are not enabled");
-		*docdb_wait_policy = LockWaitError;
+		result = LockWaitError;
 	}
-	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", *docdb_wait_policy, pg_wait_policy);
+	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", result, pg_wait_policy);
+	return result;
 }
 
 uint32_t YbGetNumberOfDatabases()
@@ -4515,17 +4584,35 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+bool yb_ysql_conn_mgr_sticky_guc = false;
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
+ * connection is made sticky using via specific GUC variables.
+ */
+static bool YbIsConnectionMadeStickyUsingGUC()
+{
+	return yb_ysql_conn_mgr_sticky_guc;
+}
+
+/*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
+ *
+ * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)
 {
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0);
+	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
 }
 
 void**
@@ -4613,7 +4700,13 @@ bool
 yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
 {
 	/* Allow setting yb_use_tserver_key_auth to false */
-	if (!(*newval))
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical connections
+	 * can never be of parallel worker type, therefore it makes no sense to restore
+	 * or even do check/assign hooks for ysql connection manager specific guc variables
+	 * on parallel worker process.
+	*/
+	if (!(*newval) || yb_is_parallel_worker == true)
 		return true;
 
 	/*
@@ -4822,6 +4915,14 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query_len = strlen(*redacted_query);
 }
 
+bool
+YbIsUpdateOptimizationEnabled()
+{
+	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
+	return yb_update_optimization_options.num_cols_to_compare > 0 &&
+		   yb_update_optimization_options.max_cols_size_to_compare > 0;
+}
+
 /*
  * In YB, a "relfilenode" corresponds to a DocDB table.
  * This function creates a new DocDB table for the given table,
@@ -4901,4 +5002,53 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
 						&microsecs);
 	return secs * USECS_PER_SEC + microsecs;
+}
+
+bool YbIsReadCommittedTxn()
+{
+	return IsYBReadCommitted() &&
+		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+}
+
+YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? (YbReadTimePointHandle){
+			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
+		: (YbReadTimePointHandle){};
+}
+
+// TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
+// fast backward scan capability.
+bool YbUseFastBackwardScan() {
+  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
+
+bool YbIsYsqlConnMgrWarmupModeEnabled()
+{
+	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
+}
+
+/* Used in YB to check if an attribute is a key column. */
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
+{
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	return bms_is_member(attnum -
+		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
+}
+
+/* Retrieve the sort ordering of the first key element of an index. */
+SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
+{
+	if (IndexRelationGetNumberOfKeyAttributes(indexRel) == 0)
+		return SORTBY_DEFAULT;
+	/*
+	 * If there are key columns, check the indoption of the first
+	 * key attribute.
+	 */
+	if (indexRel->rd_indoption[0] & INDOPTION_HASH)
+		return SORTBY_HASH;
+	if (indexRel->rd_indoption[0] & INDOPTION_DESC)
+		return SORTBY_DESC;
+	return SORTBY_ASC;
 }

@@ -116,6 +116,13 @@ Status SysCatalogWriter::DoMutateItem(
       type, item_id, new_pb, op_type, schema_with_ids_, req_->add_ql_write_batch());
 }
 
+Status SysCatalogWriter::Mutate(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    QLWriteRequestPB::QLStmtType op_type) {
+  return FillSysCatalogWriteRequest(
+      type, item_id, new_pb, op_type, schema_with_ids_, req_->add_ql_write_batch());
+}
+
 Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
                                              const qlexpr::QLTableRow& source_row,
                                              const TableId& target_table_id,
@@ -133,8 +140,8 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
   pgsql_write->set_table_id(target_table_id);
   pgsql_write->set_schema_version(target_schema_version);
 
-  // Postgres sys catalog table is non-partitioned. So there should be no hash column.
-  DCHECK_EQ(source_schema.num_hash_key_columns(), 0);
+  RSTATUS_DCHECK_EQ(source_schema.num_hash_key_columns(), 0, InternalError, "Postgres sys catalog "
+                    "table is non-partitioned, so there should be no hash columns.");
   for (size_t i = 0; i < source_schema.num_range_key_columns(); i++) {
     const auto& value = source_row.GetValue(source_schema.column_id(i));
     if (value) {

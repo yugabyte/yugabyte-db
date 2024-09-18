@@ -49,8 +49,9 @@ func WaitForUpdateProviderTask(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		providersCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: providerFormatter.NewProviderFormat(viper.GetString("output")),
+			Command: "update",
+			Output:  os.Stdout,
+			Format:  providerFormatter.NewProviderFormat(viper.GetString("output")),
 		}
 
 		providerFormatter.Write(providersCtx, providerData)
@@ -178,7 +179,7 @@ func BuildZoneMapFromString(
 	return zone
 }
 
-// BuilRegionMapFromString is for region flags
+// BuildRegionMapFromString is for region flags
 func BuildRegionMapFromString(
 	regionString, operation string,
 ) map[string]string {

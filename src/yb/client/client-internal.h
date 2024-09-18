@@ -280,12 +280,6 @@ class YBClient::Data {
                                  CoarseTimePoint deadline,
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
-  Status GetColocatedTabletSchemaByParentTableId(
-      YBClient* client,
-      const TableId& parent_colocated_table_id,
-      CoarseTimePoint deadline,
-      std::shared_ptr<std::vector<YBTableInfo>> info,
-      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
@@ -461,10 +455,18 @@ class YBClient::Data {
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
+  // Get xCluster streams by source table names + pg schema names.
   Status GetXClusterStreams(
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
+
+  // Get xCluster streams by source table ids.
+  Status GetXClusterStreams(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
   Status IsXClusterBootstrapRequired(

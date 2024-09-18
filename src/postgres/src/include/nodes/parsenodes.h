@@ -1825,6 +1825,8 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		missing_ok;		/* skip error if missing? */
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
+	bool 		yb_cascade;		/* to restrict movement of single table in
+								 * colocated tablespace */
 } AlterTableCmd;
 
 

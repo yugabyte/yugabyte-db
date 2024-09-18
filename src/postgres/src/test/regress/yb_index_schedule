@@ -1,0 +1,11 @@
+# src/test/regress/yb_index_schedule
+# This schedule is for non-ported tests only.
+test: yb_indexing_order
+test: yb_create_index
+test: yb_index_scan
+test: yb_reindex
+test: yb_secondary_index_scan
+
+test: yb_index_scan_null_create
+test: yb_index_scan_null_hash
+test: yb_index_scan_null_asc

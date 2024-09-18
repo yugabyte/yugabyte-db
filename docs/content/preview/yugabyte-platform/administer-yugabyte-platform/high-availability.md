@@ -38,6 +38,8 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - [Two or more YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
 - The YBA instances can connect to each other over the port where the YBA UI is reachable (443 by default).
 - Communication is open in both directions over port 443 and 9090 on all YBA instances.
+- The YBA instances were installed using the same installation method (YBA Installer, Replicated, or Helm (Kubernetes)).
+- The YBA instances are configured to use the same path for the installation root.
 - If you are using custom ports for Prometheus, all YBA instances are using the same custom port. (The default Prometheus port for YugabyteDB Anywhere is 9090.)
 - All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 - The YBA instances have the same login credentials.
@@ -144,7 +146,7 @@ For example, if your metrics retention is 14 days on your active instance, and y
 
 After HA is operational, it is recommended that you enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store).
+1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/).
 
     - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) certificate.
     - If YBA was set up to use automatically generated self-signed certificates and you installed YBA using YBA Installer, locate the CA certificate at `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on both the YBA active and standby instances. (If you configured a custom install root, replace `/opt/yugabyte` with the path you configured.)

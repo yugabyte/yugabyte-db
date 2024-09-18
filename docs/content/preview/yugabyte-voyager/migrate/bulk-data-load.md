@@ -32,7 +32,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-* For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+* For YugabyteDB Aeon, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
@@ -108,10 +108,17 @@ To import an updated version of the same file (that is, having the same file nam
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
 ```
 
-After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
+After new rows are added to `orders.csv`, use the following command to load them with the flags `--start-clean` and `--enable-upsert`.
+
+{{<warning title="Note">}}
+Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `--enable-upsert true` may lead to corruption of the indexes.
+{{</warning>}}
 
 ```sh
-yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
+yb-voyager import data file --data-dir /dir/data-dir \
+        --file-table-map 'orders.csv:orders' \
+        --start-clean true \
+        --enable-upsert true
 ```
 
 For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).

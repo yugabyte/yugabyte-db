@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -166,7 +167,7 @@ public class UpgradeUniverseHandler {
       requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       requestParams.installYbc = true;
     } else {
-      requestParams.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+      requestParams.setYbcSoftwareVersion(null /* ybcSoftwareVersion */);
       requestParams.installYbc = false;
       requestParams.setEnableYbc(false);
     }
@@ -263,9 +264,6 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
-      if (userIntent.specificGFlags != null) {
-        requestParams.processGFlagGroupsOnUpgrades(universe);
-      }
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
@@ -723,6 +721,8 @@ public class UpgradeUniverseHandler {
       Customer customer,
       Universe universe,
       String customTaskName) {
+    customTaskName =
+        CustomerTaskManager.getCustomTaskName(customerTaskType, upgradeTaskParams, customTaskName);
     UUID taskUUID = commissioner.submit(taskType, upgradeTaskParams);
     log.info(
         "Submitted {} for {} : {}, task uuid = {}.",

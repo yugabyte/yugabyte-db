@@ -199,10 +199,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   // Send the "backfill done request" to all tablets of the specified table.
   Status SendRpcToAllowCompactionsToGCDeleteMarkers(
-      const scoped_refptr<TableInfo> &index_table);
+      const TableInfoPtr& index_table);
   // Send the "backfill done request" to the specified tablet.
   Status SendRpcToAllowCompactionsToGCDeleteMarkers(
-      const scoped_refptr<TabletInfo> &index_table_tablet, const std::string &table_id);
+      const TabletInfoPtr& index_table_tablet, const std::string& table_id);
 
   Master* master_;
   ThreadPool* callback_pool_;
@@ -255,7 +255,7 @@ class BackfillTableJob : public server::MonitoredTask {
 class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
  public:
   BackfillTablet(
-      std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet);
+      std::shared_ptr<BackfillTable> backfill_table, TabletInfoPtr&& tablet);
 
   Status Launch() { return LaunchNextChunkOrDone(); }
 
@@ -284,7 +284,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   int32_t schema_version() { return backfill_table_->schema_version(); }
 
-  const scoped_refptr<TabletInfo> tablet() { return tablet_; }
+  const TabletInfoPtr& tablet() { return tablet_; }
 
   bool done() const {
     return done_.load(std::memory_order_acquire);
@@ -299,7 +299,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
       const std::string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
-  const scoped_refptr<TabletInfo> tablet_;
+  const TabletInfoPtr tablet_;
   dockv::Partition partition_;
 
   // if non-empty, corresponds to the row in the tablet up to which
@@ -314,7 +314,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
  public:
   GetSafeTimeForTablet(
       std::shared_ptr<BackfillTable> backfill_table,
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       HybridTime min_cutoff,
       LeaderEpoch epoch)
       : RetryingTSRpcTaskWithTable(
@@ -354,7 +354,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
 
   tserver::GetSafeTimeResponsePB resp_;
   const std::shared_ptr<BackfillTable> backfill_table_;
-  const scoped_refptr<TabletInfo> tablet_;
+  const TabletInfoPtr tablet_;
   const HybridTime min_cutoff_;
 };
 

@@ -593,9 +593,6 @@ typedef struct EState
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
-	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
-									   * we cache the conflict tuple here when processing and
-									   * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
@@ -614,6 +611,17 @@ typedef struct EState
 	 * a SQL statement don't read any value written by the same statement.
 	 */
 	uint64_t yb_es_in_txn_limit_ht_for_reads;
+
+	/*
+	 * A collection of entities (grouped by type) whose bookkeeping updates can
+	 * be skipped. This contains all the skippable entities computed at
+	 * planning time (see ModifyTable in plannodes.h) plus a subset of entities
+	 * in YbUpdateAffectedEntities that are discovered to be skippable at
+	 * execution time.
+	 * Marking this field as a struct rather than a pointer allows us to avoid
+	 * an extra memory allocation per tuple.
+	 */
+	YbSkippableEntities yb_skip_entities;
 } EState;
 
 /*
@@ -1147,7 +1155,7 @@ typedef struct ModifyTableState
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
 
 	/* YB specific attributes. */
-	bool yb_fetch_target_tuple;	/* Perform initial scan to populate
+	bool yb_fetch_target_tuple; /* Perform initial scan to populate
 								 * the ybctid. */
 } ModifyTableState;
 
@@ -1520,6 +1528,7 @@ typedef struct YbBitmapIndexScanState
 	ExprContext *biss_RuntimeContext;
 	Relation	biss_RelationDesc;
 	IndexScanDesc biss_ScanDesc;
+	bool		biss_requires_recheck;
 } YbBitmapIndexScanState;
 
 /* ----------------
@@ -1644,6 +1653,7 @@ typedef struct YbBitmapTableScanState
 	bool		work_mem_exceeded;
 	size_t		average_ybctid_bytes;
 	int			skipped_tuples;
+	List	   *aggrefs;		/* aggregate pushdown information */
 } YbBitmapTableScanState;
 
 /* ----------------
@@ -1718,7 +1728,8 @@ typedef struct FunctionScanState
  *
  *		rowcontext			per-expression-list context
  *		exprlists			array of expression lists being evaluated
- *		array_len			size of array
+ *		exprstatelists		array of expression state lists, for SubPlans only
+ *		array_len			size of above arrays
  *		curr_idx			current array index (0-based)
  *
  *	Note: ss.ps.ps_ExprContext is used to evaluate any qual or projection
@@ -1726,6 +1737,12 @@ typedef struct FunctionScanState
  *	rowcontext, in which to build the executor expression state for each
  *	Values sublist.  Resetting this context lets us get rid of expression
  *	state for each row, avoiding major memory leakage over a long values list.
+ *	However, that doesn't work for sublists containing SubPlans, because a
+ *	SubPlan has to be connected up to the outer plan tree to work properly.
+ *	Therefore, for only those sublists containing SubPlans, we do expression
+ *	state construction at executor start, and store those pointers in
+ *	exprstatelists[].  NULL entries in that array correspond to simple
+ *	subexpressions that are handled as described above.
  * ----------------
  */
 typedef struct ValuesScanState
@@ -1735,6 +1752,8 @@ typedef struct ValuesScanState
 	List	  **exprlists;
 	int			array_len;
 	int			curr_idx;
+	/* in back branches, put this at the end to avoid ABI break: */
+	List	  **exprstatelists;
 } ValuesScanState;
 
 /* ----------------

@@ -2,7 +2,7 @@
 title: ybm CLI db-audit-logs-exporter resource
 headerTitle: ybm db-audit-logs-exporter
 linkTitle: db-audit-logs-exporter
-description: YugabyteDB Managed CLI reference db-audit-logs-exporter resource.
+description: YugabyteDB Aeon CLI reference db-audit-logs-exporter resource.
 headcontent: Manage database audit log export configuration
 menu:
   preview_yugabyte-cloud:

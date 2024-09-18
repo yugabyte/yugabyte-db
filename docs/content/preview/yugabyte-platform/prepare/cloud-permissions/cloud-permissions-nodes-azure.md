@@ -52,30 +52,46 @@ The more permissions that you can provide, the more YBA can automate.
 
 ## Azure
 
-The following permissions are required for the Azure resource group where you will deploy.
+### Application and resource group
+
+YugabyteDB Anywhere requires cloud permissions to create VMs. You grant YugabyteDB Anywhere access to manage Azure resources such as VMs by registering an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+
+In addition, your Azure application needs to have a [resource group](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#resource-groups) with the following permissions:
 
 ```sh
 Network Contributor
 Virtual Machine Contributor 
 ```
 
-To grant the required access, you can do one of the following:
+You can optionally create a resource group for network resources if you want network interfaces to be created separately. The network resource group must have the `Network Contributor` permission.
 
-- [Register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+For more information on registering applications, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate) in the Microsoft Entra documentation.
 
-- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere.
+For more information on roles, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
 
-For information on assigning roles to applications, see [Assign a role to an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application); and assigning roles for managed identities, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
+### Credentials
 
-If you are registering an application, record the following information about your service account. You will need to provide this information later to YBA.
+YugabyteDB Anywhere can authenticate with Azure using one of the following methods:
+
+- [Add credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials), in the form of a client secret, to your registered application.
+
+    For information on creating client secrets, see [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft Entra documentation.
+
+- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere. Azure will use the managed identity assigned to your instance to authenticate.
+
+    For information on assigning roles for managed identities, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
+
+Record the following information about your service account. You will need to provide this information later when creating an Azure provider configuration.
 
 | Save for later | To configure |
 | :--- | :--- |
-| **Service account details** | [Azure cloud provider](../../../configure-yugabyte-platform/azure/) |
+| **Service account details** | [Azure provider configuration](../../../configure-yugabyte-platform/azure/) |
 | Client ID: | |
-| Client Secret: | |
+| Client Secret:<br>(not required when using managed identity) | |
 | Resource Group: | |
 | Subscription ID: | |
+| (Optional) Network Resource Group: | |
+| (Optional) Network Subscription ID: | |
 | Tenant ID: | |
 
 ## Managing SSH keys for VMs
@@ -89,4 +105,4 @@ If you will be using your own custom SSH keys, then ensure that you have them wh
 
 | Save for later | To configure |
 | :--- | :--- |
-| Custom SSH keys | [Azure provider](../../../configure-yugabyte-platform/azure/) |
+| Custom SSH keys | [Azure provider configuration](../../../configure-yugabyte-platform/azure/) |

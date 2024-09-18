@@ -42,4 +42,14 @@ type: indexpage
     href="cdc-redpanda/"
     icon="/images/section_icons/quick_start/sample_apps.png">}}
 
+  {{<index/item
+    title="Azure Event Hubs"
+    body="Use Azure Event Hubs to stream real-time data for downstream processing."
+    href="../azure/azure-event-hubs/"
+    icon="/images/section_icons/develop/ecosystem/azure-event-hub.png">}}
+
 {{</index/block>}}
+
+## Learn more
+
+For more information on YugabyteDB CDC, see [Change Data Capture](../../explore/change-data-capture/).

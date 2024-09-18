@@ -17,6 +17,8 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
+import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
@@ -25,7 +27,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
-import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
@@ -174,6 +176,7 @@ public class MainModule extends AbstractModule {
     bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
     bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
+    bind(NodeAgentInstaller.class).to(NodeAgentInstallerImpl.class);
 
     bind(PerfAdvisor.class).asEagerSingleton();
     bind(SwamperHelper.class).asEagerSingleton();
@@ -220,7 +223,7 @@ public class MainModule extends AbstractModule {
     bind(AccessKeyRotationUtil.class).asEagerSingleton();
     bind(GcpEARServiceUtil.class).asEagerSingleton();
     bind(YbcUpgrade.class).asEagerSingleton();
-    bind(XClusterSyncScheduler.class).asEagerSingleton();
+    bind(XClusterScheduler.class).asEagerSingleton();
     bind(PerfAdvisorScheduler.class).asEagerSingleton();
     bind(PermissionUtil.class).asEagerSingleton();
     bind(RoleUtil.class).asEagerSingleton();

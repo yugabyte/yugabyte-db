@@ -46,6 +46,25 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The timeout (in seconds) for node check operation as part of universe health check",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health.ddl_atomicity_check_enabled",
+          ScopeType.UNIVERSE,
+          "DDL Atomicity Check Enabled",
+          "If we want to perform DDL atomicity check for the universe periodically",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> ddlAtomicityIntervalSec =
+      new ConfKeyInfo<>(
+          "yb.health.ddl_atomicity_interval_sec",
+          ScopeType.UNIVERSE,
+          "DDL Atomicity Check Interval",
+          "The interval (in seconds) between DDL atomicity checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ybUpgradeBlacklistLeaders =
       new ConfKeyInfo<>(
           "yb.upgrade.blacklist_leaders",
@@ -271,14 +290,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "NFS Directry Path",
           "Authorised NFS directories for backups",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ybcEnableVervbose =
-      new ConfKeyInfo<>(
-          "yb.ybc_flags.enable_verbose",
-          ScopeType.UNIVERSE,
-          "Enable Verbose Logging",
-          "Enable verbose ybc logging",
-          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxThreads =
       new ConfKeyInfo<>(
@@ -815,6 +826,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout in secs for YSQL queries",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ysqlConsistencyTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.ysql_timeout_secs",
+          ScopeType.UNIVERSE,
+          "YSQL Queries Timeout for Consistency Check Operations",
+          "Timeout in secs for YSQL queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> numCoresToKeep =
       new ConfKeyInfo<>(
           "yb.num_cores_to_keep",
@@ -878,7 +897,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Rollback Support",
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
       new ConfKeyInfo<>(
           "yb.gflags.allow_during_prefinalize",
@@ -887,6 +906,42 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow editing GFlags for a universe in pre-finalize state",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> pitrCreatePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.create_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the PITR config creation status",
+          "It is the delay after which the create PITR config subtask rechecks the status of the"
+              + " PITR config creation in each iteration",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrRestorePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.restore_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the PITR config restore status",
+          "It is the delay after which the restore PITR config subtask rechecks the status of the"
+              + " restore operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrRestoreTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.restore_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for restoring a universe using a PITR config",
+          "It is the maximum time that the restore PITR config subtask waits for the restore"
+              + " operation using PITR to be completed; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrCreateTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.create_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for creating a PITR config",
+          "It is the maximum time that the create PITR config subtask waits for the PITR config "
+              + "to be created; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -907,6 +962,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and it is not specified in the task parameters",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultipleTxnReplicationConfigs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.allow_multiple_configs",
+          ScopeType.UNIVERSE,
+          "Allow multiple txn replication configs",
+          "Allow multiple txn replication configs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
       new ConfKeyInfo<>(
           "yb.upgrade.skip_finalize",
@@ -922,7 +985,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YSQL DB API",
           "Allow users to configure YSQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
       new ConfKeyInfo<>(
           "yb.configure_db_api.ycql",
@@ -930,7 +993,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YCQL DB API",
           "Allow users to configure YCQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.wait_for_replication_drain_timeout",
@@ -969,7 +1032,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_universe_sync",
           ScopeType.UNIVERSE,
-          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "Sync user-groups between the Universe DB nodes and LDAP Server",
           "If configured, this feature allows users to synchronise user groups configured"
               + " on the upstream LDAP Server with user roles in YBDB nodes associated"
               + " with the universe.",
@@ -1033,15 +1096,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verify current cluster state (from db perspective) before running task",
           "Verify current cluster state (from db perspective) before running task",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.operation_timeout",
           ScopeType.UNIVERSE,
-          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          "Wait time for xcluster/DR replication setup and edit RPCs",
           "Wait time for xcluster/DR replication setup and edit RPCs.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterBootstrapProducerTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout",
+          ScopeType.UNIVERSE,
+          "Maximum timeout for xCluster bootstrap producer RPC call",
+          "If the RPC call to create the bootstrap streams on the source universe does not return"
+              + " before this timeout, the task will retry with exponential backoff until it"
+              + " fails.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1107,45 +1181,60 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Automated Master Failover for universes in background process",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterFollowerLag =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagSoftThreshold =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.max_master_follower_lag",
+          "yb.auto_master_failover.master_follower_lag_soft_threshold",
           ScopeType.UNIVERSE,
-          "Max Master Follower Lag for Automated Master Failover",
-          "Max lag allowed for a master follower, after which the master is considered for"
-              + " failover",
+          "Master Follower Lag Soft Threshold",
+          "Master follower lag soft threshold for potential master failure",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterHeartbeatDelay =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagHardThreshold =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.max_master_heartbeat_delay",
+          "yb.auto_master_failover.master_follower_lag_hard_threshold",
           ScopeType.UNIVERSE,
-          "Max master heartbeat delay",
-          "Maximum value of heartbeat delay allowed before master is considered to have failed",
+          "Master Follower Lag Hard Threshold",
+          "Master follower lag hard threshold for definite master failure",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> stopMultipleNodesInAZEnabled =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagThresholdError =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.stop_multiple_in_az",
+          "yb.auto_master_failover.master_follower_lag_threshold_error",
+          ScopeType.UNIVERSE,
+          "Master Follower Lag Soft Threshold Error Limit",
+          "Master follower lag soft threshold time error limit",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_enabled",
           ScopeType.UNIVERSE,
           "Stop multiple nodes in az simultaneously during upgrade",
-          "Stop multiple nodes simultaneously in az during upgrade",
+          "Stop multiple nodes in az simultaneously during upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> simultaneousStopsInUpgradePercent =
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollK8sEnabled =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.simultaneous_stops_in_az_percent",
+          "yb.task.upgrade.batch_roll_enabled_k8s",
           ScopeType.UNIVERSE,
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_auto_percent",
+          ScopeType.UNIVERSE,
+          "Percent of nodes to roll simultaneously during upgrade",
+          "Percent of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxSimultaneousStopsInUpgrade =
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.max_simultaneous_stops_in_az",
+          "yb.task.upgrade.batch_roll_auto_number",
           ScopeType.UNIVERSE,
-          "Maximum number of nodes to stop simultaneously during upgrade",
-          "Maximum number of nodes to stop simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
@@ -1156,12 +1245,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated master failover detection interval for a universe in background process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskInterval =
+  public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.task_interval",
+          "yb.auto_master_failover.sync_master_addrs_task_delay",
           ScopeType.UNIVERSE,
-          "Automated Master Failover Task Interval",
-          "Automated master failover task submission interval for a universe in background process",
+          "Automated Sync Master Addresses Task Delay",
+          "Automated sync master addresses task submission delay for a universe in background"
+              + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
@@ -1206,4 +1296,80 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "CPU usage alert aggregation interval in seconds.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTimeDrift =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_clock_time_drift",
+          ScopeType.UNIVERSE,
+          "Enable health checks for time drift between nodes",
+          "Enable health checks for time drift between nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftWrnThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_wrn_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for warning health check",
+          "Threshold to raise a warning when time drift exceeds this amount",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftErrThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_err_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for error health check",
+          "Threshold to raise a error when time drift exceeds this amount",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitEnabledBackupsRetentionBufferTimeSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.pit_enabled_backups_history_retention_buffer_time_secs",
+          ScopeType.UNIVERSE,
+          "Time in seconds added to history_retention gflag on top of backup frequency",
+          "Time in seconds added to history_retention gflag on top of backup frequency. This is to"
+              + " accommodate backup upload times etc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.enabled",
+          ScopeType.UNIVERSE,
+          "Enable consistency check for universe",
+          "When enabled, all universe operations will attempt consistency check validation before"
+              + " proceeding. Turn off in disaster scenarios to force perform actions.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckClockSyncServiceRequired =
+      new ConfKeyInfo<>(
+          "yb.health_checks.clock_sync_service_required",
+          ScopeType.UNIVERSE,
+          "Fail the the health check if no clock sync service is found",
+          "Require chrony or ntp(d) to be installed for health check to pass",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerInstallTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.install_timeout",
+          ScopeType.UNIVERSE,
+          "Node Agent Enabler Installation Time-out",
+          "Node agent enabler installation time-out for the universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> consistencyUpdateDelay =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.update_delay_secs",
+          ScopeType.UNIVERSE,
+          "Delay after updating consistency check information in YBDB",
+          "Introduces a sleep in the PG update query to help simulate testing with unreliable YSQL"
+              + " connection",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> consistencyCheckPendingTest =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.test_pending",
+          ScopeType.UNIVERSE,
+          "Test handling of pending consistency check update",
+          "YBA will shutdown immediately after updating the DB sequence number but before saving to"
+              + " local universe details",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

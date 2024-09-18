@@ -12,6 +12,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import lombok.extern.jackson.Jacksonized;
 
 /** Pair of node configuration type and its value. */
 @Data
@@ -30,12 +31,13 @@ public class NodeConfig {
 
   @Builder
   @Getter
+  @Jacksonized
   @ToString
   @ApiModel(description = "Validation result of a node config")
   public static class ValidationResult {
     private Type type;
-    private boolean isValid;
-    private boolean isRequired;
+    private boolean valid;
+    private boolean required;
     private String description;
     private String value;
   }

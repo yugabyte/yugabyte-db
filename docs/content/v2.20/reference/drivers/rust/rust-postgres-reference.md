@@ -345,7 +345,7 @@ The rust-postgres driver supports the following SSL modes.
 
 Currently, the rust-postgres driver and YugabyteDB Rust smart driver do not support verify-full or verify-ca SSL modes.
 
-YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
+YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 The following is an example connection URL for connecting to a YugabyteDB cluster with SSL encryption enabled:
 
@@ -353,7 +353,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on [YugabyteDB Aeon](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 

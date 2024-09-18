@@ -73,12 +73,12 @@ You should do the following on a regular basis:
 - Monitor average read and write latency so you know when latency starts to degrade, at which point you should tune it according to averages. You can access this metric via **Tablet Server > Average Latency**.
 - Monitor reactor delays to measure bottleneck of incoming requests. You can access this metric via **Tablet Server > Reactor Delays**.
 - Monitor log statistics per node to measure churn in the log cache size to determine high rate of evictions. You can access this metric via **Tablet Server > WAL Stats / Node**.
-- Monitor the tablet and master servers' RPC queue size so you can see all the subelements and know if there is a bottleneck that might cause performance degradation. You can access this metric via **Tablet Server > RPC Queue Size** and **Master Server > RPC Queue Size**.
+- Monitor the tablet and master servers' RPC queue size so you can see all the sub-elements and know if there is a bottleneck that might cause performance degradation. You can access this metric via **Tablet Server > RPC Queue Size** and **Master Server > RPC Queue Size**.
 - Monitor DocDB cache miss ratio so you can tune the cache when necessary. You can access this metric via **DocDB > Cache Hit & Miss**.
 
 ## Universe metrics
 
-The following tables describe metrics available via the YugabyteDB Anywhere UI.
+The following tables describe metrics available via YugabyteDB Anywhere.
 
 ### YSQL ops and latency
 

@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
@@ -65,6 +67,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   @Test
   public void testSoftwareUpgradeWithNoRollbackSupport() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.skipVersionChecks.getKey(), "true");
     String downloadURL = String.format(OLD_DB_VERSION_URL, os, arch);
     downloadAndSetUpYBSoftware(os, arch, downloadURL, OLD_DB_VERSION);
     ybVersion = OLD_DB_VERSION;

@@ -26,10 +26,10 @@
 .td-main {
   aside.td-sidebar {
     position: sticky;
-    top: 114px;
+    top: 134px;
     padding: 0;
     background: #fff;
-    max-height: calc(100vh - 114px);
+    max-height: calc(100vh - 134px);
 
     @media (max-width: 991px) {
       top: 80px;

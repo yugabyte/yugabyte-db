@@ -172,7 +172,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Status WaitNewSnapshot(const std::string& id = {}) {
     LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
-    std::string_view last_snapshot_id;
+    std::string last_snapshot_id;
     return WaitFor([this, &id, &last_snapshot_id]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
@@ -263,11 +263,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
           CallJsonAdmin("list_clones", source_namespace_id, seq_no));
       const auto entries = out.GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
-      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||
-             state == master::SysCloneStatePB::RESTORED;
+             state == master::SysCloneStatePB::COMPLETE;
     }, timeout, "Wait for clone to complete"));
     return Status::OK();
   }
@@ -593,6 +593,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   }
 
   void TestPgsqlDropDefault();
+  void TestTransactionDuringPITR();
 };
 
 class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
@@ -3209,11 +3210,14 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
     std::string build_type;
-    if (DEBUG_MODE) {
-      build_type = "debug";
-    } else {
-      build_type = "release";
-    }
+#if defined ADDRESS_SANITIZER || defined THREAD_SANITIZER
+    // In the version of YugabyteDB where the old sys catalog snapshot was generated, the debug
+    // build had a column representation now used only in ASAN and TSAN builds. See
+    // src/yb/common/column_id.h file history for details.
+    build_type = "debug";
+#else
+    build_type = "release";
+#endif
     std::string old_sys_catalog_snapshot_full_path =
         old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
@@ -4111,12 +4115,6 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
 // Restore to a time just before split key is fetched by the master.
 TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeGetSplitKey) {
   SetDelayFlag("TEST_pause_tserver_get_split_key", /* set on master */ false);
-  ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
-}
-
-// Restore to a time after one of the child tablets is registered by the master.
-TEST_F(YbAdminRestoreDuringSplit, RestoreAfterOneChildRegistered) {
-  SetDelayFlag("TEST_pause_split_child_registration", /* set on master */ true);
   ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
 }
 
@@ -5421,7 +5419,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, CreateDuplicateSchedules,
     "already exists for the given keyspace ysql." + kTableName.namespace_name());
 }
 
-TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+void YbAdminSnapshotScheduleTestWithYsql::TestTransactionDuringPITR() {
   ASSERT_OK(PrepareCommon());
   std::string db_name = "test_db_name";
   std::string table_name = "test_table";
@@ -5442,6 +5440,25 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
   auto row_value = ASSERT_RESULT(
       conn.FetchRow<int32_t>(Format("SELECT value from $0 where key = 3", table_name)));
   ASSERT_EQ(row_value, 3);
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+  TestTransactionDuringPITR();
+}
+
+class YbAdminSnapshotScheduleTestWithYsqlRepro23399 : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraTSFlags() override {
+    return {
+        "--TEST_stopactivetxns_sleep_in_abort_cb_ms=500"
+        };
+  }
+};
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITRRepro23399,
+    YbAdminSnapshotScheduleTestWithYsqlRepro23399) {
+  TestTransactionDuringPITR();
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL

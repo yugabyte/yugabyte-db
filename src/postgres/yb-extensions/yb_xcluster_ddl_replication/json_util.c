@@ -17,45 +17,49 @@
 #include "utils/fmgrprotos.h"
 
 void
+AddJsonKey(JsonbParseState *state, char *key_buf)
+{
+	JsonbValue key;
+	key.type = jbvString;
+	key.val.string.len = strlen(key_buf);
+	key.val.string.val = pstrdup(key_buf);
+
+	(void) pushJsonbValue(&state, WJB_KEY, &key);
+}
+
+void
 AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val)
 {
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvNumeric;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.numeric =
-		DatumGetNumeric(DirectFunctionCall1(int8_numeric, val));
+	AddJsonKey(state, key_buf);
 
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
+	JsonbValue value;
+	value.type = jbvNumeric;
+	value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric, val));
+
+	(void) pushJsonbValue(&state, WJB_VALUE, &value);
 }
 
 void
 AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val)
 {
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvBool;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.boolean = val;
+	AddJsonKey(state, key_buf);
 
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
+	JsonbValue value;
+	value.type = jbvBool;
+	value.val.boolean = val;
+
+	(void) pushJsonbValue(&state, WJB_VALUE, &value);
 }
 
 void
 AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val)
 {
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvString;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.string.len = strlen(val);
-	pair.value.val.string.val = pstrdup(val);
+	AddJsonKey(state, key_buf);
 
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
+	JsonbValue value;
+	value.type = jbvString;
+	value.val.string.len = strlen(val);
+	value.val.string.val = pstrdup(val);
+
+	(void) pushJsonbValue(&state, WJB_VALUE, &value);
 }

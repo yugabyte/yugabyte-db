@@ -10,6 +10,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -139,7 +140,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -172,6 +173,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -187,6 +189,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -200,6 +203,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -231,6 +235,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),

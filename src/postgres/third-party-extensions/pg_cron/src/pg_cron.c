@@ -222,6 +222,9 @@ _PG_init(void)
 								"configuration variable in postgresql.conf.")));
 	}
 
+	/* watch for invalidation events */
+	CacheRegisterRelcacheCallback(InvalidateJobCacheCallback, (Datum) 0);
+
 	DefineCustomStringVariable(
 		"cron.database_name",
 		gettext_noop("Database in which pg_cron metadata is kept."),
@@ -588,7 +591,7 @@ PgCronLauncherMain(Datum arg)
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
 	/* YB Note: Exit immediately. */
-	pqsignal(SIGTERM, die);
+	pqsignal(SIGTERM, quickdie);
 	pqsignal(SIGQUIT, quickdie);
 
 	/* We're now ready to receive signals */

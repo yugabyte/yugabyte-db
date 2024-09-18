@@ -1,42 +1,54 @@
-import React, { FC, ReactNode } from 'react';
-import clsx from 'clsx';
-import { makeStyles } from '@material-ui/core';
-import WarningIcon from '@app/assets/alert-solid.svg';
-import ErrorIcon from '@app/assets/failed-solid.svg';
-import SuccessIcon from '@app/assets/check-badge.svg';
-import InfoIcon from '@app/assets/info.svg';
-import LoadingIcon from '@app/assets/Default-Loading-Circles.svg';
+import React, { FC, ReactNode } from "react";
+import clsx from "clsx";
+import { makeStyles } from "@material-ui/core";
+import WarningIcon from "@app/assets/alert-solid.svg";
+import ErrorIcon from "@app/assets/failed-solid.svg";
+import SuccessIcon from "@app/assets/check-badge.svg";
+import InfoIcon from "@app/assets/info.svg";
+import LoadingIcon from "@app/assets/Default-Loading-Circles.svg";
 
 export enum BadgeVariant {
-  Info = 'info',
-  Warning = 'warning',
-  Error = 'error',
-  Success = 'success',
-  InProgress = 'inprogress',
+  Light = "light",
+  Info = "info",
+  Warning = "warning",
+  Error = "error",
+  Success = "success",
+  InProgress = "inprogress",
 }
 
 export interface BadgeProps {
   text?: string | ReactNode;
   variant?: BadgeVariant;
-  icon?: boolean,
+  icon?: boolean;
+  iconComponent?: typeof WarningIcon;
+  className?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
   root: ({ icon }: BadgeProps) => ({
-    padding: icon ? 
-      `${theme.spacing(0.6)}px ${theme.spacing(1)}px` : `${theme.spacing(0.2)}px ${theme.spacing(0.8)}px`,
+    padding: icon
+      ? `${theme.spacing(0.6)}px ${theme.spacing(1)}px`
+      : `${theme.spacing(0.2)}px ${theme.spacing(0.8)}px`,
     borderRadius: icon ? theme.shape.borderRadius : theme.shape.borderRadius / 2,
-    display: 'flex',
+    display: "flex",
     gap: theme.spacing(0.5),
-    alignItems: 'center',
-    width: 'fit-content',
-    '& span:first-letter': {
-      textTransform: 'uppercase',
-    }
+    alignItems: "center",
+    width: "fit-content",
+    "& span:first-letter": {
+      textTransform: "uppercase",
+    },
+    minHeight: "24px",
   }),
   icon: {
     height: "14px",
     width: "14px",
+  },
+  light: {
+    background: theme.palette.primary[100],
+    color: theme.palette.primary[600],
+  },
+  lightIcon: {
+    color: theme.palette.primary[700],
   },
   warning: {
     background: theme.palette.warning[100],
@@ -54,7 +66,7 @@ const useStyles = makeStyles((theme) => ({
   },
   success: {
     background: theme.palette.success[100],
-    color: theme.palette.success[900],
+    color: theme.palette.success[700],
   },
   successIcon: {
     color: theme.palette.success[700],
@@ -80,6 +92,8 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
     text,
     variant = BadgeVariant.Info,
     icon = true,
+    iconComponent: CustomIcon,
+    className,
   } = props;
 
   const classes = useStyles({ ...props, icon });
@@ -90,35 +104,51 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
     case BadgeVariant.Warning:
       alertClassName = clsx(alertClassName, classes.warning);
       alertIcon = <WarningIcon className={clsx(classes.icon, classes.warningIcon)} />;
-      alertText = text || "Warning";
+      alertText = text ?? "Warning";
       break;
     case BadgeVariant.Success:
       alertClassName = clsx(alertClassName, classes.success);
       alertIcon = <SuccessIcon className={clsx(classes.icon, classes.successIcon)} />;
-      alertText = text || "Success";
+      alertText = text ?? "Success";
       break;
     case BadgeVariant.Error:
       alertClassName = clsx(alertClassName, classes.error);
       alertIcon = <ErrorIcon className={clsx(classes.icon, classes.errorIcon)} />;
-      alertText = text || "Error";
+      alertText = text ?? "Error";
       break;
     case BadgeVariant.InProgress:
       alertClassName = clsx(alertClassName, classes.inprogress);
       alertIcon = <LoadingIcon className={clsx(classes.icon, classes.inprogressIcon)} />;
-      alertText = text || "In progress";
+      alertText = text ?? "In progress";
+      break;
+    case BadgeVariant.Light:
+      alertClassName = clsx(alertClassName, classes.light);
+      alertIcon = <span className={clsx(classes.icon, classes.lightIcon)} />;
+      alertText = text ?? "Light";
       break;
     case BadgeVariant.Info:
     default:
       alertClassName = clsx(alertClassName, classes.info);
       alertIcon = <InfoIcon className={clsx(classes.icon, classes.infoIcon)} />;
-      alertText = text || "Info";
+      alertText = text ?? "Info";
       break;
   }
 
+  const getIcon = () => {
+    if (!icon) {
+      return null;
+    }
+
+    if (CustomIcon) {
+      return <CustomIcon className={clsx(classes.icon, classes.inprogressIcon)} />;
+    }
+    return alertIcon;
+  };
+
   return (
-    <div className={alertClassName} role="alert" aria-label={`alert ${variant}`}>
-      <span>{alertText}</span>
-      {icon && alertIcon}
+    <div className={clsx(alertClassName, className)} role="alert" aria-label={`alert ${variant}`}>
+      {alertText && <span>{alertText}</span>}
+      {getIcon()}
     </div>
   );
 };

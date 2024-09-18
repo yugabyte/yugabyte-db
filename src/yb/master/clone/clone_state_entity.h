@@ -19,22 +19,32 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/util/countdown_latch.h"
+
 namespace yb::master {
 
-struct PersistentCloneStateInfo :
-    public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE> {
-  bool IsDone() const {
-    return pb.aggregate_state() == SysCloneStatePB::RESTORED ||
+struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB> {};
+
+struct CloneStateInfoHelpers {
+  static bool IsDone(const SysCloneStatePB& pb) {
+    return pb.aggregate_state() == SysCloneStatePB::COMPLETE ||
            pb.aggregate_state() == SysCloneStatePB::ABORTED;
   }
 };
 
-class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
-                       public MetadataCowWrapper<PersistentCloneStateInfo> {
+class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  public:
+  struct ColocatedTableData {
+    TableId new_table_id;
+    SysTablesEntryPB table_entry_pb;
+    int new_schema_version;
+  };
+
   struct TabletData {
     TabletId source_tablet_id;
     TabletId target_tablet_id;
+    // The correct schema version and SysTablesEntryPB of every colocated table.
+    std::vector<ColocatedTableData> colocated_tables_data;
   };
 
   explicit CloneStateInfo(std::string id);
@@ -46,6 +56,12 @@ class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
   std::vector<TabletData> GetTabletData();
   void AddTabletData(CloneStateInfo::TabletData tablet_data);
 
+  YQLDatabase DatabaseType();
+  void SetDatabaseType(YQLDatabase database_type);
+
+  LeaderEpoch Epoch();
+  void SetEpoch(const LeaderEpoch& epoch);
+
   const TxnSnapshotId& SourceSnapshotId();
   void SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id);
 
@@ -55,12 +71,15 @@ class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
   const TxnSnapshotRestorationId& RestorationId();
   void SetRestorationId(const TxnSnapshotRestorationId& restoration_id);
 
- private:
-  friend class RefCountedThreadSafe<CloneStateInfo>;
-  ~CloneStateInfo() = default;
+  std::shared_ptr<CountDownLatch> NumTserversWithStaleMetacache();
+  void SetNumTserversWithStaleMetacache(uint64_t count);
 
+ private:
   // The ID field is used in the sys_catalog table.
   const std::string clone_request_id_;
+
+  LeaderEpoch epoch_ GUARDED_BY(mutex_);
+  YQLDatabase database_type_ GUARDED_BY(mutex_);
 
   // These fields are set before the clone state is set to CREATING.
   std::vector<TabletData> tablet_data_ GUARDED_BY(mutex_);
@@ -69,6 +88,10 @@ class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
 
   // This is set before the clone state is set to RESTORING.
   TxnSnapshotRestorationId restoration_id_ GUARDED_BY(mutex_) = TxnSnapshotRestorationId::Nil();
+
+  // The number of tservers that a Clear Metacache rpc has been sent to but didn't respond with
+  // success. Only enable connections to target DB after all tservers cleared thier metacache.
+  std::shared_ptr<CountDownLatch> num_tservers_with_stale_metacache;
 
   std::mutex mutex_;
 

@@ -7,7 +7,7 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -52,7 +52,7 @@ import play.mvc.Result;
 public class UniverseUiOnlyController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseUiOnlyController.class);
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private UniverseInfoHandler universeInfoHandler;
@@ -242,9 +242,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Update,
-            taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
+            request.body().asJson(),
+            taskUUID,
+            Json.toJson(universe.getUniverseDetails()));
+    return PlatformResults.withData(UniverseResp.create(universe, taskUUID, confGetter));
   }
 
   /**
@@ -276,8 +277,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.CreateCluster,
             taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
+    return PlatformResults.withData(UniverseResp.create(universe, taskUUID, confGetter));
   }
 
   /**
@@ -314,8 +314,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.DeleteCluster,
             taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
+    return PlatformResults.withData(UniverseResp.create(universe, taskUUID, confGetter));
   }
 
   /**

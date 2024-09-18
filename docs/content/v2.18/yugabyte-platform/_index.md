@@ -17,8 +17,6 @@ resources:
     url: /preview/releases/yba-releases/
   - title: FAQ
     url: /preview/faq/yugabyte-platform/
-  - title: yugabyte.com
-    url: https://www.yugabyte.com/anywhere/
   - title: University
     url: https://university.yugabyte.com/collections/administrators/
 ---

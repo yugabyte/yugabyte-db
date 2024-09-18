@@ -297,6 +297,91 @@ CREATE TABLE like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
 
+-- FOREIGN KEY CONSTRAINT adding TEST
+
+CREATE TABLE attmp2 (a int primary key);
+
+CREATE TABLE attmp3 (a int, b int);
+
+CREATE TABLE attmp4 (a int, b int, unique(a,b));
+
+CREATE TABLE attmp5 (a int, b int);
+
+-- Insert rows into attmp2 (pktable)
+INSERT INTO attmp2 values (1);
+INSERT INTO attmp2 values (2);
+INSERT INTO attmp2 values (3);
+INSERT INTO attmp2 values (4);
+
+-- Insert rows into attmp3
+INSERT INTO attmp3 values (1,10);
+INSERT INTO attmp3 values (1,20);
+INSERT INTO attmp3 values (5,50);
+
+-- Try (and fail) to add constraint due to invalid source columns
+ALTER TABLE attmp3 add constraint attmpconstr foreign key(c) references attmp2 match full;
+
+-- Try (and fail) to add constraint due to invalid destination columns explicitly given
+ALTER TABLE attmp3 add constraint attmpconstr foreign key(a) references attmp2(b) match full;
+
+-- Try (and fail) to add constraint due to invalid data
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full;
+
+-- Delete failing row
+DELETE FROM attmp3 where a=5;
+
+-- Try (and succeed)
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full;
+ALTER TABLE attmp3 drop constraint attmpconstr;
+
+INSERT INTO attmp3 values (5,50);
+
+-- Try NOT VALID and then VALIDATE CONSTRAINT, but fails. Delete failure then re-validate
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full NOT VALID;
+ALTER TABLE attmp3 validate constraint attmpconstr;
+
+-- Delete failing row
+DELETE FROM attmp3 where a=5;
+
+-- Try (and succeed) and repeat to show it works on already valid constraint
+ALTER TABLE attmp3 validate constraint attmpconstr;
+ALTER TABLE attmp3 validate constraint attmpconstr;
+
+-- Try a non-verified CHECK constraint
+ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10); -- fail
+ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID; -- succeeds
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- fails
+DELETE FROM attmp3 WHERE NOT b > 10;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+
+-- test inheritance
+
+create table renameColumn (a int);
+create table renameColumnChild (b int) inherits (renameColumn);
+/* YB: uncomment when INHERITS is supported
+create table renameColumnAnother (c int) inherits (renameColumnChild);
+
+-- these three should fail
+alter table renameColumnChild rename column a to d;
+alter table only renameColumnChild rename column a to d;
+alter table only renameColumn rename column a to d;
+*/ -- YB
+
+-- these should work
+alter table renameColumn rename column a to d;
+/* YB: uncomment when INHERITS is supported
+alter table renameColumnChild rename column b to a;
+*/ -- YB
+
+-- these should work
+alter table if exists doesnt_exist_tab rename column a to d;
+alter table if exists doesnt_exist_tab rename column b to a;
+
+-- this should work
+alter table renameColumn add column w int;
+
+
 --
 -- lock levels
 --
@@ -383,9 +468,13 @@ rollback;
 create schema alter1;
 create schema alter2;
 
+create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
+
 create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
 create text search configuration alter1.cfg(parser = alter1.prs);
 
+alter table alter1.t1 set schema alter1; -- no-op, same schema
+alter table alter1.t1 set schema alter2;
 alter text search parser alter1.prs set schema alter2;
 alter text search configuration alter1.cfg set schema alter2;
 

@@ -17,19 +17,29 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster/xcluster_status.h"
-#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+#include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/tserver/pg_create_table.h"
+
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup and are currently being bootstrapped for xCluster.");
+
+DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
@@ -180,13 +190,22 @@ XClusterSourceManager::InitOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
+      .create_sequences_data_table_func =
+          [client = master_.client_future()]() {
+            return tserver::CreateSequencesDataTable(
+                client.get(),
+                CoarseMonoClock::now() +
+                    MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms));
+          },
       .get_namespace_func =
           [&catalog_manager = catalog_manager_](const NamespaceIdentifierPB& ns_identifier) {
             return catalog_manager.FindNamespace(ns_identifier);
           },
       .get_tables_func =
-          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
-            return GetTablesEligibleForXClusterReplication(catalog_manager, namespace_id);
+          [&catalog_manager = catalog_manager_](
+              const NamespaceId& namespace_id, bool include_sequences_data) {
+            return GetTablesEligibleForXClusterReplication(
+                catalog_manager, namespace_id, include_sequences_data);
           },
       .create_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
@@ -269,7 +288,8 @@ std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
 
 Status XClusterSourceManager::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch) {
+    const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode,
+    const LeaderEpoch& epoch) {
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     SCHECK(
@@ -286,7 +306,8 @@ Status XClusterSourceManager::CreateOutboundReplicationGroup(
     outbound_replication_group_map_.erase(replication_group_id);
   });
 
-  SysXClusterOutboundReplicationGroupEntryPB metadata;  // Empty metadata.
+  SysXClusterOutboundReplicationGroupEntryPB metadata;
+  metadata.set_automatic_ddl_mode(automatic_ddl_mode);
   auto outbound_replication_group = InitOutboundReplicationGroup(replication_group_id, metadata);
 
   // This will persist the group to SysCatalog.
@@ -349,11 +370,21 @@ Result<std::optional<bool>> XClusterSourceManager::IsBootstrapRequired(
 
 Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreams(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const {
+    const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   return outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id, opt_table_names);
+}
+
+Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreamsForTableIds(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableId>& source_table_ids) const {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  return outbound_replication_group->GetNamespaceCheckpointInfoForTableIds(
+      namespace_id, source_table_ids);
 }
 
 Status XClusterSourceManager::CreateXClusterReplication(
@@ -492,7 +523,7 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& [table_id, stream_id] : table_streams) {
     auto table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
       entry.checkpoint = OpId().Min();
       entry.last_replication_time = GetCurrentTimeMicros();
@@ -520,14 +551,13 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     SCHECK(
         table_info->LockForRead()->visible_to_client(), NotFound, "Table does not exist", table_id);
 
-    RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
     RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
     bootstrap_req.add_table_ids(table_info->id());
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
 
     if (!ts_desc) {
-      auto ts_desc_result = table_info->GetTablets().front()->GetLeader();
+      auto ts_desc_result = VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader();
       if (!ts_desc_result) {
         // After a master failover we may not yet have the leader info, so we need to try again.
         if (ts_desc_result.status().IsNotFound()) {
@@ -872,7 +902,6 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
     const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch) {
   auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
 
-  RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
   RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
   const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;
@@ -1123,14 +1152,14 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroups(NamespaceId namespac
   return replication_groups;
 }
 
-Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+Result<XClusterSourceManager::XClusterOutboundReplicationGroupUserInfo>
 XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     const xcluster::ReplicationGroupId& replication_group_id) {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
   const auto namespace_ids = VERIFY_RESULT(outbound_replication_group->GetNamespaces());
 
-  std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>> result;
+  XClusterOutboundReplicationGroupUserInfo result;
   for (const auto& namespace_id : namespace_ids) {
     const auto namespace_info =
         VERIFY_RESULT(outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id));
@@ -1141,9 +1170,24 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     for (const auto& table_info : namespace_info->table_infos) {
       ns_info.emplace(table_info.table_id, table_info.stream_id);
     }
-    result[namespace_id] = std::move(ns_info);
+    result.namespace_table_map[namespace_id] = std::move(ns_info);
   }
+  result.automatic_ddl_mode = outbound_replication_group->AutomaticDDLMode();
+
   return result;
+}
+
+Status XClusterSourceManager::ValidateSplitCandidateTable(const TableId& table_id) const {
+  if (!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables &&
+      DoesTableHaveAnyBootstrappingStream(table_id)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, table_id: $0",
+        table_id);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

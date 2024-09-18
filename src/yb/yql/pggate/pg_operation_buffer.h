@@ -15,6 +15,7 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
 
@@ -31,6 +32,7 @@
 namespace yb::pggate {
 
 class PgDocMetrics;
+class PgSession;
 
 struct BufferingSettings {
   size_t max_batch_size;
@@ -51,11 +53,12 @@ struct BufferableOperations {
 
 class PgOperationBuffer {
  public:
-  using OperationsFlusher = std::function<Result<PerformFuture>(BufferableOperations&&, bool)>;
+  using PerformFutureEx = std::pair<PerformFuture, PgSession*>;
+  using OperationsFlusher = std::function<Result<PerformFutureEx>(BufferableOperations&&, bool)>;
 
   PgOperationBuffer(
-      OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings);
+      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+      const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();

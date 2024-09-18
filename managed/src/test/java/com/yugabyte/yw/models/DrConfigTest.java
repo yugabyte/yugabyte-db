@@ -9,11 +9,10 @@ import static org.junit.Assert.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams;
+import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -22,9 +21,8 @@ import play.libs.Json;
 public class DrConfigTest extends FakeDBApplication {
   private Universe sourceUniverse;
   private Universe targetUniverse;
-  private Customer defaultCustomer;
   private CustomerConfig config;
-  private BootstarpBackupParams backupRequestParams;
+  private BootstrapBackupParams backupRequestParams;
 
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
@@ -37,24 +35,25 @@ public class DrConfigTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    defaultCustomer = ModelFactory.testCustomer();
+    Customer defaultCustomer = ModelFactory.testCustomer();
     config = createData(defaultCustomer);
     sourceUniverse = createUniverse("source Universe");
     targetUniverse = createUniverse("target Universe");
 
-    backupRequestParams = new BootstarpBackupParams();
+    backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();
   }
 
   @Test
   public void testCreateDbScopedDrConfig() {
-    Set<String> sourceDbIds = new HashSet<String>(Arrays.asList("db1", "db2"));
+    Set<String> sourceDbIds = Set.of("db1", "db2");
     DrConfig drConfig =
         DrConfig.create(
             "replication1",
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
+            new PitrParams(),
             sourceDbIds);
     DrConfig found = DrConfig.getOrBadRequest(drConfig.getUuid());
     XClusterConfig activeXClusterConfig = found.getActiveXClusterConfig();
@@ -72,14 +71,15 @@ public class DrConfigTest extends FakeDBApplication {
 
   @Test
   public void testCreateTxnDrConfig() {
-    Set<String> sourceTableIds = new HashSet<String>(Arrays.asList("table1", "table2", "table3"));
+    Set<String> sourceTableIds = Set.of("table1", "table2", "table3");
     DrConfig drConfig =
         DrConfig.create(
             "replication2",
             sourceUniverse.getUniverseUUID(),
             targetUniverse.getUniverseUUID(),
             sourceTableIds,
-            backupRequestParams);
+            backupRequestParams,
+            new PitrParams());
     DrConfig found = DrConfig.getOrBadRequest(drConfig.getUuid());
     XClusterConfig activeXClusterConfig = found.getActiveXClusterConfig();
 

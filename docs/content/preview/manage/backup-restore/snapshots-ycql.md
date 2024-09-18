@@ -120,7 +120,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
     * *<tablet_id>* - each table contains a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
     * *<snapshot_id>* - there is a directory for each snapshot, as you can have multiple completed snapshots on each server.
 
-    This directory structure is specific to a local testing tool `yb-ctl`. In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks. In the `yb-ctl` example, these are the full paths up to the `disk-number`.
+    This directory structure is specific to a local testing tool yb-ctl. In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks. In the yb-ctl example, these are the full paths up to the `disk-number`.
 
 To obtain a snapshot of a multi-node cluster, you would access each node and copy the folders of only the leader tablets on that node. Because each tablet replica has a copy of the same data, there is no need to keep a copy for each replica.
 

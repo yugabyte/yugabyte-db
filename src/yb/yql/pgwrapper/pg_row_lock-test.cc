@@ -254,8 +254,8 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  ASSERT_OK(conn2.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn1, true));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn2, true));
 
   size_t commit1_fail_count = 0;
   size_t commit2_fail_count = 0;

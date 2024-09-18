@@ -29,6 +29,8 @@ bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
 
+bool yb_ignore_pg_class_oids = true;
+
 bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;
@@ -39,13 +41,13 @@ bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
 
-bool yb_enable_replication_commands = false;
+bool yb_enable_replication_commands = true;
 
-bool yb_enable_replication_slot_consumption = false;
+bool yb_enable_replication_slot_consumption = true;
 
 bool yb_enable_alter_table_rewrite = true;
 
-bool yb_enable_replica_identity = false;
+bool yb_enable_replica_identity = true;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.

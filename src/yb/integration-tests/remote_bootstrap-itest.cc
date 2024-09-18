@@ -63,9 +63,10 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/mini_master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -1971,6 +1972,9 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ts_flags.push_back("--log_min_segments_to_retain=1");
   ts_flags.push_back("--log_min_seconds_to_retain=0");
 
+  // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is also set to 0
+  ts_flags.push_back("--xcluster_checkpoint_max_staleness_secs=0");
+
   // Minimize log replay.
   ts_flags.push_back("--retryable_request_timeout_secs=0");
 
@@ -2024,10 +2028,10 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
     return STATUS(NotFound, "No tablets found");
   }
 
-  Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
+  Result<master::TabletInfoPtr> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_mgr) {
-    auto tablet_infos = catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets();
-
+    auto tablet_infos =
+        VERIFY_RESULT(catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets());
     SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
     return tablet_infos.front();
   }

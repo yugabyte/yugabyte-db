@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -30,36 +33,43 @@ class PgSelectIndex;
 
 class PgDml : public PgStatement {
  public:
+  struct PrepareParameters {
+    PrepareParameters() {}
+    bool querying_colocated_table = false;
+    bool index_only_scan = false;
+    bool fetch_ybctids_only = false;
+  };
+
   ~PgDml() override;
 
   // Append a target in SELECT or RETURNING.
-  Status AppendTarget(PgExpr *target);
+  Status AppendTarget(PgExpr* target);
 
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression
-  Status AppendQual(PgExpr *qual, bool is_primary);
+  Status AppendQual(PgExpr* qual, bool is_primary);
 
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgColumnRef *colref, bool is_primary);
+  Status AppendColumnRef(PgColumnRef* colref, bool is_primary);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
-  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb);
-  Status PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB* target_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWQLExpressionPB* target_pb);
+  Status PrepareColumnForWrite(PgColumn* pg_col, LWPgsqlExpressionPB* assign_pb);
 
   // Bind a column with an expression.
   // - For a secondary-index-scan, this bind specify the value of the secondary key which is used to
   //   query a row.
   // - For a primary-index-scan, this bind specify the value of the keys of the table.
-  Status BindColumn(int attnum, PgExpr *attr_value);
+  Status BindColumn(int attnum, PgExpr* attr_value);
 
   // Bind query vector to the current vector index search.
-  Status ANNBindVector(PgExpr *query_vec);
+  Status ANNBindVector(PgExpr* query_vec);
 
   // Bind prefetch size to the current vector index search.
   Status ANNSetPrefetchSize(int32_t prefetch_size);
@@ -68,23 +78,20 @@ class PgDml : public PgStatement {
   Status BindTable();
 
   // Assign an expression to a column.
-  Status AssignColumn(int attnum, PgExpr *attr_value);
+  Status AssignColumn(int attnum, PgExpr* attr_value);
 
   // Process the secondary index request if it is nested within this statement.
-  Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters *exec_params);
+  Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters* exec_params);
 
   // Fetch a row and return it to Postgres layer.
-  Status Fetch(int32_t natts,
-               uint64_t *values,
-               bool *isnulls,
-               PgSysColumns *syscols,
-               bool *has_data);
+  Status Fetch(
+      int32_t natts, uint64_t* values, bool* isnulls, PgSysColumns* syscols, bool* has_data);
 
   // Returns TRUE if docdb replies with more data.
   Result<bool> FetchDataFromServer();
 
   // Returns TRUE if desired row is found.
-  Result<bool> GetNextRow(PgTuple *pg_tuple);
+  Result<bool> GetNextRow(PgTuple* pg_tuple);
 
   virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
 
@@ -92,41 +99,37 @@ class PgDml : public PgStatement {
   // key, or neither.
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
-  bool has_aggregate_targets() const;
+  [[nodiscard]] bool has_aggregate_targets() const { return has_aggregate_targets_; }
 
-  bool has_system_targets() const;
+  [[nodiscard]] bool has_system_targets() const { return has_system_targets_; }
 
-  bool has_secondary_index_with_doc_op() const;
+  [[nodiscard]] bool has_secondary_index_with_doc_op() const;
 
-  bool has_doc_op() const {
-    return doc_op_ != nullptr;
-  }
+  [[nodiscard]] bool has_doc_op() const { return doc_op_ != nullptr; }
 
  protected:
-  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local);
-  PgDml(PgSession::ScopedRefPtr pg_session,
-        const PgObjectId& table_id,
-        const PgObjectId& index_id,
-        const PgPrepareParameters *prepare_params,
-        bool is_region_local);
+  PgDml(
+      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
+      bool is_region_local, const PrepareParameters& prepare_params = {},
+      const PgObjectId& secondary_index_id = {});
 
   // Allocate protobuf for a SELECTed expression.
-  virtual LWPgsqlExpressionPB *AllocTargetPB() = 0;
+  virtual LWPgsqlExpressionPB* AllocTargetPB() = 0;
 
   // Allocate protobuf for a WHERE clause expression.
   // Subclasses use different protobuf message types for their requests, so they should
   // implement this method that knows how to add a PgsqlExpressionPB entry into their where_clauses
   // field.
-  virtual LWPgsqlExpressionPB *AllocQualPB() = 0;
+  virtual LWPgsqlExpressionPB* AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
   virtual Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) = 0;
 
   // Allocate protobuf for expression whose value is assigned to a column (SET clause).
-  virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
+  virtual LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
-  Status AppendTargetPB(PgExpr *target);
+  Status AppendTargetPB(PgExpr* target);
 
   // Update set values.
   Status UpdateAssignPBs();
@@ -137,7 +140,7 @@ class PgDml : public PgStatement {
   // It is being replaced by list of PgsqlColRefPB entries, which is set by ColRefsToPB.
   // While there is are chance of cluster being upgraded from older version, we have to populate
   // both.
-  void ColumnRefsToPB(LWPgsqlColumnRefsPB *column_refs);
+  void ColumnRefsToPB(LWPgsqlColumnRefsPB* column_refs);
 
   // Transfer columns information from target_.columns() to the request's col_refs list field.
   // Subclasses use different protobuf message types to make requests, so they must implement
@@ -148,8 +151,8 @@ class PgDml : public PgStatement {
   // Clear previously allocated PgsqlColRefPB entries from the protobuf request
   virtual void ClearColRefPBs() = 0;
 
-  // Allocate a PgsqlColRefPB entriy in the protobuf request
-  virtual LWPgsqlColRefPB *AllocColRefPB() = 0;
+  // Allocate a PgsqlColRefPB entity in the protobuf request
+  virtual LWPgsqlColRefPB* AllocColRefPB() = 0;
 
   Status UpdateRequestWithYbctids(
       const std::vector<Slice>& ybctids, KeepOrder keep_order = KeepOrder::kFalse);
@@ -167,24 +170,28 @@ class PgDml : public PgStatement {
     }
   }
 
+  Status ExecSecondaryIndexOnce();
+
+  Result<PgTableDescPtr> LoadTable();
+
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
 
   // Table identifiers
-  // - table_id_ identifies the table to read data from.
-  // - index_id_ identifies the index to be used for scanning.
+  // - table_id_ identifies the table to read data from (could be index table).
+  // - secondary_index_id_ identifies the secondary index to be used for scanning.
   //
-  // Example for query on table_id_ using index_id_.
+  // Example for query on table_id_ using secondary_index_id_.
   //   SELECT FROM "table_id_"
-  //     WHERE ybctid IN (SELECT base_ybctid FROM "index_id_" WHERE matched-index-binds)
+  //     WHERE ybctid IN (SELECT base_ybctid FROM "secondary_index_id_" WHERE matched-index-binds)
   //
-  // - Postgres will create PgSelect(table_id_) { nested PgSelectIndex (index_id_) }
+  // - Postgres will create PgSelect(table_id_) { nested PgSelectIndex (secondary_index_id_) }
   // - When bind functions are called, it bind user-values to columns in PgSelectIndex as these
   //   binds will be used to find base_ybctid from the IndexTable.
-  // - When AddTargets() is called, the target is added to PgSlect as data will be reading from
-  //   table_id_ using the found base_ybctid from index_id_.
-  PgObjectId table_id_;
-  PgObjectId index_id_;
+  // - When AddTargets() is called, the target is added to PgSelect as data will be reading from
+  //   table_id_ using the found base_ybctid from secondary_index_id_.
+  const PgObjectId table_id_;
+  const PgObjectId secondary_index_id_;
 
   // Targets of statements (Output parameter).
   // - "target_desc_" is the table descriptor where data will be read from.
@@ -204,11 +211,7 @@ class PgDml : public PgStatement {
   PgTable bind_;
 
   // Prepare control parameters.
-  PgPrepareParameters prepare_params_ = { .index_relfilenode_oid = kInvalidOid,
-                                          .index_only_scan = false,
-                                          .use_secondary_index = false,
-                                          .querying_colocated_table = false,
-                                          .fetch_ybctids_only = false };
+  const PrepareParameters prepare_params_;
 
   // Whether or not the statement accesses data within the local region.
   const bool is_region_local_;
@@ -217,10 +220,10 @@ class PgDml : public PgStatement {
   // Data members for YB Bitmap Scans.
 
   // Retrieved ybctids are populated by secondary index requests and used by Bitmap Index Scans.
-  const std::vector<Slice> *retrieved_ybctids_ = NULL;
+  const std::vector<Slice>* retrieved_ybctids_ = nullptr;
   // If requested_ybctids_ is populated, replace the statement binds with this list of ybctids.
   // This is used by YB Bitmap Table Scans.
-  const std::vector<Slice> *requested_ybctids_ = NULL;
+  const std::vector<Slice>* requested_ybctids_ = nullptr;
   // To allow for the ybctid list to be broken up into batches, we only want to initialize doc_op
   // on the first ybctid request.
   bool first_ybctid_request_ = true;
@@ -234,6 +237,7 @@ class PgDml : public PgStatement {
   // - Under certain conditions, to optimize the performance, the PgGate layer might operate on
   //   the INDEX subquery itself.
   std::unique_ptr<PgSelectIndex> secondary_index_query_;
+  bool is_secondary_index_executed_ = false;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for generated protobuf.
@@ -260,13 +264,13 @@ class PgDml : public PgStatement {
   PgDocOp::SharedPtr doc_op_;
 
   //------------------------------------------------------------------------------------------------
-  // Data members for navigating the output / result-set from either seleted or returned targets.
+  // Data members for navigating the output / result-set from either selected or returned targets.
   std::list<PgDocResult> rowsets_;
   int64_t current_row_order_ = 0;
 
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.
-  const PgExecParameters *pg_exec_params_ = NULL;
+  const PgExecParameters* pg_exec_params_ = nullptr;
 
   //------------------------------------------------------------------------------------------------
   // Hashed and range values/components used to compute the tuple id.

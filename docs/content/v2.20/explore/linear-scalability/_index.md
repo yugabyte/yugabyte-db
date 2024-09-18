@@ -68,7 +68,7 @@ To know when to scale, monitor metrics provided for CPU, memory, and disk space.
 
 For best results, keep steady state resource usage under 60%, and take strong action at 75%, in particular for disk space. If CPU or memory is high, the system will slow; if disk usage approaches limits, usage on followers also increases, and moving and recovering data takes time.
 
-[YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
+[YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
 
 {{<tip>}}
 To learn more about the various metrics than you can monitor, see [Observability](../observability).

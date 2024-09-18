@@ -3613,7 +3613,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (IsYugaByteEnabled() && yb_ash_enable_infra)
+		if (yb_ash_enable_infra)
 			return "Cpu";
 		return NULL;
 	}
@@ -3651,7 +3651,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
-			if (IsYugaByteEnabled() && yb_ash_enable_infra)
+			if (yb_ash_enable_infra)
 				event_type = YBCGetWaitEventType(wait_event_info);
 			break;
 	}
@@ -3675,7 +3675,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (IsYugaByteEnabled() && yb_ash_enable_infra)
+		if (yb_ash_enable_infra)
 			return "QueryProcessing";
 		return NULL;
 	}
@@ -3734,7 +3734,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
-			if (IsYugaByteEnabled() && yb_ash_enable_infra)
+			if (yb_ash_enable_infra)
 				event_name = YBCGetWaitEventName(wait_event_info);
 			break;
 	}
@@ -3796,6 +3796,12 @@ pgstat_get_wait_activity(WaitEventActivity w)
 			break;
 		case WAIT_EVENT_WAL_WRITER_MAIN:
 			event_name = "WalWriterMain";
+			break;
+		case YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN:
+			event_name = "QueryDiagnosticsMain";
+			break;
+		case WAIT_EVENT_YB_ASH_MAIN:
+			event_name = "YbAshMain";
 			break;
 			/* no default case, so that compiler will warn */
 	}

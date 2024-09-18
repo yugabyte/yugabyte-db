@@ -27,6 +27,8 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -52,6 +54,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -64,6 +67,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import org.apache.commons.collections4.CollectionUtils;
@@ -187,6 +192,9 @@ public class BackupUtil {
     @ApiModelProperty(value = "Backup location")
     private String backupLocation;
 
+    @ApiModelProperty(value = "Restore window within which the given backup can be restored to")
+    private BackupPointInTimeRestoreWindow pointInTimeRestoreWindow;
+
     @ApiModelProperty(value = "Keyspace and tables list for given backup location")
     @Builder.Default
     private PerBackupLocationKeyspaceTables perBackupLocationKeyspaceTables = null;
@@ -206,6 +214,7 @@ public class BackupUtil {
 
   @Data
   @Builder
+  @AllArgsConstructor
   public static class PerBackupLocationKeyspaceTables {
     @ApiModelProperty(value = "Original keyspace name")
     private String originalKeyspace;
@@ -218,6 +227,11 @@ public class BackupUtil {
         hidden = true,
         value = "Used with preflight response generation with backup object, for YBC")
     private Map<String, Set<String>> tablesWithIndexesMap;
+
+    public PerBackupLocationKeyspaceTables(String originalKeyspace, Set<String> tableNames) {
+      this.setOriginalKeyspace(originalKeyspace);
+      this.setTableNameList(new ArrayList<>(tableNames));
+    }
 
     @JsonIgnore
     public Set<String> getAllTables() {
@@ -320,7 +334,7 @@ public class BackupUtil {
     Boolean isUniversePresent = checkIfUniverseExists(backup);
     List<Backup> backupChain =
         Backup.fetchAllBackupsByBaseBackupUUID(
-            backup.getCustomerUUID(), backup.getBaseBackupUUID());
+            backup.getCustomerUUID(), backup.getBaseBackupUUID(), null /* state */);
     Date lastIncrementDate = null;
     boolean hasIncrements = false;
     BackupState lastBackupState = BackupState.Completed;
@@ -383,6 +397,7 @@ public class BackupUtil {
                       .backupSizeInBytes(b.backupSizeInBytes)
                       .defaultLocation(b.storageLocation)
                       .perRegionLocations(b.regionLocations)
+                      .backupPointInTimeRestoreWindow(b.getBackupPointInTimeRestoreWindow())
                       .build();
                 })
             .collect(Collectors.toSet());
@@ -392,7 +407,8 @@ public class BackupUtil {
 
   public static List<CommonBackupInfo> getIncrementalBackupList(
       UUID baseBackupUUID, UUID customerUUID) {
-    List<Backup> backupChain = Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
+    List<Backup> backupChain =
+        Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID, null /* state */);
     if (CollectionUtils.isEmpty(backupChain)) {
       return new ArrayList<>();
     }
@@ -639,27 +655,26 @@ public class BackupUtil {
   public static Map<String, PerLocationBackupInfo> getBackupLocationBackupInfoMap(
       List<BackupTableParams> backupParamsList,
       boolean selectiveRestoreYbcCheck,
-      boolean filterIndexes,
-      Map<String, TablespaceResponse> tablespaceResponsesMap) {
+      Map<String, TablespaceResponse> tablespaceResponsesMap,
+      Map<String, PerBackupLocationKeyspaceTables> backupLocationKeyspaceTablesMap) {
     Map<String, PerLocationBackupInfo> backupLocationTablesMap = new HashMap<>();
     backupParamsList.stream()
+        .filter(bP -> backupLocationKeyspaceTablesMap.containsKey(bP.storageLocation))
         .forEach(
             bP -> {
               PerLocationBackupInfo.PerLocationBackupInfoBuilder bInfoBuilder =
                   PerLocationBackupInfo.builder();
-              PerBackupLocationKeyspaceTables perLocationKTables =
-                  PerBackupLocationKeyspaceTables.builder()
-                      .originalKeyspace(bP.getKeyspace())
-                      .tableNameList(bP.getTableNameList())
-                      .tablesWithIndexesMap(filterIndexes ? null : bP.getTablesWithIndexesMap())
-                      .build();
               boolean isYSQLBackup = bP.backupType.equals(TableType.PGSQL_TABLE_TYPE);
               bInfoBuilder
                   .isYSQLBackup(isYSQLBackup)
-                  .perBackupLocationKeyspaceTables(perLocationKTables)
+                  .perBackupLocationKeyspaceTables(
+                      backupLocationKeyspaceTablesMap.get(bP.storageLocation))
                   .backupLocation(bP.storageLocation)
                   .isSelectiveRestoreSupported(selectiveRestoreYbcCheck && !isYSQLBackup)
                   .tablespaceResponse(tablespaceResponsesMap.get(bP.storageLocation));
+              if (bP.getBackupPointInTimeRestoreWindow() != null) {
+                bInfoBuilder.pointInTimeRestoreWindow(bP.getBackupPointInTimeRestoreWindow());
+              }
               backupLocationTablesMap.put(bP.storageLocation, bInfoBuilder.build());
             });
     return backupLocationTablesMap;
@@ -673,9 +688,9 @@ public class BackupUtil {
   }
 
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
-    return Backup.fetchAllBackupsByBaseBackupUUID(backup.getCustomerUUID(), backup.getBackupUUID())
-        .stream()
-        .anyMatch((b) -> (b.getState().equals(BackupState.InProgress)));
+    return CollectionUtils.isNotEmpty(
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            backup.getCustomerUUID(), backup.getBackupUUID(), BackupState.InProgress));
   }
 
   public static boolean checkIfStorageConfigExists(Backup backup) {
@@ -817,5 +832,53 @@ public class BackupUtil {
                 }
               }
             });
+  }
+
+  /**
+   * Return merged entries for keyspace and corresponding tables from given list of KeyspaceTables.
+   * So if 2 entries in the collection are K1 -> {T1, T2}, K1 -> {T3, T4} the result would be {K1 ->
+   * {T1, T2, T3, T4}}. Since empty tables list has higher precedence, if the collection has a
+   * keyspace with empty tables list, we return empty tables for that keyspace in response.
+   *
+   * @param keyspaceTablesList
+   * @return
+   */
+  public static Map<String, Set<String>> mergeKeyspaceTablesList(
+      @Nullable Collection<KeyspaceTables> keyspaceTablesList) {
+    if (CollectionUtils.isEmpty(keyspaceTablesList)) {
+      return new HashMap<>();
+    }
+    return keyspaceTablesList.stream()
+        .map(kT -> kT.getKeyspaceTablesMapEntry())
+        .collect(
+            Collectors.toMap(
+                Map.Entry::getKey,
+                Map.Entry::getValue,
+                (tablesSet1, tablesSet2) -> {
+                  // Empty means "all", we return empty tables.
+                  if (CollectionUtils.isEmpty(tablesSet1) || CollectionUtils.isEmpty(tablesSet2)) {
+                    return new HashSet<>();
+                  } else {
+                    tablesSet1.addAll(tablesSet2);
+                    return tablesSet1;
+                  }
+                }));
+  }
+
+  public static List<KeyspaceTables> getRestorableKeyspaceTablesInBackupChain(
+      UUID customerUUID, UUID baseBackupUUID) {
+    List<Backup> completedBackupsInChain =
+        Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID, BackupState.Completed);
+    List<KeyspaceTables> restorableKeyspaceTables =
+        completedBackupsInChain.stream()
+            .map(b -> b.getBackupKeyspaceTablesList())
+            .flatMap(ktList -> ktList.stream())
+            .collect(Collectors.toList());
+
+    List<KeyspaceTables> mergedKeyspaceTables = new ArrayList<>();
+    mergeKeyspaceTablesList(restorableKeyspaceTables)
+        .forEach(
+            (keyspace, tables) -> mergedKeyspaceTables.add(new KeyspaceTables(tables, keyspace)));
+    return mergedKeyspaceTables;
   }
 }

@@ -394,7 +394,6 @@ class Tablet : public AbstractTablet,
 
   Status DoHandlePgsqlReadRequest(
       ScopedRWOperation* scoped_read_operation,
-      docdb::DocDBStatistics* statistics,
       TabletMetrics* metrics,
       const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
@@ -979,6 +978,7 @@ class Tablet : public AbstractTablet,
   friend class ScopedReadOperation;
   friend class TabletComponent;
 
+  class RocksDbListener;
   class RegularRocksDbListener;
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);

@@ -57,7 +57,7 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 public class NodeAgentPoller {
   public static final String RETENTION_DURATION_PROPERTY = "yb.node_agent.retention_duration";
-  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(1);
+  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(5);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
@@ -305,8 +305,7 @@ public class NodeAgentPoller {
         return;
       }
       nodeAgent.refresh();
-      checkState(
-          nodeAgent.getState() != State.REGISTERING, "Invalid state " + nodeAgent.getState());
+      checkState(nodeAgent.isActive(), "Invalid state " + nodeAgent.getState());
       if (nodeAgent.getState() == State.READY) {
         if (checkVersion(nodeAgent)) {
           log.info(
@@ -465,7 +464,7 @@ public class NodeAgentPoller {
       String softwareVersion = nodeAgentManager.getSoftwareVersion();
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll().stream()
-          .filter(n -> n.getState() != State.REGISTERING)
+          .filter(n -> n.isActive())
           .peek(n -> nodeUuids.add(n.getUuid()))
           .map(n -> getOrCreatePollerTask(n.getUuid(), lifetime, softwareVersion))
           .filter(PollerTask::isSchedulable)

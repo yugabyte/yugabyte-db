@@ -30,9 +30,9 @@ The following tutorial implements a REST API server using the [Prisma](https://p
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/node/prisma) repository.
 
-{{< tip title="YugabyteDB Managed requires SSL" >}}
+{{< tip title="YugabyteDB Aeon requires SSL" >}}
 
-Are you using YugabyteDB Managed? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Aeon? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
@@ -91,7 +91,7 @@ Modify the `DATABASE_URL` in the `.env` file according to your cluster configura
 DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 ```
 
-If you have a YugabyteDB Managed cluster, do the following:
+If you have a YugabyteDB Aeon cluster, do the following:
 
 1. Download your [cluster certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 

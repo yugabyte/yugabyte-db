@@ -6,6 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.filters.JobInstanceFilter;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -65,6 +68,32 @@ public class JobInstance extends Model implements Delayed {
     SKIPPED,
   }
 
+  public enum SortBy implements PagedQuery.SortByIF {
+    uuid("uuid"),
+    jobScheduleUuid("jobScheduleUuid"),
+    state("state"),
+    createdAt("updatedAt"),
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    startTime("startTime"),
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    endTime("endTime");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.uuid;
+    }
+  }
+
   public static JobInstance getOrBadRequest(UUID uuid) {
     return JobInstance.maybeGet(uuid)
         .orElseThrow(
@@ -122,6 +151,21 @@ public class JobInstance extends Model implements Delayed {
       query = query.eq("state", expectedState);
     }
     return query.update();
+  }
+
+  public static ExpressionList<JobInstance> createQuery(
+      UUID scheduleUuid, JobInstanceFilter filter) {
+    ExpressionList<JobInstance> query =
+        DB.createQuery(JobInstance.class).where().eq("jobScheduleUuid", scheduleUuid);
+    if (filter.getState() != null) {
+      query.eq("state", filter.getState());
+    }
+    if (filter.getStartWindowSecs() > 0) {
+      Instant now = Instant.now();
+      query.ge("startTime", Date.from(now));
+      query.le("startTime", Date.from(now.plus(filter.getStartWindowSecs(), ChronoUnit.SECONDS)));
+    }
+    return query;
   }
 
   @Override

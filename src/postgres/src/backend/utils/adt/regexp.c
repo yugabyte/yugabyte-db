@@ -38,6 +38,10 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 #define PG_GETARG_TEXT_PP_IF_EXISTS(_n) \
 	(PG_NARGS() > (_n) ? PG_GETARG_TEXT_PP(_n) : NULL)
 
@@ -106,9 +110,57 @@ typedef struct cached_re_str
 	regex_t		cre_re;			/* the compiled regular expression */
 } cached_re_str;
 
-static int	num_res = 0;		/* # of cached re's */
-static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
+/*
+ * YB: A single static cache works in Postgres, but is not safe in a
+ * multi-threaded environment when we pushdown regex filters to the tserver.
+ * The following infrastructure is necessary to create a thread local cache
+ * for regex compilation.
+ */
+typedef struct YbReCacheInfo
+{
+	int *num;
+	cached_re_str *array;
+} YbReCacheInfo;
 
+static void YbFreeRe(cached_re_str *re)
+{
+	pg_regfree(&re->cre_re);
+	free(re->cre_pat);
+}
+
+static void
+YbFreeReCache(YBCPgThreadLocalRegexpCache *cache)
+{
+	Assert(cache && cache->array);
+	cached_re_str *re = cache->array;
+	for (cached_re_str *re_end = re + cache->num; re != re_end; ++re)
+		YbFreeRe(re);
+}
+
+static YbReCacheInfo
+YbGetReCacheInfo()
+{
+	if (IsMultiThreadedMode())
+	{
+		YBCPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
+		if (!cache)
+		{
+			cache = YBCPgInitThreadLocalRegexpCache(
+				sizeof(cached_re_str) * MAX_CACHED_RES,
+				&YbFreeReCache);
+			Assert(cache && cache->array);
+		}
+
+		return (YbReCacheInfo){
+			.num = &cache->num,
+			.array = (cached_re_str *) cache->array};
+	}
+
+	static int	num_res = 0;		/* # of cached re's */
+	static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
+
+	return (YbReCacheInfo) {.num = &num_res, .array = re_array};
+}
 
 /* Local functions */
 static regexp_matches_ctx *setup_regexp_matches(text *orig_str, text *pattern,
@@ -145,12 +197,16 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	cached_re_str re_temp;
 	char		errMsg[100];
 
+	YbReCacheInfo yb_re_cache_info = YbGetReCacheInfo();
+	int *num_res = yb_re_cache_info.num;
+	cached_re_str *re_array = yb_re_cache_info.array;
+
 	/*
 	 * Look for a match among previously compiled REs.  Since the data
 	 * structure is self-organizing with most-used entries at the front, our
 	 * search strategy can just be to scan from the front.
 	 */
-	for (i = 0; i < num_res; i++)
+	for (i = 0; i < *num_res; i++)
 	{
 		if (re_array[i].cre_pat_len == text_re_len &&
 			re_array[i].cre_flags == cflags &&
@@ -231,19 +287,18 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	 * Okay, we have a valid new item in re_temp; insert it into the storage
 	 * array.  Discard last entry if needed.
 	 */
-	if (num_res >= MAX_CACHED_RES)
+	if (*num_res >= MAX_CACHED_RES)
 	{
-		--num_res;
-		Assert(num_res < MAX_CACHED_RES);
-		pg_regfree(&re_array[num_res].cre_re);
-		free(re_array[num_res].cre_pat);
+		--*num_res;
+		Assert(*num_res < MAX_CACHED_RES);
+		YbFreeRe(&re_array[*num_res]);
 	}
 
-	if (num_res > 0)
-		memmove(&re_array[1], &re_array[0], num_res * sizeof(cached_re_str));
+	if (*num_res > 0)
+		memmove(&re_array[1], &re_array[0], *num_res * sizeof(cached_re_str));
 
 	re_array[0] = re_temp;
-	num_res++;
+	(*num_res)++;
 
 	return &re_array[0].cre_re;
 }

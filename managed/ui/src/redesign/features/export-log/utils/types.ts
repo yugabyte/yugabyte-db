@@ -22,8 +22,8 @@ export interface ExportLogFormFields {
     sourceType?: string;
     index?: string;
     //AWS CLOUD WATCH
-    awsAccessKeyID?: string;
-    awsAccessKeySecret?: string;
+    accessKey?: string;
+    secretKey?: string;
     logGroup?: string;
     logStream?: string;
     region?: string;
@@ -48,4 +48,8 @@ export interface ExportLogResponse extends ExportLogPayload {
 
 export interface UniverseItem extends Universe {
   linkedClusters: Cluster[];
+}
+
+export interface TPItem extends ExportLogPayload {
+  linkedUniverses: UniverseItem[];
 }

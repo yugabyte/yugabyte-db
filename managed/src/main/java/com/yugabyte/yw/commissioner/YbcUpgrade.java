@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -71,6 +73,12 @@ public class YbcUpgrade {
       "ybc.upgrade.poll_result_tries";
   public static final String YBC_UPGRADE_POLL_RESULT_SLEEP_MS_PATH =
       "ybc.upgrade.poll_result_sleep_ms";
+  // Safe to run YBC upgrade on nodes even if universe is locked with these tasks
+  private static final List<TaskType> SAFE_TO_UPGRADE_YBC_TASKS =
+      ImmutableList.of(
+          TaskType.CreateBackup,
+          TaskType.CreateBackupSchedule,
+          TaskType.CreateBackupScheduleKubernetes);
 
   private final int YBC_UNIVERSE_UPGRADE_BATCH_SIZE;
   private final int YBC_NODE_UPGRADE_BATCH_SIZE;
@@ -289,7 +297,8 @@ public class YbcUpgrade {
   public boolean canUpgradeYBC(Universe universe, String ybcVersion) {
     return universe.isYbcEnabled()
         && !universe.getUniverseDetails().universePaused
-        && !universe.getUniverseDetails().updateInProgress
+        && (!universe.getUniverseDetails().updateInProgress
+            || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
         && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
         && !failedYBCUpgradeUniverseSet.contains(universe.getUniverseUUID());
   }
@@ -297,7 +306,8 @@ public class YbcUpgrade {
   public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {
     return universe.isYbcEnabled()
         && !universe.getUniverseDetails().universePaused
-        && !universe.getUniverseDetails().updateInProgress
+        && (!universe.getUniverseDetails().updateInProgress
+            || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
         && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
         && !failedYBCUpgradeUniverseSetOnK8s.contains(universe.getUniverseUUID());
   }

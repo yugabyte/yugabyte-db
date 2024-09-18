@@ -2707,6 +2707,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testRevokeLoginMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2847,6 +2850,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testConnectionLimitDecreasedMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -3341,4 +3347,17 @@ public class TestPgAuthorization extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testPgLocksAuthorization() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE ROLE yb_lock_status_user LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_lock_status_user");
+    }
+
+    try (Connection connection = getConnectionBuilder().withUser("yb_lock_status_user").connect();
+         Statement statement = connection.createStatement()) {
+      // yb_db_admin_member should be able to query pg_locks without superuser access.
+      statement.executeQuery("SELECT * FROM pg_locks");
+    }
+  }
 }

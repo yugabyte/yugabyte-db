@@ -8,13 +8,13 @@
 {{- /* map of products to links and display */ -}}
 {{- $prodmap := dict "ysql" (slice "api/ysql/" "YSQL")
     "ycql" (slice "api/ycql/" "YCQL")
-    "voyager" (slice "yugabyte-voyager" "Voyager")
-    "yba" (slice "yugabyte-platform" "YB Anywhere")
-    "ybm" (slice "yugabyte-voyager" "YB Managed")
-    "cloud" (slice "yugabyte-voyager" "YB Managed")
+    "voyager" (slice "yugabyte-voyager" "YugabyteDB Voyager")
+    "yba" (slice "yugabyte-platform" "YugabyteDB Anywhere")
+    "ybm" (slice "yugabyte-cloud" "YugabyteDB Aeon")
+    "cloud" (slice "yugabyte-cloud" "YugabyteDB Aeon")
     "ybd" (slice "reference/configuration/yugabyted"  "yugabyted")
-    "ybdb" (slice ""  "YBDB")
-    "db" (slice ""  "YBDB")
+    "ybdb" (slice ""  "YugabyteDB")
+    "db" (slice ""  "YugabyteDB")
 -}}
 {{- $numproducts := len $products -}}
 {{- $count := 0 -}}

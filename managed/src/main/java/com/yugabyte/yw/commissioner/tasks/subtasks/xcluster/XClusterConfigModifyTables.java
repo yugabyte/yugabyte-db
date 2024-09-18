@@ -118,8 +118,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
 
     // Ensure each tableId exits in the xCluster config.
     for (String tableId : tableIdsToRemove) {
-      Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
-      if (!tableConfig.isPresent()) {
+      if (xClusterConfig.maybeGetTableById(tableId).isEmpty()) {
         String errMsg =
             String.format(
                 "Table with id (%s) is not part of xCluster config (%s) and cannot be removed",
@@ -135,7 +134,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
-      if (tableIdsToAddBootstrapIdsMap.size() > 0) {
+      if (!tableIdsToAddBootstrapIdsMap.isEmpty()) {
         try {
           log.info(
               "Adding tables to XClusterConfig({}): tableIdsToAddBootstrapIdsMap {}",
@@ -171,7 +170,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         }
       }
 
-      if (tableIdsToRemove.size() > 0) {
+      if (!tableIdsToRemove.isEmpty()) {
         try {
           log.info(
               "Removing tables from XClusterConfig({}): {}",

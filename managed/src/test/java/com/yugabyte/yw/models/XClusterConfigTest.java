@@ -50,4 +50,24 @@ public class XClusterConfigTest extends FakeDBApplication {
     assertEquals(TableType.YSQL, found.getTableType());
     assertEquals(ConfigType.Db, found.getType());
   }
+
+  @Test
+  public void testAddRemoveNamespaces() {
+    Set<String> dbIdsToAdd = new HashSet<String>(Arrays.asList("db1", "db2", "db3"));
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            "xcluster config",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            XClusterConfigStatusType.Initialized,
+            false /* imported */);
+    xClusterConfig.addNamespaces(dbIdsToAdd);
+    Set<String> dbIdsToRemove = new HashSet<String>(Arrays.asList("db1", "db2"));
+
+    XClusterConfig addConfig = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
+    assertEquals(3, addConfig.getNamespaces().size());
+    addConfig.removeNamespaces(dbIdsToRemove);
+    XClusterConfig removeConfig = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
+    assertEquals(1, removeConfig.getNamespaces().size());
+  }
 }

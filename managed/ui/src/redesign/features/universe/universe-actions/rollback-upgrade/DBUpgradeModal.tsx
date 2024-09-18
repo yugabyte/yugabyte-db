@@ -1,4 +1,4 @@
-import { FC, ChangeEvent, useState } from 'react';
+import { FC, ChangeEvent, FocusEvent, useState } from 'react';
 import _ from 'lodash';
 import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
@@ -6,7 +6,7 @@ import { useMutation, useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider, Controller } from 'react-hook-form';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Typography, Tooltip } from '@material-ui/core';
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import {
   YBModal,
@@ -19,7 +19,8 @@ import { api } from '../../../../utils/api';
 import {
   getPrimaryCluster,
   createErrorMessage,
-  transitToUniverse
+  transitToUniverse,
+  getAsyncCluster
 } from '../../universe-form/utils/helpers';
 import { Universe } from '../../universe-form/utils/dto';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
@@ -48,7 +49,8 @@ import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow
 import WarningIcon from '../../../../assets/warning-triangle.svg';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
-import { Tooltip } from '@material-ui/core';
+import { RuntimeConfigKey } from '../../../../helpers/constants';
+
 import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
 interface DBUpgradeModalProps {
@@ -127,10 +129,10 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
       : state.customer.softwareVersionswithMetaData
   );
   const featureFlags = useSelector((state: any) => state.featureFlags);
-  const { universeDetails, universeUUID } = universeData;
+  const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentReleaseFromCluster = primaryCluster?.userIntent.ybSoftwareVersion;
-  let currentRelease: string = '';
+  let currentRelease = '';
   if (currentReleaseFromCluster !== null && currentReleaseFromCluster !== undefined) {
     currentRelease = currentReleaseFromCluster;
   }
@@ -143,8 +145,12 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
   );
 
   const skipVersionChecksValue = globalRuntimeConfigs?.configEntries?.find(
-    (c: any) => c.key === 'yb.skip_version_checks'
+    (c: any) => c.key === RuntimeConfigKey.SKIP_VERSION_CHECKS
   )?.value;
+  const isRollingUpradeMutlipleNodesEnabled =
+    globalRuntimeConfigs?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
+    )?.value === 'true';
   // By default skipVersionChecks is false
   // If runtime config flag is not accessible, assign false to the variable
   const skipVersionChecks =
@@ -195,7 +201,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
       })
     );
 
-  let currentReleaseIndex: number = 0;
+  let currentReleaseIndex = 0;
   let versionsAboveCurrent: string[] = [];
   if (!skipVersionChecks) {
     if (isCurrentReleaseStable) {
@@ -234,7 +240,8 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
     defaultValues: {
       softwareVersion: '',
       rollingUpgrade: true,
-      timeDelay: 180
+      timeDelay: 180,
+      numNodesToUpgradePrimary: 1
     },
     mode: 'onChange',
     reValidateMode: 'onChange'
@@ -279,7 +286,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
       });
       setPrefinalize(finalizeRequired ? true : false);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     }
   };
 
@@ -296,10 +303,16 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
         nodePrefix: universeDetails.nodePrefix,
         enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc
       };
+      if (isRollingUpradeMutlipleNodesEnabled && values.rollingUpgrade) {
+        payload.rollMaxBatchSize = {
+          primaryBatchSize: values.numNodesToUpgradePrimary,
+          readReplicaBatchSize: values.numNodesToUpgradePrimary
+        };
+      }
       try {
         await upgradeSoftware.mutateAsync(payload);
       } catch (e) {
-        console.log(e);
+        console.error(e);
       }
     }
   });
@@ -361,6 +374,14 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
   if (isLoading) {
     return <YBLoadingCircleIcon />;
   }
+
+  const handleNumNodeChangePrimary = (e: FocusEvent<HTMLInputElement>) => {
+    const fieldValue = (e.target.value as unknown) as number;
+    if (fieldValue > rollMaxBatchSize?.primaryBatchSize)
+      setValue('numNodesToUpgradePrimary', rollMaxBatchSize?.primaryBatchSize);
+    else if (fieldValue < 1) setValue('numNodesToUpgradePrimary', 1);
+    else setValue('numNodesToUpgradePrimary', fieldValue);
+  };
 
   return (
     <YBModal
@@ -454,6 +475,42 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
                     'data-testid': 'DBUpgradeModal-RollingUpgrade'
                   }}
                 />
+                {isRollingUpgradeValue && rollMaxBatchSize?.primaryBatchSize > 1 && (
+                  <Box
+                    display={'flex'}
+                    flexDirection={'row'}
+                    mt={1}
+                    ml={1}
+                    width="100%"
+                    alignItems={'center'}
+                  >
+                    <YBLabel width="280px">
+                      {t('universeActions.dbRollbackUpgrade.numNodesToRollingUpgrade')}
+                    </YBLabel>
+                    <Box width="130px" mr={1}>
+                      <YBInputField
+                        control={control}
+                        type="number"
+                        name="numNodesToUpgradePrimary"
+                        fullWidth
+                        inputProps={{
+                          min: 1,
+                          max: rollMaxBatchSize?.primaryBatchSize,
+                          autoFocus: true,
+                          'data-testid': 'DBUpgradeModal-NumNodesToRollingUpgrade'
+                        }}
+                        onChange={handleNumNodeChangePrimary}
+                      />
+                    </Box>
+                    <Tooltip
+                      title={t('universeActions.dbRollbackUpgrade.rollingUpgradeMsg')}
+                      arrow
+                      placement="top"
+                    >
+                      <img src={InfoMessageIcon} alt="info" />
+                    </Tooltip>
+                  </Box>
+                )}
                 <Box
                   display={'flex'}
                   flexDirection={'row'}
@@ -462,7 +519,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
                   width="100%"
                   alignItems={'center'}
                 >
-                  <YBLabel width="210px">
+                  <YBLabel width="280px">
                     {t('universeActions.dbRollbackUpgrade.upgradeDelayLabel')}
                   </YBLabel>
                   <Box width="160px" mr={1}>

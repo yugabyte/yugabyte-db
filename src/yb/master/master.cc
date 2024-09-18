@@ -37,10 +37,6 @@
 #include <memory>
 #include <vector>
 
-#include "yb/master/master_auto_flags_manager.h"
-#include "yb/util/logging.h"
-
-#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 
 #include "yb/common/pg_catversions.h"
@@ -51,7 +47,9 @@
 #include "yb/gutil/bind.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/flush_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_backup.service.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -61,19 +59,20 @@
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
 
-#include "yb/server/rpc_server.h"
-#include "yb/rpc/secure.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
-
+#include "yb/server/rpc_server.h"
 
 #include "yb/tablet/maintenance_manager.h"
 
@@ -83,6 +82,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -164,6 +164,11 @@ Master::Master(const MasterOptions& opts)
       flush_manager_(new FlushManager(this, catalog_manager())),
       tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
       master_cluster_handler_(new MasterClusterHandler(catalog_manager_impl(), ts_manager_.get())),
+      tablet_split_manager_(new TabletSplitManager(
+          *this, metric_entity(), metric_entity_cluster())),
+      clone_state_manager_(CloneStateManager::Create(catalog_manager(), this, &sys_catalog())),
+      snapshot_coordinator_(new MasterSnapshotCoordinator(
+          catalog_manager_impl(), catalog_manager_impl(), tablet_split_manager())),
       test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
@@ -224,7 +229,7 @@ Status Master::Init() {
   return Status::OK();
 }
 
-Status Master::InitAutoFlags(rpc::Messenger* messenger) {
+Status Master::InitFlags(rpc::Messenger* messenger) {
   // Will we be in shell mode if we dont have a sys catalog yet?
   bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts().AreMasterAddressesProvided();
@@ -236,11 +241,15 @@ Status Master::InitAutoFlags(rpc::Messenger* messenger) {
       } /* has_sys_catalog_func */,
       is_shell_mode_if_new));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
   return auto_flags_manager_->GetAvailableAutoFlagsForServer();
+}
+
+Result<std::unordered_set<std::string>> Master::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("master_flags.xml");
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
@@ -404,6 +413,9 @@ void Master::Shutdown() {
     RpcAndWebServerBase::Shutdown();
     if (init_pool_) {
       init_pool_->Shutdown();
+    }
+    if (snapshot_coordinator_) {
+      snapshot_coordinator_->Shutdown();
     }
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
@@ -588,7 +600,7 @@ client::LocalTabletFilter Master::CreateLocalTabletFilter() {
 }
 
 CatalogManagerIf* Master::catalog_manager() const {
-  return catalog_manager_.get();
+  return CHECK_NOTNULL(catalog_manager_impl());
 }
 
 XClusterManagerIf* Master::xcluster_manager() const {
@@ -604,7 +616,7 @@ SysCatalogTable& Master::sys_catalog() const {
 }
 
 TabletSplitManager& Master::tablet_split_manager() const {
-  return *catalog_manager_->tablet_split_manager();
+  return *CHECK_NOTNULL(tablet_split_manager_.get());
 }
 
 PermissionsManager& Master::permissions_manager() {
@@ -619,8 +631,12 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
-CloneStateManager* Master::clone_state_manager() const {
-  return catalog_manager_->clone_state_manager();
+CloneStateManager& Master::clone_state_manager() const {
+  return *CHECK_NOTNULL(clone_state_manager_.get());
+}
+
+MasterSnapshotCoordinator& Master::snapshot_coordinator() const {
+  return *CHECK_NOTNULL(snapshot_coordinator_.get());
 }
 
 

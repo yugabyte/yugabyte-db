@@ -32,6 +32,7 @@ Daemons:
   master
   tserver
   controller
+  otel-collector
 Commands:
   create        - Start the YB process on this node in cluster creation node (only applicable for
                   master)
@@ -138,11 +139,14 @@ clean_data_paths() {
     # Only the tserver creates and accesses the pg_data directory, so it
     # should be cleaned only when the tserver files are cleaned.
     if [ "$daemon" == "tserver" ]; then
-      rm -rf "${MOUNT_PATHS[i]}"/pg_data
+      rm -rf "${MOUNT_PATHS[i]}"/pg_data*
     fi
 
     if [ "$daemon" == "controller" ]; then
       rm -rf "${MOUNT_PATHS[i]}"/ybc-data
+    fi
+    if [ "$daemon" == "otel-collector" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/otel-collector
     fi
   done
 
@@ -256,6 +260,16 @@ case "$daemon" in
   controller)
     if [ "$command" == "create" ]; then
       echo "create command is not valid for controller"
+      exit 1
+    fi
+  ;;
+  otel-collector)
+    if [ "$command" == "create" ]; then
+      echo "create command is not valid for otel-collector"
+      exit 1
+    fi
+    if [ "$command" == "start" || "$command" == "stop" ]; then
+      echo "stop and start command is not valid for otel-collector as is systemd only"
       exit 1
     fi
   ;;

@@ -28,7 +28,7 @@ In the following sections, you will:
 - A [Microsoft Azure](http://azure.microsoft.com) subscription, with [authentication](https://learn.microsoft.com/en-us/azure/developer/javascript/sdk/authentication/local-development-environment-service-principal?tabs=azure-portal)
 - An [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault)
 - [Node.js version](https://github.com/nodejs/release#release-schedule) v18+
-- A [YugabyteDB Managed](https://cloud.yugabyte.com/) account with a cluster deployed
+- A [YugabyteDB Aeon](https://cloud.yugabyte.com/) account with a cluster deployed
 
 ## Introduction to the Azure SDKs and Tools
 
@@ -38,7 +38,7 @@ For instance, Azure's new [OpenAI SDK](https://github.com/Azure/azure-sdk-for-js
 
 SDKs provide an interface to interact with Azure services via application code, but there are also [tools](https://azure.microsoft.com/en-us/downloads/) available for download, including a rich command-line interface and a comprehensive set of Visual Studio Code extensions.
 
-Now, let's build a sample application which connects to the [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault) from Node.js. We'll then use the secrets stored in this service to connect to a YugabyteDB Managed cluster.
+Now, let's build a sample application which connects to the [Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault) from Node.js. We'll then use the secrets stored in this service to connect to a YugabyteDB Aeon cluster.
 
 ## Example SDK usage
 
@@ -108,14 +108,14 @@ A reference to the application we'll be developing can be found [on GitHub](http
     const client = new SecretClient(url, credential);
     ```
 
-1. Use the secret client to set the secrets needed to establish a YugabyteDB Managed connection.
+1. Use the secret client to set the secrets needed to establish a YugabyteDB Aeon connection.
 
     ```javascript
     // createSecrets.js
 
     async function main(){
     ...
-    // Create secrets for YugabyteDB Managed connection
+    // Create secrets for YugabyteDB Aeon connection
     await client.setSecret("DBUSERNAME", process.env.DB_USERNAME);
     await client.setSecret("DBPASSWORD", process.env.DB_PASSWORD);
     await client.setSecret("DBCERTIFICATE", process.env.DB_CERTIFICATE);
@@ -140,7 +140,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
     node createSecrets.js
     ```
 
-1. Read these secrets from Azure and connect to YugabyteDB Managed.
+1. Read these secrets from Azure and connect to YugabyteDB Aeon.
 
     ```javascript
     // index.js
@@ -177,7 +177,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
         servername: dbhost.value,
         },
     });
-    console.log("Establishing connection with YugabyteDB Managed");
+    console.log("Establishing connection with YugabyteDB Aeon");
     await ybclient.connect();
     console.log("Connected successfully.");
     }
@@ -193,7 +193,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
     ```
 
     ```output
-    Establishing connection with YugabyteDB Managed...
+    Establishing connection with YugabyteDB Aeon...
     Connected successfully.
     ```
 
@@ -209,4 +209,4 @@ We've just scratched the surface with what is possible using Azure SDKs and the 
 
 If you're also interested in building applications using Azure App Service, refer to [building applications using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/).
 
-You can also use Azure Key Vault to store customer managed keys for encrypting clusters in YugabyteDB Managed - see [Encryption at rest](../../../yugabyte-cloud/cloud-secure-clusters/managed-ear/).
+You can also use Azure Key Vault to store customer managed keys for encrypting clusters in YugabyteDB Aeon - see [Encryption at rest](../../../yugabyte-cloud/cloud-secure-clusters/managed-ear/).

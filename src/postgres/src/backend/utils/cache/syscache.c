@@ -20,6 +20,8 @@
  */
 #include "postgres.h"
 
+#include <assert.h>
+
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -1003,6 +1005,233 @@ static const struct cachedesc cacheinfo[] = {
 	}
 };
 
+static const char *yb_cache_index_name_table[] = {
+	"pg_aggregate_fnoid_index",
+	"pg_am_name_index",
+	"pg_am_oid_index",
+	"pg_amop_opr_fam_index",
+	"pg_amop_fam_strat_index",
+	"pg_amproc_fam_proc_index",
+	"pg_attribute_relid_attnam_index",
+	"pg_attribute_relid_attnum_index",
+	"pg_auth_members_member_role_index",
+	"pg_auth_members_role_member_index",
+	"pg_authid_rolname_index",
+	"pg_authid_oid_index",
+	"pg_cast_source_target_index",
+	"pg_opclass_am_name_nsp_index",
+	"pg_opclass_oid_index",
+	"pg_collation_name_enc_nsp_index",
+	"pg_collation_oid_index",
+	"pg_conversion_default_index",
+	"pg_conversion_name_nsp_index",
+	"pg_constraint_oid_index",
+	"pg_conversion_oid_index",
+	"pg_database_oid_index",
+	"pg_default_acl_role_nsp_obj_index",
+	"pg_enum_oid_index",
+	"pg_enum_typid_label_index",
+	"pg_event_trigger_evtname_index",
+	"pg_event_trigger_oid_index",
+	"pg_foreign_data_wrapper_name_index",
+	"pg_foreign_data_wrapper_oid_index",
+	"pg_foreign_server_name_index",
+	"pg_foreign_server_oid_index",
+	"pg_foreign_table_relid_index",
+	"pg_index_indexrelid_index",
+	"pg_language_name_index",
+	"pg_language_oid_index",
+	"pg_namespace_nspname_index",
+	"pg_namespace_oid_index",
+	"pg_operator_oprname_l_r_n_index",
+	"pg_operator_oid_index",
+	"pg_opfamily_am_name_nsp_index",
+	"pg_opfamily_oid_index",
+	"pg_partitioned_table_partrelid_index",
+	"pg_proc_proname_args_nsp_index",
+	"pg_proc_oid_index",
+	"pg_publication_pubname_index",
+	"pg_publication_oid_index",
+	"pg_publication_rel_oid_index",
+	"pg_publication_rel_prrelid_prpubid_index",
+	"pg_range_rngtypid_index",
+	"pg_class_relname_nsp_index",
+	"pg_class_oid_index",
+	"pg_replication_origin_roiident_index",
+	"pg_replication_origin_roname_index",
+	"pg_rewrite_rel_rulename_index",
+	"pg_sequence_seqrelid_index",
+	"pg_statistic_ext_name_index",
+	"pg_statistic_ext_oid_index",
+	"pg_statistic_relid_att_inh_index",
+	"pg_subscription_subname_index",
+	"pg_subscription_oid_index",
+	"pg_subscription_rel_srrelid_srsubid_index",
+	"pg_tablespace_oid_index",
+	"pg_transform_oid_index",
+	"pg_transform_type_lang_index",
+	"pg_ts_config_map_index",
+	"pg_ts_config_cfgname_index",
+	"pg_ts_config_oid_index",
+	"pg_ts_dict_dictname_index",
+	"pg_ts_dict_oid_index",
+	"pg_ts_parser_prsname_index",
+	"pg_ts_parser_oid_index",
+	"pg_ts_template_tmplname_index",
+	"pg_ts_template_oid_index",
+	"pg_type_typname_nsp_index",
+	"pg_type_oid_index",
+	"pg_user_mapping_oid_index",
+	"pg_user_mapping_user_server_index",
+	"pg_yb_tablegroup_oid_index",
+	"pg_constraint_conrelid_contypid_conname_index",
+};
+static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
+			  sizeof(const char *), "Wrong catalog cache number");
+
+/* List of all the tables that have caches on them */
+static const char *yb_cache_table_name_table[] = {
+	"pg_aggregate",
+	"pg_am",
+	"pg_amop",
+	"pg_amproc",
+	"pg_attribute",
+	"pg_auth_members",
+	"pg_authid",
+	"pg_cast",
+	"pg_class",
+	"pg_collation",
+	"pg_constraint",
+	"pg_conversion",
+	"pg_database",
+	"pg_default_acl",
+	"pg_enum",
+	"pg_event_trigger",
+	"pg_foreign_data_wrapper",
+	"pg_foreign_server",
+	"pg_foreign_table",
+	"pg_index",
+	"pg_language",
+	"pg_namespace",
+	"pg_opclass",
+	"pg_operator",
+	"pg_opfamily",
+	"pg_partitioned_table",
+	"pg_proc",
+	"pg_publication",
+	"pg_publication_rel",
+	"pg_range",
+	"pg_replication_origin",
+	"pg_rewrite",
+	"pg_sequence",
+	"pg_statistic",
+	"pg_statistic_ext",
+	"pg_subscription",
+	"pg_subscription_rel",
+	"pg_tablespace",
+	"pg_transform",
+	"pg_ts_config",
+	"pg_ts_config_map",
+	"pg_ts_dict",
+	"pg_ts_parser",
+	"pg_ts_template",
+	"pg_type",
+	"pg_user_mapping",
+	"pg_yb_tablegroup",
+};
+
+static_assert(YbNumCatalogCacheTables ==
+				  sizeof(yb_cache_table_name_table) / sizeof(const char *),
+			  "yb_catalog_cache_table_name_table size mismatch");
+
+
+/* Maps cache id to the table id in yb_cache_table_name_table */
+static YbCatalogCacheTable yb_catalog_cache_tables[] = {
+	YbCatalogCacheTable_pg_aggregate,
+	YbCatalogCacheTable_pg_am,
+	YbCatalogCacheTable_pg_am,
+	YbCatalogCacheTable_pg_amop,
+	YbCatalogCacheTable_pg_amop,
+	YbCatalogCacheTable_pg_amproc,
+	YbCatalogCacheTable_pg_attribute,
+	YbCatalogCacheTable_pg_attribute,
+	YbCatalogCacheTable_pg_auth_members,
+	YbCatalogCacheTable_pg_auth_members,
+	YbCatalogCacheTable_pg_authid,
+	YbCatalogCacheTable_pg_authid,
+	YbCatalogCacheTable_pg_cast,
+	YbCatalogCacheTable_pg_opclass,
+	YbCatalogCacheTable_pg_opclass,
+	YbCatalogCacheTable_pg_collation,
+	YbCatalogCacheTable_pg_collation,
+	YbCatalogCacheTable_pg_conversion,
+	YbCatalogCacheTable_pg_conversion,
+	YbCatalogCacheTable_pg_constraint,
+	YbCatalogCacheTable_pg_conversion,
+	YbCatalogCacheTable_pg_database,
+	YbCatalogCacheTable_pg_default_acl,
+	YbCatalogCacheTable_pg_enum,
+	YbCatalogCacheTable_pg_enum,
+	YbCatalogCacheTable_pg_event_trigger,
+	YbCatalogCacheTable_pg_event_trigger,
+	YbCatalogCacheTable_pg_foreign_data_wrapper,
+	YbCatalogCacheTable_pg_foreign_data_wrapper,
+	YbCatalogCacheTable_pg_foreign_server,
+	YbCatalogCacheTable_pg_foreign_server,
+	YbCatalogCacheTable_pg_foreign_table,
+	YbCatalogCacheTable_pg_index,
+	YbCatalogCacheTable_pg_language,
+	YbCatalogCacheTable_pg_language,
+	YbCatalogCacheTable_pg_namespace,
+	YbCatalogCacheTable_pg_namespace,
+	YbCatalogCacheTable_pg_operator,
+	YbCatalogCacheTable_pg_operator,
+	YbCatalogCacheTable_pg_opfamily,
+	YbCatalogCacheTable_pg_opfamily,
+	YbCatalogCacheTable_pg_partitioned_table,
+	YbCatalogCacheTable_pg_proc,
+	YbCatalogCacheTable_pg_proc,
+	YbCatalogCacheTable_pg_publication,
+	YbCatalogCacheTable_pg_publication,
+	YbCatalogCacheTable_pg_publication_rel,
+	YbCatalogCacheTable_pg_publication_rel,
+	YbCatalogCacheTable_pg_range,
+	YbCatalogCacheTable_pg_class,
+	YbCatalogCacheTable_pg_class,
+	YbCatalogCacheTable_pg_replication_origin,
+	YbCatalogCacheTable_pg_replication_origin,
+	YbCatalogCacheTable_pg_rewrite,
+	YbCatalogCacheTable_pg_sequence,
+	YbCatalogCacheTable_pg_statistic_ext,
+	YbCatalogCacheTable_pg_statistic_ext,
+	YbCatalogCacheTable_pg_statistic,
+	YbCatalogCacheTable_pg_subscription,
+	YbCatalogCacheTable_pg_subscription,
+	YbCatalogCacheTable_pg_subscription_rel,
+	YbCatalogCacheTable_pg_tablespace,
+	YbCatalogCacheTable_pg_transform,
+	YbCatalogCacheTable_pg_transform,
+	YbCatalogCacheTable_pg_ts_config_map,
+	YbCatalogCacheTable_pg_ts_config,
+	YbCatalogCacheTable_pg_ts_config,
+	YbCatalogCacheTable_pg_ts_dict,
+	YbCatalogCacheTable_pg_ts_dict,
+	YbCatalogCacheTable_pg_ts_parser,
+	YbCatalogCacheTable_pg_ts_parser,
+	YbCatalogCacheTable_pg_ts_template,
+	YbCatalogCacheTable_pg_ts_template,
+	YbCatalogCacheTable_pg_type,
+	YbCatalogCacheTable_pg_type,
+	YbCatalogCacheTable_pg_user_mapping,
+	YbCatalogCacheTable_pg_user_mapping,
+	YbCatalogCacheTable_pg_yb_tablegroup,
+	YbCatalogCacheTable_pg_constraint,
+};
+
+static_assert(SysCacheSize ==
+				  sizeof(yb_catalog_cache_tables) / sizeof(YbCatalogCacheTable),
+			  "yb_catalog_cache_tables size mismatch");
+
 typedef struct YbPinnedObjectKey
 {
 	Oid classid;
@@ -1462,6 +1691,11 @@ SearchSysCache(int cacheId,
 			   Datum key3,
 			   Datum key4)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 
@@ -1472,6 +1706,11 @@ HeapTuple
 SearchSysCache1(int cacheId,
 				Datum key1)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 1);
@@ -1483,6 +1722,11 @@ HeapTuple
 SearchSysCache2(int cacheId,
 				Datum key1, Datum key2)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 2);
@@ -1494,6 +1738,11 @@ HeapTuple
 SearchSysCache3(int cacheId,
 				Datum key1, Datum key2, Datum key3)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 3);
@@ -1505,6 +1754,11 @@ HeapTuple
 SearchSysCache4(int cacheId,
 				Datum key1, Datum key2, Datum key3, Datum key4)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 4);
@@ -1902,4 +2156,80 @@ oid_compare(const void *a, const void *b)
 	if (oa == ob)
 		return 0;
 	return (oa > ob) ? 1 : -1;
+}
+
+/*
+ * Verify the table yb_cache_index_name_table is consistent with cacheinfo.
+ * Should only be invoked when pg_class is fully loaded for SearchSysCache1
+ * to find these indexes.
+ */
+#ifndef NDEBUG
+bool
+YbCheckCatalogCacheIndexNameTable()
+{
+	/*
+	 * We can only do this verification during initdb because otherwise
+	 * during YSQL upgrade we can see assertion failure.
+	 */
+	if (!YBCIsInitDbModeEnvVarSet())
+		return true;
+	int	cache_id;
+	for (cache_id = 0; cache_id < SysCacheSize; cache_id++)
+	{
+		const char* index_name = yb_cache_index_name_table[cache_id];
+		Oid indoid = cacheinfo[cache_id].indoid;
+		HeapTuple tuple = SearchSysCache1(RELOID, indoid);
+		Assert(HeapTupleIsValid(tuple));
+		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
+		if (strcmp(NameStr(classForm->relname), index_name))
+		{
+			ReleaseSysCache(tuple);
+			YBC_LOG_WARNING("Cache id %u has name mismatch: %s vs %s", cache_id,
+							NameStr(classForm->relname), index_name);
+			return false;
+		}
+		ReleaseSysCache(tuple);
+
+		const char *table_name = YbGetCatalogCacheTableNameFromCacheId(cache_id);
+		Oid reloid = cacheinfo[cache_id].reloid;
+		tuple = SearchSysCache1(RELOID, reloid);
+		Assert(HeapTupleIsValid(tuple));
+		classForm = (Form_pg_class) GETSTRUCT(tuple);
+		if (strcmp(NameStr(classForm->relname), table_name))
+		{
+			ReleaseSysCache(tuple);
+			YBC_LOG_WARNING("Cache id %u has name mismatch: %s vs %s", cache_id,
+							NameStr(classForm->relname), table_name);
+			return false;
+		}
+		ReleaseSysCache(tuple);
+	}
+	return true;
+}
+#endif
+
+const char* YbGetCatalogCacheIndexName(int cache_id)
+{
+	return yb_cache_index_name_table[cache_id];
+}
+
+const char *
+YbGetCatalogCacheTableNameFromTableId(int table_id)
+{
+	Assert(table_id >= 0 && table_id < YbNumCatalogCacheTables);
+	return yb_cache_table_name_table[table_id];
+}
+
+int
+YbGetCatalogCacheTableIdFromCacheId(int cache_id)
+{
+	int table_id = yb_catalog_cache_tables[cache_id];
+	Assert(table_id >= 0 && table_id < YbNumCatalogCacheTables);
+	return table_id;
+}
+
+const char *
+YbGetCatalogCacheTableNameFromCacheId(int cache_id)
+{
+	return YbGetCatalogCacheTableNameFromTableId(YbGetCatalogCacheTableIdFromCacheId(cache_id));
 }

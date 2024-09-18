@@ -491,11 +491,36 @@ Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
 
 } // namespace
 
-class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
+class Tablet::RocksDbListener : public rocksdb::EventListener {
  public:
-  RegularRocksDbListener(Tablet* tablet, const std::string& log_prefix)
-      : tablet_(*CHECK_NOTNULL(tablet)),
-        log_prefix_(log_prefix) {}
+  RocksDbListener(Tablet& tablet, const std::string& log_prefix)
+      : tablet_(tablet), log_prefix_(log_prefix) {}
+
+  void OnFlushCompleted(rocksdb::DB*, const rocksdb::FlushJobInfo&) override {
+    if (auto* participant = tablet_.transaction_participant()) {
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << "RocksDB flush completed, triggering cleanup of recently applied transactions";
+      auto status = participant->ProcessRecentlyAppliedTransactions();
+      if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
+        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+            << "Failed to clean up recently applied transactions: " << status;
+      }
+    }
+  }
+
+ protected:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  Tablet& tablet_;
+  const std::string log_prefix_;
+};
+
+class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
+ public:
+  RegularRocksDbListener(Tablet& tablet, const std::string& log_prefix)
+      : RocksDbListener(tablet, log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
@@ -528,7 +553,7 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
     {
       auto scoped_read_operation = tablet_.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
       if (!scoped_read_operation.ok()) {
-        VLOG_WITH_FUNC(4) << "Skip";
+        VLOG_WITH_PREFIX_AND_FUNC(4) << "Skip";
         return;
       }
 
@@ -552,7 +577,7 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
     if(!tablet_.metadata()->colocated()) {
       auto schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
           kColocationIdNotSet);
-      VLOG_WITH_FUNC(4) <<
+      VLOG_WITH_PREFIX_AND_FUNC(4) <<
           Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0:$1,$2",
               primary_table_id, min_schema_versions[Uuid::Nil()], schema_version);
       if (schema_version < min_schema_versions[Uuid::Nil()]) {
@@ -566,7 +591,7 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       ColocationId colocation_id = colocated_tables[table_id.ToHexString()];
       auto xcluster_min_schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
           colocation_id);
-      VLOG_WITH_FUNC(4) <<
+      VLOG_WITH_PREFIX_AND_FUNC(4) <<
           Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0,$1:$2,$3",
               primary_table_id, colocation_id, min_schema_versions[table_id],
               xcluster_min_schema_version);
@@ -595,9 +620,6 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       smallest.MakeExternalSchemaVersionsAtMost(table_id_to_min_schema_version);
     }
   }
-
-  Tablet& tablet_;
-  const std::string log_prefix_;
 };
 
 Tablet::Tablet(const TabletInitData& data)
@@ -635,7 +657,7 @@ Tablet::Tablet(const TabletInitData& data)
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
-                        << metadata_->schema_version();
+                        << metadata_->primary_table_schema_version();
 
   if (data.metric_registry) {
     MetricEntity::AttributeMap attrs;
@@ -972,7 +994,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   rocksdb::Options regular_rocksdb_options(rocksdb_options);
   regular_rocksdb_options.listeners.push_back(
-      std::make_shared<RegularRocksDbListener>(this, regular_rocksdb_options.log_prefix));
+      std::make_shared<RegularRocksDbListener>(*this, regular_rocksdb_options.log_prefix));
 
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
@@ -1019,6 +1041,9 @@ Status Tablet::OpenKeyValueTablet() {
           tablet_metrics_entity_);
     }
     intents_rocksdb_options.statistics = intentsdb_statistics_;
+
+    intents_rocksdb_options.listeners.push_back(
+        std::make_shared<RocksDbListener>(*this, intents_rocksdb_options.log_prefix));
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(
@@ -1724,7 +1749,7 @@ Status Tablet::HandleQLReadRequest(
   docdb::QLRocksDBStorage storage{doc_db(metrics_scope.metrics())};
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
-      metadata()->schema_version(), ql_read_request.schema_version(),
+      metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
       ql_read_request.is_compatible_with_previous_version());
 
   Status status;
@@ -1733,11 +1758,11 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        read_operation_data, ql_read_request, *txn_op_ctx, storage, scoped_read_operation,
-        result, rows_data, metrics_scope.statistics());
+        read_operation_data.WithStatistics(metrics_scope.statistics()), ql_read_request,
+        *txn_op_ctx, storage, scoped_read_operation, result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
-        metadata()->schema_version(), ql_read_request.schema_version(),
+        metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
         ql_read_request.is_compatible_with_previous_version());
   }
 
@@ -1748,7 +1773,7 @@ Status Tablet::HandleQLReadRequest(
     result->response.set_error_message(Format(
         "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
         metadata()->table_id(),
-        metadata()->schema_version(),
+        metadata()->primary_table_schema_version(),
         ql_read_request.schema_version(),
         ql_read_request.is_compatible_with_previous_version()));
     return Status::OK();
@@ -1822,8 +1847,9 @@ Status Tablet::HandlePgsqlReadRequest(
       pgsql_read_request.metrics_capture(), result->response);
 
   auto status = DoHandlePgsqlReadRequest(
-      &scoped_read_operation, metrics_scope.statistics(), metrics_scope.metrics(),
-      read_operation_data, is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
+      &scoped_read_operation, metrics_scope.metrics(),
+      read_operation_data.WithStatistics(metrics_scope.statistics()),
+      is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
       subtransaction_metadata, result);
 
   return status;
@@ -1831,7 +1857,6 @@ Status Tablet::HandlePgsqlReadRequest(
 
 Status Tablet::DoHandlePgsqlReadRequest(
     ScopedRWOperation* scoped_read_operation,
-    docdb::DocDBStatistics* statistics,
     TabletMetrics* metrics,
     const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
@@ -1859,7 +1884,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
     RETURN_NOT_OK(txn_op_ctx);
     status = ProcessPgsqlReadRequest(
         read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
-        *txn_op_ctx, storage, statistics, *scoped_read_operation, result);
+        *txn_op_ctx, storage, *scoped_read_operation, result);
   }
 
   // Assert the table is a Postgres table.

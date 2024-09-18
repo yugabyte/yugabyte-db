@@ -42,7 +42,7 @@ For instructions on preparing nodes for on-premises configurations in v2.20 and 
 Use Assisted Manual Provisioning in the following case:
 
 - You can allow SSH to a root-priveleged user, AND
-- You can't provide YBA with SSH login credentials for that user; however you can enter the password manually interactively.
+- You can't provide YugabyteDB Anywhere (YBA) with SSH login credentials for that user; however you can enter the password manually interactively.
 
 SSH is required only during initial provisioning of the nodes. After a node is provisioned, you can disable SSH.
 

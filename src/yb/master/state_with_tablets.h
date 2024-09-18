@@ -60,7 +60,6 @@ class StateWithTablets {
   Result<SysSnapshotEntryPB::State> AggregatedState() const;
 
   Status AnyFailure() const;
-  Result<bool> Complete() const;
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);

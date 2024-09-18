@@ -1316,6 +1316,53 @@ rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation, List *attrnos)
 	rte->values_lists = newValues;
 }
 
+static void
+YbAddWholeRowAttrIfNeeded(Query *parsetree,
+						  RangeTblEntry *target_rte,
+						  Relation target_relation)
+{
+	bool isneeded = false;
+	switch(parsetree->commandType)
+	{
+		case CMD_UPDATE:
+			if (YbIsUpdateOptimizationEnabled())
+			{
+				isneeded = true;
+				break;
+			}
+
+			/* If update optimizations are not enabled */
+			switch_fallthrough();
+		case CMD_DELETE:
+			if (YBRelHasOldRowTriggers(target_relation,
+									   parsetree->commandType) ||
+				YBRelHasSecondaryIndices(target_relation))
+			{
+				isneeded = true;
+			}
+
+			/* wholerow attr not needed */
+			break;
+		default:
+			elog(ERROR, "expected command to be one of (UPDATE, DELETE)");
+	}
+
+	if (!isneeded)
+		return;
+
+	Var		   *var = NULL;
+	const char *attrname;
+	TargetEntry *tle;
+
+	var = makeWholeRowVar(target_rte, parsetree->resultRelation, 0, false);
+	attrname = "wholerow";
+
+	tle = makeTargetEntry((Expr *) var,
+						  list_length(parsetree->targetList) + 1,
+						  pstrdup(attrname),
+						  true);
+	parsetree->targetList = lappend(parsetree->targetList, tle);
+}
 
 /*
  * rewriteTargetListUD - rewrite UPDATE/DELETE targetlist as needed
@@ -1341,26 +1388,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 
 	if (IsYBRelation(target_relation))
 	{
-		/*
-		 * If there are secondary indices on the target table, or if we have a 
-		 * row-level trigger corresponding to the operations, then also return 
-		 * the whole row.
-		 */	
-		if (YBRelHasOldRowTriggers(target_relation, parsetree->commandType) ||
-		    YBRelHasSecondaryIndices(target_relation))
-		{
-			var = makeWholeRowVar(target_rte,
-								  parsetree->resultRelation,
-								  0,
-								  false);
-			attrname = "wholerow";
-
-			tle = makeTargetEntry((Expr *) var,
-								  list_length(parsetree->targetList) + 1,
-								  pstrdup(attrname),
-								  true);
-			parsetree->targetList = lappend(parsetree->targetList, tle);
-		}
+		YbAddWholeRowAttrIfNeeded(parsetree, target_rte, target_relation);
 
 		/*
 		 * Emit ybctid so that executor can find the row to update or delete from YugaByte tables.

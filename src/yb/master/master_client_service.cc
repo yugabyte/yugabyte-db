@@ -52,8 +52,13 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
       auto tables = server_->catalog_manager_impl()->GetTables(GetTablesMode::kAll);
       const auto& tablet_id = req->tablet_ids(0);
       for (const auto& table : tables) {
-        TabletInfos tablets = table->GetTablets();
-        for (const auto& tablet : tablets) {
+        auto tablets_result = table->GetTablets();
+        if (!tablets_result) {
+          FillStatus(tablets_result.status(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, resp);
+          rpc.RespondFailure(tablets_result.status());
+          return;
+        }
+        for (const auto& tablet : *tablets_result) {
           if (tablet->tablet_id() == tablet_id) {
             TableType table_type;
             {

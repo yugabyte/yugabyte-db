@@ -109,6 +109,23 @@ class RangeIterator : public std::iterator<std::random_access_iterator_tag, Int>
 };
 
 template <class Int>
+class RangeObject;
+
+template <class Int>
+class RangeObjectToContainerHelper {
+ public:
+  explicit RangeObjectToContainerHelper(const RangeObject<Int>& range) : range_(range) {}
+
+  template <class Out>
+  operator Out() const {
+    return Out(range_.begin(), range_.end());
+  }
+
+ private:
+  const RangeObject<Int>& range_;
+};
+
+template <class Int>
 class RangeObject {
  public:
   using const_iterator = RangeIterator<Int>;
@@ -140,6 +157,10 @@ class RangeObject {
     auto new_start = stop_ - (new_step > 0 ? -1 : 1);
     auto new_stop = new_start + static_cast<Int>(size()) * new_step;
     return {new_start, new_stop, new_step};
+  }
+
+  RangeObjectToContainerHelper<Int> ToContainer() const {
+    return RangeObjectToContainerHelper(*this);
   }
 
  private:

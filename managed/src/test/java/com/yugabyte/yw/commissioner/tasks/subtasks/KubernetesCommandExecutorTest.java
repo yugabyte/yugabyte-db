@@ -399,6 +399,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
     yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
     expectedOverrides.put("yugabytedUi", yugabytedUiInfo);
+
+    expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
   }
 

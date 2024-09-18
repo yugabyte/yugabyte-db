@@ -31,7 +31,7 @@ type Context struct {
 // NewInstanceTypesFormat for formatting output
 func NewInstanceTypesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultInstanceTypesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -41,6 +41,27 @@ func NewInstanceTypesFormat(source string) formatter.Format {
 
 // Write renders the context for a list of InstanceTypess
 func Write(ctx formatter.Context, instanceTypes []ybaclient.InstanceTypeResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
+		// Marshal the slice of instance types into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(instanceTypes, "", "  ")
+		} else {
+			output, err = json.Marshal(instanceTypes)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling instance types to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, instanceType := range instanceTypes {
 			err := format(&Context{iT: instanceType})

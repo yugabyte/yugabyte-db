@@ -13,6 +13,7 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.impl.DbAuditLoggingEnabledValidator;
 import com.yugabyte.yw.common.config.impl.EnableRollbackSupportKeyValidator;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
 import com.yugabyte.yw.common.config.impl.OidcEnabledKeyValidator;
@@ -48,12 +49,14 @@ public class RuntimeConfigPreChangeNotifier {
       MetricCollectionLevelValidator metricCollectionLevelValidator,
       UseNewRbacAuthzValidator useNewRbacAuthzValidator,
       EnableRollbackSupportKeyValidator enableRollbackSupportKeyValidator,
-      OidcEnabledKeyValidator oidcEnabledKeyValidator) {
+      OidcEnabledKeyValidator oidcEnabledKeyValidator,
+      DbAuditLoggingEnabledValidator dbAuditLoggingEnabledValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
     addListener(useNewRbacAuthzValidator);
     addListener(enableRollbackSupportKeyValidator);
     addListener(oidcEnabledKeyValidator);
+    addListener(dbAuditLoggingEnabledValidator);
   }
 
   public void notifyListenersDeleteConfig(UUID scopeUUID, String path) {

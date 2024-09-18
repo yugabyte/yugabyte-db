@@ -1,7 +1,10 @@
+import { useSelector } from 'react-redux';
 import { Tab, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import UsersListContainer from './Users/UsersListContainer';
 import UserAuthContainer from './UserAuth/UserAuthContainer';
+import ManageGroups from '../../redesign/features/rbac/groups/components/ManageGroups';
+import { UserAuthNew } from './UserAuth/UserAuthNew';
 import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
 import { YBLoading } from '../common/indicators';
 import KeyIcon from './icons/key_icon';
@@ -12,6 +15,8 @@ export const UserManagement = (props) => {
   const role = currentUserInfo?.role;
   const isAdmin = ['SuperAdmin'].includes(role);
   const isLoading = !role;
+  const featureFlags = useSelector((state) => state.featureFlags);
+  const isNewAuthEnabled = featureFlags.test.enableNewAuthAndMappings || featureFlags.released.enableNewAuthAndMappings;
 
   const AuthTab = () => {
     return (
@@ -62,6 +67,21 @@ export const UserManagement = (props) => {
         >
           <UsersListContainer />
         </Tab>
+        {
+          isNewAuthEnabled && (
+            <Tab
+              disabled={!havePermission()}
+              eventKey="user-groups"
+              title={<span>
+                <i className="fa fa-user user-tab-logo" aria-hidden="true"></i>
+                Groups
+              </span>}
+              unmountOnExit
+            >
+              {isLoading ? <YBLoading /> : <ManageGroups />}
+            </Tab>
+          )
+        }
         <Tab
           disabled={!havePermission()}
           eventKey="user-auth"
@@ -70,6 +90,21 @@ export const UserManagement = (props) => {
         >
           {isLoading ? <YBLoading /> : <UserAuthContainer isAdmin={isAdmin} />}
         </Tab>
+        {
+          isNewAuthEnabled && (
+            <Tab
+              disabled={!havePermission()}
+              eventKey="user-auth-new"
+              title={<span>
+                <KeyIcon />
+                User Authentication New
+              </span>}
+              unmountOnExit
+            >
+              <UserAuthNew isAdmin={isAdmin} />
+            </Tab>
+          )
+        }
       </YBTabsPanel>
     </div>
   );

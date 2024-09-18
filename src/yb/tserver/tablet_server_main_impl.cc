@@ -124,7 +124,6 @@ DECLARE_string(certs_dir);
 DECLARE_string(certs_for_client_dir);
 DECLARE_string(cert_node_filename);
 DECLARE_string(ysql_hba_conf);
-DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);
@@ -273,6 +272,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
+
+  server->SharedObject().SetPid(getpid());
 
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());

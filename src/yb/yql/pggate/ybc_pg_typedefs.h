@@ -196,10 +196,7 @@ typedef enum TxnPriorityRequirement {
   kHighestPriority
 } TxnPriorityRequirement;
 
-// API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -395,6 +392,9 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
   const bool*     TEST_ysql_hide_catalog_version_increment_log;
+  const bool*     TEST_generate_ybrowid_sequentially;
+  const bool*     ysql_use_fast_backward_scan;
+  const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -516,12 +516,12 @@ typedef struct PgSessionTxnInfo {
 } YBCPgSessionTxnInfo;
 
 // Values to copy from main backend session into background workers
-typedef struct PgSessionParallelData {
+typedef struct PgSessionState {
   uint64_t session_id;
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
   uint32_t active_sub_transaction_id;
-} YBCPgSessionParallelData;
+} YBCPgSessionState;
 
 typedef struct PgJwtAuthOptions {
   char* jwks;
@@ -638,7 +638,11 @@ typedef enum PgRowMessageAction {
 typedef struct PgRowMessage {
   int col_count;
   YBCPgDatumMessage* cols;
+  // Microseconds since PostgreSQL epoch (2000-01-01). Used by most of the PG code and sent to the
+  // client as part of the record.
   uint64_t commit_time;
+  // The hybrid time of the commit. Used to set the correct read time for catalog changes.
+  uint64_t commit_time_ht;
   YBCPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YBCPgOid table_oid;
@@ -666,8 +670,8 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
-  // PgClient session id.
-  uint64_t session_id;
+  // pid of the YSQL/YCQL backend which is executing the query
+  int32_t pid;
 
   // OID of database.
   uint32_t database_id;
@@ -699,7 +703,7 @@ typedef struct PgYCQLStatementStats {
 // Struct to store ASH samples in the circular buffer.
 typedef struct AshSample {
   // Metadata of the sample.
-  // yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
+  // top_level_node_id and rpc_request_id are also part of the metadata,
   // but the reason to not store them inside YBCAshMetadata is that these remain
   // constant in PG for all the samples of a particular node. So we don't store it
   // in YBCAshMetadata, which is stored in the procarray to save shared memory.
@@ -708,7 +712,7 @@ typedef struct AshSample {
   // UUID of the TServer where the query generated.
   // This remains constant for PG samples on a node, but can differ for TServer
   // samples as TServer can be processing requests from other nodes.
-  unsigned char yql_endpoint_tserver_uuid[16];
+  unsigned char top_level_node_id[16];
 
   // A single query can generate multiple RPCs, this is used to differentiate
   // those RPCs. This will always be 0 for PG samples
@@ -723,7 +727,7 @@ typedef struct AshSample {
   // If a certain number of samples are available and we capture a portion of
   // them, the sample weight is the reciprocal of the captured portion or 1,
   // whichever is maximum.
-  double sample_weight;
+  float sample_weight;
 
   // Timestamp when the sample was captured.
   uint64_t sample_time;
@@ -733,10 +737,15 @@ typedef struct AshSample {
 typedef struct PgAshConfig {
   YBCAshMetadata* metadata;
   bool* yb_enable_ash;
-  unsigned char yql_endpoint_tserver_uuid[16];
+  unsigned char top_level_node_id[16];
   // length of host should be equal to INET6_ADDRSTRLEN
   char host[46];
 } YBCPgAshConfig;
+
+typedef struct WaitEventDescriptor {
+  uint32_t code;
+  const char *description;
+} YBCWaitEventDescriptor;
 
 typedef struct YBCBindColumn {
   int attr_num;
@@ -782,6 +791,22 @@ typedef enum PgYbrowidMode {
 // The reserved database oid for system_postgres. Must be the same as
 // kPgSequencesDataTableOid (defined in entity_ids.h).
 static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;
+
+typedef struct YbCloneInfo {
+  // The clone time in microseconds since the unix epoch (not a hybrid time).
+  uint64_t clone_time;
+  const char* src_db_name;
+  const char* src_owner;
+  const char* tgt_owner;
+} YbCloneInfo;
+
+// A thread-safe way to cache compiled regexes.
+typedef struct PgThreadLocalRegexpCache {
+  int num;
+  void* array;
+} YBCPgThreadLocalRegexpCache;
+
+typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
 
 #ifdef __cplusplus
 }  // extern "C"

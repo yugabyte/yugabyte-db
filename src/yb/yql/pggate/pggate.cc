@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,14 +14,12 @@
 
 #include "yb/yql/pggate/pggate.h"
 
-#include <list>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
 
 #include <ev++.h>
 
@@ -78,8 +76,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-using std::string;
-using std::vector;
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
@@ -93,22 +89,6 @@ DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
 
 namespace yb::pggate {
 namespace {
-
-struct TableHolder {
-  explicit TableHolder(const PgTableDescPtr& descr) : table_(descr) {}
-  PgTable table_;
-};
-
-class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
- public:
-  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local,
-                         PgsqlMetricsCaptureType metrics_capture)
-      : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local, metrics_capture) {}
-
-  PgTable& table() {
-    return table_;
-  }
-};
 
 Status AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
                  const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
@@ -128,7 +108,7 @@ Status AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
 }
 
 Result<PgApiContext::MessengerHolder> BuildMessenger(
-    const string& client_name,
+    const std::string& client_name,
     int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
@@ -149,180 +129,6 @@ tserver::TServerSharedObject BuildTServerSharedObject() {
           << ", " << FLAGS_pggate_tserver_shm_fd;
   LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
   return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
-}
-
-// Helper class to collect operations from multiple doc_ops and send them with a single perform RPC.
-class PrecastRequestSender {
-  // Struct stores operation and table for futher sending this operation
-  // with the 'PgSession::RunAsync' method.
-  struct OperationInfo {
-    OperationInfo(const PgsqlOpPtr& operation_, const PgTableDesc& table_)
-        : operation(operation_), table(&table_) {}
-    PgsqlOpPtr operation;
-    const PgTableDesc* table;
-  };
-
-  class ResponseProvider : public PgDocResponse::Provider {
-   public:
-    // Shared state among different instances of the 'PgDocResponse' object returned by the 'Send'
-    // method. Response field will be initialized when all collected operations will be sent by the
-    // call of 'TransmitCollected' method.
-    using State = PgDocResponse::Data;
-    using StatePtr = std::shared_ptr<State>;
-
-    explicit ResponseProvider(const StatePtr& state)
-        : state_(state) {}
-
-    Result<PgDocResponse::Data> Get() override {
-      SCHECK(state_->response, IllegalState, "Response is not set");
-      return *state_;
-    }
-
-   private:
-    StatePtr state_;
-  };
-
- public:
-  Result<PgDocResponse> Send(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
-    if (!collecting_mode_) {
-      auto future = VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future));
-    }
-    // For now PrecastRequestSender can work only with a new in txn limit set to the current time
-    // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
-    // TODO: Expalin why is this the case because it differs from requirement 1 in
-    // src/yb/yql/pggate/README
-    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
-    for (auto end = ops + ops_count; ops != end; ++ops) {
-      ops_.emplace_back(*ops, table);
-    }
-    if (!provider_state_) {
-      provider_state_ = std::make_shared<ResponseProvider::State>();
-    }
-    return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
-  }
-
-  Status TransmitCollected(PgSession* session) {
-    auto res = DoTransmitCollected(session);
-    ops_.clear();
-    provider_state_.reset();
-    return res;
-  }
-
-  void DisableCollecting() {
-    DCHECK(ops_.empty());
-    collecting_mode_ = false;
-  }
-
- private:
-  Status DoTransmitCollected(PgSession* session) {
-    auto i = ops_.begin();
-    auto perform_future = VERIFY_RESULT(session->RunAsync(make_lw_function(
-        [&i, end = ops_.end()] {
-          using TO = PgSession::TableOperation<PgsqlOpPtr>;
-          if (i == end) {
-            return TO();
-          }
-          auto& info = *i++;
-          return TO{.operation = &info.operation, .table = info.table};
-        }), HybridTime()));
-    *provider_state_ = VERIFY_RESULT(perform_future.Get());
-    return Status::OK();
-  }
-
-  bool collecting_mode_ = true;
-  ResponseProvider::StatePtr provider_state_;
-  boost::container::small_vector<OperationInfo, 16> ops_;
-};
-
-using ExecParametersMutator = std::function<void(PgExecParameters*)>;
-
-Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
-                            PgOid database_id,
-                            TableYbctidVector* ybctids,
-                            const OidSet& region_local_tables,
-                            const ExecParametersMutator& exec_params_mutator) {
-  // Group the items by the table ID.
-  std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
-    return a.table_id < b.table_id;
-  });
-
-  auto arena = std::make_shared<ThreadSafeArena>();
-
-  PrecastRequestSender precast_sender;
-  boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
-  auto request_sender = [&precast_sender](
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
-    return precast_sender.Send(
-        session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
-  };
-  // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
-  // Each doc_op will use request_sender to send all the requests with single perform RPC.
-  for (auto it = ybctids->begin(), end = ybctids->end(); it != end;) {
-    const auto table_id = it->table_id;
-    auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
-    bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
-    auto metrics_capture = session->metrics().metrics_capture();
-    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(
-        arena.get(), desc, is_region_local, metrics_capture);
-
-    auto* expr_pb = read_op->read_request().add_targets();
-    expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-    doc_ops.push_back(std::make_unique<PgDocReadOp>(
-        session, &read_op->table(), std::move(read_op), request_sender));
-    auto& doc_op = *doc_ops.back();
-    auto exec_params = doc_op.ExecParameters();
-    exec_params_mutator(&exec_params);
-    RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
-    // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
-      return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)}));
-    RETURN_NOT_OK(doc_op.Execute());
-  }
-
-  RETURN_NOT_OK(precast_sender.TransmitCollected(session.get()));
-  // Disable further request collecting as in the vast majority of cases new requests will not be
-  // initiated because requests for all ybctids has already been sent. But in case of dynamic
-  // splitting new requests might be sent. They will be sent and processed as usual (i.e. request
-  // of each doc_op will be sent individually).
-  precast_sender.DisableCollecting();
-  // Collect the results from the docdb ops.
-  ybctids->clear();
-  for (auto& it : doc_ops) {
-    for (;;) {
-      auto rowsets = VERIFY_RESULT(it->GetResult());
-      if (rowsets.empty()) {
-        break;
-      }
-      for (auto& row : rowsets) {
-        RETURN_NOT_OK(row.ProcessSystemColumns());
-        for (const auto& ybctid : row.ybctids()) {
-          ybctids->emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
-        }
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-auto MakeYbctidReaderForExplicitRowLock(const PgSession::ScopedRefPtr& session) {
-  return [&session](TableYbctidVector* ybctids,
-                    const ExplicitRowLockBuffer::Info& info,
-                    const OidSet& region_local_tables) {
-    return FetchExistingYbctids(
-        session, info.database_id, ybctids, region_local_tables,
-        [&info](PgExecParameters* exec_params) {
-          exec_params->rowmark = info.rowmark;
-          exec_params->pg_wait_policy = info.pg_wait_policy;
-          exec_params->docdb_wait_policy = info.docdb_wait_policy;
-        });
-  };
 }
 
 } // namespace
@@ -473,7 +279,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
     if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
-      new_row_id_holder = session->GenerateNewRowid();
+      new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
     } else {
       const auto& collation_info = attr->collation_info;
@@ -499,6 +305,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     doc_key_.set_hash(VERIFY_RESULT(
         target_desc->partition_schema().PgsqlHashColumnCompoundValue(hashed_values)));
   }
+  VLOG(5) << "Built ybctid: " << doc_key_.ToString();
   return doc_key_.Encode();
 }
 
@@ -554,17 +361,16 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-uint64_t PgApiImpl::GetSessionId() {
-  return pg_client_.SessionID();
-}
-
-Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
+Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
   CHECK(!pg_session_);
+
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, database_name, pg_txn_manager_, pg_callbacks_, session_stats);
-  if (!database_name.empty()) {
-    RETURN_NOT_OK(session->ConnectDatabase(database_name));
-  }
+      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats,
+      [&pg_session = pg_session_](
+          PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
+          const ExecParametersMutator& mutator) {
+        return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
+      });
 
   pg_session_.swap(session);
   return Status::OK();
@@ -740,10 +546,6 @@ void PgApiImpl::DeleteStatement(PgStatement *handle) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::ConnectDatabase(const char *database_name) {
-  return pg_session_->ConnectDatabase(database_name);
-}
-
 Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
   return pg_session_->IsDatabaseColocated(database_oid, colocated, legacy_colocated_database);
@@ -751,11 +553,10 @@ Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
 
 Status PgApiImpl::NewCreateDatabase(
     const char* database_name, const PgOid database_oid, const PgOid source_database_oid,
-    const char* source_database_name, const PgOid next_oid, const bool colocated,
-    const int64_t clone_time, PgStatement** handle) {
+    const PgOid next_oid, const bool colocated, YbCloneInfo *yb_clone_info, PgStatement** handle) {
   auto stmt = std::make_unique<PgCreateDatabase>(
-      pg_session_, database_name, database_oid, source_database_oid, source_database_name, next_oid,
-      clone_time, colocated);
+      pg_session_, database_name, database_oid, source_database_oid, next_oid,
+      yb_clone_info, colocated);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -1048,6 +849,16 @@ Status PgApiImpl::AlterTableSetTableId(PgStatement *handle, const PgObjectId &ta
 
   PgAlterTable *pg_stmt = down_cast<PgAlterTable *>(handle);
   return pg_stmt->SetTableId(table_id);
+}
+
+Status PgApiImpl::AlterTableSetSchema(PgStatement *handle, const char *schema_name) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->SetSchema(schema_name);
 }
 
 Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
@@ -1413,9 +1224,9 @@ Status PgApiImpl::DmlAddRowLowerBound(YBCPgStatement handle,
                                                         is_inclusive);
 }
 
-Status PgApiImpl::DmlBindHashCode(
+void PgApiImpl::DmlBindHashCode(
   PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end) {
-  return down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
+  down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
 }
 
 Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
@@ -1615,13 +1426,11 @@ Status PgApiImpl::InitRandomState(PgStatement *handle, double rstate_w, uint64 r
   return Status::OK();
 }
 
-Status PgApiImpl::SampleNextBlock(PgStatement *handle, bool *has_more) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->SampleNextBlock(has_more));
-  return Status::OK();
+Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->SampleNextBlock();
 }
 
 Status PgApiImpl::ExecSample(PgStatement *handle) {
@@ -1633,13 +1442,11 @@ Status PgApiImpl::ExecSample(PgStatement *handle) {
   return Status::OK();
 }
 
-Status PgApiImpl::GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->GetEstimatedRowCount(liverows, deadrows));
-  return Status::OK();
+Result<EstimatedRowCount> PgApiImpl::GetEstimatedRowCount(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->GetEstimatedRowCount();
 }
 
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
@@ -1675,11 +1482,9 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
 
 // Select ------------------------------------------------------------------------------------------
 
-Status PgApiImpl::NewSelect(const PgObjectId& table_id,
-                            const PgObjectId& index_id,
-                            const PgPrepareParameters *prepare_params,
-                            bool is_region_local,
-                            PgStatement **handle) {
+Status PgApiImpl::NewSelect(
+    const PgObjectId& table_id, const PgObjectId& index_id,
+    const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle) {
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
   // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
@@ -1688,18 +1493,22 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
   //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
   std::unique_ptr<PgDmlRead> stmt;
-  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
-    if (!index_id.IsValid()) {
-      return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+  PgDml::PrepareParameters dml_prepare_params;
+  if (prepare_params) {
+    dml_prepare_params.querying_colocated_table = prepare_params->querying_colocated_table;
+    dml_prepare_params.index_only_scan = prepare_params->index_only_scan;
+    dml_prepare_params.fetch_ybctids_only = prepare_params->fetch_ybctids_only;
+    if (prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+      RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
+      stmt = std::make_unique<PgSelectIndex>(
+          pg_session_, index_id, is_region_local, dml_prepare_params);
     }
-    stmt = std::make_unique<PgSelectIndex>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
-  } else {
-    // For IndexScan PgSelect processing will create subquery PgSelectIndex.
-    stmt = std::make_unique<PgSelect>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
   }
 
+  if (!stmt) {
+    stmt = std::make_unique<PgSelect>(
+        pg_session_, table_id, is_region_local, dml_prepare_params, index_id);
+  }
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1853,7 +1662,7 @@ Status PgApiImpl::NewSRF(
 }
 
 Status PgApiImpl::AddFunctionParam(
-    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity, uint64_t datum,
     bool is_null) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid function handle");
@@ -1863,7 +1672,7 @@ Status PgApiImpl::AddFunctionParam(
 }
 
 Status PgApiImpl::AddFunctionTarget(
-    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+    PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
     const YBCPgTypeAttrs type_attrs) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid function handle");
@@ -2088,6 +1897,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
   return tserver_shared_object_->tserver_uuid();
 }
 
+pid_t PgApiImpl::GetLocalTServerPid() const {
+  return tserver_shared_object_->pid();
+}
+
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -2124,6 +1937,10 @@ Status PgApiImpl::ResetTransactionReadPoint() {
   return pg_txn_manager_->ResetTransactionReadPoint();
 }
 
+Status PgApiImpl::EnsureReadPoint() {
+  return pg_txn_manager_->EnsureReadPoint();
+}
+
 Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint();
 }
@@ -2156,8 +1973,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
   return pg_txn_manager_->SetEnableTracing(tracing);
 }
 
-Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
+Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
@@ -2263,14 +2080,7 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      LightweightTableYbctid(table_id, ybctid),
-      make_lw_function(
-        [this, database_id](TableYbctidVector* ybctids,
-                            const OidSet& region_local_tables) {
-          return FetchExistingYbctids(
-              pg_session_, database_id, ybctids, region_local_tables,
-              [](PgExecParameters* exec_params) {exec_params->rowmark = ROW_MARK_KEYSHARE;});
-        }));
+      database_id, LightweightTableYbctid(table_id, ybctid));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(
@@ -2295,14 +2105,11 @@ Status PgApiImpl::AddExplicitRowLockIntent(
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
        .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid),
-      is_region_local,
-      make_lw_function(MakeYbctidReaderForExplicitRowLock(pg_session_)));
+      LightweightTableYbctid(table_id.object_oid, ybctid), is_region_local);
 }
 
 Status PgApiImpl::FlushExplicitRowLockIntents() {
-  return pg_session_->explicit_row_lock_buffer().Flush(
-      make_lw_function(MakeYbctidReaderForExplicitRowLock(pg_session_)));
+  return pg_session_->explicit_row_lock_buffer().Flush();
 }
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
@@ -2332,7 +2139,7 @@ void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
     LOG(DFATAL) << "Sys table prefetching was started already";
   }
 
-  CHECK(!pg_session_->catalog_read_time());
+  ResetCatalogReadTime();
   pg_sys_table_prefetcher_.emplace(options);
 }
 
@@ -2341,6 +2148,7 @@ void PgApiImpl::StopSysTablePrefetching() {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_.reset();
+    ResetCatalogReadTime();
   }
 }
 
@@ -2370,7 +2178,7 @@ Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
+Result<TableKeyRanges> PgApiImpl::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   return pg_session_->GetTableKeyRanges(
@@ -2378,20 +2186,14 @@ Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
       max_key_length);
 }
 
-uint64_t PgApiImpl::GetReadTimeSerialNo() {
-  return pg_txn_manager_->GetReadTimeSerialNo();
+void PgApiImpl::DumpSessionState(YBCPgSessionState* session_data) {
+  session_data->session_id = GetSessionID();
+  pg_txn_manager_->DumpSessionState(session_data);
 }
 
-uint64_t PgApiImpl::GetTxnSerialNo() {
-  return pg_txn_manager_->GetTxnSerialNo();
-}
-
-SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
-  return pg_txn_manager_->GetActiveSubTransactionId();
-}
-
-void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  pg_txn_manager_->RestoreSessionParallelData(session_data);
+void PgApiImpl::RestoreSessionState(const YBCPgSessionState& session_data) {
+  DCHECK_EQ(GetSessionID(), session_data.session_id);
+  pg_txn_manager_->RestoreSessionState(session_data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2485,5 +2287,14 @@ void PgApiImpl::ClearSessionState() {
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+
+uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
+  return pg_txn_manager_->GetCurrentReadTimePoint();
+}
+
+Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+}
 
 } // namespace yb::pggate

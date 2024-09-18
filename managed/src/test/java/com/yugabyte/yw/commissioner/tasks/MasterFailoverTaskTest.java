@@ -152,6 +152,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     }
     super.setLeaderlessTabletsMock();
     super.setFollowerLagMock();
+    super.setMockLiveTabletServers(mockClient, defaultUniverse);
   }
 
   @Test

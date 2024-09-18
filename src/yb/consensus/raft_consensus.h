@@ -280,6 +280,13 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false) override;
 
+  Result<ReadOpsResult> ReadReplicatedMessagesForConsistentCDC(
+      OpId from,
+      uint64_t stream_safe_time,
+      CoarseTimePoint deadline,
+      bool fetch_single_entry = false,
+      int64_t* last_replicated_opid_index = nullptr) override;
+
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.

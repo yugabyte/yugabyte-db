@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/persistence/). Loosely speaking:
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/data-model/). Loosely speaking:
 
 - A _table's_ internal key-value store maps primary keys to the remaining columns.
 - A _secondary index's_ internal key-value store maps index keys to primary keys.
@@ -224,7 +224,7 @@ The assumption in the following examples is that you are using the GIN index in 
     Time: 2.115 ms
     ```
 
-### Using opclass `jsonb_path_ops`
+### Using opclass jsonb_path_ops
 
 By default, JSONB GIN indexes use the opclass `jsonb_ops`. Another opclass, `jsonb_path_ops`, can be used instead.
 

@@ -53,7 +53,7 @@ class PgAshTest : public LibPqTestBase {
   const int kTabletsPerServer = 1;
 };
 
-TEST_F(PgAshTest, YB_DISABLE_TEST_IN_TSAN(NoMemoryLeaks)) {
+TEST_F(PgAshTest, NoMemoryLeaks) {
   ASSERT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
 
   thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {

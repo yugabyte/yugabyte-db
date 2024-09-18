@@ -79,6 +79,11 @@ namespace tserver {
 class MiniTabletServer;
 }
 
+YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
+YB_STRONGLY_TYPED_BOOL(ForceStepDown);
+YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
+YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
+
 struct MiniClusterOptions {
   // Number of master servers.
   size_t num_masters = 1;
@@ -323,9 +328,6 @@ MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> JumpClocks(
 void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
 
-YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
-YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
-
 using TabletPeerFilter = std::function<bool(const tablet::TabletPeerPtr&)>;
 
 std::unordered_set<std::string> ListTabletIdsForTable(
@@ -374,7 +376,8 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline);
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
 Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
@@ -387,8 +390,6 @@ Status WaitForTableLeaders(
     MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout);
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
-
-YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,

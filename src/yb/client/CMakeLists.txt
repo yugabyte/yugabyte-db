@@ -77,12 +77,12 @@ set(CLIENT_LIBS
   tserver_proto
   tserver_service_proto
   pg_auto_analyze_service_proto
+  gutil
   test_echo_service_proto
   tserver_util
   yb_ql_expr
   yb_ash
   yb_util
-  gutil
   yrpc
   yb_dockv)
 
@@ -95,6 +95,19 @@ set(CLIENT_LIBS
 ADD_YB_LIBRARY(yb_client
   SRCS ${CLIENT_SRCS}
   DEPS ${CLIENT_LIBS})
+
+set(CLIENT_MOCK_SRCS
+  xcluster_client_mock.cc
+)
+
+set(CLIENT_MOCK_LIBS
+  yb_client
+  gmock
+  gtest)
+
+ADD_YB_LIBRARY(yb_client_mock
+  SRCS ${CLIENT_MOCK_SRCS}
+  DEPS ${CLIENT_MOCK_LIBS})
 
 if(NOT APPLE)
   # Localize thirdparty symbols using a linker version script. This hides them

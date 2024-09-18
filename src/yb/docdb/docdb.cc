@@ -87,32 +87,34 @@ namespace {
 
 // key should be valid prefix of doc key, ending with some complete primitive value or group end.
 Status ApplyIntent(
-    RefCntPrefix key, dockv::IntentTypeSet intent_types, LockBatchEntries* keys_locked) {
+    RefCntPrefix key, dockv::IntentTypeSet intent_types,
+    LockBatchEntries<RefCntPrefix>* keys_locked) {
   RSTATUS_DCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&key));
-  keys_locked->push_back({std::move(key), intent_types});
+  keys_locked->push_back(
+      LockBatchEntry<RefCntPrefix> {std::move(key), intent_types});
   return Status::OK();
 }
 
-struct DetermineKeysToLockResult {
-  LockBatchEntries lock_batch;
-  bool need_read_snapshot;
+Status FormSharedLock(
+    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types,
+    LockBatchEntries<ObjectLockPrefix>* keys_locked) {
+  SCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
+  keys_locked->push_back(
+      LockBatchEntry<ObjectLockPrefix> {.key = std::move(key), .intent_types = intent_types});
+  return Status::OK();
+}
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(lock_batch, need_read_snapshot);
-  }
-};
-
-Result<DetermineKeysToLockResult> DetermineKeysToLock(
+Result<DetermineKeysToLockResult<RefCntPrefix>> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
-  DetermineKeysToLockResult result;
+  DetermineKeysToLockResult<RefCntPrefix> result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
   result.need_read_snapshot = false;
@@ -202,7 +204,8 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 //   (k3, {kStrongRead, kStrongWrite}),
 // ]
 // Note that only keys which appear in order in keys_locked will be collapsed in this manner.
-void FilterKeysToLock(LockBatchEntries *keys_locked) {
+template <typename T>
+void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
   if (keys_locked->empty()) {
     return;
   }
@@ -226,7 +229,7 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
   keys_locked->erase(w, keys_locked->end());
 }
 
-}  // namespace
+} // namespace
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
@@ -252,7 +255,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
-  FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
+  FilterKeysToLock<RefCntPrefix>(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
   const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
@@ -507,6 +510,94 @@ void CombineExternalIntents(
   }
   buffer.AppendUInt64AsVarInt(0);
   provider->SetValue(buffer.AsSlice());
+}
+
+// We associate a list of <KeyEntryType, IntentTypeSet> to each table lock type such that the
+// table lock conflict matrix of postgres is preserved.
+//
+// For instance, let's consider 'ROW_SHARE' and 'EXCLUSIVE' lock modes.
+// 1. 'ROW_SHARE' lock mode on object would lead to the following keys
+//    [<object/object hash/other prefix> kWeakObjectLock]   [kStrongRead]
+// 2. 'EXCLUSIVE' lock mode on the same object would lead to the following keys
+//    [<object/object hash/other prefix> kWeakObjectLock]   [kWeakWrite]
+//    [<object/object hash/other prefix> kStrongObjectLock] [kStrongRead, kStrongWrite]
+//
+// When checking conflicts for the same key, '[<object/object hash/other prefix> kWeakObjectLock]'
+// in this case, we see that the intents requested are [kStrongRead] and [kWeakWrite] for modes
+// 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict among
+// themselves, we successfully detect the conflict.
+const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForLockType(
+    TableLockType lock) {
+  static const std::array<
+      std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>,
+      TableLockType_ARRAYSIZE> lock_entries = {{
+    // NONE
+    {{}},
+    // ACCESS_SHARE
+    {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
+    }},
+    // ROW_SHARE
+    {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}}
+    }},
+    // ROW_EXCLUSIVE
+    {{
+      {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
+    }},
+    // SHARE_UPDATE_EXCLUSIVE
+    {{
+      {
+        KeyEntryType::kStrongObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}
+      }
+    }},
+    // SHARE
+    {{
+      {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}}
+    }},
+    // SHARE_ROW_EXCLUSIVE
+    {{
+      {
+        KeyEntryType::kStrongObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kWeakRead, dockv::IntentType::kStrongWrite}
+      }
+    }},
+    // EXCLUSIVE
+    {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakWrite}},
+      {
+        KeyEntryType::kStrongObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
+      }
+    }},
+    // ACCESS_EXCLUSIVE
+    {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}},
+      {
+        KeyEntryType::kStrongObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
+      }
+    }}
+  }};
+  return lock_entries[lock];
+}
+
+// Returns a DetermineKeysToLockResult object with its lock_batch containing a list of entries with
+// 'key' as <object id, KeyEntry> and 'intent_types' set.
+Result<DetermineKeysToLockResult<ObjectLockPrefix>> DetermineObjectsToLock(
+    const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock) {
+  DetermineKeysToLockResult<ObjectLockPrefix> result;
+  for (const auto& object_lock : objects_to_lock) {
+    SCHECK(object_lock.has_object_oid(), IllegalState, "ObjectLockPB has empty object oid");
+    SCHECK(object_lock.has_database_oid(), IllegalState, "ObjectLockPB has empty database oid");
+    for (const auto& [lock_key, intent_types] : GetEntriesForLockType(object_lock.lock_type())) {
+      ObjectLockPrefix key(object_lock.database_oid(), object_lock.object_oid(), lock_key);
+      RETURN_NOT_OK(FormSharedLock(std::move(key), intent_types, &result.lock_batch));
+    }
+  }
+  FilterKeysToLock<ObjectLockPrefix>(&result.lock_batch);
+  return result;
 }
 
 }  // namespace docdb

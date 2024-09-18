@@ -21,18 +21,18 @@ In the following sections, you will:
 
 1. Examine YB Shoes, a sample eCommerce dashboard application.
 1. Create a web application on Azure App Service.
-1. Provision a database cluster on YugabyteDB Managed and seed it with data.
+1. Provision a database cluster on YugabyteDB Aeon and seed it with data.
 1. Deploy YB Shoes to Azure App Service from a local repository.
 
 ## Prerequisites
 
-- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Aeon account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/)
 
 ## Introducing YB Shoes
 
-Let's start by introducing YB Shoes and its functionality. YB Shoes is an eCommerce dashboard that displays current shoe inventory and recent sales. YB Shoes is backed by a Node.js server which connects to YugabyteDB Managed. The queried inventory and sales data is displayed on a ReactJS frontend.
+Let's start by introducing YB Shoes and its functionality. YB Shoes is an eCommerce dashboard that displays current shoe inventory and recent sales. YB Shoes is backed by a Node.js server which connects to YugabyteDB Aeon. The queried inventory and sales data is displayed on a ReactJS frontend.
 
 Visit GitHub to download the [web application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-app-service-demo-nodejs) you will be deploying to Azure App Service.
 
@@ -58,11 +58,11 @@ After creating your application, visit the associated URL to confirm it's up and
 
 ![Application running in Azure and waiting for content](/images/tutorials/azure/azure-app-service/azure-app-running.png)
 
-Now that we've set the foundation on Azure, let's deploy a database cluster for YB Shoes on YugabyteDB Managed.
+Now that we've set the foundation on Azure, let's deploy a database cluster for YB Shoes on YugabyteDB Aeon.
 
-## Create a cluster in YugabyteDB Managed
+## Create a cluster in YugabyteDB Aeon
 
-For steps on creating a cluster in YugabyteDB Managed, see the [Quick start](../../../yugabyte-cloud/managed-freetrial/).
+For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](../../../yugabyte-cloud/managed-freetrial/).
 
 This example shows a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
@@ -72,7 +72,7 @@ Add the [outbound addresses for your web app](https://learn.microsoft.com/en-us/
 
 ![Locate the outbound IP addresses for your web app in Azure](/images/tutorials/azure/azure-app-service/azure-outbound-traffic.png)
 
-Now that we have a working cluster in YugabyteDB Managed, let's add some data.
+Now that we have a working cluster in YugabyteDB Aeon, let's add some data.
 
 ## Add data to YugabyteDB
 
@@ -91,7 +91,7 @@ As we're deploying the application from a local git repository, let's use the [A
 First, you need to [configure the application settings](https://learn.microsoft.com/en-us/cli/azure/webapp/config/appsettings?view=azure-cli-latest) in Azure:
 
 ```sh
-# Convert the downloaded CA certificate from YugabyteDB Managed to a single line string, then Base64 encode it
+# Convert the downloaded CA certificate from YugabyteDB Aeon to a single line string, then Base64 encode it
 # Azure Configuration Settings forbid special characters, so this ensures the cert can be passed properly to our application
 # Tip: Run this command to convert cert file to base64 encoded single line string:
 # cat /path/to/cert/file | base64
@@ -136,4 +136,4 @@ After pushing code to the remote repository, Azure automatically builds and publ
 
 ## Wrap-up
 
-As you see, moving an application to the cloud with Azure App Service and YugabyteDB Managed doesn't require much additional configuration. For more insight into building Node.js applications with YugabyteDB, check out [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/).
+As you see, moving an application to the cloud with Azure App Service and YugabyteDB Aeon doesn't require much additional configuration. For more insight into building Node.js applications with YugabyteDB, check out [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/).

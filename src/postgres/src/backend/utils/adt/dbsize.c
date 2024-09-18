@@ -408,7 +408,7 @@ calculate_table_size(Relation rel)
 		int32 num_missing_tablets = 0;
 
 		HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(rel),
-			MyDatabaseId, (int64_t *)&size, &num_missing_tablets));
+			YBCGetDatabaseOid(rel), (int64_t *)&size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
 			elog(NOTICE, "%d tablets of relation %s did not provide disk size "

@@ -15,8 +15,7 @@
 
 #include "yb/client/client.h"
 
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/client/table_creator.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -49,6 +48,7 @@ METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_load_balancing);
+DECLARE_string(instance_uuid_override);
 DECLARE_bool(load_balancer_drive_aware);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(replication_factor);
@@ -106,9 +106,8 @@ void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
           GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                     table_name.namespace_name(),
                                                     table_name.table_name());
-    auto tablets  = tbl_info->GetTablets();
     int count = min_expected_count;
-    for (const auto& tablet : tablets) {
+    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
       auto replica_map = tablet->GetReplicaLocations();
       count -= replica_map->count(ts_uuid);
       if (count <= 0) {
@@ -119,17 +118,23 @@ void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
   }, kDefaultTimeout, "WaitForAddTaskToBeProcessed"));
 }
 
-void WaitLoadBalancerActive(client::YBClient* client) {
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
-    return !is_idle;
-  },  kDefaultTimeout, "IsLoadBalancerActive"));
+void WaitLoadBalancerActive(
+    client::YBClient* client, const std::string& msg = "IsLoadBalancerActive",
+    const std::chrono::milliseconds timeout = kDefaultTimeout) {
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
+        return !is_idle;
+      },
+      timeout * kTimeMultiplier, msg));
 }
 
-void WaitLoadBalancerIdle(client::YBClient* client) {
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client->IsLoadBalancerIdle();
-  },  kDefaultTimeout, "IsLoadBalancerIdle"));
+void WaitLoadBalancerIdle(
+    client::YBClient* client, const std::string& msg = "IsLoadBalancerIdle",
+    const std::chrono::milliseconds timeout = kDefaultTimeout) {
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return client->IsLoadBalancerIdle(); }, timeout * kTimeMultiplier,
+      msg));
 }
 
 typedef std::unordered_map<std::string,
@@ -143,9 +148,7 @@ Status GetTabletsDriveStats(DriveStats* stats,
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                 table_name.namespace_name(),
                                                 table_name.table_name());
-  auto tablets = tbl_info->GetTablets();
-
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       auto ts = stats->find(replica.first);
@@ -438,8 +441,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
-    auto tablets = tbl_info->GetTablets();
-    for (const auto& tablet : tablets) {
+    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
       auto replica_map = tablet->GetReplicaLocations();
       if (replica_map->find(ts3_uuid) != replica_map->end()) {
         return true;
@@ -451,17 +453,19 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
   // (this could happen normally from a late heartbeat).
   master::TSDescriptorVector ts_descs;
-  master::TSDescriptorPtr ts3_desc;
   ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())
       ->ts_manager().GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
-    if (ts_desc->permanent_uuid() == ts3_uuid) {
-      ts_desc->SetRemoved();
-      ts3_desc = ts_desc;
-      break;
-    }
+  auto ts3_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(),
+      [&ts3_uuid](const auto& ts_desc) -> bool {
+        return ts_desc->id() == ts3_uuid; });
+  ASSERT_NE(ts3_it, ts_descs.cend());
+  {
+    master::TSDescriptorPtr ts3_desc = *ts3_it;
+    auto l = ts3_desc->LockForWrite();
+    l.mutable_data()->pb.set_state(master::SysTServerEntryPB::REPLACED);
+    l.Commit();
   }
-  CHECK_NOTNULL(ts3_desc);
 
   // LB run #2 will now continue, with GetAllReportedDescriptors not reporting this tserver, but
   // with GetReplicaLocations reporting it.
@@ -475,7 +479,6 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   SleepFor(MonoDelta::FromMilliseconds(3 * test_bg_task_wait_ms));
 
   // If it has yet to happen, bring back the tserver so that load balancing can complete.
-  ts3_desc->SetRemoved(false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 0;
@@ -551,10 +554,8 @@ TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
-
   int updated = 0;
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       if (!replica.second.fs_data_dir.empty()) {
@@ -595,9 +596,7 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
-
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       ASSERT_EQ(replica.second.drive_info.sst_files_size, 0);
@@ -684,6 +683,83 @@ TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
   ASSERT_OK(WaitForNoPendingDeletes());
 }
 
+TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
+  // See MiniTabletServer::MiniTabletServer for default placement info.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+
+  // Add new set of tservers.
+  for (const auto& [cloud, rack, uuid] : {
+           std::tuple("cloud2", "rack4", "fffffffffffffffffffffffffffffffc"),
+           std::tuple("cloud3", "rack5", "fffffffffffffffffffffffffffffffd"),
+           std::tuple("cloud3", "rack6", "fffffffffffffffffffffffffffffffe"),
+       }) {
+    // Set large instance uuids to make sure these tservers are sorted last when breaking ties.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_instance_uuid_override) = uuid;
+    tserver::TabletServerOptions extra_opts =
+        ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+    extra_opts.SetPlacement(cloud, rack, "zone");
+    ASSERT_OK(mini_cluster()->AddTabletServer(extra_opts));
+  }
+  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 3));
+
+  // Create two new tables.
+  for (int i = 2; i <= 3; ++i) {
+    client::YBTableName tn(
+        YQL_DATABASE_CQL, table_name().namespace_name(), "kv-table-test-" + std::to_string(i));
+    client::YBSchemaBuilder b;
+    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+    ASSERT_OK(b.Build(&schema_));
+
+    ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());
+  }
+
+  // Get the same order of tables as the load balancer processes them in.
+  auto& catalog_manager = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
+  auto all_tables =
+      catalog_manager.GetTables(master::GetTablesMode::kAll, master::PrimaryTablesOnly::kTrue);
+
+  // Select the first table to be processed by the load balancer, and move it to the other region.
+  client::YBTableName first_table_name(
+      YQLDatabase::YQL_DATABASE_CQL, all_tables[0]->namespace_name(), all_tables[0]->name());
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+      first_table_name, "cloud2.rack4.zone,cloud3.rack5.zone,cloud3.rack6.zone", 3, ""));
+
+  // Wait for the load balancer to finish.
+  WaitLoadBalancerActive(
+      client_.get(), "Waiting for LB to begin after changing placement of first table");
+  // Full move of a table may take a bit longer, so wait longer for idle.
+  WaitLoadBalancerIdle(
+      client_.get(), "Waiting for load to settle after changing placement of first table",
+      kDefaultTimeout * 2);
+
+  auto leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(first_table_name));
+  LOG(INFO) << "Leader counts before blacklist: " << ToString(leader_counts);
+
+  // Now leader blacklist one of the new tservers. Ensure that the load balancer is able to move
+  // leaders off of it.
+  ASSERT_OK(AddTserverToBlacklist(4, true /* leader_blacklist */));
+  WaitLoadBalancerActive(client_.get(), "Waiting for LB to begin after blacklisting tserver");
+  WaitLoadBalancerIdle(client_.get(), "Waiting for load to settle after blacklisting tserver");
+
+  // Assert that the leaders have been moved off of the leader blacklisted tserver.
+  leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(first_table_name));
+  LOG(INFO) << "Leader counts after blacklist: " << ToString(leader_counts);
+  ASSERT_EQ(leader_counts.at(mini_cluster_->mini_tablet_server(4)->server()->permanent_uuid()), 0);
+
+  // Finally, remove the tserver from the blacklist.
+  ASSERT_OK(RemoveTserverFromBlacklist(4, true /* leader_blacklist */));
+  WaitLoadBalancerActive(client_.get(), "Waiting for LB to begin after unblacklisting tserver");
+  WaitLoadBalancerIdle(client_.get(), "Waiting for load to settle after unblacklisting tserver");
+
+  // Ensure that even though we picked the first table to move, the load balancer is able to move
+  // leaders based on the correct overall global load, and not just the global load at the time of
+  // AnalyzeTablets.
+  leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(first_table_name));
+  LOG(INFO) << "Leader counts after unblacklist: " << ToString(leader_counts);
+  ASSERT_GT(leader_counts.at(mini_cluster_->mini_tablet_server(4)->server()->permanent_uuid()), 0);
+}
 
 class LoadBalancerFailedDrive : public LoadBalancerMiniClusterTestBase {
  protected:
@@ -723,9 +799,8 @@ TEST_F(LoadBalancerFailedDrive, CheckTabletSizeData) {
       GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                 table_name().namespace_name(),
                                                 table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
   const auto ts1_uuid = mini_cluster_->mini_tablet_server(0)->server()->permanent_uuid();
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       EXPECT_NE(ts1_uuid, replica.first);

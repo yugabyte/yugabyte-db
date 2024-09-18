@@ -55,6 +55,10 @@ class SysCatalogWriter {
     return Mutate<require_check>(op_type, std::forward<Items>(items)...);
   }
 
+  Status Mutate(
+      int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+      QLWriteRequestPB::QLStmtType op_type);
+
   Status ForceMutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
   }
@@ -98,6 +102,19 @@ class SysCatalogWriter {
   template <bool require_check, class Item>
   Status MutateHelper(
       const scoped_refptr<Item>& item, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
+    return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
+  }
+
+  template <bool require_check, class Item>
+  Status MutateHelper(
+      const std::shared_ptr<Item>& item, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
+    return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
+  }
+
+  template <bool require_check, class Item>
+  Status MutateHelper(
+      const std::reference_wrapper<Item> item,
+      QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
     return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
   }
 

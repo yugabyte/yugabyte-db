@@ -143,6 +143,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE =
+      "Test is designed in a way which requires every logical connection to have a dedicated " +
+      "physical connection. In the test backends are loaded with meta data of the object " +
+      "(tables) on executing DML with the premise (a) when withCachedMetadata is true, then " +
+      "the same backend processes the queries in a session (b) when withCachedMetadata is " +
+      "false, a new backend processes queries for a new connection (session). in both these " +
+      "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
+      "the tests with connection manager";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -169,6 +178,27 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
+  protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
+      "Skipping this test with Connection Manager enabled. The connections may not be in the " +
+        "expected state due to the way physical connections are attached and detached from " +
+        "logical connections, where certain setting changes should only exist in new connections.";
+
+  protected static final String CONFIGURABLE_DEBUG_LOGS_NEEDED =
+      "(DB-12742) Skipping this test with Connection Manager enabled. The test requires the " +
+        "ability to configure debug logs for connection manager to be at the same levels as " +
+        "tserver log levels.";
+
+  // Warmup modes for Connection Manager during test runs.
+  protected static enum ConnectionManagerWarmupMode {
+    NONE,
+    RANDOM,
+    ROUND_ROBIN
+  }
+
+  protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
+
+  protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -178,6 +208,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected File pgBinDir;
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
+
+  // Assuming maximum control connection created will be 3 in any test where config reload is
+  // required.
+  protected static final int MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN = 3;
 
   protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
     {
@@ -408,6 +442,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
+  }
+
   @After
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
@@ -541,6 +579,53 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected boolean isTestRunningWithConnectionManager() {
     return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
+  }
+
+  /*
+   * On setting up a GUC variable using yb-ts-cli, it leads to reloading postgres config file at
+   * run time which is not supported with Ysql Connection Manager. In order to make a successfull
+   * connection, make as many connection attempts as there are control connections before setting
+   * GUC variable. The goal is to avoid using any control connection (for authentication) created
+   * before setting up a GUC variabe as it will be config reload prone. Therefore with every
+   * attempt a control connection will be destroyed and client connection will fail.
+   * Once all existing control connections are exhausted, any further attempt will lead to a
+   * successful connection as new control connection will be created with updated config
+   * file.
+   */
+
+  protected void closeControlConnOnReloadConfig(int attempts) {
+    assert(isTestRunningWithConnectionManager());
+
+    for (int i = 0;i < attempts;i++) {
+      try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER)
+                                                                .connect()) {
+        LOG.info("After few fail attempts, able to create connection with a new control " +
+                "connection created");
+        return;
+      }
+      catch (Exception e) {
+        LOG.info ("expected to fail");
+      }
+    }
+  }
+
+  protected
+  void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    Map<String, String> tsFlagMap = getTServerFlags();
+    tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+      wm.toString().toLowerCase());
+    warmupMode = wm;
+    Map<String, String> masterFlagMap = getMasterFlags();
+    restartClusterWithFlags(masterFlagMap, tsFlagMap);
+  }
+
+  protected boolean isConnMgrWarmupRoundRobinMode() {
+    return isTestRunningWithConnectionManager() &&
+      warmupMode == ConnectionManagerWarmupMode.ROUND_ROBIN;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -1930,6 +2015,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
+  void waitForTServerHeartbeatIfConnMgrEnabled() throws InterruptedException {
+    if (isTestRunningWithConnectionManager()) {
+      waitForTServerHeartbeat();
+    }
+  }
+
   /** Run a query and check row-count. */
   public int runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
       throws Exception {
@@ -2163,6 +2254,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
+
+    // Execute query twice more to deterministically populate all caches if
+    // connection manager is enabled in round robin allocation mode.
+    // Additionally execute it once more to allow rotation onto a new physical
+    // connection before executing the subsequent queries.
+    if (isConnMgrWarmupRoundRobinMode()) {
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        stmt.execute(query);
+      }
+    }
     Long rpc_count_before =
       getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
     stmt.execute(query);
@@ -2231,6 +2332,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                "-force",
                flag,
                value);
+    if (isTestRunningWithConnectionManager())
+      closeControlConnOnReloadConfig(MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN);
   }
 
   /*

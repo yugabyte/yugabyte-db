@@ -47,13 +47,13 @@ The preceding deployment uses the following default ports:
 
 Service | Type | Port
 --------|------| -------
-`yb-master` | RPC | 7100
-`yb-master` | Admin web server | 7000
-`yb-tserver` | RPC | 9100
-`yb-tserver` | Admin web server | 9000
-`ycql` | RPC | 9042
-`ycql` | Admin web server | 12000
-`ysql` | RPC | 5433
-`ysql` | Admin web server | 13000
+YB-Master | RPC | 7100
+YB-Master | Admin web server | 7000
+YB-TServer | RPC | 9100
+YB-TServer | Admin web server | 9000
+YCQL | RPC | 9042
+YCQL | Admin web server | 12000
+YSQL | RPC | 5433
+YSQL | Admin web server | 13000
 
 For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports/).

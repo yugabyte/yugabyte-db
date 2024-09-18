@@ -113,8 +113,9 @@ var addInstanceTypesCmd = &cobra.Command{
 		}
 
 		instanceTypesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+			Command: "add",
+			Output:  os.Stdout,
+			Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 
 		logrus.Infof("The instance type %s has been added to provider %s (%s)\n",

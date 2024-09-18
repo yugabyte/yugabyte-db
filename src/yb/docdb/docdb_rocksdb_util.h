@@ -32,6 +32,10 @@
 namespace yb {
 namespace docdb {
 
+// Map from old cotable id to new cotable id.
+// Used to restore snapshot to a new database/tablegroup and update cotable ids in the frontiers.
+using CotableIdsMap = std::unordered_map<Uuid, Uuid, UuidHash>;
+
 const int kDefaultGroupNo = 0;
 
 dockv::KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht);
@@ -68,8 +72,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-    const DocDBStatistics* statistics = nullptr);
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     rocksdb::DB* intentsdb,
@@ -135,7 +138,8 @@ class RocksDBPatcher {
   Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value);
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map);
 
   // Update file sizes in manifest if actual file size was changed because of direct manipulation
   // with .sst files.

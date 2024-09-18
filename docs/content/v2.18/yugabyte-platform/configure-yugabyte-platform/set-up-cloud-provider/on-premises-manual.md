@@ -42,7 +42,7 @@ For each node, perform the following:
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
+- [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
@@ -75,7 +75,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 9042 | YCQL client |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
-| TCP | 9300 | Prometheus node exporter |
+| TCP | 9300 | Prometheus Node Exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 | TCP | 18018 | YB Controller |
@@ -219,9 +219,9 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
       sudo chmod 755 /data
       ```
 
-## Install Prometheus node exporter
+## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz

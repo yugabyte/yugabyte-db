@@ -40,8 +40,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf> *iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
   Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -59,8 +58,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   Status InitIterator(DocRowwiseIterator* doc_iter,
                       const PgsqlReadRequestPB& request,
@@ -75,8 +73,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   Status GetIteratorForYbctid(
       uint64 stmt_id,
@@ -84,11 +81,10 @@ class QLRocksDBStorage : public YQLStorageIf {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
-      const QLValuePB& min_ybctid,
-      const QLValuePB& max_ybctid,
+      const Slice& min_ybctid,
+      const Slice& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const override;
 
   std::string ToString() const override;

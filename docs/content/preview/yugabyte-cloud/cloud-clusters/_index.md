@@ -2,7 +2,7 @@
 title: How to manage clusters
 headerTitle: Manage clusters
 linkTitle: Manage clusters
-description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Managed.
+description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Aeon.
 image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
@@ -14,7 +14,7 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB Managed provides the following tools to manage clusters:
+YugabyteDB Aeon provides the following tools to manage clusters:
 
 | Feature | Description |
 | :--- | :--- |
@@ -66,6 +66,10 @@ Keep in mind the following:
 
 - Make sure that you schedule maintenance and backups so that they do not conflict.
 
+### Enhanced Postgres Compatibility
+
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode).
+
 &nbsp;
 
 {{<index/block>}}
@@ -96,7 +100,7 @@ Keep in mind the following:
 
   {{<index/item
     title="Create extensions"
-    body="Create PostgreSQL extensions in YugabyteDB Managed clusters."
+    body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
     icon="/images/section_icons/explore/administer.png">}}
 

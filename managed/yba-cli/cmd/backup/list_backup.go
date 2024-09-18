@@ -37,50 +37,66 @@ var listBackupCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
+		rList, response, err := storageConfigListRequest.Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err, "Backup", "List - Get Storage Configuration")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+		for _, s := range rList {
+			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
+				backup.StorageConfigs = append(backup.StorageConfigs, s)
+			}
+		}
+
 		backupCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: backup.NewBackupFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  backup.NewBackupFormat(viper.GetString("output")),
 		}
 
 		var limit int32 = 10
 		var offset int32 = 0
 
-		backupApiFilter := ybaclient.BackupApiFilter{}
+		backupAPIFilter := ybaclient.BackupApiFilter{}
 		if (len(strings.TrimSpace(universeNames))) > 0 {
-			backupApiFilter.SetUniverseNameList(strings.Split(universeNames, ","))
+			backupAPIFilter.SetUniverseNameList(strings.Split(universeNames, ","))
 		}
 
 		if (len(strings.TrimSpace(universeUUIDs))) > 0 {
-			backupApiFilter.SetUniverseUUIDList(strings.Split(universeUUIDs, ","))
+			backupAPIFilter.SetUniverseUUIDList(strings.Split(universeUUIDs, ","))
 		}
 
-		backupApiDirection := "DESC"
-		backupApiSort := "createTime"
+		backupAPIDirection := "DESC"
+		backupAPISort := "createTime"
 
-		backupApiQuery := ybaclient.BackupPagedApiQuery{
-			Filter:    backupApiFilter,
-			Direction: backupApiDirection,
+		backupAPIQuery := ybaclient.BackupPagedApiQuery{
+			Filter:    backupAPIFilter,
+			Direction: backupAPIDirection,
 			Limit:     limit,
 			Offset:    offset,
-			SortBy:    backupApiSort,
+			SortBy:    backupAPISort,
 		}
 
-		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupApiQuery)
+		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 
 		for {
 			// Execute backup list request
 			r, response, err := backupListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "List Backup")
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "List")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
-				if util.IsOutputType("table") {
+				if util.IsOutputType(formatter.TableFormatKey) {
 					logrus.Infoln("No backups found\n")
 				} else {
-					logrus.Infoln("{}\n")
+					logrus.Infoln("[]\n")
 				}
 				return
 			}
@@ -103,8 +119,8 @@ var listBackupCmd = &cobra.Command{
 			offset += int32(len(r.GetEntities()))
 
 			// Prepare next page request
-			backupApiQuery.Offset = offset
-			backupListRequest = authAPI.ListBackups().PageBackupsRequest(backupApiQuery)
+			backupAPIQuery.Offset = offset
+			backupListRequest = authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		}
 	},
 }

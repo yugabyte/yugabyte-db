@@ -31,7 +31,7 @@ class YCqlDiskFullTest : public client::KeyValueTableTest<MiniCluster> {
   }
 };
 
-TEST_F(YCqlDiskFullTest, TestDiskFull) {
+TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   CreateTable(client::Transactional::kFalse);
 
   client::TableHandle table2;
@@ -77,7 +77,7 @@ class YSqlDiskFullTest : public pgwrapper::PgMiniTestBase {
   }
 };
 
-TEST_F(YSqlDiskFullTest, TestDiskFull) {
+TEST_F(YSqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   constexpr auto create_table = "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT)";
   constexpr auto insert_query = "INSERT INTO $0 (key, value) VALUES ($1, 'v$1')";
 

@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # Include common functions
-. "${BASH_SOURCE%/*}/devops/bin/common.sh"
+. "${BASH_SOURCE%/*}/../devops/bin/common.sh"
 
 # Function to display usage information
 show_usage() {

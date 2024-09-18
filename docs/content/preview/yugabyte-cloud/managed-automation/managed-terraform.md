@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Managed Terraform Provider
+title: YugabyteDB Aeon Terraform Provider
 headerTitle: Terraform Provider
 linkTitle: Terraform Provider
-description: Terraform Provider for YugabyteDB Managed.
-headcontent: Manage YugabyteDB Managed accounts and deployments using the Terraform Provider
+description: Terraform Provider for YugabyteDB Aeon.
+headcontent: Manage YugabyteDB Aeon accounts and deployments using the Terraform Provider
 menu:
   preview_yugabyte-cloud:
     parent: managed-automation
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB Managed Terraform Provider to deploy and manage clusters programmatically. Some examples of what you can accomplish using this provider include:
+Use the YugabyteDB Aeon Terraform Provider to deploy and manage clusters programmatically. Some examples of what you can accomplish using this provider include:
 
 - Deploy and manage clusters
 - Deploy and manage read replicas
@@ -21,12 +21,12 @@ Use the YugabyteDB Managed Terraform Provider to deploy and manage clusters prog
 - Change backup and maintenance schedules
 - Configure monitoring and alerts
 
-{{< youtube id="cHPMDLeVkFU?si=GcZBrV27HDqPpezs" title="YugabyteDB Managed Terraform Provider" >}}
+{{< youtube id="cHPMDLeVkFU?si=GcZBrV27HDqPpezs" title="YugabyteDB Aeon Terraform Provider" >}}
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started"
-    description="Manage YugabyteDB Managed using the Terraform Provider."
+    description="Manage YugabyteDB Aeon using the Terraform Provider."
     buttonText="Provider Documentation"
     buttonUrl="https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
   >}}

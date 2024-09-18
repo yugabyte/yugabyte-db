@@ -131,13 +131,21 @@ class Slice {
   uint8_t operator[](size_t n) const;
 
   // Change this slice to refer to an empty array
-  void clear() {
+  void Clear() {
     begin_ = to_uchar_ptr("");
     end_ = begin_;
   }
 
+  [[deprecated]] void clear() {
+    Clear();
+  }
+
   // Drop the first "n" bytes from this slice.
-  void remove_prefix(size_t n);
+  void RemovePrefix(size_t n);
+
+  [[deprecated]] void remove_prefix(size_t n) {
+    RemovePrefix(n);
+  }
 
   Slice Prefix(size_t n) const;
 
@@ -147,7 +155,11 @@ class Slice {
   Slice WithoutPrefix(size_t n) const;
 
   // Drop the last "n" bytes from this slice.
-  void remove_suffix(size_t n);
+  void RemoveSuffix(size_t n);
+
+  [[deprecated]] void remove_suffix(size_t n) {
+    RemoveSuffix(n);
+  }
 
   Slice Suffix(size_t n) const;
 

@@ -2,7 +2,7 @@
 title: ybm CLI permission resource
 headerTitle: ybm permission
 linkTitle: permission
-description: YugabyteDB Managed CLI reference Permission resource.
+description: YugabyteDB Aeon CLI reference Permission resource.
 headcontent: List permissions
 menu:
   preview_yugabyte-cloud:
@@ -22,7 +22,7 @@ Usage: ybm permission [command] [flags]
 
 ## Examples
 
-List permissions in YugabyteDB Managed:
+List permissions in YugabyteDB Aeon:
 
 ```sh
 ybm permission list
@@ -32,4 +32,4 @@ ybm permission list
 
 ### list
 
-List the permissions in your YugabyteDB Managed account.
+List the permissions in your YugabyteDB Aeon account.

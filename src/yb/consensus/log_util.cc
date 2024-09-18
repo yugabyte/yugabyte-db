@@ -388,7 +388,7 @@ Status ReadableLogSegment::CopyTo(
   }
   footer.set_num_entries(num_entries);
   if (latest_ht > 0) {
-    footer_.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
+    footer.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
   }
   // Note: log_index created here might have holes, because specific WAL segment can have holes due
   // to WAL rewriting. For example, we can have segment with op_ids: { 3.25, 4.26, 5.21 } and footer

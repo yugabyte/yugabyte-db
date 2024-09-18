@@ -5,7 +5,7 @@ package task
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"node-agent/model"
 	"node-agent/util"
@@ -79,7 +79,7 @@ func TestHandleAgentUnregistration(t *testing.T) {
 
 func TestUnmarshalResponse(t *testing.T) {
 	res := http.Response{
-		Body:       ioutil.NopCloser(bytes.NewBufferString("{\"test\":\"success\"}")),
+		Body:       io.NopCloser(bytes.NewBufferString("{\"test\":\"success\"}")),
 		StatusCode: 200,
 	}
 	var testValue map[string]string

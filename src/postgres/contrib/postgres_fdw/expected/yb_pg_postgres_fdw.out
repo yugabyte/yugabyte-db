@@ -2281,28 +2281,138 @@ GRANT SELECT ON ft4 TO regress_view_owner;
 GRANT SELECT ON ft5 TO regress_view_owner;
 CREATE VIEW v4 AS SELECT * FROM ft4;
 CREATE VIEW v5 AS SELECT * FROM ft5;
--- YB note: ERROR:  ALTER VIEW not supported yet, reenable commented out tests when issue #1131 is fixed
 ALTER VIEW v5 OWNER TO regress_view_owner;
-ERROR:  ALTER VIEW not supported yet
-LINE 1: ALTER VIEW v5 OWNER TO regress_view_owner;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1131. React with thumbs up to raise its priority
---EXPLAIN (VERBOSE, COSTS OFF)
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can't be pushed down, different view owners
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
---ALTER VIEW v4 OWNER TO regress_view_owner;
---EXPLAIN (VERBOSE, COSTS OFF)
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can be pushed down
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
---
---EXPLAIN (VERBOSE, COSTS OFF)
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can't be pushed down, view owner not current user
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
---ALTER VIEW v4 OWNER TO CURRENT_USER;
---EXPLAIN (VERBOSE, COSTS OFF)
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can be pushed down
---SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
---ALTER VIEW v4 OWNER TO regress_view_owner;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can't be pushed down, different view owners
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Limit
+   Output: ft4.c1, ft5.c2, ft5.c1
+   ->  Sort
+         Output: ft4.c1, ft5.c2, ft5.c1
+         Sort Key: ft4.c1, ft5.c1
+         ->  Hash Left Join
+               Output: ft4.c1, ft5.c2, ft5.c1
+               Hash Cond: (ft4.c1 = ft5.c1)
+               ->  Foreign Scan on public.ft4
+                     Output: ft4.c1, ft4.c2, ft4.c3
+                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
+               ->  Hash
+                     Output: ft5.c2, ft5.c1
+                     ->  Foreign Scan on public.ft5
+                           Output: ft5.c2, ft5.c1
+                           Remote SQL: SELECT c1, c2 FROM "S 1"."T 4"
+(16 rows)
+
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+ c1 | c2
+----+----
+ 22 |
+ 24 | 25
+ 26 |
+ 28 |
+ 30 | 31
+ 32 |
+ 34 |
+ 36 | 37
+ 38 |
+ 40 |
+(10 rows)
+
+ALTER VIEW v4 OWNER TO regress_view_owner;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can be pushed down
+                                                                                QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ft4.c1, ft5.c2, ft5.c1
+   ->  Foreign Scan
+         Output: ft4.c1, ft5.c2, ft5.c1
+         Relations: (public.ft4) LEFT JOIN (public.ft5)
+         Remote SQL: SELECT r6.c1, r9.c2, r9.c1 FROM ("S 1"."T 3" r6 LEFT JOIN "S 1"."T 4" r9 ON (((r6.c1 = r9.c1)))) ORDER BY r6.c1 ASC NULLS LAST, r9.c1 ASC NULLS LAST
+(6 rows)
+
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+ c1 | c2
+----+----
+ 22 |
+ 24 | 25
+ 26 |
+ 28 |
+ 30 | 31
+ 32 |
+ 34 |
+ 36 | 37
+ 38 |
+ 40 |
+(10 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can't be pushed down, view owner not current user
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Limit
+   Output: ft4.c1, t2.c2, t2.c1
+   ->  Sort
+         Output: ft4.c1, t2.c2, t2.c1
+         Sort Key: ft4.c1, t2.c1
+         ->  Hash Left Join
+               Output: ft4.c1, t2.c2, t2.c1
+               Hash Cond: (ft4.c1 = t2.c1)
+               ->  Foreign Scan on public.ft4
+                     Output: ft4.c1, ft4.c2, ft4.c3
+                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
+               ->  Hash
+                     Output: t2.c2, t2.c1
+                     ->  Foreign Scan on public.ft5 t2
+                           Output: t2.c2, t2.c1
+                           Remote SQL: SELECT c1, c2 FROM "S 1"."T 4"
+(16 rows)
+
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+ c1 | c2
+----+----
+ 22 |
+ 24 | 25
+ 26 |
+ 28 |
+ 30 | 31
+ 32 |
+ 34 |
+ 36 | 37
+ 38 |
+ 40 |
+(10 rows)
+
+ALTER VIEW v4 OWNER TO CURRENT_USER;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can be pushed down
+                                                                                QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ft4.c1, t2.c2, t2.c1
+   ->  Foreign Scan
+         Output: ft4.c1, t2.c2, t2.c1
+         Relations: (public.ft4) LEFT JOIN (public.ft5 t2)
+         Remote SQL: SELECT r6.c1, r2.c2, r2.c1 FROM ("S 1"."T 3" r6 LEFT JOIN "S 1"."T 4" r2 ON (((r6.c1 = r2.c1)))) ORDER BY r6.c1 ASC NULLS LAST, r2.c1 ASC NULLS LAST
+(6 rows)
+
+SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+ c1 | c2
+----+----
+ 22 |
+ 24 | 25
+ 26 |
+ 28 |
+ 30 | 31
+ 32 |
+ 34 |
+ 36 | 37
+ 38 |
+ 40 |
+(10 rows)
+
+ALTER VIEW v4 OWNER TO regress_view_owner;
 -- cleanup
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;

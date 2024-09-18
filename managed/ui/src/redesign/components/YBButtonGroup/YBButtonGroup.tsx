@@ -15,6 +15,7 @@ export interface YBButtonGroupProps<T> {
   btnGroupClassName?: any;
   handleSelect: (selectedNum: T) => void;
   displayLabelFn?: (elem: T) => JSX.Element;
+  shouldDisableButtonFn?: (elem: T) => boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -50,7 +51,8 @@ export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
     btnClassName,
     btnGroupClassName,
     handleSelect,
-    displayLabelFn
+    displayLabelFn,
+    shouldDisableButtonFn
   } = props;
   const classes = useStyles();
 
@@ -64,6 +66,7 @@ export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
         classes.btnGroup,
         color === 'secondary' && classes.overrideMuiButtonGroup
       )}
+      disabled={disabled}
     >
       {values.map((value, i) => {
         return (
@@ -71,7 +74,9 @@ export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
             key={i}
             className={btnClassName ?? classes.button}
             data-testid={`${dataTestId}-option${value}`}
-            disabled={!isEqual(value, selectedNum) && !!disabled}
+            disabled={
+              (shouldDisableButtonFn && shouldDisableButtonFn(value))
+            }
             variant={isEqual(value, selectedNum) ? 'primary' : 'secondary'}
             onClick={(e: any) => {
               if (!!disabled) e.preventDefault();

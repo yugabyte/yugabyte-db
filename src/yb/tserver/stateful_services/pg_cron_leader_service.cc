@@ -25,17 +25,22 @@ DEFINE_RUNTIME_uint32(pg_cron_leadership_refresh_sec, 10,
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace {
-void ValidateLeadershipRefreshSec() {
-  LOG_IF(FATAL, FLAGS_pg_cron_leadership_refresh_sec >= FLAGS_pg_cron_leader_lease_sec)
-      << "Invalid value " << FLAGS_pg_cron_leadership_refresh_sec
-      << " for 'pg_cron_leadership_refresh_sec'. Value should be less than "
-         "pg_cron_leader_lease_sec "
-      << FLAGS_pg_cron_leader_lease_sec;
+bool ValidateLeadershipRefreshSec(const char* flag_name, uint32 value) {
+  // This validation depends on the value of other flag(s): pg_cron_leader_lease_sec.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (value >= FLAGS_pg_cron_leader_lease_sec) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Must be less than pg_cron_leader_lease_sec " << FLAGS_pg_cron_leader_lease_sec;
+    return false;
+  }
+
+  return true;
 }
+
 }  // namespace
 
-REGISTER_CALLBACK(pg_cron_leadership_refresh_sec, "pg_cron_leadership_refresh_sec",
-    ValidateLeadershipRefreshSec)
+DEFINE_validator(pg_cron_leadership_refresh_sec, &ValidateLeadershipRefreshSec);
 
 namespace yb {
 namespace stateful_service {

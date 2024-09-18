@@ -255,7 +255,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                 return res;
               })
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
     } catch (Exception ignored) {
       fail();
     }

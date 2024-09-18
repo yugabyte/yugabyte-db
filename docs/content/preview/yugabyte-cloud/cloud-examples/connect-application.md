@@ -1,7 +1,7 @@
----
+<!---
 title: Connect a Spring Data YugabyteDB application
 linkTitle: Connect a Spring application
-description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Managed.
+description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Aeon.
 headcontent:
 menu:
   preview_yugabyte-cloud:
@@ -9,9 +9,10 @@ menu:
     parent: cloud-examples
     weight: 100
 type: docs
----
+private: true
+--->
 
-The example on this page shows how you can connect a Spring application to YugabyteDB Managed, using a version of the Spring PetClinic sample application that has been updated with a domain and persistence layer built with [Spring Data YugabyteDB](https://github.com/yugabyte/spring-data-yugabytedb).
+The example on this page shows how you can connect a Spring application to YugabyteDB Aeon, using a version of the Spring PetClinic sample application that has been updated with a domain and persistence layer built with [Spring Data YugabyteDB](https://github.com/yugabyte/spring-data-yugabytedb).
 
 In addition to using Spring Data YugabyteDB, the application uses the following:
 
@@ -29,7 +30,7 @@ In this walkthrough, you will:
 ## Prerequisites
 
 - Git
-- YugabyteDB Managed cluster
+- YugabyteDB Aeon cluster
   - Your computer IP address must be in an [IP allow list](../../cloud-secure-clusters/add-connections/)
 
 ## Clone the Spring Data YugabyteDB PetClinic application
@@ -58,7 +59,7 @@ In this walkthrough, you will:
 
 ## Install the certificate and copy the connection string
 
-1. Sign in to YugabyteDB Managed, select your cluster, and click **Connect**.
+1. Sign in to YugabyteDB Aeon, select your cluster, and click **Connect**.
 
 1. Click **Connect to your Application**.
 
@@ -119,7 +120,7 @@ In this walkthrough, you will:
 
 1. Go to <http://localhost:8080>.
 
-The PetClinic application is now running locally and is connected to your YugabyteDB Managed cluster.
+The PetClinic application is now running locally and is connected to your YugabyteDB Aeon cluster.
 
 ![PetClinic application running](/images/yb-cloud/petclinic-springdata.png)
 
@@ -129,7 +130,7 @@ The PetClinic application is now running locally and is connected to your Yugaby
 
 1. Enter owner details and click **Add Owner** to add the new owner.
 
-1. In YugabyteDB Managed, select your cluster, click **Connect** and choose **Launch Cloud Shell**.
+1. In YugabyteDB Aeon, select your cluster, click **Connect** and choose **Launch Cloud Shell**.
 
 1. Click **Confirm** to open the shell in a new browser window. The shell can take up to 30 seconds to appear.
 

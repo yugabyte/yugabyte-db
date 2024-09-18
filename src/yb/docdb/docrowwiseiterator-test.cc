@@ -428,7 +428,7 @@ Result<std::string> ConvertIteratorRowsToString(
       buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection)) << std::endl;
     }
   } else {
-    // TODO(#22371): FLAGS_use_fast_backward_scan should not be set while the iterator creation.
+    // TODO(#22371): FLAGS_use_fast_backward_scan must not be set for this case.
     down_cast<docdb::DocRowwiseIterator*>(iter)->TEST_force_allow_fetch_pg_table_row();
     dockv::ReaderProjection reader_projection(projection ? *projection : schema);
     dockv::PgTableRow row(reader_projection);

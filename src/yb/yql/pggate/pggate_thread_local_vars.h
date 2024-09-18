@@ -21,10 +21,8 @@
 
 #pragma once
 
-
-
-namespace yb {
-namespace pggate {
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+namespace yb::pggate {
 
 //-----------------------------------------------------------------------------
 // Memory context.
@@ -69,5 +67,12 @@ void *PgGetThreadLocalErrStatus();
 void* PgGetThreadLocalStrTokPtr();
 void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 
-} // namespace pggate
-} // namespace yb
+/*
+ * CachedRegexpHolder (from regex/regex.c)
+ * These are used to cache the compiled regexes
+ */
+YBCPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
+YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
+
+} // namespace yb::pggate

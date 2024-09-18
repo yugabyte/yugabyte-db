@@ -28,6 +28,11 @@ DECLARE_bool(callhome_enabled);
 DECLARE_int32(callhome_interval_secs);
 
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(ysql_hba_conf_csv);
+DECLARE_bool(remote_bootstrap_from_leader_only);
+
+DEFINE_test_flag(bool, call_home_dummy1, false, "Dummy test flag to test call home");
+DEFINE_test_flag(bool, call_home_dummy2, false, "Dummy test flag to test call home");
 
 namespace yb {
 
@@ -176,7 +181,12 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
 
 template <class ServerType, class CallHomeType>
 void TestGFlagsCallHome(ServerType* server) {
-  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(flagA="String with quotes")"));
+  const auto kValueWithQuotes = R"("flagA=""String with quotes""")";
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, kValueWithQuotes));
+  const auto kHbaValue = "local all yugabyte trust";
+  ASSERT_OK(SET_FLAG(ysql_hba_conf_csv, kHbaValue));
+  ASSERT_OK(SET_FLAG(remote_bootstrap_from_leader_only, true));
+  ASSERT_OK(SET_FLAG(TEST_call_home_dummy1, true));
   std::string json;
   CallHomeType call_home(server);
   json = call_home.BuildJson();
@@ -189,7 +199,15 @@ void TestGFlagsCallHome(ServerType* server) {
 
   std::string flags;
   ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
-  ASSERT_TRUE(flags.find(R"(flagA="String with quotes")") != std::string::npos);
+  ASSERT_STR_CONTAINS(flags, kValueWithQuotes);
+  ASSERT_STR_NOT_CONTAINS(flags, kHbaValue);
+  // Default AutoFlags should not be included.
+  ASSERT_STR_NOT_CONTAINS(flags, "enable_automatic_tablet_splitting");
+  // Non default AutoFlags should be included.
+  ASSERT_STR_CONTAINS(flags, "remote_bootstrap_from_leader_only");
+  // TEST flags should only be included if they are non default.
+  ASSERT_STR_CONTAINS(flags, "call_home_dummy1");
+  ASSERT_STR_NOT_CONTAINS(flags, "call_home_dummy2");
 
   call_home.Shutdown();
 }

@@ -6,7 +6,10 @@ export enum QUERY_KEY {
   fetchTpByUuid = 'fetchTpByUuid',
   registerTp = 'registerTp',
   updateTpMetadata = 'updateTpMetadata',
-  deleteTp = 'deleteTp'
+  deleteTp = 'deleteTp',
+  fetchUniverseRegistrationDetails = 'fetchUniverseRegistrationDetails',
+  monitorUniverse = 'monitorUniverse',
+  deleteUniverseRegistration = 'deleteUniverseRegistration'
 }
 
 export const AXIOS_INSTANCE = axios.create({ baseURL: ROOT_URL, withCredentials: true });
@@ -29,14 +32,16 @@ class ApiService {
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Register current YBA to a Troubleshooting Platform service
-  registerTp = (tpUrl: string, ybaUrl: string, metricsUrl: string) => {
+  // Register current YBA (customer) to a Troubleshooting Platform service
+  registerTp = (tpUrl: string, ybaUrl: string, metricsUrl: string, apiToken: string, metricsScrapePeriodSecs: number) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
     return axios.post(requestURL,  {
       customerUUID: this.getCustomerId(),
-      tpUrl: tpUrl,
-      ybaUrl: ybaUrl,
-      metricsUrl: metricsUrl
+      tpUrl,
+      ybaUrl,
+      metricsUrl,
+      apiToken,
+      metricsScrapePeriodSecs
     }).then((res) => res.data);
   };
 
@@ -60,6 +65,24 @@ class ApiService {
     return axios.delete(requestUrl, {
       params: params
     }).then((resp) => resp.data);
+  };
+
+  // Fetch registration details of universe to Troubleshooting Platform service
+  fetchUniverseRegistrationDetails = (tpUuid: string, universeUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+    return axios.get(requestURL).then((res) => res.data);
+  };
+
+  // Register universe to Troubleshooting Platform service
+  monitorUniverse = (tpUuid: string, universeUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+    return axios.put(requestUrl).then((resp) => resp.data);
+  };
+
+  // Delete universe registration
+  deleteUniverseRegistration = (tpUuid: string, universeUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+    return axios.delete(requestUrl).then((resp) => resp.data);
   };
 }
 

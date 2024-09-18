@@ -1,0 +1,26 @@
+\unset ECHO
+1..24
+ok 1 - matches() should work
+ok 2 - matches() should work with a regex
+ok 3 - imatches() should work with a regex
+ok 4 - matches() fail should fail
+ok 5 - matches() fail should have the proper description
+ok 6 - matches() fail should have the proper diagnostics
+ok 7 - doesnt_match() should work
+ok 8 - doesnt_match() should work with a regex
+ok 9 - doesnt_imatch() should work with a regex
+ok 10 - doesnt_match() fail should fail
+ok 11 - doesnt_match() fail should have the proper description
+ok 12 - doesnt_match() fail should have the proper diagnostics
+ok 13 - alike() should work
+ok 14 - alike() should work with a regex
+ok 15 - ialike() should work with a regex
+ok 16 - alike() fail should fail
+ok 17 - alike() fail should have the proper description
+ok 18 - alike() fail should have the proper diagnostics
+ok 19 - unalike() should work
+ok 20 - unalike() should work with a regex
+ok 21 - iunalike() should work with a regex
+ok 22 - unalike() fail should fail
+ok 23 - unalike() fail should have the proper description
+ok 24 - unalike() fail should have the proper diagnostics

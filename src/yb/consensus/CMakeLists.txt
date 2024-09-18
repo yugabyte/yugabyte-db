@@ -141,6 +141,7 @@ add_dependencies(consensus gen_src_yb_rpc_any_proto)
 add_dependencies(consensus cdc_service_proto)
 add_dependencies(consensus gen_src_yb_master_master_client_proto)
 add_dependencies(consensus gen_src_yb_master_master_types_proto)
+add_dependencies(consensus gen_src_yb_tserver_tserver_service_proto)
 
 target_link_libraries(consensus
   consensus_error

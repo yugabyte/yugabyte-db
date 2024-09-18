@@ -52,6 +52,9 @@ char *DDLQueuePrimaryKeyQueryId = NULL;
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 
+/* Per DDL Variables. */
+static bool should_replicate_ddl = false;
+
 /*
  * _PG_init gets called when the extension is loaded.
  */
@@ -107,6 +110,20 @@ _PG_init(void)
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);
+}
+
+bool
+IsReplicationSource()
+{
+	return ReplicationRole == REPLICATION_ROLE_SOURCE ||
+		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+}
+
+bool
+IsReplicationTarget()
+{
+	return ReplicationRole == REPLICATION_ROLE_TARGET ||
+		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
 }
 
 void
@@ -212,30 +229,24 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	if (cur_schema)
 		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
-	/*
-	 * TODO(jhe): Need a better way of handling all these DDL types. Perhaps can
-	 * mimic CreateCommandTag and return a custom enum instead, thus allowing
-	 * for switch cases here.
-	 */
 	if (EnableManualDDLReplication)
 	{
 		(void) AddBoolJsonEntry(state, "manual_replication", true);
 	}
 	else
 	{
-		DisallowMultiStatementQueries(trig_data->tag);
-		bool should_replicate_ddl = ProcessSourceEventTriggerDDLCommands(state);
-		if (!should_replicate_ddl)
-			goto exit;
+		should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
 	}
 
-	// Construct the jsonb and insert completed row into ddl_queue table.
-	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
+	if (should_replicate_ddl)
+	{
+		// Construct the jsonb and insert completed row into ddl_queue table.
+		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+		Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
 
-	InsertIntoDDLQueue(jsonb);
+		InsertIntoDDLQueue(jsonb);
+	}
 
-exit:
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
@@ -273,31 +284,110 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
+void
+HandleSourceSQLDrop(EventTriggerData *trig_data)
+{
+	if (EnableManualDDLReplication)
+		return;
+
+	// Create memory context for handling query execution.
+	MemoryContext context_new, context_old;
+	Oid save_userid;
+	int save_sec_context;
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
+      "yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
+
+	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
+}
+
+PG_FUNCTION_INFO_V1(handle_ddl_start);
+Datum
+handle_ddl_start(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+	if (IsInIgnoreList(trig_data))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		/*
+		 * Do some initial checks here before the source query runs.
+		 * Also reset should_replicate_ddl for this new DDL.
+		 */
+		if (EnableManualDDLReplication)
+		{
+			/*
+			 * Always replicate manual DDLs regardless of what they are.
+			 * Will show up on the target with a manual_replication field set.
+			 */
+			should_replicate_ddl = true;
+		}
+		else
+		{
+			DisallowMultiStatementQueries(trig_data->tag);
+			should_replicate_ddl = false;
+		}
+	}
+
+	PG_RETURN_NULL();
+}
+
 PG_FUNCTION_INFO_V1(handle_ddl_end);
 Datum
 handle_ddl_end(PG_FUNCTION_ARGS)
 {
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
-		PG_RETURN_NULL();
-
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
 		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	if (ReplicationRole == REPLICATION_ROLE_SOURCE ||
-		ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL)
+	if (IsReplicationSource())
 	{
 		HandleSourceDDLEnd(trig_data);
 	}
-	if (ReplicationRole == REPLICATION_ROLE_TARGET ||
-		ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL)
+	if (IsReplicationTarget())
 	{
 		HandleTargetDDLEnd(trig_data);
 	}
+
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(handle_sql_drop);
+Datum
+handle_sql_drop(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsInIgnoreList(trig_data))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		HandleSourceSQLDrop(trig_data);
+	}
+
+	/* HandleTargetDDLEnd will be handled in handle_ddl_end. */
 
 	PG_RETURN_NULL();
 }

@@ -76,6 +76,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -107,10 +108,12 @@ public class Util {
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
+  public static final String CONSISTENCY_CHECK_TABLE_NAME = "yba_consistency_check";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
+  public static final String WRITE_READ_TABLE = "write_read_table";
   public static final int YB_SCHEDULER_INTERVAL = 2;
   public static final String DEFAULT_YB_SSH_USER = "yugabyte";
   public static final String DEFAULT_SUDO_SSH_USER = "centos";
@@ -137,9 +140,13 @@ public class Util {
 
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
-  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION = "2024.1.0.0-b129";
+  public static final String GFLAG_GROUPS_STABLE_VERSION = "2024.1.0.0-b129";
 
-  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION = "2.23.0.0-b416";
+  public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
+
+  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.23.0.0";
+
+  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.1.0.0";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -222,6 +229,13 @@ public class Util {
           id.replaceAll("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
+  }
+
+  public static String getIdRepresentation(UUID uuid) {
+    if (uuid == null) {
+      return null;
+    }
+    return uuid.toString().replace("-", "");
   }
 
   /**
@@ -1219,17 +1233,10 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
-    return retreiveImageBundleUUID(arch, userIntent, provider, false);
-  }
-
-  public static UUID retreiveImageBundleUUID(
-      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null && !cloudEnabled) {
-      // Don't use defaultProvider bundle for YBM, as they will
-      // specify machineImage for provisioning the node.
+    } else if (provider.getUuid() != null) {
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
@@ -1351,5 +1358,9 @@ public class Util {
       }
     }
     return clone;
+  }
+
+  public static <T> Predicate<T> not(Predicate<T> t) {
+    return t.negate();
   }
 }

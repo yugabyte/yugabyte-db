@@ -1,0 +1,20 @@
+title: JobScheduleApiFilter
+description: API filter for job schedule that is a part of JobSchedulePagedQuerySpec.
+type: object
+properties:
+  config_class:
+    description: Filter by config class of the job.
+    type: string
+  enabled_only:
+    description: Filter out disabled job schedules if true.
+    type: boolean
+  name_regex:
+    description: Filter by name regex.
+    type: string
+  next_start_window_secs:
+    description: Filter by next start time window from now.
+    type: integer
+    format: int64
+  type:
+    description: Filter by type of the job schedule.
+    $ref: "./JobScheduleType.yaml"

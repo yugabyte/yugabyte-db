@@ -836,18 +836,6 @@ Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
                                         callback);
 }
 
-Status YBClient::GetColocatedTabletSchemaByParentTableId(
-    const TableId& parent_colocated_table_id,
-    std::shared_ptr<std::vector<YBTableInfo>> info,
-    StatusCallback callback) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetColocatedTabletSchemaByParentTableId(this,
-                                                         parent_colocated_table_id,
-                                                         deadline,
-                                                         info,
-                                                         callback);
-}
-
 Result<IndexPermissions> YBClient::GetIndexPermissions(
     const TableId& table_id,
     const TableId& index_id) {
@@ -934,12 +922,12 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 const std::optional<std::string> source_namespace_name,
-                                 std::optional<HybridTime> clone_time) {
-  // If source_namespace_name is template0 or template1 or not set, then initiate the typical create
-  // namespace request. Otherwise, initiate the clone request.
-  if (!source_namespace_name.has_value() || *source_namespace_name == "template0" ||
-      *source_namespace_name == "template1") {
+                                 std::optional<YbCloneInfo> yb_clone_info) {
+  if (yb_clone_info) {
+    RETURN_NOT_OK(CloneNamespace(
+        namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
+        *yb_clone_info));
+  } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
     req.set_name(namespace_name);
@@ -971,33 +959,32 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     // the client can send operations without receiving a "namespace not found" error.
     RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(
         this, namespace_name, database_type, cur_id, deadline));
-  } else {
-    RETURN_NOT_OK(CloneNamespace(
-        namespace_name, source_namespace_name.value(),
-        database_type ? database_type.value() : YQL_DATABASE_PGSQL, clone_time));
   }
   return Status::OK();
 }
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
-                                const std::string& source_namespace_name,
                                 const YQLDatabase& database_type,
-                                std::optional<HybridTime> clone_time) {
+                                YbCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
-      "Creating database $0 as clone of database $1", target_namespace_name, source_namespace_name);
+      "Creating database $0 as clone of database $1",
+      target_namespace_name, yb_clone_info.src_db_name);
   auto clone_deadline = ToCoarse(MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms);
   master::CloneNamespaceRequestPB req;
   master::CloneNamespaceResponsePB resp;
   master::NamespaceIdentifierPB source_namespace;
-  source_namespace.set_name(source_namespace_name);
+  source_namespace.set_name(yb_clone_info.src_db_name);
   source_namespace.set_database_type(database_type);
   *req.mutable_source_namespace() = source_namespace;
-  if (!clone_time) {
-    // Clone as of current time
-    clone_time = HybridTime::FromMicros(VERIFY_RESULT(WallClock()->Now()).time_point);
+  if (yb_clone_info.clone_time == 0) {
+    // Clone as of current time.
+    yb_clone_info.clone_time = VERIFY_RESULT(WallClock()->Now()).time_point;
   }
-  req.set_restore_ht(clone_time->ToUint64());
+  req.set_restore_ht(HybridTime::FromMicros(yb_clone_info.clone_time).ToUint64());
   req.set_target_namespace_name(target_namespace_name);
+  req.set_pg_source_owner(yb_clone_info.src_owner);
+  req.set_pg_target_owner(yb_clone_info.tgt_owner);
+
   // Set clone_deadline to ysql_clone_pg_schema_rpc_timeout_ms to give time to clone pg schema
   // operation.
   RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
@@ -1511,7 +1498,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const std::optional<std::string>& replication_slot_plugin_name,
     const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
     CoarseTimePoint deadline,
-    uint64_t *consistent_snapshot_time) {
+    const CDCSDKDynamicTablesOption& dynamic_tables_option,
+    uint64_t *consistent_snapshot_time_out) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1535,13 +1523,15 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (replication_slot_plugin_name.has_value()) {
     req.set_cdcsdk_ysql_replication_slot_plugin_name(*replication_slot_plugin_name);
   }
+  req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);
   CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Replication, req, resp, deadline, CreateCDCStream);
 
-  if (consistent_snapshot_time && resp.has_cdcsdk_consistent_snapshot_time()) {
-    *consistent_snapshot_time = resp.cdcsdk_consistent_snapshot_time();
+  if (consistent_snapshot_time_out && resp.has_cdcsdk_consistent_snapshot_time()) {
+    *consistent_snapshot_time_out = resp.cdcsdk_consistent_snapshot_time();
   }
   return xrepl::StreamId::FromString(resp.stream_id());
 }
@@ -1555,7 +1545,9 @@ Status YBClient::GetCDCStream(
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
     std::optional<uint64_t>* stream_creation_time,
-    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map) {
+    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
+    std::optional<std::string>* replication_slot_name,
+    std::vector<TableId>* unqualified_table_ids) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1572,6 +1564,12 @@ Status YBClient::GetCDCStream(
 
   for (auto id : resp.stream().table_id()) {
     object_ids->push_back(id);
+  }
+
+  if (unqualified_table_ids && resp.stream().unqualified_table_id_size() > 0) {
+    for (const auto& unqualified_table_id : resp.stream().unqualified_table_id()) {
+      unqualified_table_ids->push_back(unqualified_table_id);
+    }
   }
 
   options->clear();
@@ -1602,6 +1600,10 @@ Status YBClient::GetCDCStream(
   }
   if (stream_creation_time && resp.stream().has_stream_creation_time()) {
     *stream_creation_time = resp.stream().stream_creation_time();
+  }
+
+  if (replication_slot_name && resp.stream().has_cdcsdk_ysql_replication_slot_name()) {
+    *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
   return Status::OK();
@@ -1717,21 +1719,33 @@ void YBClient::DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback 
 }
 
 Status YBClient::GetCDCDBStreamInfo(
-  const std::string &db_stream_id,
-  std::vector<pair<std::string, std::string>>* db_stream_info) {
+    const std::string& db_stream_id,
+    std::vector<pair<std::string, std::string>>* db_stream_qualified_table_info,
+    std::vector<pair<std::string, std::string>>* db_stream_unqualified_table_info) {
   // Setting up request.
   GetCDCDBStreamInfoRequestPB req;
   req.set_db_stream_id(db_stream_id);
 
   GetCDCDBStreamInfoResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCDBStreamInfo);
-  db_stream_info->clear();
-  db_stream_info->reserve(resp.table_info_size());
+  db_stream_qualified_table_info->clear();
+  db_stream_qualified_table_info->reserve(resp.table_info_size());
   for (const auto& tabinfo : resp.table_info()) {
     std::string stream_id = tabinfo.stream_id();
     std::string table_id = tabinfo.table_id();
 
-    db_stream_info->push_back(std::make_pair(stream_id, table_id));
+    db_stream_qualified_table_info->push_back(std::make_pair(stream_id, table_id));
+  }
+
+  if (resp.unqualified_table_info_size() > 0) {
+    db_stream_unqualified_table_info->clear();
+    db_stream_unqualified_table_info->reserve(resp.unqualified_table_info_size());
+    for (const auto& tabinfo : resp.unqualified_table_info()) {
+      std::string stream_id = tabinfo.stream_id();
+      std::string unqualified_table_id = tabinfo.table_id();
+
+      db_stream_unqualified_table_info->push_back(std::make_pair(stream_id, unqualified_table_id));
+    }
   }
 
   return Status::OK();
@@ -1767,6 +1781,28 @@ Status YBClient::UpdateCDCStream(
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::RemoveTablesFromCDCSDKStream(
+    const std::vector<TableId>& table_ids,
+    const xrepl::StreamId stream_id) {
+  if (table_ids.empty()) {
+    return STATUS(InvalidArgument, "Table ID should not be empty");
+  }
+  if (!stream_id) {
+     return STATUS(InvalidArgument, "Stream ID should not be empty");
+  }
+
+  master::RemoveTablesFromCDCSDKStreamRequestPB req;
+  master::RemoveTablesFromCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id.ToString());
+  req.mutable_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, RemoveTablesFromCDCSDKStream);
   return Status::OK();
 }
 
@@ -2342,7 +2378,7 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
   return std::make_pair(id, *requests.running_requests.begin());
 }
 
-void YBClient::AddMetaCacheInfo(JsonWriter* writer) {
+void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {
   data_->meta_cache_->AddAllTabletInfo(writer);
 }
 
@@ -2955,6 +2991,10 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
 void YBClient::ClearAllMetaCachesOnServer() {
   data_->meta_cache_->ClearAll();
+}
+
+Status YBClient::ClearMetacache(const std::string& namespace_id) {
+  return data_->meta_cache_->ClearCacheEntries(namespace_id);
 }
 
 bool YBClient::RefreshTabletInfoWithConsensusInfo(

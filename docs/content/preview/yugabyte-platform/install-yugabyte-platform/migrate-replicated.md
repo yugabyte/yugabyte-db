@@ -11,19 +11,19 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. If your YBA installation uses Replicated, you can use [YBA Installer](../install-software/installer/) to migrate from Replicated.
+YugabyteDB Anywhere (YBA) will end support for Replicated installation at the end of 2024. If your YBA installation uses Replicated, you can use [YBA Installer](../install-software/installer/) to migrate from Replicated.
 
 ## Before you begin
 
 - Review the [prerequisites](../../prepare/).
 - YBA Installer can perform the migration in place. Make sure you have enough disk space on your current machine for both the Replicated and YBA Installer installations.
 - If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../upgrade/upgrade-yp-replicated/) to v2.20.1.3 or later.
-- If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="stable" format="long">}} installed, use the following commands:
+- If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="preview" format="long">}} installed, use the following commands:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    $ tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    $ cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
     ```
 
 ## Migrate a Replicated installation
@@ -48,12 +48,16 @@ To migrate in place, do the following:
 
     Note that the `installRoot` (by default `/opt/ybanywhere`) in `yba-ctl.yml` needs to be different from the Replicated Storage Path (by default `/opt/yugabyte`). If they are set to the same value, the migration will fail. You can delete `yba-ctl.yml` and try again.
 
+    {{< warning title="Install Root" >}}
+The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`/opt/yugabyte` and `/opt/yugabyte/ybanywhere`) or upon completion of `replicated-migrate finish` all data will be lost while cleaning up Replicated.
+    {{</ warning >}}
+
     For a list of options, refer to [Configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
 
 1. Start the migration, passing in your license file:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license && sudo /opt/yba-ctl/yba-ctl restart yb-platform
+    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
     The `start` command runs all [preflight checks](../../install-yugabyte-platform/install-software/installer/#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.

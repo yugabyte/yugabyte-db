@@ -173,3 +173,52 @@ ALTER TABLE foo_unique ADD COLUMN c float UNIQUE NOT NULL DEFAULT random();
 ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1) DEFAULT random(); -- should fail
 ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
 SELECT a,b,d FROM foo_unique ORDER BY a;
+
+--
+-- Test for cascaded drops on columns
+--
+CREATE TABLE test_dropcolumn(a int, b int, c int);
+CREATE TYPE test_dropcolumn_type AS (a int, b int);
+ALTER TABLE test_dropcolumn ADD COLUMN d test_dropcolumn_type;
+DROP TYPE test_dropcolumn_type CASCADE; -- should drop the column d
+ALTER TABLE test_dropcolumn ADD COLUMN d int;
+
+--
+-- Test for ALTER TABLE ... VALIDATE CONSTRAINT
+--
+-- check constraints
+CREATE TABLE test_validate_constraint(a int, b int);
+INSERT INTO test_validate_constraint VALUES (1, 1), (2, 2), (3, 3), (-1, -1);
+ALTER TABLE test_validate_constraint ADD CONSTRAINT test_validate_constraint_check CHECK (a > 0) NOT VALID;
+ALTER TABLE test_validate_constraint VALIDATE CONSTRAINT test_validate_constraint_check; -- should fail.
+DELETE FROM test_validate_constraint WHERE a = -1;
+ALTER TABLE test_validate_constraint VALIDATE CONSTRAINT test_validate_constraint_check;
+-- foreign key constraints
+CREATE TABLE test_validate_constraint_parent(a int PRIMARY KEY);
+CREATE TABLE test_validate_constraint_child(b int);
+INSERT INTO test_validate_constraint_parent VALUES (1), (2);
+INSERT INTO test_validate_constraint_child VALUES (1), (2), (3);
+ALTER TABLE test_validate_constraint_child ADD CONSTRAINT test_validate_constraint_child_fk
+    FOREIGN KEY (b) REFERENCES test_validate_constraint_parent(a) NOT VALID;
+ALTER TABLE test_validate_constraint_child
+    VALIDATE CONSTRAINT test_validate_constraint_child_fk; -- should fail.
+INSERT INTO test_validate_constraint_parent VALUES (3);
+ALTER TABLE test_validate_constraint_child
+    VALIDATE CONSTRAINT test_validate_constraint_child_fk;
+-- partitioned tables
+CREATE TABLE test_validate_constraint_part (a int) PARTITION BY RANGE (a);
+CREATE TABLE test_validate_constraint_part_1
+    PARTITION OF test_validate_constraint_part FOR VALUES FROM (1) TO (6);
+CREATE TABLE test_validate_constraint_part_2
+    PARTITION OF test_validate_constraint_part FOR VALUES FROM (6) TO (11);
+INSERT INTO test_validate_constraint_part VALUES (generate_series(1, 10));
+ALTER TABLE test_validate_constraint_part
+    ADD CONSTRAINT test_validate_constraint_part_check CHECK (a % 2 = 0) NOT VALID;
+ALTER TABLE test_validate_constraint_part
+    VALIDATE CONSTRAINT test_validate_constraint_part_check; -- should fail.
+DELETE FROM test_validate_constraint_part WHERE a % 2 = 1 AND a < 6;
+ALTER TABLE test_validate_constraint_part
+    VALIDATE CONSTRAINT test_validate_constraint_part_check; -- should still fail.
+DELETE FROM test_validate_constraint_part WHERE a % 2 = 1;
+ALTER TABLE test_validate_constraint_part
+    VALIDATE CONSTRAINT test_validate_constraint_part_check;

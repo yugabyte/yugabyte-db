@@ -34,18 +34,17 @@ import org.yb.pgsql.ConnectionEndpoint;
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
 
-  // Keep the pool size to 2 in order to test how GUC variables are set on
-  // different physical connections. Keeping this limit does not affect the
-  // rest of the test, and is only used to determinstically switch between
-  // physical connections.
-  private final int POOL_SIZE = 2;
-
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
+    // Keep the pool size to 2 in order to test how GUC variables are set on
+    // different physical connections. Keeping this limit does not affect the
+    // rest of the test, and is only used to determinstically switch between
+    // physical connections.
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db",
+          Integer.toString(isTestRunningInWarmupRandomMode() ? 3 : 2));
       }
     };
 
@@ -250,8 +249,16 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         Connection newConn2 = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
             .connect();
+        Connection newConn3 = isTestRunningInWarmupRandomMode() ?
+            getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect() :
+            null;
         Statement newStmt1 = newConn1.createStatement();
-        Statement newStmt2 = newConn2.createStatement()) {
+        Statement newStmt2 = newConn2.createStatement();
+        Statement newStmt3 = isTestRunningInWarmupRandomMode() ?
+            newConn3.createStatement() :
+            null;) {
 
       // Create new physical connections.
 
@@ -262,6 +269,12 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       // newStmt2 will create a new physical connection.
       newStmt2.execute("BEGIN");
       newStmt2.execute("SELECT 1");
+
+      if (isTestRunningInWarmupRandomMode()) {
+      // newStmt3 will create a new physical connection.
+        newStmt3.execute("BEGIN");
+        newStmt3.execute("SELECT 1");
+      }
 
       // Detach newStmt1 from its physical connection.
       newStmt1.execute("COMMIT");
@@ -300,6 +313,11 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       // have to strictly ensure that our primary connection sticks to
       // its original physical connection.
       newStmt1.execute("COMMIT");
+      if (isTestRunningInWarmupRandomMode())
+      {
+        newStmt3.execute("COMMIT");
+        newConn3.close();
+      }
     } catch (Exception e) {
       fail(String.format("failed to check value of %s: %s", parameterName, e.getMessage()));
     }

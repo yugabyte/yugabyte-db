@@ -360,7 +360,7 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
                Storage Table Read Requests: 1
                Storage Table Rows Scanned: 4
- Storage Read Requests: 6
+ Storage Read Requests: 5
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -391,7 +391,7 @@ SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE
                Storage Filter: ((k > 0) AND (k <= 5))
                Storage Table Read Requests: 1
                Storage Table Rows Scanned: 4
- Storage Read Requests: 6
+ Storage Read Requests: 5
  Storage Rows Scanned: 12
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -517,7 +517,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
                            ->  Seq Scan on yb_locks_t2 (actual rows=3 loops=1)
                                  Storage Table Read Requests: 1
                                  Storage Table Rows Scanned: 3
- Storage Read Requests: 7
+ Storage Read Requests: 6
  Storage Rows Scanned: 34
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -629,7 +629,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
          Rows Removed by Join Filter: 4
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
- Storage Read Requests: 7
+ Storage Read Requests: 6
  Storage Rows Scanned: 12
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -663,7 +663,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
          Rows Removed by Join Filter: 4
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
- Storage Read Requests: 7
+ Storage Read Requests: 6
  Storage Rows Scanned: 12
  Storage Write Requests: 0
  Storage Flush Requests: 0

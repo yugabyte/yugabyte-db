@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Go application using PGX Driver
 menu:
   preview:
-    identifier: pgx-driver
+    identifier: go-2-pgx-driver
     parent: go-drivers
-    weight: 410
+    weight: 500
 type: docs
 ---
 
@@ -98,19 +98,19 @@ conn, err := pgx.Connect(context.Background(), url)
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| host | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| dbname | Database name | yugabyte
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| host | Hostname of the YugabyteDB instance | localhost |
+| port |  Listen port for YSQL | 5433 |
+| dbname | Database name | yugabyte |
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+$ export PGSSLROOTCERT=~/root.crt  # CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
 | Environment variable | Description |
@@ -207,10 +207,10 @@ func main() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Aeon, replace the **const** values in the file as follows:
 
 - **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
-- **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
+- **user** - Your YugabyteDB database username. In YugabyteDB Aeon, the default user is **admin**.
 - **password** - Your YugabyteDB database password.
 - **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
 - **port** is set to 5433, which is the default port for the YSQL API.
@@ -232,7 +232,4 @@ Query for id=1 returned: Row[John, 35, Go]
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [YugabyteDB PGX driver reference](../../../reference/drivers/go/pgx-reference/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- Build Go applications using [GORM](../gorm/)
-- Build Go applications using [PG](../pg/)

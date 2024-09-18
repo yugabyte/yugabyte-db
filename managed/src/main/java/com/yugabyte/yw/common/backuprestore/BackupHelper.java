@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.TablespaceResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -44,6 +46,9 @@ import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
+import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -73,8 +78,10 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
@@ -276,6 +283,11 @@ public class BackupHelper {
             BAD_REQUEST, "No previous successful backup found, please trigger a new base backup.");
       }
     }
+    if (taskParams.enablePointInTimeRestore && !universe.isYbcEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Point-In-Time-Restorable backup not allowed for non-YBC universes");
+    }
+
     if (!isSkipConfigBasedPreflightValidation(universe)) {
       validateStorageConfig(customerConfig);
     }
@@ -848,11 +860,28 @@ public class BackupHelper {
       RestorePreflightParams preflightParams, UUID customerUUID) {
     // Get loggingID
     String loggingID = (String) MDC.get(LogUtil.CORRELATION_ID);
-    // Validate Universe exists
-    Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
 
+    Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
     log.info(
-        "Starting preflight checks for restore on Universe {} with regex filter {}",
+        "Starting preflight checks for restore on Universe {} with logging ID {}",
+        universe.getName(),
+        loggingID);
+
+    UUID backupUUID = preflightParams.getBackupUUID();
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    return restorePreflightWithBackupObject(customerUUID, backup, preflightParams).toBuilder()
+        .loggingID(loggingID)
+        .build();
+  }
+
+  public RestorePreflightResponse generateAdvancedRestorePreflightAPIResponse(
+      AdvancedRestorePreflightParams preflightParams, UUID customerUUID) {
+    // Get loggingID
+    String loggingID = (String) MDC.get(LogUtil.CORRELATION_ID);
+
+    Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
+    log.info(
+        "Starting preflight checks for restore on Universe {} with logging ID {}",
         universe.getName(),
         loggingID);
 
@@ -860,22 +889,6 @@ public class BackupHelper {
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, preflightParams.getStorageConfigUUID());
 
-    // Validate storage config is usable
-    storageUtilFactory
-        .getStorageUtil(storageConfig.getName())
-        .validateStorageConfigOnDefaultLocationsList(
-            storageConfig.getDataObject(), preflightParams.getBackupLocations(), false);
-
-    UUID backupUUID = preflightParams.getBackupUUID();
-    if (backupUUID != null) {
-      Optional<Backup> oBackup = Backup.maybeGet(customerUUID, backupUUID);
-      if (oBackup.isPresent()) {
-        return restorePreflightWithBackupObject(customerUUID, oBackup.get(), preflightParams, true)
-            .toBuilder()
-            .loggingID(loggingID)
-            .build();
-      }
-    }
     return restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true)
         .toBuilder()
         .loggingID(loggingID)
@@ -892,15 +905,32 @@ public class BackupHelper {
    * @return RestorePreflightResponse
    */
   public RestorePreflightResponse restorePreflightWithBackupObject(
-      UUID customerUUID,
-      Backup backup,
-      RestorePreflightParams preflightParams,
-      boolean filterIndexes) {
+      UUID customerUUID, Backup backup, RestorePreflightParams preflightParams) {
+    Backup restorableBackup = backup;
+    long restoreTimestampMillis = preflightParams.getRestoreToPointInTimeMillis();
+    if (restoreTimestampMillis > 0L) {
+      Optional<Backup> optBackupClosestToRestoreTimestamp =
+          Backup.maybeGetRestorableBackup(
+              customerUUID, restorableBackup.getBaseBackupUUID(), restoreTimestampMillis);
+      if (!optBackupClosestToRestoreTimestamp.isPresent()) {
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, "No backup available for Point in restore to target timestamp");
+      }
+      // Assign this backup for all further uses.
+      restorableBackup = optBackupClosestToRestoreTimestamp.get();
+      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED,
+            String.format(
+                "Point in time restore not enabled for the backup %s",
+                restorableBackup.getBackupUUID()));
+      }
+    }
 
     RestorePreflightResponse.RestorePreflightResponseBuilder preflightResponseBuilder =
         RestorePreflightResponse.builder();
 
-    BackupCategory bCategory = backup.getCategory();
+    BackupCategory bCategory = restorableBackup.getCategory();
     preflightResponseBuilder.backupCategory(bCategory);
 
     Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
@@ -911,7 +941,7 @@ public class BackupHelper {
     }
 
     // Whether backup has KMS history
-    preflightResponseBuilder.hasKMSHistory(backup.isHasKMSHistory());
+    preflightResponseBuilder.hasKMSHistory(restorableBackup.isHasKMSHistory());
 
     // Whether selective restore would be supported for this Universe
     boolean selectiveRestoreYbcCheck = false;
@@ -923,14 +953,14 @@ public class BackupHelper {
     }
 
     boolean queryUniverseTablespaces =
-        backup.getBackupParamsCollection().parallelStream()
+        restorableBackup.getBackupParamsCollection().parallelStream()
             .filter(bP -> CollectionUtils.isNotEmpty(bP.getTablespacesList()))
             .findAny()
             .isPresent();
     List<Tablespace> universeTablespaces =
         queryUniverseTablespaces ? getTablespacesInUniverse(universe) : new ArrayList<>();
     Map<String, TablespaceResponse> tablespaceResponsesMap =
-        backup.getBackupParamsCollection().stream()
+        restorableBackup.getBackupParamsCollection().stream()
             .collect(
                 Collectors.toMap(
                     bP -> bP.storageLocation,
@@ -938,33 +968,24 @@ public class BackupHelper {
                         getTablespaceResponse(
                             universe, bP.getTablespacesList(), universeTablespaces)));
 
+    Map<String, PerBackupLocationKeyspaceTables> backupLocationKeyspaceTablesMap =
+        getBackupLocationKeyspaceTablesMap(
+            preflightParams.getKeyspaceTables(),
+            preflightParams.getRestoreToPointInTimeMillis(),
+            restorableBackup);
     // Generate locations and corresponding PerLocationBackupInfo map.
-    Map<String, PerLocationBackupInfo> locationContentMap =
+    Map<String, PerLocationBackupInfo> backupLocationInfoMap =
         BackupUtil.getBackupLocationBackupInfoMap(
-            backup.getBackupParamsCollection(),
+            restorableBackup.getBackupParamsCollection(),
             selectiveRestoreYbcCheck,
-            filterIndexes,
-            tablespaceResponsesMap);
-    Map<String, PerLocationBackupInfo> locationBackupInfoMap =
-        preflightParams.getBackupLocations().stream()
-            .collect(
-                Collectors.toMap(
-                    Function.identity(),
-                    bL -> {
-                      if (!locationContentMap.containsKey(bL)) {
-                        throw new RuntimeException(
-                            String.format(
-                                "Backup %s does not contain location %s",
-                                backup.getBackupUUID().toString(), bL));
-                      }
-                      return locationContentMap.get(bL);
-                    }));
-    preflightResponseBuilder.perLocationBackupInfoMap(locationBackupInfoMap);
+            tablespaceResponsesMap,
+            backupLocationKeyspaceTablesMap);
+    preflightResponseBuilder.perLocationBackupInfoMap(backupLocationInfoMap);
     return preflightResponseBuilder.build();
   }
 
   public RestorePreflightResponse restorePreflightWithoutBackupObject(
-      UUID customerUUID, RestorePreflightParams preflightParams, boolean filterIndexes) {
+      UUID customerUUID, AdvancedRestorePreflightParams preflightParams, boolean filterIndexes) {
     return restorePreflightWithoutBackupObject(
         customerUUID,
         preflightParams,
@@ -981,7 +1002,7 @@ public class BackupHelper {
    */
   public RestorePreflightResponse restorePreflightWithoutBackupObject(
       UUID customerUUID,
-      RestorePreflightParams preflightParams,
+      AdvancedRestorePreflightParams preflightParams,
       CustomerConfig storageConfig,
       boolean filterIndexes) {
     RestorePreflightResponse preflightResponse = null;
@@ -1008,6 +1029,10 @@ public class BackupHelper {
               preflightParams, storageConfig, filterIndexes, universe);
     } else {
       log.info("Did not find YB-Controller success marker, fallback to script");
+      if (preflightParams.getRestoreToPointInTimeMillis() > 0L) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot do Point in Time Restore for this backup location");
+      }
       preflightResponse =
           storageUtilFactory
               .getStorageUtil(storageConfig.getName())
@@ -1024,13 +1049,24 @@ public class BackupHelper {
    * @param storageConfig The CustomerConfig object
    */
   public RestorePreflightResponse generateYBCRestorePreflightResponseWithoutBackupObject(
-      RestorePreflightParams preflightParams,
+      AdvancedRestorePreflightParams preflightParams,
       CustomerConfig storageConfig,
       boolean filterIndexes,
       Universe universe) {
     Map<String, YbcBackupResponse> ybcSuccessMarkerMap =
         getYbcSuccessMarker(
             storageConfig, preflightParams.getBackupLocations(), preflightParams.getUniverseUUID());
+
+    // Verify restore to point in time is supported
+    ybcSuccessMarkerMap.forEach(
+        (location, successMarker) -> {
+          if (!successMarker.isRestorableToPointInTime(
+              preflightParams.getRestoreToPointInTimeMillis())) {
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED,
+                String.format("Cannot restore backup %s to given restore timestamp", location));
+          }
+        });
 
     boolean selectiveRestoreYbcCheck =
         ybcManager
@@ -1143,6 +1179,80 @@ public class BackupHelper {
   }
 
   /**
+   * Generate map of backup location and corresponding keyspace tables to be restored present in
+   * that location.
+   *
+   * @param keyspaceTablesList List of Keyspace and tables to be restored. An empty value means that
+   *     everything that was part of the backup( at the given time ) will be returned.
+   * @param restoreToPointInTimeMillis Point in time restore timestamp
+   * @param backup The backup to generate the result from
+   * @return A map of location and corresponding list of restorable items it contains
+   */
+  public Map<String, PerBackupLocationKeyspaceTables> getBackupLocationKeyspaceTablesMap(
+      @Nullable List<KeyspaceTables> keyspaceTablesList,
+      long restoreToPointInTimeMillis,
+      Backup backup) {
+    Map<String, Map<String, Set<String>>> keyspaceAndTablesBackupLocationMap =
+        backup.getKeyspaceAndTablesBackupLocationMap(restoreToPointInTimeMillis);
+    Map<String, Set<String>> paramsKeyspaceTablesMap =
+        BackupUtil.mergeKeyspaceTablesList(keyspaceTablesList);
+    Map<String, PerBackupLocationKeyspaceTables> backupLocationKeyspaceTablesMap = new HashMap<>();
+
+    // If restore everything, populate everything in backup in response
+    if (MapUtils.isEmpty(paramsKeyspaceTablesMap)) {
+      keyspaceAndTablesBackupLocationMap.forEach(
+          (keyspace, lTMap) -> {
+            lTMap.forEach(
+                (l, tables) -> {
+                  backupLocationKeyspaceTablesMap.put(
+                      l, new PerBackupLocationKeyspaceTables(keyspace, tables));
+                });
+          });
+      return backupLocationKeyspaceTablesMap;
+    }
+    // Partial/selective restore
+    paramsKeyspaceTablesMap.forEach(
+        (keyspace, paramsTables) -> {
+          if (!keyspaceAndTablesBackupLocationMap.containsKey(keyspace)) {
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED, String.format("Keyspace %s not found in backup", keyspace));
+          }
+          // Keep track of tables to be restored and not found in backup metadata yet.
+          Set<String> remainingTables =
+              paramsTables == null ? (new HashSet<>()) : (new HashSet<>(paramsTables));
+
+          keyspaceAndTablesBackupLocationMap
+              .get(keyspace)
+              .forEach(
+                  (location, backupTables) -> {
+                    if (CollectionUtils.isEmpty(paramsTables)) {
+                      // If all tables are to be restored, we add all tables.
+                      backupLocationKeyspaceTablesMap.put(
+                          location, new PerBackupLocationKeyspaceTables(keyspace, backupTables));
+                    } else {
+                      // Find restorable tables from this backup location and remove from
+                      // remainingTables.
+                      Set<String> restorableTables =
+                          new HashSet<>(
+                              CollectionUtils.intersection(remainingTables, backupTables));
+                      remainingTables.removeAll(backupTables);
+                      backupLocationKeyspaceTablesMap.put(
+                          location,
+                          new PerBackupLocationKeyspaceTables(keyspace, restorableTables));
+                    }
+                  });
+          // If not empty after removing all restorable tables from list, fail the operation
+          // because there are some tables which cannot be restored.
+          if (CollectionUtils.isNotEmpty(remainingTables)) {
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED,
+                String.format("Keyspace %s all tables cannot be restored", keyspace));
+          }
+        });
+    return backupLocationKeyspaceTablesMap;
+  }
+
+  /**
    * Validate storage config for backup on Universe using YBC gRPC. Currently we only validate
    * default location. Adding region specific validation is a TODO.
    *
@@ -1238,4 +1348,91 @@ public class BackupHelper {
     return confGetter.getConfForScope(
         universe, UniverseConfKeys.skipConfigBasedPreflightValidation);
   }
+
+  /* ---- Restorable objects preflight validation ---- */
+
+  /**
+   * Validate items to be restored against what is available in the backup. If PITRestore timestamp
+   * is provided, the backup chosen will be the closest backup which was created after the given
+   * restore timestamp. An empty restorable items request means that everything the given backup
+   * contains will be restored.
+   *
+   * @param customerUUID
+   * @param params
+   * @return A Pair of (1) boolean which tells if the items are restorable and (2) A list of all
+   *     non-restorable items if present.
+   */
+  public Pair<Boolean, List<KeyspaceTables>> validateRestorableKeyspaceTablesAgainstBackup(
+      UUID customerUUID, RestoreItemsValidationParams params) {
+    Backup backup = Backup.getOrBadRequest(customerUUID, params.getBackupUUID());
+    Backup restorableBackup = backup;
+    List<KeyspaceTables> paramKeyspaceTables = params.getKeyspaceTables();
+    long restoreTimestampMillis = params.getRestoreToPointInTimeMillis();
+    if (restoreTimestampMillis > 0L) {
+      Optional<Backup> optBackupClosestToRestoreTimestamp =
+          Backup.maybeGetRestorableBackup(
+              customerUUID, backup.getBaseBackupUUID(), restoreTimestampMillis);
+      if (!optBackupClosestToRestoreTimestamp.isPresent()) {
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, "No backup available for Point in restore to target timestamp");
+      }
+      restorableBackup = optBackupClosestToRestoreTimestamp.get();
+      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, "Point in time restore not enabled for the backup");
+      }
+    }
+
+    boolean success = true;
+    if (CollectionUtils.isEmpty(paramKeyspaceTables)) {
+      return new Pair<Boolean, List<KeyspaceTables>>(
+          success, null /* nonRestorableKeyspaceTables */);
+    }
+    Map<String, KeyspaceTables> backupLocationKeyspaceTablesMap =
+        restorableBackup.getBackupLocationKeyspaceTablesMap(restoreTimestampMillis);
+    List<KeyspaceTables> nonRestorableKeyspaceTables =
+        getNonRestorableKeyspaceTables(
+            backupLocationKeyspaceTablesMap.values(), paramKeyspaceTables);
+    if (MapUtils.isEmpty(backupLocationKeyspaceTablesMap)) {
+      success = false;
+    } else {
+      success = CollectionUtils.isEmpty(nonRestorableKeyspaceTables);
+    }
+    return new Pair<Boolean, List<KeyspaceTables>>(success, nonRestorableKeyspaceTables);
+  }
+
+  /**
+   * Get non-restorable keyspace tables from merged map of params request keyspace tables and the
+   * keyspace tables list the backup contains.
+   *
+   * @param keyspaceTablesInBackup
+   * @param paramsKeyspaceTables
+   * @return
+   */
+  private static List<KeyspaceTables> getNonRestorableKeyspaceTables(
+      Collection<KeyspaceTables> keyspaceTablesInBackup,
+      Collection<KeyspaceTables> paramsKeyspaceTables) {
+    Map<String, Set<String>> backupKeyspaceTablesMergedMap =
+        BackupUtil.mergeKeyspaceTablesList(keyspaceTablesInBackup);
+    Map<String, Set<String>> paramsKeyspaceTablesMergedMap =
+        BackupUtil.mergeKeyspaceTablesList(paramsKeyspaceTables);
+    List<KeyspaceTables> nonRestorableKeyspaceTables = new ArrayList<>();
+    paramsKeyspaceTablesMergedMap.forEach(
+        (keyspace, tables) -> {
+          if (!backupKeyspaceTablesMergedMap.containsKey(keyspace)) {
+            nonRestorableKeyspaceTables.add(new KeyspaceTables(tables, keyspace));
+          } else if (CollectionUtils.isNotEmpty(tables)
+              && !backupKeyspaceTablesMergedMap.get(keyspace).containsAll(tables)) {
+            nonRestorableKeyspaceTables.add(
+                new KeyspaceTables(
+                    new HashSet<>(
+                        CollectionUtils.removeAll(
+                            tables, backupKeyspaceTablesMergedMap.get(keyspace))),
+                    keyspace));
+          }
+        });
+    return nonRestorableKeyspaceTables;
+  }
+
+  /* ---- Restorable objects preflight validation ends ---- */
 }

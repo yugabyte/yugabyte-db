@@ -14,6 +14,7 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/util/scope_exit.h"
 
@@ -331,7 +332,7 @@ Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_
     LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
     return status;
   }
-  catalog_manager_->NotifyAutoFlagsConfigChanged();
+  catalog_manager_->GetXClusterManager()->NotifyAutoFlagsConfigChanged();
 
   return Status::OK();
 }

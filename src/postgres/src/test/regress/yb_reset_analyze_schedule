@@ -1,0 +1,6 @@
+# src/test/regress/yb_reset_analyze_schedule
+#
+####################################################################################################
+# This testsuite contains testcases pertinent to yb_reset_analyze function.
+####################################################################################################
+test: yb_reset_analyze

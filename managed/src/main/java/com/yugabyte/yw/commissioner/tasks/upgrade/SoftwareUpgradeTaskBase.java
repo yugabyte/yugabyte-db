@@ -134,12 +134,12 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     if (manualSourceRootCertDirPath != null) {
       log.debug(
           "{} gflag has already been set manually",
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
       targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
           manualSourceRootCertDirPath.toString();
       GFlagsUtil.removeGFlag(
           targetPrimaryUserIntent,
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           ServerType.TSERVER,
           ServerType.MASTER);
     } else {
@@ -152,8 +152,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     // Copy the source certs to the corresponding directory on the target universe.
     Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
         xClusterConfigsAsTarget.stream()
-            .collect(
-                Collectors.groupingBy(xClusterConfig -> xClusterConfig.getSourceUniverseUUID()));
+            .collect(Collectors.groupingBy(XClusterConfig::getSourceUniverseUUID));
 
     // Put all the universes in the locked list. The unlock operation is a no-op if the universe
     // does not get locked by this task.
@@ -184,11 +183,10 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               xClusterConfigs.forEach(
                   xClusterConfig ->
                       createTransferXClusterCertsCopyTasks(
-                          xClusterConfig,
                           targetUniverse.getNodes(),
                           xClusterConfig.getReplicationGroupName(),
                           sourceCertificate,
-                          targetUniverseDetails.getSourceRootCertDirPath()));
+                          targetUniverse));
             }
             log.debug(
                 "Subtasks created to transfer all source universe root certificates to "
@@ -265,8 +263,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         nodes.mastersList.stream()
             .filter(
                 node ->
-                    (!masterNodesWithSameDBVersion.contains(node)
-                        || !node.state.equals(NodeState.Live)))
+                    (!masterNodesWithSameDBVersion.contains(node) || node.state != NodeState.Live))
             .collect(Collectors.toList());
     Set<NodeDetails> tserverNodesWithSameDBVersion =
         getNodesWithSameDBVersion(

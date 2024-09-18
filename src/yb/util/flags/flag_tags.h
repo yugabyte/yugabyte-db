@@ -164,7 +164,8 @@ YB_DEFINE_ENUM(
     (kAuto)
     (kPg)
     (kDeprecated)
-    (kPreview));
+    (kPreview)
+    (kHasNewInstallValue));
 
 #define FLAG_TAG_stable ::yb::FlagTag::kStable
 #define FLAG_TAG_evolving ::yb::FlagTag::kEvolving
@@ -222,7 +223,25 @@ class FlagTagger {
 
 } // namespace flag_tags_internal
 
+namespace flags_internal {
+bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string& value);
+}  // namespace flags_internal
+
 } // namespace yb
+
+#define DEFINE_NEW_INSTALL_VALUE(flag_name, flag_value) \
+  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
+  static_assert( \
+      std::is_trivially_assignable< \
+          decltype(BOOST_PP_CAT(FLAGS_, flag_name))&, decltype(flag_value)>::value, \
+      "Value cannot be assigned to flag"); \
+  _TAG_FLAG(flag_name, ::yb::FlagTag::kHasNewInstallValue, hasNewInstallValue); \
+  namespace { \
+  auto BOOST_PP_CAT(_flag_new_install_value_, flag_name) = \
+      yb::flags_internal::RegisterFlagNewInstallValue( \
+          BOOST_PP_STRINGIZE(flag_name), BOOST_PP_STRINGIZE(flag_value)); \
+  } \
+  static_assert(true, "semi-colon required after this macro")
 
 #define _DEFINE_FLAG_IN_FILE(name) BOOST_PP_CAT(name, _DefinedInFile)
 

@@ -136,6 +136,9 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
+                    "Use min replay txn start time filter for bootstrap.");
+
 DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
@@ -503,20 +506,22 @@ class TabletBootstrap {
     }
 
     std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
-    HybridTime min_running_ht = HybridTime::kInvalid;
+    HybridTime min_replay_txn_start_ht = HybridTime::kInvalid;
     if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
       auto result = data_.bootstrap_state_manager->LoadFromDisk();
       if (result.ok()) {
         bootstrap_state_pb = std::move(*result);
 
-        const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
-        min_running_ht = bootstrap_state.GetMinRunningHybridTime();
+        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+          const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
+          min_replay_txn_start_ht = bootstrap_state.GetMinReplayTxnStartTime();
+        }
       } else if (!result.status().IsNotFound()) {
         return result.status();
       }
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_running_ht));
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
@@ -618,7 +623,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet(HybridTime min_running_ht) {
+  Result<bool> OpenTablet(HybridTime min_replay_txn_start_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -632,7 +637,7 @@ class TabletBootstrap {
 
     auto participant = tablet->transaction_participant();
     if (participant) {
-      participant->SetMinRunningHybridTimeLowerBound(min_running_ht);
+      participant->SetMinReplayTxnStartTimeLowerBound(min_replay_txn_start_ht);
     }
 
     // Doing nothing for now except opening a tablet locally.
@@ -848,13 +853,12 @@ class TabletBootstrap {
         metadata.wal_dir(),
         metadata.fs_manager()->uuid(),
         *tablet_->schema(),
-        metadata.schema_version(),
+        metadata.primary_table_schema_version(),
         tablet_->GetTableMetricsEntity(),
         tablet_->GetTabletMetricsEntity(),
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
@@ -1837,6 +1841,9 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
+
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
 
     Status s = tablet_->Truncate(&operation);
 

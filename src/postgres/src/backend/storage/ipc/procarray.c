@@ -1827,6 +1827,7 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
+	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
 	return snapshot;
 }
 
@@ -4139,16 +4140,12 @@ void
 YbStorePgAshSamples(TimestampTz sample_time)
 {
 	int			i;
-	int			samples_stored = 0;
+	int			samples_considered = 0;
 
 	ProcArrayStruct *arrayP = procArray;
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	/*
-	 * TODO: Add sampling logic to take random samples instead of
-	 * the first 'N'.
-	 */
 	for (i = 0; i < arrayP->numProcs; ++i)
 	{
 		int			pgprocno = arrayP->pgprocnos[i];
@@ -4171,10 +4168,11 @@ YbStorePgAshSamples(TimestampTz sample_time)
 			YbAshShouldIgnoreWaitEvent(proc->wait_event_info))
 			continue;
 
-		if (YbAshStoreSample(proc, arrayP->numProcs, sample_time,
-							 &samples_stored) == 0)
-			break;
+		YbAshMaybeIncludeSample(proc, arrayP->numProcs, sample_time,
+								&samples_considered);
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	YbAshFillSampleWeight(samples_considered);
 }

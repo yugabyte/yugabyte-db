@@ -1789,8 +1789,19 @@ ri_setdefault(TriggerData *trigdata)
  */
 bool
 RI_FKey_pk_upd_check_required(Trigger *trigger, Relation pk_rel,
-							  HeapTuple old_row, HeapTuple new_row)
+							  HeapTuple old_row, HeapTuple new_row,
+							  const YbSkippableEntities *yb_skip_entities)
 {
+
+	/* Check if this trigger is already marked as not needing an update */
+	if (yb_skip_entities && yb_skip_entities->referenced_fkey_list &&
+		list_member_oid(yb_skip_entities->referenced_fkey_list,
+						trigger->tgconstraint))
+	{
+		elog(DEBUG2, "Skipping trigger constraint %s", trigger->tgname);
+		return false;
+	}
+
 	const RI_ConstraintInfo *riinfo;
 
 	/*
@@ -1846,8 +1857,18 @@ RI_FKey_pk_upd_check_required(Trigger *trigger, Relation pk_rel,
  */
 bool
 RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
-							  HeapTuple old_row, HeapTuple new_row)
+							  HeapTuple old_row, HeapTuple new_row,
+							  const YbSkippableEntities *yb_skip_entities)
 {
+	/* Check if this trigger is marked as not needing an update */
+	if (yb_skip_entities && yb_skip_entities->referencing_fkey_list &&
+		list_member_oid(yb_skip_entities->referencing_fkey_list,
+						trigger->tgconstraint))
+	{
+		elog(DEBUG2, "Skipping trigger constraint %s", trigger->tgname);
+		return false;
+	}
+
 	const RI_ConstraintInfo *riinfo;
 
 	/*

@@ -2,7 +2,7 @@
 title: Create clusters example for ybm CLI automation
 headerTitle: "ybm CLI: Create clusters"
 linkTitle: Create clusters
-description: Tutorial for using YugabyteDB Managed ybm CLI to create clusters.
+description: Tutorial for using YugabyteDB Aeon ybm CLI to create clusters.
 headcontent: Create and connect to a cluster from the command line
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Managed.
+The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Aeon.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ This guide assumes you have already done the following:
 - [Installed ybm CLI](../../../managed-cli/managed-cli-overview/#install-ybm).
 - [Configured ybm CLI](../../../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
+Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
 
 ## Create a sandbox cluster
 
@@ -93,7 +93,7 @@ my-computer                                       173.206.17.104/32   my-sandbox
 
 ### Download the cluster certificate
 
-To connect to a cluster in YugabyteDB Managed using a shell, you need the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
+To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
 
 ```sh
 ybm cluster cert download --out $HOME/root.crt

@@ -33,9 +33,9 @@ HostPort RandomHostPort() {
 AshMetadata GenerateRandomMetadata() {
   return AshMetadata{
       .root_request_id{Uuid::Generate()},
-      .yql_endpoint_tserver_uuid{Uuid::Generate()},
+      .top_level_node_id{Uuid::Generate()},
       .query_id = RandomUniformInt<uint64_t>(),
-      .session_id = RandomUniformInt<uint64_t>(),
+      .pid = RandomUniformInt<pid_t>(),
       .database_id = RandomUniformInt<uint32_t>(),
       .rpc_request_id = RandomUniformInt<int64_t>(),
       .client_host_port = RandomHostPort()};
@@ -46,12 +46,12 @@ void testToAndFromPB() {
   AshMetadataPB pb;
   meta1.ToPB(&pb);
   ASSERT_EQ(pb.root_request_id().size(), kUuidSize);
-  ASSERT_EQ(pb.yql_endpoint_tserver_uuid().size(), kUuidSize);
+  ASSERT_EQ(pb.top_level_node_id().size(), kUuidSize);
   AshMetadata meta2 = AshMetadata::FromPB(pb);
   ASSERT_EQ(meta1.root_request_id, meta2.root_request_id);
-  ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, meta2.yql_endpoint_tserver_uuid);
+  ASSERT_EQ(meta1.top_level_node_id, meta2.top_level_node_id);
   ASSERT_EQ(meta1.query_id, meta2.query_id);
-  ASSERT_EQ(meta1.session_id, meta2.session_id);
+  ASSERT_EQ(meta1.pid, meta2.pid);
   ASSERT_EQ(meta1.database_id, meta2.database_id);
   ASSERT_EQ(meta1.rpc_request_id, meta2.rpc_request_id);
   ASSERT_EQ(meta1.client_host_port, meta2.client_host_port);
@@ -69,13 +69,13 @@ TEST(WaitStateTest, TestUpdate) {
   auto pb1_root_request_id = Uuid::Generate();
   pb1_root_request_id.ToBytes(pb1.mutable_root_request_id());
   pb1.set_query_id(RandomUniformInt<uint64_t>());
-  pb1.set_session_id(RandomUniformInt<uint64_t>());
+  pb1.set_pid(RandomUniformInt<pid_t>());
   HostPortToPB(RandomHostPort(), pb1.mutable_client_host_port());
   meta1.UpdateFrom(AshMetadata::FromPB(pb1));
   ASSERT_EQ(meta1.root_request_id, pb1_root_request_id);
-  ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, meta1_copy.yql_endpoint_tserver_uuid);
+  ASSERT_EQ(meta1.top_level_node_id, meta1_copy.top_level_node_id);
   ASSERT_EQ(meta1.query_id, pb1.query_id());
-  ASSERT_EQ(meta1.session_id, pb1.session_id());
+  ASSERT_EQ(meta1.pid, pb1.pid());
   ASSERT_EQ(meta1.database_id, meta1_copy.database_id);
   ASSERT_EQ(meta1.rpc_request_id, meta1_copy.rpc_request_id);
   ASSERT_EQ(meta1.client_host_port, HostPortFromPB(pb1.client_host_port()));
@@ -83,14 +83,14 @@ TEST(WaitStateTest, TestUpdate) {
   meta1 = meta1_copy;
   // Update 2 other fields, rest unset.
   AshMetadataPB pb2;
-  auto pb2_yql_endpoint_tserver_uuid = Uuid::Generate();
-  pb2_yql_endpoint_tserver_uuid.ToBytes(pb2.mutable_yql_endpoint_tserver_uuid());
+  auto pb2_top_level_node_id = Uuid::Generate();
+  pb2_top_level_node_id.ToBytes(pb2.mutable_top_level_node_id());
   pb2.set_rpc_request_id(RandomUniformInt<int64_t>());
   meta1.UpdateFrom(AshMetadata::FromPB(pb2));
   ASSERT_EQ(meta1.root_request_id, meta1_copy.root_request_id);
-  ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, pb2_yql_endpoint_tserver_uuid);
+  ASSERT_EQ(meta1.top_level_node_id, pb2_top_level_node_id);
   ASSERT_EQ(meta1.query_id, meta1_copy.query_id);
-  ASSERT_EQ(meta1.session_id, meta1_copy.session_id);
+  ASSERT_EQ(meta1.pid, meta1_copy.pid);
   ASSERT_EQ(meta1.rpc_request_id, pb2.rpc_request_id());
   ASSERT_EQ(meta1.client_host_port, meta1_copy.client_host_port);
 }

@@ -28,6 +28,7 @@ interface ScheduleTaskParams {
   keyspaceList: IBackup['commonBackupInfo']['responseList'];
   isTableByTableBackup: IBackup['isTableByTableBackup']
   expiryTimeUnit: string;
+  pointInTimeRestoreEnabled?: boolean;
 }
 
 export enum IBackupScheduleStatus {

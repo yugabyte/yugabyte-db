@@ -74,7 +74,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
 
 {{< note title="Note" >}}
 
@@ -109,8 +109,8 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
   {{<index/item
-    title="Get query statistics using pg_stat_statements"
-    body="Track planning and execution statistics for all SQL statements executed by a server."
+    title="Get query statistics"
+    body="Track planning and execution statistics for all statements executed by a server using pg_stat_staments."
     href="pg-stat-statements/"
     icon="/images/section_icons/develop/learn.png">}}
 
@@ -127,4 +127,3 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
 {{</index/block>}}
-

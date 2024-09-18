@@ -175,7 +175,8 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   backupStorageInfo,
                   taskId,
                   taskParams().getSuccessMarker(),
-                  taskParams().getUniverseUUID());
+                  taskParams().getUniverseUUID(),
+                  taskParams().restoreToPointInTimeMillis);
           BackupServiceTaskCreateResponse response =
               ybcClient.restoreNamespace(restoreTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {

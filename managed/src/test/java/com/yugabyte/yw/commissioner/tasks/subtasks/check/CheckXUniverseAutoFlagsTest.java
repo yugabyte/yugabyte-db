@@ -65,6 +65,7 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
         .thenReturn(autoFlagsPerServer);
     CheckXUniverseAutoFlags task = AbstractTaskBase.createTask(CheckXUniverseAutoFlags.class);
     CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
+    params.checkAutoFlagsEqualityOnBothUniverses = true;
     params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     params.targetUniverseUUID = targetUniverse.getUniverseUUID();
     task.initialize(params);
@@ -94,6 +95,40 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
             + sourceUniverse.getUniverseUUID()
             + " is not present on universe "
             + targetUniverse.getUniverseUUID(),
+        pe.getMessage());
+  }
+
+  @Test
+  public void testAutoFlagFailureForEqualityBothUniverse() throws Exception {
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(Set.of("FLAG_1", "FLAG_2"));
+    GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+    autoFlagDetails.name = "FLAG_1";
+    GFlagsValidation.AutoFlagDetails autoFlagDetails2 = new GFlagsValidation.AutoFlagDetails();
+    autoFlagDetails2.name = "FLAG_2";
+    GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+        new GFlagsValidation.AutoFlagsPerServer();
+    autoFlagsPerServer.autoFlagDetails = Arrays.asList(autoFlagDetails2, autoFlagDetails);
+    GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer2 =
+        new GFlagsValidation.AutoFlagsPerServer();
+    autoFlagsPerServer2.autoFlagDetails = Collections.singletonList(autoFlagDetails);
+    when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+        .thenReturn(autoFlagsPerServer)
+        .thenReturn(autoFlagsPerServer)
+        .thenReturn(autoFlagsPerServer2);
+    CheckXUniverseAutoFlags task = AbstractTaskBase.createTask(CheckXUniverseAutoFlags.class);
+    CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
+    params.checkAutoFlagsEqualityOnBothUniverses = true;
+    params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    params.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    task.initialize(params);
+    PlatformServiceException pe = assertThrows(PlatformServiceException.class, () -> task.run());
+    assertEquals(BAD_REQUEST, pe.getHttpStatus());
+    assertEquals(
+        "Auto Flag FLAG_2 set on universe "
+            + targetUniverse.getUniverseUUID()
+            + " is not present on universe "
+            + sourceUniverse.getUniverseUUID(),
         pe.getMessage());
   }
 }

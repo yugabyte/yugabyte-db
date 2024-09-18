@@ -40,6 +40,8 @@ Review the following information before starting an upgrade.
 
 - Roll back is {{<badge/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 
+- You can upgrade from any version of 2.14.x to any stable version in one go. 
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

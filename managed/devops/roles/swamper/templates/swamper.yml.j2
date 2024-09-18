@@ -1,0 +1,153 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This is a template for auto-generated file for prometheus configuration
+
+global:
+  # By default, scrape targets every 10 seconds.
+  scrape_interval:     10s
+  evaluation_interval: 10s
+  # scrape_timeout is set to the global default (10s).
+
+  # The labels to add to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'swamper'
+
+# Rule files specifies a list of files from which rules are read.
+rule_files:
+  - '{{ prometheus_rule_path }}/yugaware.ad.*.yml'
+  {% for (key, value) in prometheus_rule_files.items() %}
+  - {{ prometheus_rule_path }}/{{ value.dest }}
+  {% endfor %}
+
+# A list of scrape configurations.
+scrape_configs:
+
+  - job_name: 'prometheus'
+    scrape_interval: 10s
+    scrape_timeout:  10s
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: "node"
+    file_sd_configs:
+      - files:
+        - '{{ prometheus_file_sd_config_path }}/node.*.json'
+    metric_relabel_configs:
+      # Below relabels are required for smooth migration from node_exporter 0.13.0 to the latest
+      - source_labels: ["__name__"]
+        regex: "node_cpu"
+        target_label: "__name__"
+        replacement: "node_cpu_seconds_total"
+      - source_labels: ["__name__"]
+        regex: "node_filesystem_free"
+        target_label: "__name__"
+        replacement: "node_filesystem_free_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_filesystem_size"
+        target_label: "__name__"
+        replacement: "node_filesystem_size_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_disk_reads_completed"
+        target_label: "__name__"
+        replacement: "node_disk_reads_completed_total"
+      - source_labels: ["__name__"]
+        regex: "node_disk_writes_completed"
+        target_label: "__name__"
+        replacement: "node_disk_writes_completed_total"
+      - source_labels: ["__name__"]
+        regex: "node_memory_MemTotal"
+        target_label: "__name__"
+        replacement: "node_memory_MemTotal_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_memory_Slab"
+        target_label: "__name__"
+        replacement: "node_memory_Slab_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_memory_Cached"
+        target_label: "__name__"
+        replacement: "node_memory_Cached_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_memory_Buffers"
+        target_label: "__name__"
+        replacement: "node_memory_Buffers_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_memory_MemFree"
+        target_label: "__name__"
+        replacement: "node_memory_MemFree_bytes"
+      - source_labels: ["__name__"]
+        regex: "node_network_receive_bytes"
+        target_label: "__name__"
+        replacement: "node_network_receive_bytes_total"
+      - source_labels: ["__name__"]
+        regex: "node_network_transmit_bytes"
+        target_label: "__name__"
+        replacement: "node_network_transmit_bytes_total"
+      - source_labels: ["__name__"]
+        regex: "node_network_receive_packets"
+        target_label: "__name__"
+        replacement: "node_network_receive_packets_total"
+      - source_labels: ["__name__"]
+        regex: "node_network_transmit_packets"
+        target_label: "__name__"
+        replacement: "node_network_transmit_packets_total"
+      - source_labels: ["__name__"]
+        regex: "node_network_receive_errs"
+        target_label: "__name__"
+        replacement: "node_network_receive_errs_total"
+      - source_labels: ["__name__"]
+        regex: "node_network_transmit_errs"
+        target_label: "__name__"
+        replacement: "node_network_transmit_errs_total"
+      - source_labels: ["__name__"]
+        regex: "node_disk_bytes_read"
+        target_label: "__name__"
+        replacement: "node_disk_read_bytes_total"
+      - source_labels: ["__name__"]
+        regex: "node_disk_bytes_written"
+        target_label: "__name__"
+        replacement: "node_disk_written_bytes_total"
+      - source_labels: ["__name__"]
+        regex: "node_boot_time"
+        target_label: "__name__"
+        replacement: "node_boot_time_seconds"
+      # Save the name of the metric so we can group_by since we cannot by __name__ directly...
+      - source_labels: ["__name__"]
+        regex: "(.*)"
+        target_label: "saved_name"
+        replacement: "$1"
+
+  - job_name: "yugabyte"
+    metrics_path: "/prometheus-metrics"
+    file_sd_configs:
+      - files:
+        - '{{ prometheus_file_sd_config_path }}/yugabyte.*.json'
+    metric_relabel_configs:
+      # Save the name of the metric so we can group_by since we cannot by __name__ directly...
+      - source_labels: ["__name__"]
+        regex: "(.*)"
+        target_label: "saved_name"
+        replacement: "$1"
+      # The following basically retrofit the handler_latency_* metrics to label format.
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
+        target_label: "server_type"
+        replacement: "$1"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
+        target_label: "service_type"
+        replacement: "$2"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
+        target_label: "service_method"
+        replacement: "$3"
+      - source_labels: ["__name__"]
+        regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
+        target_label: "__name__"
+        replacement: "rpc_latency$4"

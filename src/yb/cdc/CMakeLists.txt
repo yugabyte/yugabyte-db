@@ -89,7 +89,6 @@ ADD_YB_LIBRARY(xcluster_producer_proto
 set(CDC_UTIL_SRCS
   cdc_util.cc
   xcluster_types.cc
-  xcluster_util.cc
 )
 
 ADD_YB_LIBRARY(

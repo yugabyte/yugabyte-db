@@ -17,7 +17,7 @@ import { find, isEmpty } from 'lodash';
 import * as yup from 'yup';
 import { useMutation } from 'react-query';
 import { Grid, MenuItem, Typography, makeStyles } from '@material-ui/core';
-import { YBInputField, YBModal, YBSelectField } from '../../../../../redesign/components';
+import { AlertVariant, YBAlert, YBInputField, YBModal, YBSelectField } from '../../../../../redesign/components';
 import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
 import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
 import {
@@ -53,8 +53,11 @@ const useStyles = makeStyles((theme) => ({
   targetVersion: {
     marginTop: '28px'
   },
+  alert: {
+    marginTop: '50px'
+  },
   info: {
-    marginTop: '60px',
+    marginTop: '16px',
     padding: '15px',
     borderRadius: '4px',
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
@@ -170,7 +173,7 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
         className: classes.content
       }}
       overrideWidth={'886px'}
-      overrideHeight={'686px'}
+      overrideHeight={'720px'}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       submitLabel={t('submitLabel')}
       buttonProps={{
@@ -254,7 +257,19 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
           <YBInputField control={control} name={'sleepAfterInSeconds'} type="number" fullWidth />
         </Grid>
       </Grid>
-
+      <YBAlert
+        open
+        text={
+          <Trans
+          i18nKey={`linuxVersion.upgradeModal.verifyImageText`}
+          components={{
+            b: <b />
+          }}
+        />
+        }
+        variant={AlertVariant.Warning}
+        className={classes.alert}
+      />
       <div className={classes.info}>
         <Trans
           i18nKey={`linuxVersion.upgradeModal.infoContent`}

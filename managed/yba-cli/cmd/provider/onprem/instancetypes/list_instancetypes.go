@@ -65,14 +65,15 @@ var listInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		instanceTypesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No instance types found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

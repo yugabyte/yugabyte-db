@@ -1,0 +1,16 @@
+title: GflagMetadata
+description: Metadata for Gflags of YB Controller.
+type: object
+properties:
+  name:
+    description: The name of the flag.
+    type: string
+  meaning:
+    description: A brief description of what the flag does.
+    type: string
+  default:
+    description: The default value of the flag.
+    type: string
+  type:
+    description: The data type of the flag.
+    type: string

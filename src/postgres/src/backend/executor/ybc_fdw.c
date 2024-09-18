@@ -361,8 +361,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				ybc_state->exec_params->rowmark = erm->markType;
 				ybc_state->exec_params->pg_wait_policy = erm->waitPolicy;
-				YBSetRowLockPolicy(&ybc_state->exec_params->docdb_wait_policy,
-								   erm->waitPolicy);
+				ybc_state->exec_params->docdb_wait_policy =
+					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
 			break;
 		}
@@ -409,8 +409,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * For aggregate pushdown, we read just the aggregates from DocDB
 		 * and pass that up to the aggregate node (agg pushdown wouldn't be
 		 * enabled if we needed to read more than that).  Set up a dummy
-		 * scan slot to hold that as many attributes as there are pushed
-		 * aggregates.
+		 * scan slot to hold as many attributes as there are pushed aggregates.
 		 */
 		TupleDesc tupdesc =
 			CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs),

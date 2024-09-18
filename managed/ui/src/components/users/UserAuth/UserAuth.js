@@ -8,14 +8,14 @@ import { OIDCAuth } from './OIDCAuth';
 
 const TABS = [
   {
-    label: 'LDAP Configuration',
-    id: 'LDAP',
-    Component: LDAPAuth
-  },
-  {
     label: 'OIDC Configuration',
     id: 'OIDC',
     Component: OIDCAuth
+  },
+  {
+    label: 'LDAP Configuration',
+    id: 'LDAP',
+    Component: LDAPAuth
   }
 ];
 
@@ -47,15 +47,15 @@ export const UserAuth = (props) => {
       {isTabsVisible && (
         <>
           <div className="ua-tab-container">
-            {TABS.map(({ label, id }) => (
-              <div
+            {TABS.map(({ label, id }) => {
+              return <div
                 key={id}
                 className={clsx('ua-tab-item', id === activeTab && 'ua-active-tab')}
                 onClick={(e) => handleTabSelect(e, id)}
               >
                 {label}
-              </div>
-            ))}
+              </div>;
+            })}
           </div>
           <div className="ua-sec-divider" />
         </>

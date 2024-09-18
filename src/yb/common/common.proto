@@ -639,6 +639,8 @@ message DatumMessagePB {
     // The Walsender does the conversion from QLValuePB to the PG datum.
     QLValuePB pg_ql_value = 15;
   }
+  // This is applicable only for YSQL table columns.
+  optional int32 col_attr_num = 16;
 }
 
 message PgDatumPB {
@@ -666,15 +668,18 @@ message AshMetadataPB {
   // The uuid of the local tserver which received the request from the client.
   // i.e. the local tserver running the YSQL-Pg backend/YCQL proxy. if set,
   // should be 16 bytes in length.
-  optional bytes yql_endpoint_tserver_uuid = 3;
+  optional bytes top_level_node_id = 3;
   // The request id for the "current" rpc. This may be different than
   // the root level request id. e.g. consider a write-rpc sent by the local
   // TServer to the destination TServer.
   optional int64 rpc_request_id = 4;
   // Query id as seen on pg_stat_statements to identify identical normalized queries.
   optional uint64 query_id = 5;
-  // PgClient session id. This will be 0 for YCQL.
-  optional uint64 session_id = 6;
+  // Deprecated session_id
+  reserved 6;
+  // pid of the YSQL/YCQL backend which is executing the query. TServer pid for
+  // background activities
+  optional int32 pid = 9;
   // PG database OID. This will be 0 for YCQL.
   optional uint32 database_id = 8;
 }
@@ -699,4 +704,10 @@ message WaitStateInfoPB {
   optional AshAuxDataPB aux_info = 3;
   // A string representation of wait_state_code for easy human consumption.
   optional string wait_state_code_as_string = 4;
+}
+
+// This message should be used for specifying stream creation options for CDCSDK streams.
+message CDCSDKStreamCreateOptionsPB {
+  optional
+      CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
 }

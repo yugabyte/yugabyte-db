@@ -29,9 +29,11 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -385,6 +388,46 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled,
+        enableConnectionPooling,
+        internalYsqlServerRpcPort);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
@@ -409,7 +452,11 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    if (enableConnectionPooling) {
+      bashCommand.add(String.valueOf(internalYsqlServerRpcPort));
+    } else {
+      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     if (StringUtils.isNotEmpty(dbName)) {
@@ -483,7 +530,7 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
     if (!optional.isPresent()) {
       log.debug(
           "Node agent is not enabled for provider {}({})", provider.getName(), provider.getUuid());
@@ -533,10 +580,7 @@ public class NodeUniverseManager extends DevopsBase {
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(
-                universe.getUniverseDetails().arch,
-                cluster.userIntent,
-                provider,
-                confGetter.getStaticConf().getBoolean("yb.cloud.enabled"));
+                universe.getUniverseDetails().arch, cluster.userIntent, provider);
         if (imageBundleUUID != null) {
           ImageBundle.NodeProperties toOverwriteNodeProperties =
               imageBundleUtil.getNodePropertiesOrFail(
@@ -590,6 +634,9 @@ public class NodeUniverseManager extends DevopsBase {
     commandArgs.addAll(actionArgs);
     if (MapUtils.isNotEmpty(redactedVals)) {
       // Create a new context as a context is immutable.
+      if (MapUtils.isNotEmpty(context.getRedactedVals())) {
+        redactedVals.putAll(context.getRedactedVals());
+      }
       context = context.toBuilder().redactedVals(redactedVals).build();
     }
     Cluster curCluster = universe.getCluster(node.placementUuid);
@@ -724,17 +771,20 @@ public class NodeUniverseManager extends DevopsBase {
    * @return the list of pairs (size, name)
    */
   public List<Pair<Long, String>> getNodeFilePathsAndSize(
-      NodeDetails node, Universe universe, String remoteDirPath) {
+      NodeDetails node, Universe universe, String remoteDirPath, Date startDate, Date endDate) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
         getLocalTmpDir() + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
     String remoteTempFilePath =
         getRemoteTmpDir(node, universe) + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
 
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
     List<String> findCommandParams = new ArrayList<>();
     findCommandParams.add("get_paths_and_sizes");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(remoteTempFilePath);
+    findCommandParams.add(formatter.format(startDate));
+    findCommandParams.add(formatter.format(DateUtils.addDays(endDate, 1)));
 
     runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.

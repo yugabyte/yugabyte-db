@@ -48,6 +48,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+/* YB includes */
+#include "catalog/yb_type.h"
+
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
 
@@ -2079,6 +2082,8 @@ get_typlenbyvalalign(Oid typid, int16 *typlen, bool *typbyval,
 	HeapTuple	tp;
 	Form_pg_type typtup;
 
+	if (YbTypeDetails(typid, typlen, typbyval, typalign))
+		return;
 	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for type %u", typid);

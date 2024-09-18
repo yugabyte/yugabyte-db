@@ -6,7 +6,7 @@ private = true
 
 ### Security
 
-In addition to the volume encryption that YugabyteDB Managed uses to encrypt your data, you can enable YugabyteDB [encryption at rest](../../../cloud-secure-clusters/managed-ear/) (EAR) for clusters. When enabled, your YugabyteDB cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS).
+In addition to the volume encryption that YugabyteDB Aeon uses to encrypt your data, you can enable YugabyteDB [encryption at rest](../../../cloud-secure-clusters/managed-ear/) (EAR) for clusters. When enabled, your YugabyteDB cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS).
 
 <!--You can also enable EAR for a cluster after the cluster is created.-->
 

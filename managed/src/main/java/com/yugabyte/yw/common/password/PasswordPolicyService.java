@@ -16,7 +16,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
@@ -44,15 +43,15 @@ public class PasswordPolicyService {
   private static final String DEFAULT_MIN_DIGITS_PARAM = "yb.pwdpolicy.default_min_digits";
   private static final String DEFAULT_MIN_SPECIAL_CHAR_PARAM =
       "yb.pwdpolicy.default_min_special_chars";
+  private static final String DEFAULT_DISALLOWED_CHARS_PARAM =
+      "yb.pwdpolicy.default_disallowed_chars";
   private List<PasswordValidator> validators = new ArrayList<>();
 
   private final Config config;
-  private final ApiHelper apiHelper;
 
   @Inject
-  public PasswordPolicyService(Config config, ApiHelper apiHelper) {
+  public PasswordPolicyService(Config config) {
     this.config = config;
-    this.apiHelper = apiHelper;
     validators.add(
         new PasswordComplexityValidator(
             CustomerConfigPasswordPolicyData::getMinLength, c -> true, "characters"));
@@ -74,6 +73,9 @@ public class PasswordPolicyService {
             CustomerConfigPasswordPolicyData::getMinSpecialCharacters,
             c -> ArrayUtils.contains(SPECIAL_CHARACTERS, c),
             "special characters"));
+    validators.add(
+        new PasswordDisAllowedCharactersValidators(
+            CustomerConfigPasswordPolicyData::getDisallowedCharacters));
   }
 
   public void checkPasswordPolicy(UUID customerUUID, String password) {
@@ -132,6 +134,7 @@ public class PasswordPolicyService {
       effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));
       effectivePolicy.setMinDigits(config.getInt(DEFAULT_MIN_DIGITS_PARAM));
       effectivePolicy.setMinSpecialCharacters(config.getInt(DEFAULT_MIN_SPECIAL_CHAR_PARAM));
+      effectivePolicy.setDisallowedCharacters(config.getString(DEFAULT_DISALLOWED_CHARS_PARAM));
     } else {
       effectivePolicy = configuredPolicy;
     }

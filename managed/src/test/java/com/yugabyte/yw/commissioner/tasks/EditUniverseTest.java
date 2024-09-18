@@ -75,6 +75,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -124,6 +125,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -258,7 +260,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskInfo> instanceActions = subTasksByPosition.get(2);
+    List<TaskInfo> instanceActions = subTasksByPosition.get(3);
     assertEquals(
         new ArrayList<>(
             Arrays.asList(

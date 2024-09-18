@@ -198,7 +198,7 @@ AreNodesSafeToTakeDownDriver::FindTserversToContact(ReplicaCountMap* required_re
     // to check is encountered.
     optional<size_t> min_replicas;
 
-    for (auto& tablet : table->GetTablets()) {
+    for (auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       auto ts_uuid_to_replica_map = tablet->GetReplicaLocations();
       bool check_tablet_health = std::any_of(
           ts_uuid_to_replica_map->begin(),

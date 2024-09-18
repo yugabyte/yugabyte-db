@@ -16,7 +16,7 @@ import { MetricsPanelOverview } from '../../../../../../components/metrics';
 import { YBButtonLink } from '../../../../../../components/common/forms/fields';
 import { CustomDatePicker } from '../../../../../../components/metrics/CustomDatePicker/CustomDatePicker';
 import { QUERY_KEY, api } from '../../../../../utils/api';
-import { getPrometheusUrls } from '../../../../../../components/metrics/utils';
+import { getPrometheusUrls } from '../../../../../components/YBMetrics/utils';
 import {
   fetchCDCAllMetrics,
   CDC_METRIC_ARRAY,

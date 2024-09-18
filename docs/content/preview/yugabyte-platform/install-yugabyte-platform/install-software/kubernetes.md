@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -40,7 +40,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl create namespace yb-platform
     ```
 
-1. Apply the YugabyteDB Anywhere secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
+1. Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by running the following `kubectl create` command:
 
     ```sh
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
@@ -85,7 +85,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YBA using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YBA deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+    To install YugabyteDB Anywhere using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -149,7 +149,7 @@ The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-op
 
 Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
-To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernetes Operator, do the following:
+To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Operator, do the following:
 
 1. Apply the following Custom Resource Definition:
 

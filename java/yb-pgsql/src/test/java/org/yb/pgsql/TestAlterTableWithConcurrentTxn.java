@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -47,6 +48,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       "no owned sequence found";
   private static final String NO_TUPLE_FOUND_ERROR =
        "could not find tuple for parent";
+  private static final String CONSTRAINT_VIOLATION_ERROR =
+       "violates check constraint";
   private static final String NO_ERROR = "";
   private static final boolean executeDmlBeforeAlter = true;
   private static final boolean executeDmlAfterAlter = false;
@@ -62,7 +65,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       ATTACH_PARTITION, DETACH_PARTITION,
       ADD_FOREIGN_KEY, DROP_FOREIGN_KEY,
       ADD_PRIMARY_KEY, DROP_PRIMARY_KEY,
-      ADD_COLUMN_WITH_VOLATILE_DEFAULT, ALTER_TYPE}
+      ADD_COLUMN_WITH_VOLATILE_DEFAULT, ALTER_TYPE,
+      VALIDATE_CONSTRAINT}
 
   private void prepareAndPopulateTable(AlterCommand alterCommand, String tableName)
       throws Exception {
@@ -110,6 +114,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       if (alterCommand == AlterCommand.ALTER_TYPE) {
         createTableQuery += ", d TEXT";
       }
+      if (alterCommand == AlterCommand.VALIDATE_CONSTRAINT) {
+        createTableQuery += ", e INT";
+      }
       createTableQuery += ")";
       if (alterCommand == AlterCommand.ATTACH_PARTITION ||
           alterCommand == AlterCommand.DETACH_PARTITION) {
@@ -148,6 +155,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       } else if (alterCommand == AlterCommand.DROP_FOREIGN_KEY) {
         statement.execute("CREATE TABLE " + tableName + "_f (a INT, " +
             "CONSTRAINT c FOREIGN KEY (a) REFERENCES " + tableName + "(a))");
+      } else if (alterCommand == AlterCommand.VALIDATE_CONSTRAINT) {
+        statement.execute(
+            "ALTER TABLE " + tableName + " ADD CONSTRAINT check_valid CHECK (e > 0) NOT VALID");
       }
 
       // Populate the table
@@ -167,7 +177,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         case DETACH_PARTITION:
         case ADD_PRIMARY_KEY:
         case DROP_PRIMARY_KEY:
-        case ADD_COLUMN_WITH_VOLATILE_DEFAULT: {
+        case ADD_COLUMN_WITH_VOLATILE_DEFAULT:
+        case VALIDATE_CONSTRAINT: {
           statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo')");
           break;
         }
@@ -280,6 +291,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         return rewriteTestFlag + "ALTER TABLE " + tableName
           + " ALTER COLUMN d TYPE int USING length(d)";
       }
+      case VALIDATE_CONSTRAINT: {
+        return "ALTER TABLE " + tableName + " VALIDATE CONSTRAINT check_valid";
+      }
       default: {
         throw new Exception("Alter command type " + alterCommand + " not supported");
       }
@@ -371,6 +385,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
               return "INSERT INTO " + tableName + " VALUES (2, 'bar', 6)";
             }
           }
+          case VALIDATE_CONSTRAINT: {
+            if (useOriginalSchema) {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar')";
+            } else {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', -1)";
+            }
+          }
           default: {
             throw new Exception("Alter command type " + alterCommand + " not supported");
           }
@@ -399,6 +420,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case DROP_PRIMARY_KEY:
           case ADD_COLUMN_WITH_VOLATILE_DEFAULT:
           case ALTER_TYPE:
+          case VALIDATE_CONSTRAINT:
           case ATTACH_PARTITION:
             return "SELECT a FROM " + tableName + " WHERE a = 1";
           case DETACH_PARTITION:
@@ -743,6 +765,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata() throws Exception {
+    assumeFalse(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
+                isTestRunningWithConnectionManager());
     // Scenario 2. Execute any DML type after DDL.
     // a) For PG metadata cached table:
     //    Transaction should conflict since we are using
@@ -780,10 +804,23 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // b) For non PG metadata cached table:
     //    Transaction should not conflict because new schema is used for
     //    DML operation and the original schema is not already cached.
+
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     for (AlterCommand alterType : AlterCommand.values()) {
+      String expectedErrorOnInsert;
+      if (alterType == AlterCommand.VALIDATE_CONSTRAINT) {
+        expectedErrorOnInsert = CONSTRAINT_VIOLATION_ERROR;
+      } else {
+        expectedErrorOnInsert = NO_ERROR;
+      }
       LOG.info("Run INSERT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
       runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !cacheMetadataSetTrue,
-          executeDmlAfterAlter, NO_ERROR);
+          executeDmlAfterAlter, expectedErrorOnInsert);
       LOG.info("Run SELECT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
       runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !cacheMetadataSetTrue,
           executeDmlAfterAlter, NO_ERROR);
@@ -792,6 +829,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testMultipleDmlTransactionWithAlterOnCurrentResource() throws Exception {
+
+    // The test fails with Connection Manager as it is expected that each new
+    // session would latch onto a new physical connection. Instead, any two
+    // logical connections share the same physical connection, leading to
+    // unexpected results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     LOG.info("Run multiple transactions before altering the resource");
     runMultipleTxnsBeforeAlterTable();
     LOG.info("Run multiple transactions before and after altering the resource");
@@ -819,6 +863,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testTransactionConflictErrorCode() throws Exception {
+    // (DB-12741) Disabling the test due to a flaky failure point when run with
+    // connection manager, needs further investigation.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection conn1 = getConnectionBuilder().connect();
          Statement stmt1 = conn1.createStatement();
          Connection conn2 = getConnectionBuilder().connect();

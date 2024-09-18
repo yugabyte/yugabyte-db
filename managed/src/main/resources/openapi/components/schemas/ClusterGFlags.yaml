@@ -1,17 +1,11 @@
 title: ClusterGFlags
 description: 'GFlags for a single cluster of a YugabyteDB Universe. Used as part of ClusterSpec at Universe create time, and as part of UniverseEditGFlags to edit GFlags for a Universe.'
 type: object
-properties:
-  tserver:
-    description: GFlags applied on TServer process
-    additionalProperties:
-      type: string
-  master:
-    description: GFlags applied on Master process
-    additionalProperties:
-      type: string
-  az_gflags:
-    description: GFlags per availability zone uuid
-    type: object
-    additionalProperties:
-      $ref: "./AvailabilityZoneGFlags.yaml"
+allOf:
+  - $ref: "./AvailabilityZoneGFlags.yaml"
+  - properties:
+      az_gflags:
+        description: GFlags per availability zone uuid
+        type: object
+        additionalProperties:
+          $ref: "./AvailabilityZoneGFlags.yaml"

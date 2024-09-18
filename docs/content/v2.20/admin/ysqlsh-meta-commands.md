@@ -16,7 +16,7 @@ Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh mo
 
 {{< note title="Cloud shell" >}}
 
-For security reasons, the YugabyteDB Managed cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
+For security reasons, the YugabyteDB Aeon cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
 
 {{< /note >}}
 

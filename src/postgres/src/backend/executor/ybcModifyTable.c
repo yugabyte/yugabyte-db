@@ -898,19 +898,21 @@ bool YBCExecuteUpdate(Relation rel,
 		 */
 		Assert(!bms_is_member(attnum - minattr, YBGetTablePrimaryKeyBms(rel)));
 
-		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		/* Assign this attr's value, handle expression pushdown if needed. */
 		if (pushdown_lc != NULL &&
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
 			Expr *expr = YbExprInstantiateParams(tle->expr, estate);
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 			pushdown_lc = lnext(pushdown_lc);
+			MemoryContextSwitchTo(oldContext);
 		}
 		else
 		{
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			bool is_null = false;
 			Datum d = heap_getattr(tuple, attnum, inputTupleDesc, &is_null);
 			/*
@@ -924,8 +926,8 @@ bool YBCExecuteUpdate(Relation rel,
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
+			MemoryContextSwitchTo(oldContext);
 		}
-		MemoryContextSwitchTo(oldContext);
 	}
 
 	/*
@@ -1078,6 +1080,32 @@ bool YBCExecuteUpdate(Relation rel,
 	 * secondary indexes, after row update triggers, nor returning clause.
 	 */
 	return rows_affected_count > 0;
+}
+
+void YBCExecuteUpdateIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum oldYbctid,
+						   Datum newYbctid,
+						   yb_assign_for_write_function callback)
+{
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	YBCPgStatement update_stmt = NULL;
+
+	/* Create the UPDATE request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewUpdate(dboid,
+								  YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index),
+								  &update_stmt,
+								  YB_TRANSACTIONAL));
+
+	callback(update_stmt, index, values, isnull,
+			 RelationGetNumberOfAttributes(index),
+			 oldYbctid, newYbctid);
+
+	YBCApplyWriteStmt(update_stmt, index);
 }
 
 bool

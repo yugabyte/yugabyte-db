@@ -39,7 +39,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -83,7 +85,7 @@ class DnsResolverTest : public YBTest {
   IoService io_service_;
   boost::optional<IoService::work> work_{io_service_};
 
-  DnsResolver resolver_{&io_service_};
+  DnsResolver resolver_{&io_service_, nullptr};
 };
 
 TEST_F(DnsResolverTest, TestResolution) {

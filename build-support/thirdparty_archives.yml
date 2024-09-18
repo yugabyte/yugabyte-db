@@ -1,90 +1,101 @@
-sha: f4226c3d4b913bbc150e4767b80603b2b82fb568
+sha: b6b07342fdfd4a65ee2608d75dd31e4b0ecc0737
 archives:
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042651-f4226c3d4b-almalinux8-x86_64-clang17
+    tag: v20240713003527-b6b07342fd-almalinux8-x86_64-clang17
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: clang18
+    tag: v20240713003521-b6b07342fd-almalinux8-x86_64-clang18
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240522042655-f4226c3d4b-almalinux8-x86_64-gcc11
+    tag: v20240713003520-b6b07342fd-almalinux8-x86_64-gcc11
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042705-f4226c3d4b-almalinux9-x86_64-clang17
+    tag: v20240713003540-b6b07342fd-almalinux9-x86_64-clang17
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20240522042655-f4226c3d4b-almalinux9-x86_64-gcc12
+    tag: v20240713003537-b6b07342fd-almalinux9-x86_64-gcc12
 
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    tag: v20240522042832-f4226c3d4b-centos7-aarch64-clang16
-
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    lto_type: full
-    tag: v20240522042834-f4226c3d4b-centos7-aarch64-clang16-full-lto
-
-  - os_type: centos7
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
-    tag: v20240522042842-f4226c3d4b-centos7-aarch64-clang17
+    tag: v20240713003725-b6b07342fd-amzn2-aarch64-clang17
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     lto_type: full
-    tag: v20240522042834-f4226c3d4b-centos7-aarch64-clang17-full-lto
+    tag: v20240713003827-b6b07342fd-amzn2-aarch64-clang17-full-lto
 
-  - os_type: centos7
+  - os_type: amzn2
+    architecture: aarch64
+    compiler_type: clang18
+    tag: v20240713003831-b6b07342fd-amzn2-aarch64-clang18
+
+  - os_type: amzn2
+    architecture: aarch64
+    compiler_type: clang18
+    lto_type: full
+    tag: v20240713003853-b6b07342fd-amzn2-aarch64-clang18-full-lto
+
+  - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042652-f4226c3d4b-centos7-x86_64-clang17
+    tag: v20240713003538-b6b07342fd-amzn2-x86_64-clang17
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
     lto_type: full
-    tag: v20240522042654-f4226c3d4b-centos7-x86_64-clang17-full-lto
+    tag: v20240713003542-b6b07342fd-amzn2-x86_64-clang17-full-lto
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: x86_64
-    compiler_type: gcc11
-    tag: v20240522042647-f4226c3d4b-centos7-x86_64-gcc11
+    compiler_type: clang18
+    tag: v20240713003544-b6b07342fd-amzn2-x86_64-clang18
+
+  - os_type: amzn2
+    architecture: x86_64
+    compiler_type: clang18
+    lto_type: full
+    tag: v20240713003540-b6b07342fd-amzn2-x86_64-clang18-full-lto
 
   - os_type: macos
     architecture: arm64
     compiler_type: clang
-    tag: v20240522051921-f4226c3d4b-macos-arm64
+    tag: v20240713011052-b6b07342fd-macos-arm64
 
   - os_type: macos
     architecture: x86_64
     compiler_type: clang
-    tag: v20240522042711-f4226c3d4b-macos-x86_64
+    tag: v20240713003540-b6b07342fd-macos-x86_64
 
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang16
-    tag: v20240522042651-f4226c3d4b-ubuntu2004-x86_64-clang16
+    tag: v20240713003520-b6b07342fd-ubuntu2004-x86_64-clang16
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042648-f4226c3d4b-ubuntu2204-x86_64-clang17
+    tag: v20240713003517-b6b07342fd-ubuntu2204-x86_64-clang17
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240522042644-f4226c3d4b-ubuntu2204-x86_64-gcc11
+    tag: v20240713003527-b6b07342fd-ubuntu2204-x86_64-gcc11
 
   - os_type: ubuntu23.04
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20240522042646-f4226c3d4b-ubuntu2304-x86_64-gcc13
+    tag: v20240713003516-b6b07342fd-ubuntu2304-x86_64-gcc13

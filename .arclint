@@ -52,6 +52,18 @@
      "(^managed/client/java/.*/pom.xml)"
   ],
   "linters": {
+    "go-files": {
+         "type": "golint",
+         "include": "(^managed/yba-cli/.*[.]go$)"
+     },
+     "go-files-length": {
+         "type": "text",
+         "text.max-line-length": 100,
+         "include": "(^managed/yba-cli/.*[.]go$)",
+         "severity": {
+             "2": "disabled"
+         }
+     },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",

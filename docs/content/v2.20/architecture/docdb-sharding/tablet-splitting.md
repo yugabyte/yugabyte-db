@@ -58,6 +58,8 @@ At creation time, you can presplit a table into the desired number of tablets. Y
 
 To presplit a table into a desired number of tablets, you need the start key and end key for each tablet. This makes presplitting slightly different for hash-sharded and range-sharded tables.
 
+The maximum number of tablets allowed at table creation time is controlled by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts). This also limits the number of tablets that can be created by tablet splitting.
+
 #### Hash-sharded tables
 
 Because hash sharding works by applying a hash function on all or a subset of the primary key columns, the byte space of the hash sharded keys is known ahead of time. For example, if you use a 2-byte hash, the byte space would be `[0x0000, 0xFFFF]`, as per the following illustration:
@@ -233,15 +235,15 @@ Automatic tablet splitting happens in three phases, determined by the shard coun
 
 ##### Low phase
 
-In the low phase, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards (8 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes) (512 MB by default).
+In the low phase, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards (1 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes) (128 MiB by default).
 
 ##### High phase
 
-In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards (24 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes) (10 GB by default).
+In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards (24 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes) (10 GiB by default).
 
 ##### Final phase
 
-When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit is reached (256 tablets by default; if set to 0, there will be no limit).
+Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GiB by default). The maximum number of tablets is still limited by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts).
 
 #### Post-split compactions
 

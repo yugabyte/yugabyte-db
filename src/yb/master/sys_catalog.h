@@ -170,6 +170,10 @@ class SysCatalogTable {
   Status ForceMutate(
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
 
+  Status ForceWrite(
+      int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term);
+
   // ==================================================================
   // Static schema related methods.
   // ==================================================================

@@ -15,7 +15,8 @@
 
 #include <string>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
@@ -360,6 +361,10 @@ Status XClusterTestBase::SetupUniverseReplication(
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
   RETURN_NOT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   // Verify that replication was setup correctly.
   master::GetUniverseReplicationResponsePB verify_resp;
   RETURN_NOT_OK(VerifyUniverseReplication(
@@ -382,39 +387,6 @@ Status XClusterTestBase::SetupUniverseReplication(
     }
   }
   return Status::OK();
-}
-
-Status XClusterTestBase::SetupNSUniverseReplication(
-    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const xcluster::ReplicationGroupId& replication_group_id, const std::string& producer_ns_name,
-    const YQLDatabase& producer_ns_type, SetupReplicationOptions opts) {
-  master::SetupNSUniverseReplicationRequestPB req;
-  master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(replication_group_id.ToString());
-  req.set_producer_ns_name(producer_ns_name);
-  req.set_producer_ns_type(producer_ns_type);
-
-  std::string master_addr = producer_cluster->GetMasterAddresses();
-  if (opts.leader_only) {
-    master_addr = VERIFY_RESULT(producer_cluster->GetLeaderMiniMaster())->bound_rpc_addr_str();
-  }
-  auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
-  HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
-
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &consumer_client->proxy_cache(),
-      VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
-
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  return WaitFor([&] () -> Result<bool> {
-    if (!master_proxy->SetupNSUniverseReplication(req, &resp, &rpc).ok()) {
-      return false;
-    } else if (resp.has_error()) {
-      return false;
-    }
-    return true;
-  }, MonoDelta::FromSeconds(30), "Setup namespace-level universe replication");
 }
 
 Status XClusterTestBase::VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp) {
@@ -458,18 +430,6 @@ Status XClusterTestBase::VerifyUniverseReplication(
       MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
 }
 
-Status XClusterTestBase::VerifyNSUniverseReplication(
-    MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table) {
-  return LoggedWaitFor([&]() -> Result<bool> {
-    master::GetUniverseReplicationResponsePB resp;
-    auto s =
-        VerifyUniverseReplication(consumer_cluster, consumer_client, replication_group_id, &resp);
-    return s.ok() && resp.entry().replication_group_id() == replication_group_id &&
-           resp.entry().is_ns_replication() && resp.entry().tables_size() == num_expected_table;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Verify namespace-level universe replication");
-}
-
 Status XClusterTestBase::ToggleUniverseReplication(
     MiniCluster* consumer_cluster, YBClient* consumer_client,
     const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled) {
@@ -505,6 +465,9 @@ Result<master::GetUniverseReplicationResponsePB> XClusterTestBase::GetUniverseRe
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
   RETURN_NOT_OK(master_proxy->GetUniverseReplication(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   return resp;
 }
 
@@ -551,6 +514,27 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
         return resp->has_done() && resp->done();
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
+}
+
+Result<IsOperationDoneResult> XClusterTestBase::WaitForSetupUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, MiniCluster* consumer_cluster,
+    YBClient* consumer_client) {
+  if (!consumer_cluster) {
+    consumer_cluster = consumer_cluster_.mini_cluster_.get();
+  }
+  if (!consumer_client) {
+    consumer_client = consumer_cluster_.client_.get();
+  }
+  master::IsSetupUniverseReplicationDoneResponsePB resp;
+  RETURN_NOT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster, consumer_client, replication_group_id, &resp));
+
+  Status done_status;
+  if (resp.has_replication_error()) {
+    done_status = StatusFromPB(resp.replication_error());
+  }
+
+  return IsOperationDoneResult::Done(done_status);
 }
 
 Status XClusterTestBase::GetCDCStreamForTable(
@@ -636,7 +620,6 @@ Status XClusterTestBase::AlterUniverseReplication(
   RETURN_NOT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), alter_replication_group_id, &setup_resp));
   SCHECK(!setup_resp.has_error(), IllegalState, alter_resp.ShortDebugString());
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationCleanUp(alter_replication_group_id));
   master::GetUniverseReplicationResponsePB get_resp;
   return VerifyUniverseReplication(replication_group_id, &get_resp);
 }
@@ -822,7 +805,7 @@ Status XClusterTestBase::WaitForReplicationDrain(
 
 Status XClusterTestBase::VerifyReplicationError(
     const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-    const std::optional<ReplicationErrorPb> expected_replication_error) {
+    const std::optional<ReplicationErrorPb> expected_replication_error, int timeout_secs) {
   // 1. Verify that the RPC contains the expected error.
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
@@ -858,7 +841,7 @@ Status XClusterTestBase::VerifyReplicationError(
           return resp.statuses()[0].errors_size() == 0;
         }
       },
-      MonoDelta::FromSeconds(30), "Waiting for replication error"));
+      MonoDelta::FromSeconds(timeout_secs), "Waiting for replication error"));
 
   // 2. Verify that the yb-admin output contains the expected error.
   auto admin_out =
@@ -1055,7 +1038,7 @@ Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy(
 Status XClusterTestBase::ClearFailedUniverse(Cluster& cluster) {
   auto& catalog_manager =
       VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  return catalog_manager.ClearFailedUniverse();
+  return catalog_manager.ClearFailedUniverse(catalog_manager.GetLeaderEpochInternal());
 }
 
 } // namespace yb

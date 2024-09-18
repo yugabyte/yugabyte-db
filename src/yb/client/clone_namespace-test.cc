@@ -71,7 +71,7 @@ class CloneNamespaceTest : public SnapshotScheduleTest {
           Format("Expected 1 clone entry, got $0", done_resp.entries_size()));
       auto state = done_resp.entries(0).aggregate_state();
       return state == master::SysCloneStatePB::ABORTED ||
-             state == master::SysCloneStatePB::RESTORED;
+             state == master::SysCloneStatePB::COMPLETE;
     }, 60s, "Wait for clone to finish"));
     return Status::OK();
   }

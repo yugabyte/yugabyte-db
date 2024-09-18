@@ -76,6 +76,7 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -933,7 +934,9 @@ PostmasterMain(int argc, char *argv[])
 	if (XLogArchiveMode > ARCHIVE_MODE_OFF && wal_level == WAL_LEVEL_MINIMAL)
 		ereport(ERROR,
 				(errmsg("WAL archival cannot be enabled when wal_level is \"minimal\"")));
-	if (max_wal_senders > 0 && wal_level == WAL_LEVEL_MINIMAL)
+	/* YB NOTE: wal_level isn't applicable in YSQL since don't use the PG WAL */
+	if (!YBIsEnabledInPostgresEnvVar() && max_wal_senders > 0 &&
+		wal_level == WAL_LEVEL_MINIMAL)
 		ereport(ERROR,
 				(errmsg("WAL streaming (max_wal_senders > 0) requires wal_level \"replica\" or \"logical\"")));
 
@@ -1037,6 +1040,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register the query diagnostics background worker */	
+	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+		YbQueryDiagnosticsBgWorkerRegister(); 
 
 	/* Register ASH collector */
 	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)

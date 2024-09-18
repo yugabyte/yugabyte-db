@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -16,11 +17,16 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
+import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -343,12 +349,24 @@ public class BackupsController extends AuthenticatedController {
   public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
-    validateScheduleTaskParams(taskParams, customerUUID);
+    BackupRequestParams requestParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    Universe universe = Universe.getOrBadRequest(requestParams.getUniverseUUID());
+    BackupScheduleTaskParams taskParams =
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request, BackupScheduleTaskParams.class, universe);
+    taskParams.setCustomerUUID(customerUUID);
+    taskParams.setScheduleParams(requestParams);
 
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
-
-    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    TaskType taskType =
+        universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(CloudType.kubernetes)
+            ? TaskType.CreateBackupScheduleKubernetes
+            : TaskType.CreateBackupSchedule;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
         customer,
@@ -1007,14 +1025,43 @@ public class BackupsController extends AuthenticatedController {
     }
   }
 
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. List of all restorable entities in the"
+              + " incremental backup chain.",
+      value = "List of all restorable entities in the incremental backup chain",
+      nickname = "listRestorableKeyspaceTables",
+      response = KeyspaceTables.class,
+      responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result listRestorableKeyspaceTables(UUID customerUUID, UUID baseBackupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, baseBackupUUID);
+    if (!backup.getBackupUUID().equals(backup.getBaseBackupUUID())) {
+      throw new RuntimeException("Provided backup UUID is not of the base backup");
+    }
+    List<KeyspaceTables> restorableKeyspaceTables =
+        BackupUtil.getRestorableKeyspaceTablesInBackupChain(customerUUID, baseBackupUUID);
+    return PlatformResults.withData(restorableKeyspaceTables);
+  }
+
+  /*---- Preflight validation APIs ----*/
+
+  @ApiOperation(
+      notes = "Restore preflight checks.",
       value = "Restore preflight checks",
       nickname = "restorePreflight",
       response = RestorePreflightResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
-          name = "restorePreflightParams",
-          value = "Parameters fr restore preflight check",
+          name = "RestorePreflightParams",
+          value = "Parameters for restore preflight check",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RestorePreflightParams",
           required = true))
@@ -1025,24 +1072,110 @@ public class BackupsController extends AuthenticatedController {
                 resourceType = ResourceType.UNIVERSE,
                 action = Action.BACKUP_RESTORE),
         resourceLocation =
-            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result restorePreflight(UUID customerUUID, Http.Request request) {
-    // Validate customer
-    Customer.getOrBadRequest(customerUUID);
-
     RestorePreflightParams preflightParams =
         parseJsonAndValidate(request, RestorePreflightParams.class);
-    try {
-      RestorePreflightResponse restorePreflightResponse =
-          backupHelper.generateRestorePreflightAPIResponse(preflightParams, customerUUID);
-      return PlatformResults.withData(restorePreflightResponse);
-    } catch (RuntimeException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Running restore preflight failed for universe %s failed with error: %s",
-              preflightParams.getUniverseUUID().toString(), e.getMessage()));
-    }
+    preflightParams.validateParams(customerUUID);
+    RestorePreflightResponse restorePreflightResponse =
+        backupHelper.generateRestorePreflightAPIResponse(preflightParams, customerUUID);
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Backup,
+            preflightParams.getBackupUUID().toString(),
+            Audit.ActionType.Validate);
+    return PlatformResults.withData(restorePreflightResponse);
   }
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. Validate keyspace and tables to"
+              + " Restore against Backup.",
+      value = "Validate keyspace and tables to Restore against Backup",
+      nickname = "validateKeyspaceTablesToRestore",
+      response = YBPSuccess.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RestoreItemsValidationParams",
+          value = "Parameters for validating Restorable keyspace and tables",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result validateRestorableKeyspaceTables(UUID customerUUID, Http.Request request) {
+    RestoreItemsValidationParams validateRestoreParams =
+        parseJsonAndValidate(request, RestoreItemsValidationParams.class);
+    validateRestoreParams.validateParams(customerUUID);
+    Pair<Boolean, List<KeyspaceTables>> response =
+        backupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            customerUUID, validateRestoreParams);
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Backup,
+            validateRestoreParams.getBackupUUID().toString(),
+            Audit.ActionType.Validate);
+    if (response.getFirst()) {
+      return YBPSuccess.empty();
+    }
+    YBPError ybpError = new YBPError();
+    ybpError.error = "Some objects cannot be restored";
+    ybpError.errorJson = Json.toJson(Json.toJson(response.getSecond()));
+    return PlatformResults.withData(ybpError);
+  }
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+      value = "Advanced Restore Preflight checks",
+      nickname = "advancedRestorePreflight",
+      response = RestorePreflightResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "AdvancedRestorePreflightParams",
+          value = "Parameters for advanced restore preflight checks",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result advancedRestorePreflight(UUID customerUUID, Http.Request request) {
+    AdvancedRestorePreflightParams advancedRestorePreflightParams =
+        parseJsonAndValidate(request, AdvancedRestorePreflightParams.class);
+    advancedRestorePreflightParams.validateParams(customerUUID);
+    RestorePreflightResponse restorePreflightResponse =
+        backupHelper.generateAdvancedRestorePreflightAPIResponse(
+            advancedRestorePreflightParams, customerUUID);
+    auditService()
+        .createAuditEntry(
+            request, Json.toJson(advancedRestorePreflightParams), Audit.ActionType.Validate);
+    return PlatformResults.withData(restorePreflightResponse);
+  }
+
+  /*---- Preflight validation APIs end ----*/
+
 }

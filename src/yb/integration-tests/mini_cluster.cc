@@ -1135,13 +1135,20 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
 }
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline) {
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
   return Wait(
-      [cluster, &tablet_id] {
-        auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
+      [cluster, &tablet_id, require_leader_is_ready] {
+        auto tablet_peers = ListTabletPeers(
+            cluster, [&tablet_id, require_leader_is_ready](auto peer) {
           auto consensus_result = peer->GetConsensus();
-          return peer->tablet_id() == tablet_id && consensus_result &&
-                 consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+          if (peer->tablet_id() == tablet_id && consensus_result) {
+            const auto leader_status = consensus_result.get()->GetLeaderStatus();
+            return require_leader_is_ready
+                ? leader_status == consensus::LeaderStatus::LEADER_AND_READY
+                : leader_status != consensus::LeaderStatus::NOT_LEADER;
+          }
+          return false;
         });
         return tablet_peers.size() == 1;
       },

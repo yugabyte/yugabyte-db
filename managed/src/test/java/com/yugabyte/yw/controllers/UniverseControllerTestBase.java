@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -122,6 +123,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected KubernetesManagerFactory kubernetesManagerFactory;
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
+  protected GFlagsValidation mockGFlagsValidation;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -149,6 +151,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     kubernetesManagerFactory = mock(KubernetesManagerFactory.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -189,6 +192,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(KubernetesManagerFactory.class).toInstance(kubernetesManagerFactory))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .build();
   }
 
@@ -308,7 +312,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       case gcp:
         return createDeviceInfo(StorageType.Persistent, 1, 100, null, null, null);
       case azu:
-        return createDeviceInfo(StorageType.Premium_LRS, 1, 100, null, null, null);
+        return createDeviceInfo(StorageType.PremiumV2_LRS, 1, 100, null, null, null);
       case kubernetes:
         return createDeviceInfo(null, 1, 100, null, null, null);
       default:

@@ -15,7 +15,7 @@ The YugabyteDB docs are divided into several sections:
 
 * [**YugabyteDB Core**](/preview/) is the overview documentation for YugabyteDB
 * [**YugabyteDB Anywhere**](/preview/yugabyte-platform/) documents YugabyteDB Anywhere
-* [**YugabyteDB Managed**](/preview/yugabyte-cloud/) documents YugabyteDB Managed
+* [**YugabyteDB Aeon**](/preview/yugabyte-cloud/) documents YugabyteDB Aeon
 * [**Releases**](/preview/releases/) contains release notes and other information related to releases
 * [**Integrations**](/preview/integrations/) documents third-party integrations
 * [**Reference**](/preview/reference/configuration/) contains detailed reference and architecture information about functions, features, and interfaces

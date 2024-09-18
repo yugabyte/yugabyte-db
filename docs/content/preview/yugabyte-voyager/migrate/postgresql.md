@@ -34,6 +34,8 @@ Create a database user and provide the user with READ access to all the resource
    SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
+   Note that on RDS, you may get "Permission Denied" errors for `pg_catalog tables` (such as pg_statistic). These errors do not affect the migration and can be ignored.
+
    The `ybvoyager` user can now be used for migration.
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).

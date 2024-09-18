@@ -153,6 +153,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   private static final List<TaskType> START_MASTER_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -174,6 +175,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),

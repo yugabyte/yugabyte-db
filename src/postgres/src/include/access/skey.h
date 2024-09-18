@@ -106,6 +106,68 @@ typedef ScanKeyData *ScanKey;
  */
 
 /*
+ * YB: about row array comparisons:
+ *
+ * We also support batched row comparisons like
+ *		(x, y) IN [(c1, c2), (c3, c4), ...]
+ * This is currently only used by BNL (Batch Nested Loop Join) for lsm indexes.
+ *
+ * The header entry has these properties:
+ *		sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY
+ *		sk_attno = index column number for leading column of row comparison
+ *		sk_strategy = btree strategy code for semantics of row comparison
+ *				(ie, < <= > or >=) (NOTE: for now, only = is supported)
+ *		sk_subtype = RECORDOID
+ *		sk_collation, sk_func: not used
+ *		sk_argument: pointer to subsidiary ScanKey array
+ * If the header is part of a ScanKey array that's sorted by attno, it
+ * must be sorted according to the leading column number.
+ *
+ * The subsidiary ScanKey array appears in logical column order of the row
+ * comparison, which today always matches the index column order.  The array
+ * elements are like in the above row comparison case except that:
+ *		sk_flags must include SK_SEARCHARRAY
+ *		sk_argument:
+ *				- for the first key, this is a pointer to 1-dimensional
+ *				  ArrayType consisting of HeapTuple (e.g. [(c1, c2), (c3, c4),
+ *				  ...]).  This structure may be calculated as a runtime key.
+ *				- for the subsequent keys, this is zero
+ * sk_strategy must be the same in all elements of the subsidiary array,
+ * that is, the same as in the header entry.
+ * SK_SEARCHNULL, SK_SEARCHNOTNULL cannot be used here.
+ *
+ * Since it is not intuitive, here is an illustration:
+ * (top key):
+ * - sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY
+ * - sk_attno = index column number for leading column of row comparison
+ * - sk_strategy = =
+ * - sk_subtype = RECORDOID
+ * - sk_argument:
+ *   - (first key)
+ *     - sk_flags = SK_ROW_MEMBER | SK_SEARCHARRAY
+ *     - sk_attno = x's attno
+ *     - sk_strategy = =
+ *     - sk_subtype = x's type
+ *     - sk_func = x's equality func
+ *     - sk_argument:
+ *       - (array)
+ *         - (heap tuple (c1, c2))
+ *         - (heap tuple (c3, c4))
+ *         - ...
+ *   - (second key)
+ *     - sk_flags = SK_ROW_MEMBER | SK_SEARCHARRAY | SK_ROW_END
+ *     - sk_attno = y's attno
+ *     - sk_strategy = =
+ *     - sk_subtype = y's type
+ *     - sk_func = y's equality func
+ *     - sk_argument = 0
+ * Notice the LHS information and RHS information are placed in different axes.
+ *
+ * TODO(jason): sk_subtype = RECORDOID should not be necessary and is currently
+ * tied to a hack in yb_scan.c.
+ */
+
+/*
  * ScanKeyData sk_flags
  *
  * sk_flags bits 0-15 are reserved for system-wide use (symbols for those

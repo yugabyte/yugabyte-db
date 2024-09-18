@@ -280,17 +280,25 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
           .map(Optional::get)
           .collect(Collectors.toList());
 
-      // At least half the select statements should fail.
-      assertGreaterThanOrEqualTo(
-          String.format(
-              "Expected at least %d failures out of %d attempts, got %d",
-              attempts / 2,
-              attempts,
-              errors.size()
-          ),
-          errors.size(),
-          attempts / 2
-      );
+      if (isTestRunningWithConnectionManager()) {
+        // Due to DDL sleeps with Connection Manager, all select statements
+        // should succeed.
+        assertEquals("No failures are expected with Connection Manager enabled",
+         errors.size(),
+         0);
+      } else {
+        // At least half the select statements should fail.
+        assertGreaterThanOrEqualTo(
+            String.format(
+                "Expected at least %d failures out of %d attempts, got %d",
+                attempts / 2,
+                attempts,
+                errors.size()
+              ),
+            errors.size(),
+            attempts / 2
+          );
+      }
 
       // All errors should be catalog version mismatches.
       for (Throwable error : errors) {
@@ -740,8 +748,15 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         // Immediately try selecting row from connection 2.
         String query = "SELECT x1 FROM test_table";
         statement2.execute(query);
-        fail(String.format("Statement did not fail: %s", query));
+
+        // Connection Manager enabled runs will not fail due to DDL sleeps.
+        if (!isTestRunningWithConnectionManager()) {
+          fail(String.format("Statement did not fail: %s", query));
+        }
       } catch (SQLException error) {
+        if (isTestRunningWithConnectionManager()) {
+          fail("Connection Manager enabled run should not have failed");
+        }
         LOG.info(error.getMessage());
         assertThat(
           error.getMessage(),

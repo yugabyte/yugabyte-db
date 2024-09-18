@@ -1,0 +1,6 @@
+title: JobScheduleState
+description: Job schedule state of a schedule that is a part of JobScheduleInfo.
+type: string
+enum:
+  - ACTIVE
+  - INACTIVE

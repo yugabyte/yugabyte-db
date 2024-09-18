@@ -6,6 +6,7 @@ description: |
 type: object
 allOf:
   - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"
   - type: object
     required:
       - version

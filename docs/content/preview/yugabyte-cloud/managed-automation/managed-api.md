@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Managed REST API
+title: YugabyteDB Aeon REST API
 headerTitle: REST API
 linkTitle: REST API
-description: REST API YugabyteDB Managed.
-headcontent: Manage YugabyteDB Managed accounts and deployments using the REST API
+description: REST API YugabyteDB Aeon.
+headcontent: Manage YugabyteDB Aeon accounts and deployments using the REST API
 menu:
   preview_yugabyte-cloud:
     parent: managed-automation
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The YugabyteDB Managed REST API allows you to deploy and manage your database clusters in YugabyteDB Managed programmatically. Some examples of what you can accomplish using this API include:
+The YugabyteDB Aeon REST API allows you to deploy and manage your database clusters in YugabyteDB Aeon programmatically. Some examples of what you can accomplish using this API include:
 
 - Deploy and manage clusters
 - Deploy and manage read replicas
@@ -21,12 +21,12 @@ The YugabyteDB Managed REST API allows you to deploy and manage your database cl
 - Change backup and maintenance schedules
 - Configure monitoring and alerts
 
-{{< youtube id="bD9CNHwet74?si=UpNu1jedrvni2mht" title="YugabyteDB Managed REST API" >}}
+{{< youtube id="bD9CNHwet74?si=UpNu1jedrvni2mht" title="YugabyteDB Aeon REST API" >}}
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started"
-    description="Manage YugabyteDB Managed using the API."
+    description="Manage YugabyteDB Aeon using the API."
     buttonText="API Documentation"
     buttonUrl="https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api"
   >}}

@@ -45,6 +45,10 @@ class PgCommandTestBase : public PgWrapperTestBase {
   PgCommandTestBase(bool auth, bool encrypted)
       : use_auth_(auth), encrypt_connection_(encrypted) {}
 
+  std::string GetDbName() {
+    return db_name_;
+  }
+
   void SetDbName(const std::string& db_name) {
     db_name_ = db_name;
   }
@@ -65,6 +69,10 @@ class PgCommandTestBase : public PgWrapperTestBase {
 
   void CreateType(const std::string &statement) {
     RunPsqlCommand(statement, "CREATE TYPE");
+  }
+
+  void CreateSequence(const std::string &statement) {
+    RunPsqlCommand(statement, "CREATE SEQUENCE");
   }
 
   void CreateIndex(const std::string &statement) {

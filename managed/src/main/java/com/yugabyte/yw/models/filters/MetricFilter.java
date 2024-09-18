@@ -154,10 +154,10 @@ public class MetricFilter {
       return false;
     }
     if (expired != null) {
-      if (expired && metric.getExpireTime().after(new Date())) {
+      if (expired && metric.getExpireTime() != null && metric.getExpireTime().after(new Date())) {
         return false;
       }
-      if (!expired && metric.getExpireTime().before(new Date())) {
+      if (!expired && metric.getExpireTime() != null && metric.getExpireTime().before(new Date())) {
         return false;
       }
     }

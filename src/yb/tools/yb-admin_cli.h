@@ -69,9 +69,11 @@ class ClusterAdminCli {
     std::string name_;
     std::string usage_arguments_;
     Action action_;
+    bool hidden_;
   };
 
-  void Register(std::string&& cmd_name, const std::string& cmd_args, Action&& action);
+  void Register(
+      std::string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden = false);
   void SetUsage(const std::string& prog_name);
 
   virtual void RegisterCommandHandlers();

@@ -37,7 +37,7 @@ export interface ConnectionStats  {
    * @type {number}
    * @memberof ConnectionStats
    */
-  idle_or_pending_logical_connections: number;
+  waiting_logical_connections: number;
   /**
    * 
    * @type {number}
