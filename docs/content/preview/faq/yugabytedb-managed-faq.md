@@ -310,9 +310,9 @@ Currently, YugabyteDB Aeon does not support backups of Sandbox clusters.
 
 Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster.
 
-For Replicate across region clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+For [Replicate across region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
 
-For Partition by region clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
+For [Partition by region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ### Can I download backups?
 
