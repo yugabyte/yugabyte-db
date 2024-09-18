@@ -120,7 +120,7 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false'
 | `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 | `fallback-to-topology-keys-only` | Applicable only when `topology-keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology-keys` | Empty

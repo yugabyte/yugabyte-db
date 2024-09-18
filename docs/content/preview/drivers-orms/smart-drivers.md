@@ -36,14 +36,14 @@ All YugabyteDB smart driver libraries are actively maintained, and receive bug f
 
 YugabyteDB smart drivers have the following key features.
 
-| Feature                                                     | Notes                                                                                                                                                                                                                                        |
-|:------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Multiple hosts                                              | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable.                                     |
-| [Cluster aware](#cluster-aware-connection-load-balancing)   | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
-| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections.                                                      |
-| [Configurable refresh interval](#servers-refresh-interval)  | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python).                                                                                              |
-| [Connection pooling](#connection-pooling)                   | Like the upstream driver, smart drivers support popular connection pooling solutions.                                                                                                                                                        |
-| [Support read-replica nodes](#support-read-replica-nodes)   | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver.                                                   |
+| Feature | Notes |
+| :--- | :--- |
+| Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
+| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
+| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
+| [Support read-replica nodes](#support-read-replica-nodes) | This feature enables the applications to distribute connections based on the node type (primary or read-replica). See the driver-specific pages to know if it is supported by that driver. |
 
 
 ## Overview
