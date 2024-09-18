@@ -74,7 +74,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.0</version>
+  <version>42.3.5-yb-7</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -92,7 +92,7 @@ Install the added dependency using `mvn install`.
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
+implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-7'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
@@ -116,6 +116,10 @@ The following table describes the connection parameters required to connect, inc
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| `fallback-to-topology-keys-only` | Applicable only when `topology-keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology-keys` | Empty
+| `failed-host-reconnect-delay-secs` | The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if the time specified via this property has elapsed since the time it was last marked as a failed host. | 5 
+
+Starting with version 42.3.5-yb-7, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
@@ -192,6 +196,9 @@ public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("com.yugabyte.Driver");
     String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+    // If you have a read-replica cluster and want your connections to be load-balanced across only the read-replica nodes,
+    // set the load-balance property to 'only-rr' as shown below.
+    // String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=only-rr";
     Connection conn = DriverManager.getConnection(yburl);
     Statement stmt = conn.createStatement();
     try {
