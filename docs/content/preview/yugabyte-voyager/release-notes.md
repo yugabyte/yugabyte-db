@@ -18,7 +18,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - The installation methods (including RHEL, Ubuntu, Brew, and the installer script) now install PostgreSQL 16 instead of PostgreSQL 14.
-- Added support in [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) to report issues in indexes on columns with complex data types, such as INET, CITEXT, JSONB, TSVECTOR, TSQUERY, and ARRAYs. In assess-migration, these data types are categorized under the common unsupported feature "Index on complex data types".
+- Added support in [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) to report issues with indexes on columns with complex data types, such as INET, CITEXT, JSONB, TSVECTOR, TSQUERY, and ARRAYs. assess-migration categorizes these issues under the [Index on complex data types](../known-issues/postgresql/#indexes-on-some-complex-data-types-are-not-supported) PostgreSQL unsupported feature.
 - Both [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) now detect and report UNLOGGED tables, which are unsupported in YugabyteDB.
 - Changed assessment report file names from "assessmentReport" to "migration_assessment_report", and "bulkAssessmentReport" to "bulk_assessment_report" .
 - Improved UI output of [assess-migration](../reference/assess-migration/) by removing the progress bar from ora2pg when fetching the assessment report.
