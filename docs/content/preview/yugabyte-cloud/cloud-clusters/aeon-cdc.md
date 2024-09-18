@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Aeon CDC captures changes made to data in the database and streams those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB Aeon database to downstream consumers based on its Write-Ahead Log (WAL). CDC captures row-level changes resulting from INSERT, UPDATE, and DELETE operations, and publishes them to be consumed by downstream applications.
+You can use change data capture with YugabyteDB Aeon clusters to capture changes made to data in the database and stream those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB Aeon database to downstream consumers based on its Write-Ahead Log (WAL). CDC captures row-level changes resulting from INSERT, UPDATE, and DELETE operations, and publishes them to be consumed by downstream applications.
 
 ## Prerequisites
 
@@ -26,13 +26,11 @@ YugabyteDB Aeon CDC captures changes made to data in the database and streams th
 
 ## Configure CDC
 
-YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, you must set up the following:
-
-- YugabyteDB Connector
+YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, you must configure the YugabyteDB Connector with the connection parameters for your cluster.
 
 ### Set up the connector
 
-To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
+To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB Connector:
 
 1. Download the Connector from the [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
 1. Extract and install the connector archive in your Kafka Connect environment.
@@ -65,4 +63,17 @@ To stream data change events from YugabyteDB databases, follow these steps to de
 
 For more details on deploying and configuring the connector, refer to the [YugabyteDB Connector documentation](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
+## Establish a replication connection to the database
 
+To be able to send [replication commands](https://www.postgresql.org/docs/11/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
+
+To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/) using a client shell as you normally would, and add `replication=database` to the connection string. For example:
+
+```sh
+./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.aws.ybdb.io \
+user=admin \
+dbname=yugabyte \
+sslmode=verify-full \
+sslrootcert=root.crt \
+replication=database"
+```
