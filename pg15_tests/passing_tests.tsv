@@ -181,15 +181,7 @@ JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithYbMetadata
 JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithoutYbMetadata
 JAVA	org.yb.pgsql.TestYsqlMetrics
 JAVA	org.yb.pgsql.TestYsqlPartitionedBackup
-JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
-JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsIsLikeInitdb
-JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
-JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser
-JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsIsLikeInitdb
-JAVA	org.yb.pgsql.TestYsqlUpgrade#dmlsUpdatePgCache
-JAVA	org.yb.pgsql.TestYsqlUpgrade#insertOnConflictWithOidsWorks
-JAVA	org.yb.pgsql.TestYsqlUpgrade#invalidUpgradeActions
-JAVA	org.yb.pgsql.TestYsqlUpgrade#migrationFilenameComment
+JAVA	org.yb.pgsql.TestYsqlUpgrade
 JAVA	org.yb.ysqlconnmgr.TestCorrectErrorMessage#testNoBrokenConnAfterAuthFailed
 JAVA	org.yb.ysqlconnmgr.TestCorrectErrorMessage#testWrongDbErrMsg
 JAVA	org.yb.ysqlconnmgr.TestCorrectErrorMessage#testWrongUserErrMsg

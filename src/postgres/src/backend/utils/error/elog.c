@@ -803,8 +803,6 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	 */
 	if (IsYugaByteEnabled() && edata->yb_owns_file_and_func)
 	{
-		Assert(!filename);
-		Assert(!funcname);
 		filename = edata->filename;
 		funcname = edata->funcname;
 	}
