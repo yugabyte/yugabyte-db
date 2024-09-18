@@ -21,7 +21,6 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
@@ -53,22 +52,16 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
@@ -194,53 +187,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .build();
-  }
-
-  protected PlacementInfo constructPlacementInfoObject(Map<UUID, Integer> azToNumNodesMap) {
-
-    Map<UUID, PlacementInfo.PlacementCloud> placementCloudMap = new HashMap<>();
-    Map<UUID, PlacementInfo.PlacementRegion> placementRegionMap = new HashMap<>();
-    for (UUID azUUID : azToNumNodesMap.keySet()) {
-      AvailabilityZone currentAz = AvailabilityZone.get(azUUID);
-
-      // Get existing PlacementInfo Cloud or set up a new one.
-      Provider currentProvider = currentAz.getProvider();
-      PlacementInfo.PlacementCloud cloudItem =
-          placementCloudMap.getOrDefault(currentProvider.getUuid(), null);
-      if (cloudItem == null) {
-        cloudItem = new PlacementInfo.PlacementCloud();
-        cloudItem.uuid = currentProvider.getUuid();
-        cloudItem.code = currentProvider.getCode();
-        cloudItem.regionList = new ArrayList<>();
-        placementCloudMap.put(currentProvider.getUuid(), cloudItem);
-      }
-
-      // Get existing PlacementInfo Region or set up a new one.
-      Region currentRegion = currentAz.getRegion();
-      PlacementInfo.PlacementRegion regionItem =
-          placementRegionMap.getOrDefault(currentRegion.getUuid(), null);
-      if (regionItem == null) {
-        regionItem = new PlacementInfo.PlacementRegion();
-        regionItem.uuid = currentRegion.getUuid();
-        regionItem.name = currentRegion.getName();
-        regionItem.code = currentRegion.getCode();
-        regionItem.azList = new ArrayList<>();
-        cloudItem.regionList.add(regionItem);
-        placementRegionMap.put(currentRegion.getUuid(), regionItem);
-      }
-
-      // Get existing PlacementInfo AZ or set up a new one.
-      PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
-      azItem.name = currentAz.getName();
-      azItem.subnet = currentAz.getSubnet();
-      azItem.replicationFactor = 1;
-      azItem.uuid = currentAz.getUuid();
-      azItem.numNodesInAZ = azToNumNodesMap.get(azUUID);
-      regionItem.azList.add(azItem);
-    }
-    PlacementInfo placementInfo = new PlacementInfo();
-    placementInfo.cloudList = ImmutableList.copyOf(placementCloudMap.values());
-    return placementInfo;
   }
 
   static boolean areConfigObjectsEqual(ArrayNode nodeDetailSet, Map<UUID, Integer> azToNodeMap) {
