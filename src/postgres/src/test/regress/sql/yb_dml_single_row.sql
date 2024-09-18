@@ -890,6 +890,16 @@ EXPLAIN (COSTS FALSE) DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
 DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
 SELECT * FROM multi_row;
 
+-- Test for case when parent and child column nos don't match.
+-- GH issue: https://github.com/yugabyte/yugabyte-db/issues/23857.
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE pk2 (b int, a int NOT NULL);
+ALTER TABLE pk2 DROP COLUMN b;
+ALTER TABLE pk ATTACH PARTITION pk2 FOR VALUES FROM (1000) TO (2000);
+INSERT into pk VALUES (1000);
+EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
+UPDATE pk SET a = 1002 WHERE a = 1000;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -917,6 +927,7 @@ DROP TABLE array_t2;
 DROP TABLE array_t3;
 DROP TABLE array_t4;
 DROP TABLE json_t1;
+DROP TABLE pk;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;
