@@ -19,7 +19,7 @@ public class IsolatedBackupHandler extends ApiControllerUtils {
       throws Exception {
     Customer customer = Customer.getOrBadRequest(cUUID);
     CreateYbaBackup.Params taskParams = new CreateYbaBackup.Params();
-    taskParams.localDir = spec.getLocalDir();
+    taskParams.dirName = spec.getLocalDir();
     taskParams.components = spec.getComponents();
     UUID taskUUID = ybaBackupHandler.createBackup(customer, taskParams);
     return new YBATask().taskUuid(taskUUID);
