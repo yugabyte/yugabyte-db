@@ -34,7 +34,7 @@ For information on release versioning, see [Versioning](../versioning/).
 
 ### v2024.1
 
-{{<nav/tabs list="none">}}
+{{<nav/tabs list="custom">}}
 {{<nav/tab text="macOS" name="macos" active="true">}}
 {{<nav/tab text="Linux x86" name="linux86">}}
 {{<nav/tab text="Linux ARM" name="linuxarm">}}
@@ -97,6 +97,14 @@ For information on release versioning, see [Versioning](../versioning/).
 |----| ------|
 | {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="macos">}} |
 
+#### Instructions
+
+```bash
+curl -O {{<download/link version="2.21.1.0" build="b271" os="macos" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="macos" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="macos" mode="dir">}}/
+./bin/yugabyted start
+```
+
 {{</nav/panel>}}
 
 {{<nav/panel name="linux86">}}
@@ -104,6 +112,15 @@ For information on release versioning, see [Versioning](../versioning/).
 | Version | Binary |
 |----| ------|
 | {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="linux86">}} |
+
+#### Instructions
+
+```bash
+wget {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="dir">}}/
+./bin/post_install.sh
+./bin/yugabyted start
+```
 
 {{</nav/panel>}}
 
@@ -113,6 +130,15 @@ For information on release versioning, see [Versioning](../versioning/).
 |----| ------|
 | {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="linuxarm">}} |
 
+#### Instructions
+
+```bash
+wget {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="dir">}}/
+./bin/post_install.sh
+./bin/yugabyted start
+```
+
 {{</nav/panel>}}
 
 {{<nav/panel name="docker">}}
@@ -120,6 +146,13 @@ For information on release versioning, see [Versioning](../versioning/).
 | Version | Binary |
 |----| ------|
 | {{<release "2.21.1.0">}} | `docker pull yugabytedb/yugabyte:2.21.1.0-b271` |
+
+#### Instructions
+
+```bash
+docker pull yugabytedb/yugabyte:2.21.1.0-b271
+docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042  yugabytedb/yugabyte:2.21.1.0-b271 bin/yugabyted start  --background=false
+```
 
 {{</nav/panel>}}
 

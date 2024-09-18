@@ -9,11 +9,17 @@
 
 {{- $version := .Get "version" }}
 {{- $build := .Get "build" }}
+{{- $mode := default "link" (.Get "mode") }}
 {{- $os := .Get "os" -}}
 {{- $binary := index $osbinarymap $os -}}
 {{- $binaryname := printf "yugabyte-%s-%s-%s.tar.gz" $version $build $binary -}}
 {{- $urlformat := "https://downloads.yugabyte.com/releases/%s/%s" -}}
-
+{{- if eq $mode "plain" -}}
+{{printf $urlformat $version $binaryname}}
+{{- else if eq $mode "filename" -}}
+{{$binaryname}}
+{{- else if eq $mode "dir" -}}
+{{- printf "yugabyte-%s" $version -}}
+{{- else -}}
 <a href="{{printf $urlformat $version $binaryname}}">{{$binaryname}}</a>
-
-{{- "" -}}
+{{- end -}}
