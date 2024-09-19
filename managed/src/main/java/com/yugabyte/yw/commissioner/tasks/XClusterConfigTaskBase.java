@@ -3045,16 +3045,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    *
    * @param xClusterConfig config used
    * @param dbId db id on the source universe that are being added to checkpoint.
+   * @param keepEntry whether to keep the entry in the YBA DB.
    * @return The created subtask group
    */
   protected SubTaskGroup createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(
-      XClusterConfig xClusterConfig, String dbId) {
+      XClusterConfig xClusterConfig, String dbId, boolean keepEntry) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("XClusterRemoveNamespaceFromOutboundReplication");
     XClusterRemoveNamespaceFromOutboundReplicationGroup.Params taskParams =
         new XClusterRemoveNamespaceFromOutboundReplicationGroup.Params();
     taskParams.xClusterConfig = xClusterConfig;
     taskParams.dbToRemove = dbId;
+    taskParams.keepEntry = keepEntry;
     XClusterRemoveNamespaceFromOutboundReplicationGroup task =
         createTask(XClusterRemoveNamespaceFromOutboundReplicationGroup.class);
     task.initialize(taskParams);
