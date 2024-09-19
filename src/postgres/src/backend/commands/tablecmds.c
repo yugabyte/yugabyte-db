@@ -6526,7 +6526,13 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 						{
 							/* If YugaByte is enabled, the add constraint operation is not atomic.
 							 * So we must delete the relevant entries from the catalog tables. */
-							if (IsYugaByteEnabled())
+							/*
+							 * YB_TODO(fizaa) : clean this up -- this condition
+							 * is incomplete as we don't want to drop the
+							 * constraint if we are performing the check
+							 * as part of a VALIDATE CONSTRAINT operation.
+							 */
+							if (IsYugaByteEnabled() && !YbDdlRollbackEnabled())
 							{
 								/*
 								 * Even though we pass oldrel as a reference, it won't change
