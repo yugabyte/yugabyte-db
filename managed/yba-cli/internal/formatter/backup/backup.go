@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultBackupListing = "table {{.BackupUUID}}\t{{.BaseBackupUUID}}\t{{.Universe}}" +
+	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
 		"\t{{.StorageConfig}}\t{{.StorageConfigType}}\t{{.BackupType}}" +
 		"\t{{.State}}\t{{.CompletionTime}}"
 
