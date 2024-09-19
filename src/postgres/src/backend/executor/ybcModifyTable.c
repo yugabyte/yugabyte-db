@@ -1119,6 +1119,32 @@ bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	return rows_affected_count > 0;
 }
 
+void YBCExecuteUpdateIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum oldYbctid,
+						   Datum newYbctid,
+						   yb_assign_for_write_function callback)
+{
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	YBCPgStatement update_stmt = NULL;
+
+	/* Create the UPDATE request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewUpdate(dboid,
+								  YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index),
+								  &update_stmt,
+								  YB_TRANSACTIONAL));
+
+	callback(update_stmt, index, values, isnull,
+			 RelationGetNumberOfAttributes(index),
+			 oldYbctid, newYbctid);
+
+	YBCApplyWriteStmt(update_stmt, index);
+}
+
 bool
 YBCExecuteUpdateLoginAttempts(Oid roleid,
 							  int failed_attempts,

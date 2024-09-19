@@ -156,6 +156,11 @@ extern void yb_index_delete(Relation indexRelation,
 							Datum ybctid,
 							Relation heapRelation,
 							struct IndexInfo *indexInfo);
+extern void yb_index_update(Relation indexRelation,
+							Datum *values, bool *isnull,
+							Datum oldYbctid, Datum newYbctid,
+							Relation heapRelation,
+							struct IndexInfo *indexInfo);
 
 extern IndexScanDesc index_beginscan(Relation heapRelation,
 									 Relation indexRelation,

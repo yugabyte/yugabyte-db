@@ -137,6 +137,15 @@ typedef void (*yb_amdelete_function) (Relation indexRelation,
 									  Relation heapRelation,
 									  struct IndexInfo *indexInfo);
 
+/* update the tuple identified by 'oldYbctid' for a Yugabyte-based index */
+typedef void (*yb_amupdate_function) (Relation indexRelation,
+									  Datum *values,
+									  bool *isnull,
+									  Datum oldYbctid,
+									  Datum newYbctid,
+									  Relation heapRelation,
+									  struct IndexInfo *indexInfo);
+
 /* backfill this Yugabyte-based index */
 typedef IndexBuildResult *(*yb_ambackfill_function) (Relation heapRelation,
 													 Relation indexRelation,
@@ -293,6 +302,8 @@ typedef struct IndexAmRoutine
 	bool		amusemaintenanceworkmem;
 	/* OR of parallel vacuum flags.  See vacuum.h for flags. */
 	uint8		amparallelvacuumoptions;
+	/* does AM support in-place update of non-key columns? */
+	bool		ybamcanupdatetupleinplace;
 	/* type of data stored in index, or InvalidOid if variable */
 	Oid			amkeytype;
 
@@ -335,6 +346,7 @@ typedef struct IndexAmRoutine
 	/* YB functions */
 	yb_aminsert_function yb_aminsert;
 	yb_amdelete_function yb_amdelete;
+	yb_amupdate_function yb_amupdate;
 	yb_ambackfill_function yb_ambackfill;
 	yb_ammightrecheck_function yb_ammightrecheck;
 	yb_amgetbitmap_function yb_amgetbitmap;

@@ -55,6 +55,7 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = true; /* TODO(jason): check what this is */
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->ybamcanupdatetupleinplace = false;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ybginbuild;
@@ -80,6 +81,7 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybgininsert;
 	amroutine->yb_amdelete = ybgindelete;
+	amroutine->yb_amupdate = NULL;
 	amroutine->yb_ambackfill = ybginbackfill;
 	amroutine->yb_ammightrecheck = ybginmightrecheck;
 	amroutine->yb_ambindschema = ybginbindschema;
