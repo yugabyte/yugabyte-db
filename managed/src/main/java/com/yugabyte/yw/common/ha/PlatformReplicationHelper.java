@@ -207,7 +207,7 @@ public class PlatformReplicationHelper {
     return Json.newObject().put("frequency_milliseconds", frequency).put("is_running", isRunning);
   }
 
-  Path getReplicationDirFor(String leader) {
+  public Path getReplicationDirFor(String leader) {
     String storagePath = confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH);
     return Paths.get(storagePath, REPLICATION_DIR, leader);
   }

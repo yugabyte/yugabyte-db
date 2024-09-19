@@ -101,43 +101,45 @@ public class CreateYbaBackup extends AbstractTaskBase {
   public void run() {
     log.info("Execution of CreateYbaBackup");
     CreateYbaBackup.Params taskParams = taskParams();
-    if (taskParams.storageConfigUUID != null) {
-      log.debug("Creating platform backup...");
-      ShellResponse response =
-          replicationHelper.runCommand(replicationManager.new CreatePlatformBackupParams());
-
-      if (response.code != 0) {
-        log.error("Backup failed: " + response.message);
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Backup failed: " + response.message);
-      }
-      Optional<File> backupOpt = replicationHelper.getMostRecentBackup();
-      if (!backupOpt.isPresent()) {
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "could not find backup file");
-      }
-      File backup = backupOpt.get();
-      CustomerConfig customerConfig = CustomerConfig.get(taskParams.storageConfigUUID);
-      if (customerConfig == null) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR,
-            "Could not find customer config with provided storage config UUID.");
-      }
-      CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
-      if (!cloudUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, taskParams.dirName)) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Could not upload YBA backup to cloud storage.");
-      }
-
-      if (!cloudUtil.cleanupUploadedBackups(customerConfig.getDataObject(), taskParams.dirName)) {
-        log.warn(
-            "Error cleaning up uploaded backups to cloud storage, please delete manually to avoid"
-                + " incurring unexpected costs.");
-      }
-
-      // Cleanup backups
-      replicationHelper.cleanupCreatedBackups();
-      log.info(backup.getAbsolutePath());
+    if (taskParams.storageConfigUUID == null) {
+      log.info("No storage config UUID set, skipping creation of YBA backup.");
+      return;
     }
+    log.debug("Creating platform backup...");
+    ShellResponse response =
+        replicationHelper.runCommand(replicationManager.new CreatePlatformBackupParams());
+
+    if (response.code != 0) {
+      log.error("Backup failed: " + response.message);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Backup failed: " + response.message);
+    }
+    Optional<File> backupOpt = replicationHelper.getMostRecentBackup();
+    if (!backupOpt.isPresent()) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "could not find backup file");
+    }
+    File backup = backupOpt.get();
+    CustomerConfig customerConfig = CustomerConfig.get(taskParams.storageConfigUUID);
+    if (customerConfig == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Could not find customer config with provided storage config UUID during create.");
+    }
+    CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
+    if (!cloudUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, taskParams.dirName)) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Could not upload YBA backup to cloud storage.");
+    }
+
+    if (!cloudUtil.cleanupUploadedBackups(customerConfig.getDataObject(), taskParams.dirName)) {
+      log.warn(
+          "Error cleaning up uploaded backups to cloud storage, please delete manually to avoid"
+              + " incurring unexpected costs.");
+    }
+
+    // Cleanup backups
+    replicationHelper.cleanupCreatedBackups();
+    log.info(backup.getAbsolutePath());
     return;
   }
 }

@@ -121,6 +121,11 @@ public interface CloudUtil extends StorageUtil {
     return false;
   }
 
+  public default File downloadYbaBackup(
+      CustomerConfigData configData, String backupDir, Path localDir) {
+    return null;
+  }
+
   public default RestorePreflightResponse
       generateYBBackupRestorePreflightResponseWithoutBackupObject(
           AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {
