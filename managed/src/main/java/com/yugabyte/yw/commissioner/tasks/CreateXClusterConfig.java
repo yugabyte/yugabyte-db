@@ -559,9 +559,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
         if (!xClusterConfig.getDbIds().contains(namespaceId)) {
           xClusterConfig.addNamespaces(Set.of(namespaceId));
+          xClusterConfig.updateStatusForNamespace(
+              namespaceId, XClusterNamespaceConfig.Status.Updating);
         }
-        xClusterConfig.updateStatusForNamespace(
-            namespaceId, XClusterNamespaceConfig.Status.Updating);
+
         if (!isReplicationConfigCreated) {
           createCreateOutboundReplicationGroupTask(
               xClusterConfig, Collections.singleton(namespaceId));
