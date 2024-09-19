@@ -67,3 +67,15 @@ test: bson_aggregation_stage_project_tests
 test: bson_query_projection_operator_expressions_map_tests
 test: bson_query_projection_operator_expressions_tests
 test: bson_type_comparison_tests
+
+
+test: bson_aggregation_arithmetic_operators_tests
+test: bson_aggregation_pipeline_operator_expMovingAvg
+test: bson_aggregation_pipeline_operator_linearFill
+test: bson_aggregation_pipeline_tests_graphlookup
+test: bson_aggregation_pipeline_tests_index_pushdown
+test: bson_aggregation_pipeline_tests_let
+test: bson_aggregation_pipeline_tests_merge_objects_group 
+test: bson_aggregation_pipeline_tests
+test: bson_aggregation_stage_inversematch_tests
+test: bson_aggregation_stage_sample_tests
