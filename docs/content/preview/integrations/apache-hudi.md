@@ -12,180 +12,264 @@ type: docs
 
 [Apache Hudi](https://hudi.apache.org/) is a powerful data management framework that simplifies incremental data processing and storage, making it a valuable component for integrating with YugabyteDB to achieve real-time analytics, and seamless data consistency across distributed environments.
 
-The following tutorial describes steps to integrate YugabyteDB with Apache Hudi, enabling a robust data lakehouse architecture leveraging both SQL capabilities and big data processing power.
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#HoodieDeltaStreamer" class="nav-link active" id="hoodie-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="hoodie" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Hoodie DeltaStreamer with CDC
+    </a>
+  </li>
+  <li >
+    <a href="#HoodieStreamer" class="nav-link" id="hudi-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="hudi" aria-selected="false">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Hoodie Streamer
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="HoodieDeltaStreamer" class="tab-pane fade" role="tabpanel" aria-labelledby="hoodie-tab">
+
+The following tutorial describes steps to integrate YugabyteDB with Apache Hudi for real-time Change Data Capture (CDC) using YugabyteDB's CDC connector and Hoodie DeltaStreamer with Apache Spark.
+
+This integration allows continuous and incremental data ingestion from YugabyteDB into analytical processes, leveraging the power of Apache Hudi.
 
 ## Prerequisites
 
 To use Apache Hudi, ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB on macOS by following the steps in [Quick start](../../quick-start/).
-- Java JDK 11 or later is installed.
-- [Scala](https://www.scala-lang.org/download/) is installed.
-- [Apache Hadoop](https://hadoop.apache.org/releases.html) and [Apache Spark](https://spark.apache.org/downloads.html) installed.
+- Docker installed.
 
-## Setup
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
 
-To run Apache Hudi with YugabyteDB, do the following:
+- Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
 
-1. Download and extract Apache Hudi using the following commands:
+## Setup Kafka and Schema Registry
 
-    ```sh
-    wget https://downloads.apache.org/hudi/0.9.0/hudi-0.9.0.tar.gz
-    ```
+1. Download the `docker-compose.yaml` from the [CDC-examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/docker-compose.yaml) folder and run all the containers specified within it. It will install the Confluent schema registry, Control Center, ZooKeeper, Kafka, YugabyteDB Debezium Kafka Connector, Grafana, and Prometheus containers and configure the ports as required.
 
-    ```sh
-    tar -xvzf hudi-0.9.0.tar.gz
-    ```
-
-1. Set the following environment variables:
-
-    ```sh
-    export HADOOP_HOME=/usr/local/Cellar/hadoop/your_hadoop_version
-    export SPARK_HOME=/usr/local/Cellar/apache-spark/your_spark_version
-    export HUDI_HOME=~/path_to_hudi/hudi-0.9.0/
-    export PATH=$PATH:$HADOOP_HOME/bin:$SPARK_HOME/bin:$HUDI_HOME/bin
-    ```
-
-    Replace `your_hadoop_version` and `your_spark_version` with the installed versions of Hadoop and Spark.
-
-## Configure
-
-To configure Hudi to use YugabyteDB, do the following:
-
-1. Create a configuration file `hudi_config.properties` that specifies how Hudi will connect to YugabyteDB:
+    This example uses port 8091 for the schema registry as follows:
 
     ```properties
-    # Hudi configurations
-    hoodie.embed.timeline.server=false
-    hoodie.datasource.write.table.name=your_hudi_table_name
-    hoodie.datasource.write.recordkey.field=name
-    hoodie.datasource.write.partitionpath.field=partition_path
-    hoodie.datasource.write.table.type=COPY_ON_WRITE
-    # YugabyteDB configurations
-    spark.yugabyte.driver=org.postgresql.Driver
-    spark.yugabyte.url=jdbc:postgresql://127.0.0.1:5433/your_db_name
-    spark.yugabyte.user=your_username
-    spark.yugabyte.password=your_password
+    schema-registry:
+      image: confluentinc/cp-schema-registry:7.2.1
+      hostname: schema-registry
+      container_name: schema-registry
+      depends_on:
+        - broker
+      ports:
+        - "8091:8091"
+      environment:
+        SCHEMA_REGISTRY_HOST_NAME: schema-registry
+        SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092'
+        SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8091
     ```
 
-    Replace `your_hudi_table_name`, `your_db_name`, `your_username`, and `your_password` with the appropriate values for your set up.
+1. Run the docker containers:
 
-1. Create a Spark job to initialize the Hudi table and write some data as follows:
+    ```sh
+    docker-compose up -d
+    ```
 
-    ```scala
-    package example
+## Setup and configure CDC Stream ID in YugabyteDB
 
-    import org.apache.hudi.QuickstartUtils._
-    import org.apache.hudi.config.HoodieWriteConfig
-    import org.apache.spark.sql.SparkSession
-    import java.util.Properties
+Create a database stream ID for a specific database (for example, demo).
 
-    object HudiYugabyteDBIntegration {
-      def main(args: Array[String]): Unit = {
-        val spark = SparkSession.builder
-          .appName("HudiYugabyteDBIntegration")
-          .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-          .config("spark.kryo.registrator", "org.apache.spark.HoodieKryoRegistrar")
-          .getOrCreate()
+1. Assign your current database node address to the "{IP}" variable as follows:
 
-        val props = new Properties()
-        props.load(new java.io.FileInputStream("hudi_config.properties"))
+    ```sh
+    export IP=10.23.16.6
+    ```
 
-        val tableName = props.getProperty("hoodie.datasource.write.table.name")
+1. Run the following `yb-admin` command from the YugabyteDB node bin directory or `/home/yugabyte/tserver/bin` directory of any database node of your YugabyteDB cluster:
 
-        val dataGen = new DataGenerator()
-        val inserts = convertToStringList(dataGen.generateInserts(100))
+    ```sh
+    ./yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.demo implicit all
+    ```
 
-        import spark.implicits._
-        val df = spark.read.json(spark.sparkContext.parallelize(inserts, 2))
+    This will output a stream ID such as, `a4f8291c3737419dbe4feee5a1b19aee`.
 
-        df.write.format("hudi")
-          .options(getQuickstartWriteConfigs)
-          .option(HoodieWriteConfig.TABLE_NAME, tableName)
-          .mode("overwrite")
-          .options(Map(
-            "hoodie.datasource.write.table.name" -> props.getProperty("hoodie.datasource.write.table.name"),
-            "hoodie.datasource.write.recordkey.field" -> props.getProperty("hoodie.datasource.write.recordkey.field"),
-            "hoodie.datasource.write.partitionpath.field" -> props.getProperty("hoodie.datasource.write.partitionpath.field"),
-            "hoodie.datasource.write.precombine.field" -> "ts",
-            "hoodie.datasource.write.table.type" -> props.getProperty("hoodie.datasource.write.table.type")
-          ))
-          .save(props.getProperty("spark.yugabyte.url"))
+## Deploy the Kafka Source Connector
 
-        println("Hudi data written to YugabyteDB successfully")
-        spark.stop()
-      }
-    }
+Run the Kafka connector with the following command:
+
+```sh
+curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
+  "name": "cdc-demo",
+  "config": {
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "database.hostname": "'$IP'",
+    "database.port": "5433",
+    "tasks.max": "3",
+    "database.master.addresses": "'$IP':7100",
+    "database.user": "yugabyte",
+    "database.password": "xxxxxxx",
+    "database.dbname": "demo",
+    "database.server.name": "dbs",
+    "table.include.list": "public.cdctest",
+    "database.streamid": "a4f8291c3737419dbe4feee5a1b19aee",
+    "transforms":"pgcompatible",
+    "transforms.pgcompatible.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
+    "key.converter.schemas.enable": "true",
+    "value.converter.schemas.enable": "true",
+    "tombstones.on.delete":"false",
+    "key.converter":"io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url":"http://schema-registry:8091",
+    "value.converter":"io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url":"http://schema-registry:8091"
+  }
+}'
+```
+
+## Validate the schema and verify Kafka Topics
+
+Launch the Confluent Control Center and verify the schema details and messages in the relevant topics. Access the Control Center at <http://{your_docker_container_IP_or_VM}:9021>. Start populating the data from YugabyteDB, and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, <http://{your_docker_container_IP_or_VM}:9021/clusters/management/topics/cdc.public.cdctest/message-viewer>).
+
+## Install Apache Hudi
+
+1. [Build Apache Hudi from source](https://github.com/apache/hudi?tab=readme-ov-file#building-apache-hudi-from-source). Modify the source files to account for differences between PostgreSQL and YugabyteDB CDC emissions as follows:
+
+    1. In `DebeziumConstants.java`, comment out or remove lines related to "xmin".
+
+    1. In `PostgresDebeziumSource.java`, comment out or remove parameters related to "xmin".
+
+1. Run Maven to build Hudi as follows:
+
+    ```sh
+    mvn clean package -DskipTests
+    ```
+
+## Run a Spark Job using Hoodie DeltaStreamer
+
+1. Create a `spark-config.properties` file as follows:
+
+    ```properties
+    spark.serializer=org.apache.spark.serializer.KryoSerializer
+    spark.sql.catalog.spark_catalog=org.apache.spark.sql.hudi.catalog.HoodieCatalog
+    spark.sql.hive.convertMetastoreParquet=false
     ```
 
 1. Run the Spark job as follows:
 
     ```sh
-    spark-submit --class example.HudiYugabyteDBIntegration --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0 path_to_your_scala_file.jar
+    spark-submit --class org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer \
+      --packages org.apache.hudi:hudi-spark3.4-bundle_2.12:0.14.0 \
+      --master local[*] \
+      "/your_folder/hudi-release-0.14.0/packaging/hudi-utilities-bundle/target/hudi-utilities-bundle_2.12-0.14.0.jar" \
+      --table-type MERGE_ON_READ \
+      --source-class org.apache.hudi.utilities.sources.debezium.PostgresDebeziumSource \
+      --payload-class org.apache.hudi.common.model.debezium.PostgresDebeziumAvroPayload \
+      --target-base-path file:///tmp/hoodie/dbs-cdctest \
+      --target-table dbs_cdctest \
+      --source-ordering-field _event_origin_ts_ms \
+      --continuous \
+      --source-limit 4000000 \
+      --min-sync-interval-seconds 20 \
+      --hoodie-conf bootstrap.servers=localhost:9092 \
+      --hoodie-conf schema.registry.url=http://localhost:8091 \
+      --hoodie-conf hoodie.deltastreamer.schemaprovider.registry.url=http://localhost:8091/subjects/dbs.public.cdctest-value/versions/latest \
+      --hoodie-conf hoodie.deltastreamer.source.kafka.value.deserializer.class=io.confluent.kafka.serializers.    KafkaAvroDeserializer \
+      --hoodie-conf hoodie.deltastreamer.source.kafka.topic=dbs.public.cdctest \
+      --hoodie-conf auto.offset.reset=earliest \
+      --hoodie-conf hoodie.datasource.write.recordkey.field=sno \
+      --hoodie-conf hoodie.datasource.write.partitionpath.field=name \
+      --hoodie-conf hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator \
+      --props /your_folder/spark-config.properties
     ```
 
 ## Query the Hudi table
 
-To verify the integration, check that the Hudi table is created successfully as follows:
+1. Verify the Hudi table is created in `/tmp/hoodie/dbs-cdctest` as follows:
 
-```sh
-azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name$ ls -atlr
-```
+    ```sh
+    cd /tmp/hoodie/dbs-cdctest
+    ls -atlr
+    ```
 
-```output
-drwxr-xr-x  7 azureuser azureuser 4096 Dec 16 15:59  .hoodie
-```
+1. Start a Spark shell to query the Hudi table as follows:
 
-```sh
-azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name$ cd .hoodie/
-azureuser@hudi-test:/tmp/hoodie/your_hudi_table_name/.hoodie$ ls -altr
-```
+    ```sh
+    spark-shell
+    ```
 
-```output
-total 136
-drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:44 archived
-drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:44 .schema
-drwxr-xr-x 3 azureuser azureuser 4096 Dec 16 15:44 .aux
--rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:44 20231216154446818.deltacommit.requested
--rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:44 .20231216154446818.deltacommit.requested.crc
-drwxr-xr-x 4 azureuser azureuser 4096 Dec 16 15:44 metadata
--rw-r--r-- 1 azureuser azureuser 1014 Dec 16 15:44 hoodie.properties
--rw-r--r-- 1 azureuser azureuser   16 Dec 16 15:44 .hoodie.properties.crc
--rw-r--r-- 1 azureuser azureuser 1499 Dec 16 15:44 20231216154446818.deltacommit.inflight
--rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:44 .20231216154446818.deltacommit.inflight.crc
--rw-r--r-- 1 azureuser azureuser 2858 Dec 16 15:44 20231216154446818.deltacommit
--rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:44 .20231216154446818.deltacommit.crc
--rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:45 20231216154526806.deltacommit.requested
--rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:45 .20231216154526806.deltacommit.requested.crc
--rw-r--r-- 1 azureuser azureuser 1499 Dec 16 15:45 20231216154526806.deltacommit.inflight
--rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:45 .20231216154526806.deltacommit.inflight.crc
--rw-r--r-- 1 azureuser azureuser 2882 Dec 16 15:45 20231216154526806.deltacommit
--rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:45 .20231216154526806.deltacommit.crc
--rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:53 20231216155306810.deltacommit.requested
--rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:53 .20231216155306810.deltacommit.requested.crc
--rw-r--r-- 1 azureuser azureuser  814 Dec 16 15:53 20231216155306810.deltacommit.inflight
--rw-r--r-- 1 azureuser azureuser   16 Dec 16 15:53 .20231216155306810.deltacommit.inflight.crc
-drwxr-xr-x 6 azureuser azureuser 4096 Dec 16 15:53 ..
--rw-r--r-- 1 azureuser azureuser 1957 Dec 16 15:53 20231216155306810.deltacommit
--rw-r--r-- 1 azureuser azureuser   24 Dec 16 15:53 .20231216155306810.deltacommit.crc
--rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:53 20231216155326810.deltacommit.requested
--rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:53 .20231216155326810.deltacommit.requested.crc
--rw-r--r-- 1 azureuser azureuser 1503 Dec 16 15:53 20231216155326810.deltacommit.inflight
--rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:53 .20231216155326810.deltacommit.inflight.crc
--rw-r--r-- 1 azureuser azureuser 2898 Dec 16 15:53 20231216155326810.deltacommit
--rw-r--r-- 1 azureuser azureuser   32 Dec 16 15:53 .20231216155326810.deltacommit.crc
--rw-r--r-- 1 azureuser azureuser	0 Dec 16 15:59 20231216155926812.deltacommit.requested
--rw-r--r-- 1 azureuser azureuser	8 Dec 16 15:59 .20231216155926812.deltacommit.requested.crc
--rw-r--r-- 1 azureuser azureuser 1525 Dec 16 15:59 20231216155926812.deltacommit.inflight
--rw-r--r-- 1 azureuser azureuser   20 Dec 16 15:59 .20231216155926812.deltacommit.inflight.crc
-drwxr-xr-x 7 azureuser azureuser 4096 Dec 16 15:59 .
--rw-r--r-- 1 azureuser azureuser 2232 Dec 16 15:59 20231216155926812.deltacommit
--rw-r--r-- 1 azureuser azureuser   28 Dec 16 15:59 .20231216155926812.deltacommit.crc
-drwxr-xr-x 2 azureuser azureuser 4096 Dec 16 15:59 .temp
-```
+1. Import necessary libraries and read data from the Hudi table:
 
-You can execute queries on the table using Spark. Refer to instructions in the [Apache Hudi documentation](https://hudi.apache.org/docs/quick-start-guide/#querying).
+    ```sh
+    import org.apache.hudi.DataSourceReadOptions._
+    import org.apache.hudi.config.HoodieWriteConfig._
+    import org.apache.spark.sql.SaveMode._
+    import spark.implicits._
 
-## Learn more
+    val basePath = "file:///tmp/hoodie/dbs-cdctest"
+    val cdcDF = spark.read.format("hudi").load(basePath)
+    cdcDF.createOrReplaceTempView("cdcdemo")
 
-- [Combine Transactional Integrity and Data Lake Operations with YugabyteDB and Apache Hudi](https://www.yugabyte.com/blog/apache-hudi-data-lakehouse-integration/)
+    spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
+    ```
+
+## Verify
+
+Perform database operations on the `cdctest` table in YugabyteDB and verify that the changes are reflected in the Hudi table by running queries through the Spark shell.
+
+1. Insert and update records in the `cdctest` table in your YugabyteDB database as follows:
+
+    ```sql
+    -- Example of insert statement
+    INSERT INTO public.cdctest (sno, name) VALUES (826, 'Test User 1');
+
+    -- Example of update statement
+    UPDATE public.cdctest SET name = 'Updated Test User 1' WHERE sno = 826;
+    ```
+
+1. Start a new Spark shell with `spark-shell` and import the necessary classes and read the data from the Hudi table:
+
+    ```spark
+    import org.apache.hudi.DataSourceReadOptions._
+    import org.apache.hudi.config.HoodieWriteConfig._
+    import org.apache.spark.sql.SaveMode._
+    import spark.implicits._
+
+    val basePath = "file:///tmp/hoodie/dbs-cdctest"
+    val cdcDF = spark.read.format("hudi").load(basePath)
+    cdcDF.createOrReplaceTempView("cdcdemo")
+
+    spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
+    ```
+
+    You can see the changes reflected from the `cdctest` table in YugabyteDB through the CDC connector into the Hudi table. The `_change_operation_type` field indicates whether the operation was an update (u), insert (c), or delete (d).
+
+1. Delete a record from the `cdctest` table in YugabyteDB:
+
+    ```sql
+    DELETE FROM public.cdctest WHERE sno = 826;
+    ```
+
+1. Verify deletion in Hudi Table with the follwing query in a Spark shell:
+
+    ```spark
+    spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
+    ```
+
+    Verify that the record with `sno = 826` is deleted from the Hudi table due to the propagated delete event.
+
+</div>
+
+  <div id="HoodieStreamer" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+
+The following tutorial describes steps to how to load incremental data YugabyteDB and with Apache Hudi using Hudi's Streamer and JDBC Driver.
+
+This approach is suitable for incremental data loading/ETL.
+
+## Prerequisites
+
+To use Apache Hudi, ensure that you have the following:
+
+- Docker installed.
+
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
+
+- Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
+
+  </div>
