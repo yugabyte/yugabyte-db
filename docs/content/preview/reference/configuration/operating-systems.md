@@ -69,7 +69,7 @@ To use a CIS hardened image for installing YugabyteDB Anywhere:
 To use a CIS hardened image for on-premises universe nodes:
 
 1. Install the image on the nodes.
-1. [Change the firewall rules for YugabyteDB Anywhere](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-images).
+1. [Change the firewall rules](../default-ports/#firewall-changes-for-cis-hardened-images).
 1. Create a custom `tmp` directory during [provisioning](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#custom-tmp-directory-for-cis-hardened-rhel-8-or-9).
 1. If you want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
 1. After you create the [on-premises provider](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to the custom tmp directory.
@@ -78,6 +78,6 @@ To use a CIS hardened image for on-premises universe nodes:
 To use a CIS hardened image for universes on cloud providers:
 
 1. Download the image.
-1. [Change the firewall rules for YugabyteDB Anywhere](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-images).
+1. [Change the firewall rules](../default-ports/#firewall-changes-for-cis-hardened-images).
 1. Upload the modified image to your cloud provider.
 1. [Add the modified image](../../../yugabyte-platform/configure-yugabyte-platform/aws/) to the Linux version catalog.

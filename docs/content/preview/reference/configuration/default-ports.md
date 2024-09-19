@@ -68,9 +68,7 @@ The following common ports are required for firewall rules:
 | HTTP for YugabyteDB Anywhere (alternate) | 8080 |
 | HTTPS for YugabyteDB Anywhere  | 443 |
 | HTTP for Replicated | 8800 |
-| SSH  **   | 54422 |
-
-** 54422 is a custom SSH port for universe nodes.
+| Custom SSH port for universe nodes | 54422 |
 
 ### Firewall changes for CIS hardened images
 
@@ -92,6 +90,8 @@ done
 
 sudo firewall-cmd --reload
 ```
+
+If you have customized any port settings, be sure to replace the port numbers as appropriate.
 
 ## Prometheus monitoring
 
