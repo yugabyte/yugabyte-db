@@ -237,7 +237,7 @@ void XClusterConsumer::RunThread() {
     {
       UniqueLock l(shutdown_mutex_);
       if (run_thread_cond_.wait_for(
-              GetLockForCondition(&l), 1s, [this]() { return is_shutdown_.load(); })) {
+              GetLockForCondition(l), 1s, [this]() { return is_shutdown_.load(); })) {
         return;
       }
     }
