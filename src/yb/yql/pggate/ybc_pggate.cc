@@ -2356,12 +2356,13 @@ void YBCStoreTServerAshSamples(
 }
 
 YBCStatus YBCPgInitVirtualWalForCDC(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations) {
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
-    PgObjectId table_id(database_oid, relations[i]);
+    PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
   }
 
@@ -2374,12 +2375,13 @@ YBCStatus YBCPgInitVirtualWalForCDC(
 }
 
 YBCStatus YBCPgUpdatePublicationTableList(
-    const char* stream_id, const YBCPgOid database_oid, YBCPgOid* relations, size_t num_relations) {
+    const char* stream_id, const YBCPgOid database_oid, YBCPgOid* relations, YBCPgOid* relfilenodes,
+    size_t num_relations) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
-    PgObjectId table_id(database_oid, relations[i]);
+    PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
   }
 
@@ -2482,9 +2484,16 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       old_tuple_idx++;
     }
 
-    const auto table_oid = row_message_pb.has_table_id()
-                               ? PgObjectId(row_message_pb.table_id()).object_oid
-                               : kPgInvalidOid;
+    auto table_oid = kPgInvalidOid;
+    if (row_message_pb.has_table_id()) {
+      const PgObjectId table_id = PgObjectId(row_message_pb.table_id());
+      YBCPgTableDesc tableDesc = NULL;
+      Status s = pgapi->GetTableDesc(table_id, &tableDesc);
+      if (!s.ok()) {
+        return ToYBCStatus(s);
+      }
+      table_oid = tableDesc->pg_table_id();
+    }
 
     auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
