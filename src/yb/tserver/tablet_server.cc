@@ -955,6 +955,14 @@ void TabletServer::SetYsqlDBCatalogVersions(
     const uint32_t db_oid = db_catalog_version.db_oid();
     const uint64_t new_version = db_catalog_version.current_version();
     const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+    if (FLAGS_TEST_check_catalog_version_overflow) {
+      CHECK_GE(static_cast<int64_t>(new_version), 0)
+          << new_version << " db_oid: " << db_oid
+          << " db_catalog_version_data: " << db_catalog_version_data.ShortDebugString();
+      CHECK_GE(static_cast<int64_t>(new_breaking_version), 0)
+          << new_breaking_version << " db_oid: " << db_oid
+          << " db_catalog_version_data: " << db_catalog_version_data.ShortDebugString();
+    }
     if (!db_oid_set.insert(db_oid).second) {
       LOG(DFATAL) << "Ignoring duplicate db oid " << db_oid;
       continue;
