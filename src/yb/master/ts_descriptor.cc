@@ -38,11 +38,11 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/master/master_fwd.h"
-#include "yb/master/master_util.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_util.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
