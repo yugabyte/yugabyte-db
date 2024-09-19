@@ -1246,11 +1246,9 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 	/* Time range is not there in the buffer */
 	if (start_time > buffer_max_time || end_time < buffer_min_time)
 	{
-		const char *message = (end_time < buffer_min_time) ?
-							   "ASH circular buffer has wrapped around, " \
-							   "Unable to fetch ASH data" :
-							   "No data available in ASH for the given time range";
-		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s; ", message);
+		AppendToDescription(description, (end_time < buffer_min_time) ?
+							"ASH circular buffer has wrapped around, unable to fetch ASH data;" :
+							"No data available in ASH for the given time range;");
 		return;
 	}
 
