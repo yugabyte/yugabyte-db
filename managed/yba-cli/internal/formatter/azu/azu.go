@@ -20,7 +20,7 @@ const (
 	Provider2 = "table {{.HostedZoneID}}\t{{.NetworkSubscriptionID}}\t{{.NetworkRG}}" +
 		"\t{{.VpcType}}"
 	// Region provides header for AZU Region Cloud Info
-	Region = "table {{.SecurityGroupID}}\t{{.VNet}}\t.{{.YbImage}}"
+	Region = "table {{.SecurityGroupID}}\t{{.VNet}}"
 
 	// EAR1 provides header for Azure KMS Info
 	EAR1 = "table {{.ClientID}}\t{{.ClientSecret}}\t{{.TenantID}}"
@@ -39,7 +39,6 @@ const (
 	hostedZoneIDHeader          = "Hosted Zone ID"
 	sgIDHeader                  = "Security Group ID"
 	vnetHeader                  = "Virual Network"
-	ybImageHeader               = "YB Image"
 
 	keyAlgorithmHeader = "Key Algorithm"
 
@@ -127,7 +126,6 @@ func NewRegionContext() *RegionContext {
 	azuRegionCtx.Header = formatter.SubHeaderContext{
 		"SecurityGroupID": sgIDHeader,
 		"VNet":            vnetHeader,
-		"YbImage":         ybImageHeader,
 	}
 	return &azuRegionCtx
 }
@@ -205,11 +203,6 @@ func (c *RegionContext) SecurityGroupID() string {
 // VNet fetches Azure Region virtual network
 func (c *RegionContext) VNet() string {
 	return c.Region.GetVnet()
-}
-
-// YbImage fetches Azure Region yb image
-func (c *RegionContext) YbImage() string {
-	return c.Region.GetYbImage()
 }
 
 // MarshalJSON function

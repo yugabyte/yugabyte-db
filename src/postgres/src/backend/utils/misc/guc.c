@@ -2068,7 +2068,8 @@ static struct config_bool ConfigureNamesBool[] =
 					"Enable this with high caution. It was added to avoid disruption for users who were "
 					"already using advisory locks but seeing success messages without the lock really being "
 					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks."),
+					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+					"for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -5636,6 +5637,7 @@ static const char *const map_old_guc_names[] = {
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
 };
 
 

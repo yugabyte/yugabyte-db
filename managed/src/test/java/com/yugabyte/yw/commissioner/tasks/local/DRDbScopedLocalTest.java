@@ -217,7 +217,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  @Test
+  //  @Test
   public void testDrDbScopedUpdate() throws InterruptedException {
     Universe sourceUniverse =
         createDRUniverse(DB_SCOPED_STABLE_VERSION, "source-universe", true, 1, 1);

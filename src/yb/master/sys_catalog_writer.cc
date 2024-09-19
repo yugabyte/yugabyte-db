@@ -109,7 +109,6 @@ Status SysCatalogWriter::DoMutateItem(
       return Status::OK();
     }
 
-    VLOG(2) << "Updating item " << item_id << " in catalog: " << diff;
   }
 
   return FillSysCatalogWriteRequest(

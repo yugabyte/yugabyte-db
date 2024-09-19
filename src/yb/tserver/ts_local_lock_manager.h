@@ -28,6 +28,8 @@
 
 namespace yb::tablet {
 
+YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
+
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
 // behavior, yet the scope of the object lock is not just limited to the scope of the lock rpc
@@ -68,7 +70,8 @@ class TSLocalLockManager {
   //
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
   Status AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline);
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      WaitForBootstrap wait = WaitForBootstrap::kTrue);
 
   // The call releases all locks on the object(s) corresponding to the session id-host pair. There
   // is no 1:1 mapping that exists among lock and unlock requests. A session can acquire different
@@ -79,8 +82,11 @@ class TSLocalLockManager {
   Status ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req);
   void DumpLocksToHtml(std::ostream& out);
 
+  Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
+
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
+  void TEST_MarkBootstrapped();
 
  private:
   class Impl;

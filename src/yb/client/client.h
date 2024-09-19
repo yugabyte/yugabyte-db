@@ -1024,6 +1024,8 @@ class YBClient {
 
   void ClearAllMetaCachesOnServer();
 
+  Status ClearMetacache(const std::string& namespace_id);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.

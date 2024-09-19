@@ -7,6 +7,7 @@ package aws
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -160,11 +161,26 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		awsRegions := buildAWSRegions(regions, zones, allowed, version)
+
+		imageBundles, err := cmd.Flags().GetStringArray("image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		regionOverrides, err := cmd.Flags().GetStringArray("image-bundle-region-override")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		awsImageBundles := buildAWSImageBundles(imageBundles, regionOverrides, len(awsRegions))
+
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			AllAccessKeys: &allAccessKeys,
+			ImageBundles:  awsImageBundles,
 			Name:          util.GetStringPointer(providerName),
-			Regions:       buildAWSRegions(regions, zones, allowed, version),
+			Regions:       awsRegions,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				SshPort:       util.GetInt32Pointer(int32(sshPort)),
@@ -218,11 +234,11 @@ func init() {
 		"[Required] Region associated with the AWS provider. Minimum number of required "+
 			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
 			"\"region-name=<region-name>,"+
-			"vpc-id=<vpc-id>,sg-id=<security-group-id>,arch=<architecture>,yb-image=<custom-ami>\". "+
+			"vpc-id=<vpc-id>,sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is required key-value.",
 				formatter.GreenColor)+
-			" VPC ID, Security Group ID, YB Image (AMI) and Architecture"+
-			" (Default to x86_84) are optional. "+
+			" VPC ID and Security Group ID"+
+			" are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
 			"Example: --region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> "+
 			"--region region-name=us-east-2,vpc-id=<vpc-id>,sg-id=<security-group>")
@@ -240,10 +256,49 @@ func init() {
 			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
 			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
 
+	// createAWSProviderCmd.Flags().Bool("add-x86-default-image-bundle", false,
+	// 	"[Optional] Include Linux versions that are chosen and managed by"+
+	// 		" YugabyteDB Anywhere in the catalog. (default false)")
+	// createAWSProviderCmd.Flags().Bool("add-aarch6-default-image-bundle", false,
+	// 	"[Optional] Include Linux versions that are chosen and managed by"+
+	// 		" YugabyteDB Anywhere in the catalog. (default false)")
+
+	createAWSProviderCmd.Flags().StringArray("image-bundle", []string{},
+		"[Optional] Image bundles associated with AWS provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,arch=<architecture>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, architecture and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default for SSH Port is 22, IMDSv2 ("+
+			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
+			" is false. Default marks the image bundle as default for the provider. "+
+			"Allowed values for architecture are x86_64 and arm64."+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --image-bundle <image-bundle-name>=<name>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+	createAWSProviderCmd.Flags().StringArray("image-bundle-region-override", []string{},
+		"[Optional] Image bundle region overrides associated with AWS provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
+			"machine-image=<machine-image>\". "+
+			formatter.Colorize(
+				"All are required key-value pairs.",
+				formatter.GreenColor)+" Each --image-bundle definition "+
+			"must have atleast one corresponding --image-bundle-region-override "+
+			"definition for every region added."+
+			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
+			"Example: --image-bundle <image-bundle-name>=<name>,"+
+			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+
 	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
+	createAWSProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
+	createAWSProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
+
 	createAWSProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"If left empty, "+
@@ -283,8 +338,6 @@ func buildAWSRegions(regionStrings, zoneStrings []string, allowed bool,
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Aws: &ybaclient.AWSRegionCloudInfo{
-						YbImage:         util.GetStringPointer(region["yb-image"]),
-						Arch:            util.GetStringPointer(region["arch"]),
 						SecurityGroupId: util.GetStringPointer(region["sg-id"]),
 						Vnet:            util.GetStringPointer(region["vpc-id"]),
 					},
@@ -324,6 +377,93 @@ func buildAWSZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 	if len(res) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize("Atleast one zone is required per region.\n",
+				formatter.RedColor))
+	}
+	return res
+}
+
+func buildAWSImageBundles(
+	imageBundles, regionOverrides []string,
+	numberOfRegions int) []ybaclient.ImageBundle {
+	res := make([]ybaclient.ImageBundle, 0)
+	for _, i := range imageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+		bundle = providerutil.DefaultImageBundleValues(bundle)
+
+		if _, ok := bundle["ssh-user"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"SSH User not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		regionOverrides := buildAWSImageBundleRegionOverrides(regionOverrides, bundle["name"])
+
+		if len(regionOverrides) < numberOfRegions {
+			logrus.Fatalf(formatter.Colorize(
+				"Machine Image must be provided for every region added.\n",
+				formatter.RedColor,
+			))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+
+		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			useIMDSv2 = false
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:      util.GetStringPointer(bundle["arch"]),
+				SshUser:   util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:   util.GetInt32Pointer(int32(sshPort)),
+				UseIMDSv2: util.GetBoolPointer(useIMDSv2),
+				Regions:   &regionOverrides,
+			},
+		}
+		res = append(res, imageBundle)
+	}
+	return res
+}
+
+func buildAWSImageBundleRegionOverrides(
+	regionOverrides []string,
+	name string) map[string]ybaclient.BundleInfo {
+	res := map[string]ybaclient.BundleInfo{}
+	for _, r := range regionOverrides {
+		override := providerutil.BuildImageBundleRegionOverrideMapFromString(r, "add")
+		if strings.Compare(override["name"], name) == 0 {
+			res[override["region-name"]] = ybaclient.BundleInfo{
+				YbImage: util.GetStringPointer(override["machine-image"]),
+			}
+		}
+	}
+	if len(res) == 0 {
+		logrus.Fatalln(
+			formatter.Colorize("Machine Image not specified in image bundle.\n",
 				formatter.RedColor))
 	}
 	return res

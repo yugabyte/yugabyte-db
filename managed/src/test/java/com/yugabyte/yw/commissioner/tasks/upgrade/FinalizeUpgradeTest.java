@@ -80,8 +80,8 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(7, subTasks.size());
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
@@ -108,8 +108,8 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(6, subTasks.size());
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);

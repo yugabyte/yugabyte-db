@@ -838,30 +838,38 @@ TEST_F(RpcStubTest, ExpireInQueue) {
 }
 
 TEST_F(RpcStubTest, TrafficMetrics) {
-  constexpr size_t kStringLen = 1_KB;
-  constexpr size_t kUpperBytesLimit = kStringLen + 64;
+  constexpr std::pair<size_t, size_t> kRequestBounds = std::make_pair(1, 64);
+  constexpr std::pair<size_t, size_t> kResponseBounds = std::make_pair(1_KB, 1_KB + 64);
 
   CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
 
   RpcController controller;
-  rpc_test::EchoRequestPB req;
-  req.set_data(RandomHumanReadableString(kStringLen));
-  rpc_test::EchoResponsePB resp;
-  ASSERT_OK(proxy.Echo(req, &resp, &controller));
+  rpc_test::RepeatedEchoRequestPB req;
+  req.set_character('a');
+  req.set_count(kResponseBounds.first);
+  rpc_test::RepeatedEchoResponsePB resp;
+  ASSERT_OK(proxy.RepeatedEcho(req, &resp, &controller));
 
+  auto find_metric_by_name = [](const MetricEntity::MetricMap& map,
+                                const std::string& name) -> Result<Counter*> {
+    auto it = std::find_if(
+        map.begin(), map.end(), [&name](const auto& entry) { return entry.first->name() == name; });
+    if (it == map.end()) {
+      return STATUS_FORMAT(NotFound, "Couldn't find metric $0", name);
+    }
+    return down_cast<Counter*>(it->second.get());
+  };
   auto server_metrics = server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
-
-  auto* service_request_bytes = down_cast<Counter*>(FindOrDie(
-      server_metrics, &METRIC_service_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
-  auto* service_response_bytes = down_cast<Counter*>(FindOrDie(
-      server_metrics, &METRIC_service_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* service_request_bytes = ASSERT_RESULT(find_metric_by_name(
+      server_metrics, "service_request_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
+  auto* service_response_bytes = ASSERT_RESULT(find_metric_by_name(
+      server_metrics, "service_response_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
 
   auto client_metrics = client_messenger_->metric_entity()->UnsafeMetricsMapForTests();
-
-  auto* proxy_request_bytes = down_cast<Counter*>(FindOrDie(
-      client_metrics, &METRIC_proxy_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
-  auto* proxy_response_bytes = down_cast<Counter*>(FindOrDie(
-      client_metrics, &METRIC_proxy_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* proxy_request_bytes = ASSERT_RESULT(find_metric_by_name(
+      client_metrics, "proxy_request_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
+  auto* proxy_response_bytes = ASSERT_RESULT(find_metric_by_name(
+      client_metrics, "proxy_response_bytes_yb_rpc_test_CalculatorService_RepeatedEcho"));
 
   LOG(INFO) << "Inbound request bytes: " << service_request_bytes->value()
             << ", response bytes: " << service_response_bytes->value();
@@ -871,14 +879,14 @@ TEST_F(RpcStubTest, TrafficMetrics) {
   // We don't expect that sent and received bytes on client and server matches, because some
   // auxilary fields are not calculated.
   // For instance request size is taken into account on client, but not server.
-  ASSERT_GE(service_request_bytes->value(), kStringLen);
-  ASSERT_LT(service_request_bytes->value(), kUpperBytesLimit);
-  ASSERT_GE(service_response_bytes->value(), kStringLen);
-  ASSERT_LT(service_response_bytes->value(), kUpperBytesLimit);
-  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
-  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
-  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
-  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
+  EXPECT_GE(service_request_bytes->value(), kRequestBounds.first);
+  EXPECT_LT(service_request_bytes->value(), kRequestBounds.second);
+  EXPECT_GE(service_response_bytes->value(), kResponseBounds.first);
+  EXPECT_LT(service_response_bytes->value(), kResponseBounds.second);
+  EXPECT_GE(proxy_request_bytes->value(), kRequestBounds.first);
+  EXPECT_LT(proxy_request_bytes->value(), kRequestBounds.second);
+  EXPECT_GE(proxy_response_bytes->value(), kResponseBounds.first);
+  EXPECT_LT(proxy_response_bytes->value(), kResponseBounds.second);
 }
 
 template <class T>

@@ -3341,6 +3341,21 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::ClearMetacache(
+    const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp, rpc::RpcContext context) {
+  if (!req->has_namespace_id()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "namespace_id is not specified"), &context);
+    return;
+  }
+  auto s = server_->ClearMetacache(req->namespace_id());
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {

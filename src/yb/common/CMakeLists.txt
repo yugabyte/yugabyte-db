@@ -79,6 +79,7 @@ set(COMMON_SRCS
   colocated_util.cc
   common_consensus_util.cc
   common_flags.cc
+  common_net.cc
   common_types_util.cc
   common_util.cc
   consistent_read_point.cc

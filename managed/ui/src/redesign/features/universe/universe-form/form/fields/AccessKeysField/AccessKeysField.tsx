@@ -8,8 +8,6 @@ import { YBLabel, YBSelectField } from '../../../../../../components';
 import { AccessKey, UniverseFormData } from '../../../utils/dto';
 import { ACCESS_KEY_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
-import { YBProvider } from '../../../../../../../components/configRedesign/providerRedesign/types';
-import { ProviderCode } from '../../../../../../../components/configRedesign/providerRedesign/constants';
 
 const useStyles = makeStyles((theme) => ({
   overrideMuiSelectMenu: {
@@ -21,9 +19,10 @@ const useStyles = makeStyles((theme) => ({
 
 interface AccessKeysFieldProps {
   disabled?: boolean;
+  isEditMode?: boolean;
 }
 
-export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElement => {
+export const AccessKeysField = ({ disabled, isEditMode }: AccessKeysFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
@@ -45,19 +44,23 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
     const accessKeys = allAccessKeys.data.filter(
       (item: AccessKey) => item?.idKey?.providerUUID === provider?.uuid
     );
-    if (accessKeys?.length) {
-      setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
-    } else {
-      setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+    if (!isEditMode) {
+      if (accessKeys?.length) {
+        setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
+      } else {
+        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+      }
     }
   }, [provider]);
 
   //only first time
   useEffectOnce(() => {
-    if (accessKeysList?.length && provider?.uuid) {
-      setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
-    } else {
-      setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+    if (!isEditMode) {
+      if (accessKeysList?.length && provider?.uuid) {
+        setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
+      } else {
+        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
+      }
     }
   });
 

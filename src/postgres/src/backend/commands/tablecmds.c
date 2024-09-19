@@ -490,7 +490,8 @@ static ObjectAddress ATExecClusterOn(Relation rel, const char *indexName,
 static void ATExecDropCluster(Relation rel, LOCKMODE lockmode);
 static bool ATPrepChangePersistence(Relation rel, bool toLogged);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
-					const char *tablespacename, LOCKMODE lockmode, bool cascade);
+								const char *tablespacename, LOCKMODE lockmode,
+								bool yb_cascade);
 static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode);
 static void ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace);
 static void ATExecSetRelOptions(Relation rel, List *defList,
@@ -12125,7 +12126,8 @@ ATExecDropCluster(Relation rel, LOCKMODE lockmode)
  */
 static void
 ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
-					const char *tablespacename, LOCKMODE lockmode, bool cascade)
+					const char *tablespacename, LOCKMODE lockmode,
+					bool yb_cascade)
 {
 	Oid			tablespaceId;
 
@@ -12153,7 +12155,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 				 errmsg("cannot set tablespace for primary key index")));
 	}
 
-	if (IsYugaByteEnabled() && !cascade && MyDatabaseColocated &&
+	if (IsYugaByteEnabled() && !yb_cascade && MyDatabaseColocated &&
 		YbGetTableProperties(rel)->is_colocated)
 	{
 		/*
@@ -12702,6 +12704,21 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
 	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
 	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+	/*
+	 * If a relation name is passed with the ALTER TABLE ALL ... COLOCATED WITH
+	 * ... SET TABLESPACE ... CASCADE command then we get the relation being
+	 * passed.
+	 */
+	if (stmt->yb_relation != NULL)
+	{
+		yb_table_oid = RangeVarGetRelid(stmt->yb_relation, NoLock, false);
+		yb_table_rel = RelationIdGetRelation(yb_table_oid);
+		yb_colocated_with_tablegroup_oid =
+			YbGetTableProperties(yb_table_rel)->tablegroup_oid;
+		RelationClose(yb_table_rel);
+		yb_orig_tablegroup_oid = yb_colocated_with_tablegroup_oid;
+		yb_orig_tablegroup_name = get_tablegroup_name(yb_orig_tablegroup_oid);
+	}
 
 	/*
 	 * The new tablespace must not have any colocated relations present in
@@ -12726,20 +12743,6 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 				 errmsg("cannot move colocated relations present in"
 						" tablespace %s", stmt->orig_tablespacename),
 				 errhint("Use ALTER ... CASCADE to move colcated relations.")));
-
-	/*
-	 * If a relation name is passed with the ALTER TABLE ALL ... COLOCATED WITH
-	 * ... SET TABLESPACE ... CASCADE command then we get the relation being
-	 * passed.
-	 */
-	if (stmt->yb_relation != NULL)
-	{
-		yb_table_oid = RangeVarGetRelid(stmt->yb_relation, NoLock, false);
-		yb_table_rel = RelationIdGetRelation(yb_table_oid);
-		yb_colocated_with_tablegroup_oid =
-			YbGetTableProperties(yb_table_rel)->tablegroup_oid;
-		RelationClose(yb_table_rel);
-	}
 
 	if (OidIsValid(yb_table_oid) && !MyDatabaseColocated)
 		ereport(ERROR,
@@ -12964,7 +12967,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	 * database.
 	 */
 	if (yb_cascade && OidIsValid(new_tablespaceoid) &&
-		OidIsValid(orig_tablespaceoid) && MyDatabaseColocated &&
+		MyDatabaseColocated &&
 		!OidIsValid(yb_new_tablegroup_oid) &&
 		OidIsValid(yb_orig_tablegroup_oid))
 	{

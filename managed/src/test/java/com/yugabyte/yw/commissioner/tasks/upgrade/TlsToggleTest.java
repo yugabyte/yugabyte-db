@@ -500,8 +500,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
@@ -656,8 +656,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);

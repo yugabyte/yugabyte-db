@@ -121,6 +121,7 @@ namespace master {
 using strings::Substitute;
 
 class MiniMaster;
+class MasterClusterClient;
 
 class MasterTestBase : public YBTest {
  protected:
@@ -245,15 +246,16 @@ class MasterTestBase : public YBTest {
       const std::set<std::tuple<TableName, NamespaceName, NamespaceId, bool>>& table_info,
       const ListTablesResponsePB& tables);
 
-  void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
+  Status UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<MiniMaster> mini_master_;
   std::unique_ptr<MasterClientProxy> proxy_client_;
-  std::unique_ptr<MasterClusterProxy> proxy_cluster_;
   std::unique_ptr<MasterDdlProxy> proxy_ddl_;
   std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
   std::unique_ptr<MasterReplicationProxy> proxy_replication_;
   std::shared_ptr<RpcController> controller_;
+
+  std::unique_ptr<MasterClusterClient> cluster_client_;
 };
 
 } // namespace master

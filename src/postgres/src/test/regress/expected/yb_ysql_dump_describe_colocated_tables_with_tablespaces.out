@@ -1,0 +1,39 @@
+                 List of relations
+ Schema | Name |       Type        |     Owner     
+--------+------+-------------------+---------------
+ public | mv1  | materialized view | yugabyte_test
+ public | t1   | table             | yugabyte_test
+ public | t2   | table             | yugabyte_test
+ public | t3   | table             | yugabyte_test
+ public | t4   | table             | yugabyte_test
+ public | t5   | table             | yugabyte_test
+ public | t6   | table             | yugabyte_test
+ public | t7   | table             | yugabyte_test
+(8 rows)
+
+                                 List of tablegroups
+       Name       |  Owner   | Access privileges | Description | Tablespace | Options 
+------------------+----------+-------------------+-------------+------------+---------
+ colocation_16385 | postgres |                   |             | tsp1       | 
+ colocation_16386 | postgres |                   |             | tsp2       | 
+ colocation_16387 | postgres |                   |             | tsp3       | 
+ default          | postgres |                   |             |            | 
+(4 rows)
+
+                                                                           List of tablegroup tables
+    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options | Name |       Type        |     Owner     | Rel Description | Size 
+------------------+-------------+-------------------+-------------------+------------------+---------------+------+-------------------+---------------+-----------------+------
+ colocation_16385 | postgres    |                   |                   | tsp1             |               | t1   | table             | yugabyte_test |                 | 
+ colocation_16385 | postgres    |                   |                   | tsp1             |               | t3   | table             | yugabyte_test |                 | 
+ colocation_16385 | postgres    |                   |                   | tsp1             |               | t7   | table             | yugabyte_test |                 | 
+ colocation_16386 | postgres    |                   |                   | tsp2             |               | t6   | table             | yugabyte_test |                 | 
+ colocation_16386 | postgres    |                   |                   | tsp2             |               | i2   | index             | yugabyte_test |                 | 
+ colocation_16386 | postgres    |                   |                   | tsp2             |               | i3   | index             | yugabyte_test |                 | 
+ colocation_16386 | postgres    |                   |                   | tsp2             |               | t2   | table             | yugabyte_test |                 | 
+ colocation_16387 | postgres    |                   |                   | tsp3             |               | mv1  | materialized view | yugabyte_test |                 | 
+ colocation_16387 | postgres    |                   |                   | tsp3             |               | i21  | index             | yugabyte_test |                 | 
+ colocation_16387 | postgres    |                   |                   | tsp3             |               | t5   | table             | yugabyte_test |                 | 
+ default          | postgres    |                   |                   |                  |               | i1   | index             | yugabyte_test |                 | 
+ default          | postgres    |                   |                   |                  |               | t4   | table             | yugabyte_test |                 | 
+(12 rows)
+

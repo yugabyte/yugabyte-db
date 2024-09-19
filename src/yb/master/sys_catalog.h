@@ -121,9 +121,11 @@ class SysCatalogTable {
   // the consensus configuration's progress, any long running tasks (e.g., scanning
   // tablets) should be performed asynchronously (by, e.g., submitting
   // them to a to a separate threadpool).
-  SysCatalogTable(Master* master, MetricRegistry* metrics, ElectedLeaderCallback leader_cb);
+  SysCatalogTable(Master* master, MetricRegistry* metrics);
 
   ~SysCatalogTable();
+
+  Status Start(ElectedLeaderCallback leader_cb);
 
   // Allow for orderly shutdown of tablet peer, etc.
   void StartShutdown();

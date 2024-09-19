@@ -216,7 +216,8 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
       // Mark unresponsive tservers.
-      catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers();
+      WARN_NOT_OK(catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(l.epoch()),
+                  "Failed to update sys catalog with unresponsive tservers");
 
       TabletInfos to_delete;
       TableToTabletInfos to_process;

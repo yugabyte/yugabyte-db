@@ -110,6 +110,9 @@ class CloneStateManager {
       const std::string& target_namespace_name,
       CoarseTimePoint deadline);
 
+  // Clear the metacaches from stale entries for all running tservers as they have stale tablets.
+  Status ClearMetaCaches(const CloneStateInfoPtr& clone_state);
+
   Status EnableDbConnections(const CloneStateInfoPtr& clone_state);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);

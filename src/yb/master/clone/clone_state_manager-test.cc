@@ -112,6 +112,11 @@ class CloneStateManagerTest : public YBTest {
          const std::string& target_owner, HybridTime restore_ht,
          AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline), (override));
     MOCK_METHOD(
+        Status, ScheduleClearMetaCacheTasks,
+        (const TSDescriptorVector& tservers, const std::string& namespace_id,
+         AsyncClearMetacache::ClearMetacacheCallbackType callback),
+        (override));
+    MOCK_METHOD(
         Status, ScheduleEnableDbConnectionsTask,
         (const std::string& permanent_uuid, const std::string& target_db_name,
          AsyncEnableDbConns::EnableDbConnsCallbackType callback), (override));
@@ -146,6 +151,7 @@ class CloneStateManagerTest : public YBTest {
          CoarseTimePoint deadline), (override));
 
     MOCK_METHOD(Result<TSDescriptorPtr>, PickTserver, (), (override));
+    MOCK_METHOD(TSDescriptorVector, GetTservers, (), (override));
   };
 
  private:
