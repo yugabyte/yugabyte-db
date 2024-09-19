@@ -376,7 +376,7 @@ class PackedRowData {
            column_id));
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
-          return packer.AddValue(column_id, missing_value);
+          return packer.AddValue(column_id, missing_value, kUnlimitedTail);
         }, *packer_));
       }
       return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
