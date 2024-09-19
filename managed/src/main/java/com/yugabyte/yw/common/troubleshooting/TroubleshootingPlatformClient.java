@@ -3,7 +3,6 @@ package com.yugabyte.yw.common.troubleshooting;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -35,7 +34,7 @@ public class TroubleshootingPlatformClient {
 
   public CustomerMetadata putCustomerMetadata(TroubleshootingPlatform platform) {
     String customerMetadataUrl =
-        platform.getTpUrl() + "/api/customer_metadata/" + platform.getCustomerUUID();
+        platform.getTpUrl() + "/api/customer/" + platform.getCustomerUUID() + "/metadata";
     try {
       CustomerMetadata customerMetadata =
           new CustomerMetadata()
@@ -46,9 +45,7 @@ public class TroubleshootingPlatformClient {
               .setApiToken(platform.getApiToken());
       JsonNode result =
           getApiHelper().putRequest(customerMetadataUrl, Json.toJson(customerMetadata));
-      if (result.has("error")) {
-        throw new RuntimeException("Error response received " + result.get("error"));
-      }
+      handleError(result);
       return Json.fromJson(result, CustomerMetadata.class);
     } catch (Exception e) {
       log.error("Failed to put customer metadata at " + customerMetadataUrl, e);
@@ -59,12 +56,10 @@ public class TroubleshootingPlatformClient {
 
   public void deleteCustomerMetadata(TroubleshootingPlatform platform) {
     String customerMetadataUrl =
-        platform.getTpUrl() + "/api/customer_metadata/" + platform.getCustomerUUID();
+        platform.getTpUrl() + "/api/customer/" + platform.getCustomerUUID() + "/metadata";
     try {
       JsonNode result = getApiHelper().deleteRequest(customerMetadataUrl);
-      if (result.has("error")) {
-        throw new RuntimeException("Error response received " + result.get("error"));
-      }
+      handleError(result);
     } catch (Exception e) {
       log.error("Failed to delete customer metadata at " + customerMetadataUrl, e);
       throw new PlatformServiceException(
@@ -73,7 +68,7 @@ public class TroubleshootingPlatformClient {
   }
 
   public UniverseMetadata getUniverseMetadata(TroubleshootingPlatform platform, UUID universeUuid) {
-    String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
+    String universeMetadataUrl = platform.getTpUrl() + "/api/universe/metadata";
     try {
       JsonNode result =
           getApiHelper()
@@ -83,16 +78,14 @@ public class TroubleshootingPlatformClient {
                   ImmutableMap.of(
                       "customer_uuid", platform.getCustomerUUID().toString(),
                       "universe_uuid", universeUuid.toString()));
-      if (result.has("error")) {
-        throw new RuntimeException("Error response received " + result.get("error"));
-      }
+      handleError(result);
       if (!result.isArray()) {
         throw new RuntimeException("Unexpected response received " + result);
       }
       if (result.isEmpty()) {
         return null;
       } else {
-        return Json.fromJson(((ArrayNode) result).get(0), UniverseMetadata.class);
+        return Json.fromJson((result).get(0), UniverseMetadata.class);
       }
     } catch (Exception e) {
       log.error("Failed to get universe metadata from " + universeMetadataUrl, e);
@@ -104,13 +97,11 @@ public class TroubleshootingPlatformClient {
   public UniverseMetadata putUniverseMetadata(
       TroubleshootingPlatform platform, UniverseMetadata universeMetadata) {
     String universeMetadataUrl =
-        platform.getTpUrl() + "/api/universe_metadata/" + universeMetadata.getId();
+        platform.getTpUrl() + "/api/universe/" + universeMetadata.getId() + "/metadata";
     try {
       JsonNode result =
           getApiHelper().putRequest(universeMetadataUrl, Json.toJson(universeMetadata));
-      if (result.has("error")) {
-        throw new RuntimeException("Error response received " + result.get("error"));
-      }
+      handleError(result);
       return Json.fromJson(result, UniverseMetadata.class);
     } catch (Exception e) {
       log.error("Failed to put universe metadata at " + universeMetadataUrl, e);
@@ -120,12 +111,11 @@ public class TroubleshootingPlatformClient {
   }
 
   public void deleteUniverseMetadata(TroubleshootingPlatform platform, UUID universeUuid) {
-    String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata/" + universeUuid;
+    String universeMetadataUrl =
+        platform.getTpUrl() + "/api/universe/" + universeUuid + "/metadata";
     try {
       JsonNode result = getApiHelper().deleteRequest(universeMetadataUrl);
-      if (result.has("error")) {
-        throw new RuntimeException("Error response received " + result.get("error"));
-      }
+      handleError(result);
     } catch (Exception e) {
       log.error("Failed to delete universe metadata at " + universeMetadataUrl, e);
       throw new PlatformServiceException(
@@ -134,7 +124,7 @@ public class TroubleshootingPlatformClient {
   }
 
   public TroubleshootingPlatformExt.InUseStatus getInUseStatus(TroubleshootingPlatform platform) {
-    String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
+    String universeMetadataUrl = platform.getTpUrl() + "/api/universe/metadata";
     try {
       JsonNode universeMetadataList =
           getApiHelper()
@@ -175,5 +165,15 @@ public class TroubleshootingPlatformClient {
     private UUID customerId;
     List<String> dataMountPoints;
     List<String> otherMountPoints;
+  }
+
+  private void handleError(JsonNode result) {
+    if (result.has("status")) {
+      int status = result.get("status").asInt();
+      String url = result.get("instance").asText();
+      JsonNode errors = result.get("properties").get("errors");
+      throw new RuntimeException(
+          "Request to " + url + " returned status " + status + ": " + errors);
+    }
   }
 }
