@@ -663,6 +663,11 @@ SELECT joina.a,
 --
 -- test joins with a function scan
 --
+-- insert entries into pg_yb_tablegroup and analyze so the planner does not
+-- think the table is empty.
+CREATE TABLEGROUP tg1;
+CREATE TABLEGROUP tg2;
+ANALYZE pg_yb_tablegroup;
 /*+ BitmapScan(gr) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
    SELECT grpname, is_colocated
      FROM pg_catalog.yb_table_properties(16384) p
@@ -687,6 +692,8 @@ LEFT JOIN pg_catalog.pg_yb_tablegroup gr
          | f
 (1 row)
 
+DROP TABLEGROUP tg1;
+DROP TABLEGROUP tg2;
 --
 -- test where a join filter should be required
 --

@@ -84,6 +84,7 @@ JAVA	org.yb.pgsql.TestPgRegressParallel
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgAuth
 JAVA	org.yb.pgsql.TestPgRegressPgForeignData
+JAVA	org.yb.pgsql.TestPgRegressPgIndex
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
