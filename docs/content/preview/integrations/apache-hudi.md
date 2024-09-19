@@ -16,15 +16,15 @@ type: docs
   <li>
     <a href="#HoodieDeltaStreamer" class="nav-link active" id="hoodie-tab" data-bs-toggle="tab"
       role="tab" aria-controls="hoodie" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Hoodie DeltaStreamer with CDC
+      <img src="/icons/availability.svg" alt="Hudi and CDC Icon">
+      Hoodie DeltaStreamer with YugabyteDB CDC
     </a>
   </li>
   <li >
     <a href="#HoodieStreamer" class="nav-link" id="hudi-tab" data-bs-toggle="tab"
       role="tab" aria-controls="hudi" aria-selected="false">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Hoodie Streamer
+      <img src="/icons/list-icon.svg" alt="Hudi incremental Icon">
+      Hoodie Streamer with incremental data pull
     </a>
   </li>
 </ul>
@@ -40,7 +40,7 @@ This integration allows continuous and incremental data ingestion from YugabyteD
 
 To use Apache Hudi, ensure that you have the following:
 
-- Docker installed.
+- Docker.
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
 
@@ -252,7 +252,7 @@ Perform database operations on the `cdctest` table in YugabyteDB and verify that
     spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
     ```
 
-    Verify that the record with `sno = 826` is deleted from the Hudi table due to the propagated delete event.
+    The record with `sno = 826` is deleted from the Hudi table due to the propagated delete event.
 
 </div>
 
@@ -260,16 +260,127 @@ Perform database operations on the `cdctest` table in YugabyteDB and verify that
 
 The following tutorial describes steps to how to load incremental data YugabyteDB and with Apache Hudi using Hudi's Streamer and JDBC Driver.
 
-This approach is suitable for incremental data loading/ETL.
+This approach is particularly advantageous for incremental data loading/ETL, and applications requiring real-time processing and handling large amounts of distributed data.
 
 ## Prerequisites
 
 To use Apache Hudi, ensure that you have the following:
 
-- Docker installed.
+- Docker.
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
 
-- Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
+- Apache Spark (version 3.4, 3.3, or 3.2). Verify installation using `spark-submit` and `spark-shell` commands.
+
+## Install Apache Hudi
+
+1. [Build Apache Hudi from source](https://github.com/apache/hudi?tab=readme-ov-file#building-apache-hudi-from-source) by following the official instructions from the [Apache Hudi GitHub repository](https://github.com/apache/hudi).
+
+1. Run Maven to build Hudi as follows:
+
+    ```sh
+    mvn clean package -DskipTests
+    ```
+
+## Configure and Run Hudi's DeltaStreamer
+
+1. Create a configuration file for Spark (spark-config.properties) as follows:
+
+    ```properties
+    spark.serializer=org.apache.spark.serializer.KryoSerializer
+    spark.sql.catalog.spark_catalog=org.apache.spark.sql.hudi.catalog.HoodieCatalog
+    spark.sql.hive.convertMetastoreParquet=false
+    ```
+
+1. Create Hudi table properties (hudi_tbl.props) as follows:
+
+      ```properties
+      hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator
+      hoodie.datasource.write.recordkey.field=id
+      hoodie.datasource.write.partitionpath.field=created_at
+      hoodie.datasource.write.precombine.field=update_at
+      hoodie.streamer.jdbc.url=jdbc:postgresql://<YB_DB_IP>:5433/yugabyte
+      hoodie.streamer.jdbc.user=yugabyte
+      hoodie.streamer.jdbc.password=xxxxx
+      hoodie.streamer.jdbc.driver.class=org.postgresql.Driver
+      hoodie.streamer.jdbc.table.name=hudi_test_table
+      hoodie.streamer.jdbc.table.incr.column.name=update_at
+      hoodie.streamer.jdbc.incr.pull=true
+      hoodie.streamer.jdbc.incr.fallback.to.full.fetch=true
+      ```
+
+1. Run the Spark job as follows:
+
+    ```spark
+    spark-submit \
+      --class org.apache.hudi.utilities.streamer.HoodieStreamer \
+      --packages org.apache.hudi:hudi-spark3.4-bundle_2.12:0.14.0,org.postgresql:postgresql:42.5.4 \
+      --properties-file spark-config.properties \
+      --master 'local[*]' \
+      --executor-memory 1g "/path/to/hudi-utilities-bundle_2.12-0.14.0.jar" \
+      --table-type COPY_ON_WRITE \
+      --op UPSERT \
+      --source-ordering-field update_at \
+      --source-class org.apache.hudi.utilities.sources.JdbcSource \
+      --target-base-path file:///tmp/path/to/hudidb/ \
+      --target-table hudi_test_table \
+      --props hudi_tbl.props
+    ```
+
+    Adjust paths and filenames as per your environment setup.
+
+## Query the Hudi table
+
+1. Verify the Hudi table is created in the specified directory as follows:
+
+    ```sh
+    cd /tmp/path/to/hudidb/
+    ls -latrl
+    ```
+
+    You can see output similar to the following:
+
+    ```output
+    total 72
+    drwxr-xr-x 2 azureuser azureuser 4096 Dec 17 09:04 1701799492525559
+    ...
+    drwxr-xr-x 7 azureuser azureuser 4096 Dec 17 10:20 .hoodie
+    ```
+
+1. To query the table using Spark, follow these steps in Spark Shell (spark-shell):
+
+    ```spark
+    import org.apache.spark.sql.SparkSession
+    val spark = SparkSession.builder().appName("Hudi Integration").getOrCreate()
+    import scala.collection.JavaConversions._
+    import org.apache.spark.sql.SaveMode._
+    import org.apache.hudi.DataSourceReadOptions._
+    import org.apache.hudi.DataSourceWriteOptions._
+    import org.apache.hudi.common.table.HoodieTableConfig._
+    import org.apache.hudi.config.HoodieWriteConfig._
+    import org.apache.hudi.keygen.constant.KeyGeneratorOptions._
+    import org.apache.hudi.common.model.HoodieRecord
+    import spark.implicits._
+
+    val basePath = "file:///tmp/path/to/hudidb/"
+    val ybdbDF = spark.read.format("hudi").load(basePath)
+    ybdbDF.createOrReplaceTempView("hudi_test")
+    spark.sql("SELECT id, name, qty, created_at, update_at FROM hudi_test").show()
+    ```
+
+    You can see output similar to the following:
+
+    ```output
+    +---+--------------------+---+----------+--------------------+
+    | id|                name|qty|created_at|          update_at|
+    +---+--------------------+---+----------+--------------------+
+    |101|              John  |255|      null|2023-12-17 09:07:...|
+    ...
+    +---+--------------------+---+----------+--------------------+
+    ```
 
   </div>
+
+## Learn more
+
+- [Combine Transactional Integrity and Data Lake Operations with YugabyteDB and Apache Hudi](https://www.yugabyte.com/blog/apache-hudi-data-lakehouse-integration/)
