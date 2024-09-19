@@ -67,7 +67,7 @@ To stream data change events from YugabyteDB databases, register the YugabyteDB 
     - `database.hostname` - the cluster hostname is displayed on the cluster **Settings** tab under **Connection Parameters**.
     - `snapshot.mode` - can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot=false` setting.
 
-    For a full list of properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/#connector-properties).
+    For a full list of properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 
 1. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add your connector configuration to your Kafka Connect cluster.
 
@@ -83,9 +83,9 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
 
 ```sh
 ./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.aws.ybdb.io \
-user=admin \
-dbname=yugabyte \
-sslmode=verify-full \
-sslrootcert=root.crt \
-replication=database"
+    user=admin \
+    dbname=yugabyte \
+    sslmode=verify-full \
+    sslrootcert=root.crt \
+    replication=database"
 ```
