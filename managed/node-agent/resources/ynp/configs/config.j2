@@ -19,7 +19,6 @@ chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
 [CreateYugabyteUser]
 yb_user_id = {{ ynp.yb_user_id }}
 yb_user_password =
-public_key_filepath = {{ ynp.public_key_filepath }}
 
 [ConfigureSystemd]
 user_name = yugabyte

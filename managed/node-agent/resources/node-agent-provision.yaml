@@ -16,6 +16,7 @@ ynp:
 
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
+  # Airgapped
   is_airgap: false
 
   # Determines whether to use system-level systemd for service management.
