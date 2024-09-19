@@ -1,8 +1,8 @@
-title: ContinuousBackupCreateSpec
+title: ContinuousBackupSpec
 description: |
-  ContinuousBackupCreateSpec
+  ContinuousBackupSpec
 
-  Continuous Backup create time properties. Used to create a continuous backup configuration.
+  User specification for a continuous backup of YBA. All these properties can be edited.
 type: object
 required:
   - backup_dir

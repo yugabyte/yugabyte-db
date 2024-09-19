@@ -10530,4 +10530,10 @@
   proargmodes => '{o,o,o,o,o,o,o,o}',
   proargnames => '{status,description,query_id,start_time,diagnostics_interval_sec,bind_var_query_min_duration_ms,explain_params,path}',
   prosrc => 'yb_get_query_diagnostics_status'},
+
+{ oid => '8071', descr => 'function to preserve tablegroup name',
+  proname => 'binary_upgrade_set_next_tablegroup_default', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'bool',
+  prosrc => 'binary_upgrade_set_next_tablegroup_default' },
+
 ]

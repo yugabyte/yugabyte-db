@@ -1096,6 +1096,33 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   ClonePgSchemaCallbackType callback_;
 };
 
+class AsyncClearMetacache : public RetrySpecificTSRpcTask {
+ public:
+  using ClearMetacacheCallbackType = std::function<Status()>;
+  AsyncClearMetacache(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& namespace_id, ClearMetacacheCallbackType callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kClearMetaCache;
+  }
+
+  std::string type_name() const override { return "Clear all meta-caches of a tserver"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string namespace_id;
+  tserver::ClearMetacacheResponsePB resp_;
+  ClearMetacacheCallbackType callback_;
+};
+
 class AsyncEnableDbConns : public RetrySpecificTSRpcTask {
  public:
   using EnableDbConnsCallbackType = std::function<Status(Status)>;

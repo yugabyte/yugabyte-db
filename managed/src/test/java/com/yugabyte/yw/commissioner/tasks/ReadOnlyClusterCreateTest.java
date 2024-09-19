@@ -86,8 +86,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
   private static final List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,

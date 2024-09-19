@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.WRITE_READ_TABLE;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -56,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DropTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
@@ -386,6 +388,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DeleteBackupSchedule,
           TaskType.DeleteBackupScheduleKubernetes,
           TaskType.EnableNodeAgentInUniverse);
+
+  private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
+      ImmutableSet.of(
+          TaskType.CreateBackup,
+          TaskType.CreateBackupSchedule,
+          TaskType.CreateBackupScheduleKubernetes,
+          TaskType.CreateKubernetesUniverse,
+          TaskType.CreateSupportBundle,
+          TaskType.CreateUniverse,
+          TaskType.BackupUniverse,
+          TaskType.DeleteBackupSchedule,
+          TaskType.DeleteBackupScheduleKubernetes,
+          TaskType.DeleteDrConfig,
+          TaskType.DeletePitrConfig,
+          TaskType.DeleteXClusterConfig,
+          TaskType.DestroyUniverse,
+          TaskType.DestroyKubernetesUniverse,
+          TaskType.EditBackupSchedule,
+          TaskType.EditBackupScheduleKubernetes,
+          TaskType.MultiTableBackup,
+          TaskType.ReadOnlyClusterDelete);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -1170,6 +1193,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
       createPrecheckTasks(universe);
+      TaskType taskType = getTaskExecutor().getTaskType(getClass());
+      if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
+          && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)
+          && universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor > 1) {
+        log.info("Creating consistency check task for task {}", taskType);
+        checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
+      }
       if (isFirstTry()) {
         createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
@@ -1178,14 +1208,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       } else {
         createFreezeUniverseTask(universeUuid)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
-      }
-      if (confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
-        TaskType taskType = getTaskExecutor().getTaskType(getClass());
-        if (taskType != TaskType.CreateUniverse && taskType != TaskType.CreateKubernetesUniverse) {
-          log.info("Creating consistency check task for task {}", taskType);
-          checkAndCreateConsistencyCheckTableTask(
-              universe.getUniverseDetails().getPrimaryCluster());
-        }
       }
       return Universe.getOrBadRequest(universeUuid);
     } catch (RuntimeException e) {
@@ -1429,6 +1451,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private SubTaskGroup createDropTableTask(
+      Universe universe, CommonTypes.TableType tableType, String dbName, String tableName) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DropTable");
+    DropTable.Params dropTableParams = new DropTable.Params();
+    dropTableParams.setUniverseUUID(universe.getUniverseUUID());
+    dropTableParams.dbName = dbName;
+    dropTableParams.tableName = tableName;
+    dropTableParams.tableType = tableType;
+    DropTable task = createTask(DropTable.class);
+    task.initialize(dropTableParams);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public void createDropSystemPlatformDBTablesTask(
+      Universe universe, SubTaskGroupType subTaskGroupType) {
+    createDropTableTask(
+            universe,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Util.SYSTEM_PLATFORM_DB,
+            Util.WRITE_READ_TABLE)
+        .setSubTaskGroupType(subTaskGroupType);
+
+    createDropTableTask(
+            universe,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Util.SYSTEM_PLATFORM_DB,
+            Util.CONSISTENCY_CHECK_TABLE_NAME)
+        .setSubTaskGroupType(subTaskGroupType);
   }
 
   public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
@@ -1905,13 +1960,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
-    if (universe.getUniverseDetails().disableNodeAgent) {
-      log.info(
-          "Skipping node agent installation for universe {} as it is managed by node agent enabler",
-          universe.getUniverseUUID());
-      return Collections.emptySet();
-    }
-    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
@@ -1923,7 +1972,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       Cluster cluster = universe.getCluster(n.placementUuid);
                       Provider provider =
                           Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                      if (!nodeAgentClient.isClientEnabled(provider)) {
+                      if (!nodeAgentClient.isClientEnabled(provider, universe)) {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
@@ -1980,17 +2029,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
-    NodeAgentEnabler nodeAgentEnabler = application.injector().instanceOf(NodeAgentEnabler.class);
-    Optional<Boolean> optional = nodeAgentEnabler.isNodeAgentEnabled(universe);
-    if (!optional.isPresent()) {
-      log.info("Node agent is not supported on this universe {}", universe.getUniverseUUID());
-      return subTaskGroup;
-    }
-    if (optional.get() == false) {
+    if (!getInstanceOf(NodeAgentClient.class).isClientEnabled(universe)) {
       log.info(
-          "Skipping node agent installation for universe {} as it is not enabled",
+          "Skipping node agent installation for universe {} as client is not enabled",
           universe.getUniverseUUID());
-      NodeAgentEnabler.markUniverse(universe.getUniverseUUID());
+      getInstanceOf(NodeAgentEnabler.class).markUniverse(universe.getUniverseUUID());
       return subTaskGroup;
     }
     Customer customer = Customer.get(universe.getCustomerId());
@@ -2030,7 +2073,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void deleteNodeAgent(NodeDetails nodeDetails) {
     if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
-      NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+      NodeAgentManager nodeAgentManager = getInstanceOf(NodeAgentManager.class);
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (provider.getCloudCode() == CloudType.onprem) {
@@ -2047,14 +2090,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(WaitForNodeAgent.class.getSimpleName());
-    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
         continue;
       }
-      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Universe universe = getUniverse();
+      Cluster cluster = universe.getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentClient.isClientEnabled(provider)) {
+      if (nodeAgentClient.isClientEnabled(provider, universe)) {
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;
@@ -2781,7 +2825,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     idColumn.sortOrder = SortOrder.ASC;
 
     TableDetails details = new TableDetails();
-    details.tableName = "write_read_test";
+    details.tableName = WRITE_READ_TABLE;
     details.keyspace = SYSTEM_PLATFORM_DB;
     details.columns = new ArrayList<>();
     details.columns.add(idColumn);

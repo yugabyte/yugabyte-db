@@ -1291,6 +1291,12 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   update_conns.reserve(kNumUpdateConns);
   for (int i = 0; i < kNumUpdateConns; ++i) {
     update_conns.push_back(ASSERT_RESULT(Connect()));
+    auto& conn = update_conns.back();
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    // Establish a distributed transaction by obtaining a lock on some key outside of the contended
+    // range of keys.
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", kNumKeys * 2 + i));
+    LOG(INFO) << "Conn " << i << " started";
   }
 
   TestThreadHolder thread_holder;
@@ -1301,20 +1307,14 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   // in *serial* in both RR and RC isolation.
   for (int i = 0; i < kNumUpdateConns; ++i) {
     auto& conn = update_conns.at(i);
-    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    // Establish a distributed transaction by obtaining a lock on some key outside of the contended
-    // range of keys.
-    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", kNumKeys * 2 + i));
-    LOG(INFO) << "Conn " << i << " started";
     update_did_return[i] = false;
-
     thread_holder.AddThreadFunctor(
         [i, &conn, &update_did_return = update_did_return[i], &queued_waiters, &update_query] {
       // Wait for all connections to queue their thread of execution
       auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
       LOG(INFO) << "Conn " << i << " queued with txn id " << yb::ToString(txn_id);
       queued_waiters.CountDown();
-      ASSERT_TRUE(queued_waiters.WaitFor(10s * kTimeMultiplier));
+      ASSERT_TRUE(queued_waiters.WaitFor(20s * kTimeMultiplier));
       LOG(INFO) << "Conn " << i << " finished waiting";
 
       // Set timeout to 10s so the test does not hang for default 600s timeout in case of failure.

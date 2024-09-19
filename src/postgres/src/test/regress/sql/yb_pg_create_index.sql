@@ -143,6 +143,40 @@ VACUUM FULL concur_heap;
 REINDEX TABLE concur_heap;
 
 --
+-- Test ADD CONSTRAINT USING INDEX
+--
+
+CREATE TABLE cwi_test( a int , b varchar(10), c char);
+
+-- add some data so that all tests have something to work with.
+
+INSERT INTO cwi_test VALUES(1, 2), (3, 4), (5, 6);
+
+CREATE UNIQUE INDEX cwi_uniq_idx ON cwi_test(a , b);
+ALTER TABLE cwi_test ADD primary key USING INDEX cwi_uniq_idx;
+
+\d cwi_test
+\d cwi_uniq_idx
+
+CREATE UNIQUE INDEX cwi_uniq2_idx ON cwi_test(b , a);
+ALTER TABLE cwi_test DROP CONSTRAINT cwi_uniq_idx,
+	ADD CONSTRAINT cwi_replaced_pkey PRIMARY KEY
+		USING INDEX cwi_uniq2_idx;
+
+\d cwi_test
+\d cwi_replaced_pkey
+
+DROP INDEX cwi_replaced_pkey;	-- Should fail; a constraint depends on it
+
+DROP TABLE cwi_test;
+
+-- ADD CONSTRAINT USING INDEX is forbidden on partitioned tables
+CREATE TABLE cwi_test(a int) PARTITION BY hash (a);
+create unique index on cwi_test (a);
+alter table cwi_test add primary key using index cwi_test_a_idx ;
+DROP TABLE cwi_test;
+
+--
 -- REINDEX (VERBOSE)
 --
 CREATE TABLE reindex_verbose(id integer primary key);

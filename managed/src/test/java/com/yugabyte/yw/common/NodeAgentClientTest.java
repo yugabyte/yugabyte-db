@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
@@ -51,6 +52,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
+  private NodeAgentEnabler nodeAgentEnabler;
   private Customer customer;
   private NodeAgent nodeAgent;
   private NodeAgentImplBase nodeAgentImpl;
@@ -137,7 +139,11 @@ public class NodeAgentClientTest extends FakeDBApplication {
         grpcCleanup.register(InProcessChannelBuilder.forName(serverName).directExecutor().build());
 
     nodeAgentClient =
-        new NodeAgentClient(mock(Config.class), mock(RuntimeConfGetter.class), config -> channel);
+        new NodeAgentClient(
+            mock(Config.class),
+            mock(RuntimeConfGetter.class),
+            com.google.inject.util.Providers.of(mock(NodeAgentEnabler.class)),
+            config -> channel);
   }
 
   static class UploadFileRequestObserver implements StreamObserver<UploadFileRequest> {

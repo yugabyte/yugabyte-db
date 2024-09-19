@@ -19,7 +19,14 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
 
     This repository contains the `yb-voyager` Debian package and the dependencies required to run `yb-voyager`.
 
-1. Clean the `apt-get` cache and package lists using the following commands::
+1. Install the `postgresql-common` repository to fetch PostgreSQL 16 using the following commands:
+
+    ```sh
+    sudo apt install -y postgresql-common
+    sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+    ```
+
+1. Clean the `apt-get` cache and package lists using the following commands:
 
     ```sh
     sudo apt-get clean
@@ -55,3 +62,21 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     ```sh
     yb-voyager version
     ```
+
+### Upgrade yb-voyager
+
+{{< note title="Note" >}}
+If you are upgrading Voyager from version 1.8.0 or earlier, you need to install the `postgresql-common` repository before the upgrade as follows:
+
+```sh
+sudo apt install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+```
+
+{{< /note >}}
+
+Upgrade yb-voyager using the following command:
+
+```sh
+sudo apt-get upgrade yb-voyager
+```

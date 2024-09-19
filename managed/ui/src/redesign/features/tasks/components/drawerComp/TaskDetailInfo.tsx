@@ -8,6 +8,7 @@
  */
 
 import { FC, Fragment } from 'react';
+import { startCase } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
@@ -79,11 +80,11 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const taskInfo: TaskInfo[] = [
     {
       label: t('type'),
-      value: currentTask.typeName
+      value: `${startCase(currentTask.type)} ${currentTask.target}`
     },
     {
       label: t('target'),
-      value: currentTask.target
+      value: currentTask.title.replace(/.*:\s*/, '')
     },
     {
       label: t('status'),

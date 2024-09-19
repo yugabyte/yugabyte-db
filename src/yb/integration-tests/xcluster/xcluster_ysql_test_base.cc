@@ -41,6 +41,8 @@ DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
+DECLARE_bool(TEST_xcluster_enable_ddl_replication);
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
@@ -51,6 +53,12 @@ using client::YBTableName;
 void XClusterYsqlTestBase::SetUp() {
   YB_SKIP_TEST_IN_TSAN();
   XClusterTestBase::SetUp();
+
+  LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
+      UseAutomaticMode();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
+      UseAutomaticMode();
 }
 
 Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
@@ -856,6 +864,13 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
           "Num consumer tables: $0 num producer tables: $1 must be equal.",
           params.num_consumer_tablets.size(), params.num_producer_tablets.size()));
 
+  if (UseAutomaticMode()) {
+    // For automatic mode tests, create an extra universe on the consumer before creating the test
+    // universe so the databases will have different OIDs and thus namespace IDs between the
+    // consumer and producer universes.
+    RETURN_NOT_OK(CreateDatabase(&consumer_cluster_, "gratuitous_db", false));
+  }
+
   RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     master::GetNamespaceInfoResponsePB resp;
     auto namespace_status = cluster->client_->GetNamespaceInfo(
@@ -888,11 +903,11 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id, bool automatic_ddl_mode) {
+    const xcluster::ReplicationGroupId& replication_group_id) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateOutboundReplicationGroup(
-                        replication_group_id, {producer_namespace_id}, automatic_ddl_mode));
+                        replication_group_id, {producer_namespace_id}, UseAutomaticMode()));
 
   auto bootstrap_required =
       VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));

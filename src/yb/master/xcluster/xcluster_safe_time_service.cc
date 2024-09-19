@@ -19,6 +19,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
@@ -602,8 +603,10 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
 
         for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
           const auto& consumer_table_id = stream_entry.consumer_table_id();
+          auto stripped_consumer_table_id =
+              xcluster::StripSequencesDataAliasIfPresent(consumer_table_id);
           auto consumer_namespace_id =
-              VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
+              VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(stripped_consumer_table_id));
           for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
             for (const auto& tablet_id : producer_tablets.tablets()) {
               producer_tablet_namespace_map_[{replication_group_id, tablet_id}] =

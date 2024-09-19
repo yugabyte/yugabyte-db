@@ -80,8 +80,7 @@ public class DRLocalTest extends DRLocalTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(source.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(target.getUniverseUUID()));
-    Thread.sleep(3000);
-    verifyYSQL(target);
+    assertYsqlOutputEqualsWithRetry(target, "select count(*) from some_table", "3");
 
     NodeDetails details = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
@@ -93,13 +92,7 @@ public class DRLocalTest extends DRLocalTestBase {
             10);
     assertTrue(ysqlResponse.isSuccess());
 
-    Thread.sleep(2500);
-    details = target.getUniverseDetails().nodeDetailsSet.iterator().next();
-    ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(
-            details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
-    assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
+    assertYsqlOutputEqualsWithRetry(target, "select count(*) from some_table", "5");
     verifyPayload();
 
     Result deleteResult = deleteDrConfig(UUID.fromString(json.get("resourceUUID").asText()));

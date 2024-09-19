@@ -132,7 +132,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   private static final List<TaskType> CLUSTER_DELETE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
           TaskType.CheckLeaderlessTablets,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,

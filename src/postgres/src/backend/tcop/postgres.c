@@ -3969,9 +3969,12 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * transaction for future queries (before commit).
 	 * So we just re-throw the error in that case.
 	 *
+	 * Do not retry statements in a batch for the same reason.
+	 *
 	 */
 	if (consider_retry &&
 			!IsTransactionBlock() &&
+			!YbIsBatchedExecution() &&
 			!YBCGetDisableTransparentCacheRefreshRetry())
 	{
 		/* Clear error state */

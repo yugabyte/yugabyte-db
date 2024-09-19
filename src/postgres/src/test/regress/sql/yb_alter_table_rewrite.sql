@@ -138,6 +138,11 @@ SELECT col, col2, col4 FROM base ORDER BY col;
 \d+ base;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('base_idx'::regclass);
+CREATE UNIQUE INDEX base_idx_unique ON base(col);
+ALTER TABLE base ADD PRIMARY KEY USING INDEX base_idx_unique;
+INSERT INTO base VALUES (1, 1); -- should fail.
+INSERT INTO base VALUES (4, 4), (5, 5);
+SELECT col, col2 FROM base;
 CREATE TABLE base2 (col int, col2 int) WITH (COLOCATION=false);
 CREATE INDEX base2_idx ON base2(col2);
 INSERT INTO base2 VALUES (1, 3), (2, 2), (3, 1);
@@ -246,9 +251,29 @@ CREATE TYPE typeid AS (i int);
 CREATE TABLE nopk_udt (id typeid, v int);
 ALTER TABLE nopk_udt ADD PRIMARY KEY (id); -- should fail.
 -- test pk USING INDEX.
-CREATE TABLE nopk_usingindex (id int);
-CREATE UNIQUE INDEX nopk_idx ON nopk_usingindex (id ASC);
+CREATE TABLE nopk_usingindex (id int) SPLIT INTO 5 TABLETS;
+INSERT INTO nopk_usingindex VALUES (1), (2), (3);
+CREATE INDEX nopk_idx ON nopk_usingindex(id);
+CREATE UNIQUE INDEX nopk_idx2 ON nopk_usingindex (id HASH);
+CREATE UNIQUE INDEX nopk_idx3 ON nopk_usingindex (id ASC);
+CREATE UNIQUE INDEX nopk_idx4 ON nopk_usingindex (id DESC);
 ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx; -- should fail.
+INSERT INTO nopk_usingindex VALUES (null);
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx2; -- should fail.
+DELETE FROM nopk_usingindex WHERE id IS NULL;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx2;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk_usingindex'::regclass);
+INSERT INTO nopk_usingindex VALUES (4);
+INSERT INTO nopk_usingindex VALUES (1); -- should fail.
+INSERT INTO nopk_usingindex VALUES (null); -- should fail.
+SELECT * FROM nopk_usingindex ORDER BY id;
+DROP INDEX nopk_idx2; -- should fail.
+ALTER TABLE nopk_usingindex DROP CONSTRAINT nopk_idx2;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx3;
+SELECT * FROM nopk_usingindex;
+DROP INDEX nopk_idx3; -- should fail.
+ALTER TABLE nopk_usingindex DROP CONSTRAINT nopk_idx3;
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx4; -- should fail (not supported in PG).
 -- test adding/dropping pks on partitioned tables.
 CREATE TABLE nopk_whole (id int) PARTITION BY LIST (id);
 CREATE TABLE nopk_part1 PARTITION OF nopk_whole FOR VALUES IN (1, 2, 3);

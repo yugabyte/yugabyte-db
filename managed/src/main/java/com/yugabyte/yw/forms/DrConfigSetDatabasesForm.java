@@ -14,5 +14,5 @@ public class DrConfigSetDatabasesForm {
       example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   @Required
-  public Set<String> databases;
+  public Set<String> dbs;
 }

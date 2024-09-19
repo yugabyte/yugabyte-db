@@ -101,6 +101,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public AuditLogConfig auditLogConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;

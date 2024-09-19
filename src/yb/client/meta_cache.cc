@@ -53,14 +53,17 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -2440,11 +2443,48 @@ std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFutur
 
 void MetaCache::ClearAll() {
   std::lock_guard lock(mutex_);
-  ts_cache_.clear();
   tables_.clear();
   tablets_by_id_.clear();
   tablet_lookups_by_id_.clear();
   deleted_tablets_.clear();
+}
+
+Status MetaCache::ClearCacheEntries(const std::string& namespace_id) {
+  std::lock_guard lock(mutex_);
+  LOG(INFO) << Format("Clearing MetaCache entries for namespace: $0", namespace_id);
+  // Stores the tables and tablets that belong to the namespace namespace_id
+  std::set<TableId> db_tables_ids;
+  std::set<TabletId> db_tablets_ids;
+  for (const auto& [table_id, table_data] : tables_) {
+    // Escape sys catalog and parent table ids as they don't conform to a typical ysql table id
+    if (table_id == master::kSysCatalogTableId) {
+      continue;
+    } else if (IsColocationParentTableId(table_id)) {
+      db_tables_ids.insert(table_id);
+      continue;
+    } else if (VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)) == namespace_id) {
+      VLOG(5) << Format(
+          "Marking table: $0 for clearing from metacache as it is part of namespace $1: ", table_id,
+          namespace_id);
+      for (const auto& [_, remote_tablet] : table_data.tablets_by_partition) {
+        // Do not clear the sys.catalog tablet
+        if (remote_tablet->tablet_id() != master::kSysCatalogTabletId) {
+          db_tablets_ids.insert(remote_tablet->tablet_id());
+        }
+      }
+      db_tables_ids.insert(table_id);
+    }
+  }
+  for (const auto& table_id : db_tables_ids) {
+    VLOG(4) << Format("Erasing table: $0 from metacache", table_id);
+    tables_.erase(table_id);
+  }
+  for (const auto& tablet_id : db_tablets_ids) {
+    VLOG(4) << Format("Erasing tablet: $0 from metacache", tablet_id);
+    tablets_by_id_.erase(tablet_id);
+    tablet_lookups_by_id_.erase(tablet_id);
+  }
+  return Status::OK();
 }
 
 LookupDataGroup::~LookupDataGroup() {

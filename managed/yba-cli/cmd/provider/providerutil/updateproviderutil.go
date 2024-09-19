@@ -218,12 +218,6 @@ func BuildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
-		case "yb-image":
-			if len(strings.TrimSpace(val)) != 0 {
-				region["yb-image"] = val
-			} else {
-				ValueNotFoundForKeyError(key)
-			}
 		case "shared-subnet":
 			if len(strings.TrimSpace(val)) != 0 {
 				region["shared-subnet"] = val
@@ -239,6 +233,18 @@ func BuildRegionMapFromString(
 		case "vnet":
 			if len(strings.TrimSpace(val)) != 0 {
 				region["vnet"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "network-rg":
+			if len(strings.TrimSpace(val)) != 0 {
+				region["network-rg"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "rg":
+			if len(strings.TrimSpace(val)) != 0 {
+				region["rg"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
@@ -311,4 +317,177 @@ func BuildRegionMapFromString(
 				formatter.RedColor))
 	}
 	return region
+}
+
+// BuildImageBundleMapFromString is to process image bundle flags
+func BuildImageBundleMapFromString(
+	imageBundleString, operation string,
+) map[string]string {
+	imageBundle := map[string]string{}
+	for _, ibInfo := range strings.Split(imageBundleString, ",") {
+		kvp := strings.Split(ibInfo, "=")
+		if len(kvp) != 2 {
+			logrus.Fatalln(
+				formatter.Colorize("Incorrect format in image bundle description.\n",
+					formatter.RedColor))
+		}
+		key := kvp[0]
+		val := kvp[1]
+		switch key {
+		case "image-bundle-name":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["name"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "image-bundle-uuid":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["uuid"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "machine-image":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["machine-image"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "arch":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["arch"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "ssh-user":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["ssh-user"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "ssh-port":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["ssh-port"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "imdsv2":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["imdsv2"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "default":
+			if len(strings.TrimSpace(val)) != 0 {
+				imageBundle["default"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		}
+	}
+	if strings.Compare(operation, "add") == 0 {
+		if _, ok := imageBundle["name"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Name not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+	} else if strings.Compare(operation, "edit") == 0 {
+		if _, ok := imageBundle["uuid"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Image bundle uuid not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+	}
+
+	return imageBundle
+}
+
+// BuildImageBundleRegionOverrideMapFromString is to process image bundle flags
+func BuildImageBundleRegionOverrideMapFromString(
+	regionString, operation string,
+) map[string]string {
+	override := map[string]string{}
+	for _, o := range strings.Split(regionString, ",") {
+		kvp := strings.Split(o, "=")
+		if len(kvp) != 2 {
+			logrus.Fatalln(
+				formatter.Colorize("Incorrect format in image bundle description.\n",
+					formatter.RedColor))
+		}
+		key := kvp[0]
+		val := kvp[1]
+		switch key {
+		case "image-bundle-name":
+			if len(strings.TrimSpace(val)) != 0 {
+				override["name"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "image-bundle-uuid":
+			if len(strings.TrimSpace(val)) != 0 {
+				override["uuid"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "machine-image":
+			if len(strings.TrimSpace(val)) != 0 {
+				override["machine-image"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		case "region-name":
+			if len(strings.TrimSpace(val)) != 0 {
+				override["region-name"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
+		}
+	}
+	if strings.Compare(operation, "add") == 0 {
+		if _, ok := override["name"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Name not specified in image bundle region override.\n",
+					formatter.RedColor))
+		}
+	} else if strings.Compare(operation, "edit") == 0 {
+		if _, ok := override["uuid"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Image bundle uuid not specified in image bundle region override.\n",
+					formatter.RedColor))
+		}
+	}
+	if _, ok := override["machine-image"]; !ok {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"Machine image not specified in image bundle region override.\n",
+				formatter.RedColor))
+	}
+	if _, ok := override["region-name"]; !ok {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"Region Name not specified in image bundle region override.\n",
+				formatter.RedColor))
+	}
+
+	return override
+}
+
+// DefaultImageBundleValues is to set default values for image bundle
+func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
+	if _, ok := imageBundle["ssh-port"]; !ok {
+		imageBundle["ssh-port"] = "22"
+	}
+	if _, ok := imageBundle["default"]; !ok {
+		imageBundle["default"] = "false"
+	}
+	if _, ok := imageBundle["imdsv2"]; !ok {
+		imageBundle["imdsv2"] = "false"
+	}
+	if _, ok := imageBundle["arch"]; !ok {
+		imageBundle["arch"] = util.X86_64
+	}
+	return imageBundle
 }

@@ -63,7 +63,7 @@ Status LocalTabletWriter::Write(QLWriteRequestPB* request) {
 Status LocalTabletWriter::WriteBatch(Batch* batch) {
   req_->Clear();
   for (auto& req : *batch) {
-    req.set_schema_version(tablet_->metadata()->schema_version());
+    req.set_schema_version(tablet_->metadata()->primary_table_schema_version());
     QLSetHashCode(&req);
   }
   req_->mutable_ql_write_batch()->Swap(batch);

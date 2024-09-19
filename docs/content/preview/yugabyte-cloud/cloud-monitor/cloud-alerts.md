@@ -53,7 +53,7 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 | Status | Alert | Level |
 | :----- | :---- | :---- |
 | Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
-| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
+| Needs Attention | [Tablet peers](#fix-storage-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
 | Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
@@ -74,6 +74,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 
 | Alert | Metric |
 | :--- | :--- |
+| [Tablet Peers](#fix-tablet-peer-alerts) | Tablets |
 | [Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
 | [Disk IOPS](#fix-iops-alerts) | Disk IOPS |
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
@@ -92,6 +93,17 @@ You can view metrics on the cluster **Performance** tab. Refer to [Performance m
 If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/create-clusters/create-clusters-free/#limitations), you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
+
+#### Fix tablet peer alerts
+
+YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
+
+- Number of tablet peers is 85% of the cluster limit (Warning).
+- Number of tablet peers is 100% of the cluster limit (Severe).
+
+If the number of tablet peers in the cluster approaches the limit for the cluster, consider scaling the cluster horizontally by adding nodes, or vertically by adding vCPUs.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 #### Fix throughput alerts
 

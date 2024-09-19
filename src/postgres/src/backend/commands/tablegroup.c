@@ -83,6 +83,7 @@
 #include "pg_yb_utils.h"
 
 Oid binary_upgrade_next_tablegroup_oid = InvalidOid;
+bool binary_upgrade_next_tablegroup_default = false;
 
 /*
  * Create a table group.
@@ -430,6 +431,20 @@ get_implicit_tablegroup_name(Oid oidSuffix)
 	return tablegroup_name_from_tablespace;
 }
 
+char*
+get_restore_tablegroup_name(Oid oidSuffix)
+{
+	char *restore_tablegroup_name = (char*) palloc(
+		(
+			19 /* strlen("colocation_restore_") */ + 10 /* Max digits in OID */ +
+			1 /* Null Terminator */
+		) * sizeof(char)
+	);
+
+	sprintf(restore_tablegroup_name, "colocation_restore_%u", oidSuffix);
+	return restore_tablegroup_name;
+}
+
 /*
  * Rename tablegroup
  */
@@ -615,7 +630,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
  * raised.
  */
 void
-ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
+ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace, const char *newname)
 {
 	Oid					tablegroupoid;
 	HeapTuple			tuple;
@@ -648,9 +663,25 @@ ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
 
 	if (datForm->grptablespace != newTablespace)
 	{
-		datForm->grptablespace = newTablespace;
+		Datum		repl_val[Natts_pg_yb_tablegroup];
+		bool		repl_null[Natts_pg_yb_tablegroup];
+		bool		repl_repl[Natts_pg_yb_tablegroup];
+		HeapTuple	newtuple;
 
-		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
+
+		repl_repl[Anum_pg_yb_tablegroup_grptablespace - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grptablespace - 1] = newTablespace;
+
+		repl_repl[Anum_pg_yb_tablegroup_grpname - 1] = true;
+		repl_val[Anum_pg_yb_tablegroup_grpname - 1] =
+			DirectFunctionCall1(namein, CStringGetDatum(newname));
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		heap_freetuple(newtuple);
 	}
 
 	InvokeObjectPostAlterHook(YbTablegroupRelationId, tablegroupoid, 0);
