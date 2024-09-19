@@ -9,6 +9,8 @@ menu:
     identifier: yugabytedb-connector
     weight: 70
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB Connector is based on the Debezium Connector, and captures row-level changes in the schemas of a YugabyteDB database using the PostgreSQL replication protocol.
