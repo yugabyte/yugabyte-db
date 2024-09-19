@@ -101,7 +101,9 @@ YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../
 - Number of tablet peers is 85% of the cluster limit (Warning).
 - Number of tablet peers is 100% of the cluster limit (Severe).
 
-If the number of tablet peers in the cluster approaches the limit for the cluster, consider scaling the cluster horizontally by adding nodes, or vertically by adding vCPUs.
+If the number of tablet peers in the cluster approaches the limit for the cluster, you should add more RAM to your cluster. You can do this by scaling the cluster horizontally by adding nodes, or vertically by adding vCPUs.
+
+You can also drop tables. There may be a lag in clearing the associated tablets.
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
