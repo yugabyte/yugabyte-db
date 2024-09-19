@@ -1,0 +1,10 @@
+Source: heliodb
+Section: database
+Priority: optional
+Build-Depends: debhelper (>= 11), postgresql-server-dev-POSTGRES_VERSION
+Maintainer: WhoEver YouWant <whoeveryouwant@email.com>
+
+Package: postgresql-POSTGRES_VERSION-heliodb
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, postgresql-POSTGRES_VERSION, postgresql-POSTGRES_VERSION-cron, postgresql-POSTGRES_VERSION-pgvector, postgresql-POSTGRES_VERSION-postgis-3, postgresql-POSTGRES_VERSION-rum
+Description: HelioDb
