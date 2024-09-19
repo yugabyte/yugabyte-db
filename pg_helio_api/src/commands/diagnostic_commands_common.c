@@ -128,6 +128,10 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 						"failed to connect to");
 					StringView recoveryErrorView = CreateStringViewFromString(
 						"terminating connection due to conflict with recovery");
+					StringView recoveryCancelErrorView = CreateStringViewFromString(
+						"canceling statement due to conflict with recovery");
+					StringView outOfMemoryView = CreateStringViewFromString(
+						"out of memory");
 					if (StringViewStartsWithStringView(&errorView, &connectivityView))
 					{
 						ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
@@ -139,7 +143,9 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 											commandName, workerError)));
 					}
 					else if (StringViewStartsWithStringView(&errorView,
-															&recoveryErrorView))
+															&recoveryErrorView) ||
+							 StringViewStartsWithStringView(&errorView,
+															&recoveryCancelErrorView))
 					{
 						ereport(ERROR, (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
 										errmsg(
@@ -147,6 +153,16 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 											commandName),
 										errdetail_log(
 											"%s on worker failed with an recovery error: %s",
+											commandName, workerError)));
+					}
+					else if (StringViewStartsWithStringView(&errorView, &outOfMemoryView))
+					{
+						ereport(ERROR, (errcode(ERRCODE_HELIO_EXCEEDEDMEMORYLIMIT),
+										errmsg(
+											"%s on worker failed with out of memory errors",
+											commandName),
+										errdetail_log(
+											"%s on worker failed with an out of memory error: %s",
 											commandName, workerError)));
 					}
 					else
