@@ -107,7 +107,9 @@ var listBackupCmd = &cobra.Command{
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
 			if !hasNext {
-				logrus.Infoln("No more backups present\n")
+				if util.IsOutputType(formatter.TableFormatKey) {
+					logrus.Infoln("No more backups present\n")
+				}
 				break
 			}
 
