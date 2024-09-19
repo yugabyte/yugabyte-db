@@ -1115,7 +1115,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
+  public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag to enable db scoped xCluster replication creation",
+          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
