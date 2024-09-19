@@ -1229,6 +1229,7 @@ struct PersistentUniverseReplicationInfo
   }
 
   bool IsDbScoped() const;
+  bool IsAutomaticDdlMode() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,

@@ -25,4 +25,15 @@ ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& repli
 
 std::string ShortReplicationType(XClusterReplicationType type);
 
+
+TableId GetSequencesDataAliasForNamespace(const NamespaceId& namespace_id);
+
+bool IsSequencesDataAlias(const TableId& table_id);
+
+TableId StripSequencesDataAliasIfPresent(const TableId& table_id);
+
+// Returns the namespace a sequences_data alias is for; if table_id is not a sequences_data alias,
+// instead returns the ID's namespace as usual.
+Result<NamespaceId> GetReplicationNamespaceBelongsTo(const TableId& table_id);
+
 }  // namespace yb::xcluster
