@@ -10,6 +10,7 @@ import grp
 import semver
 import stat
 
+from enum import Enum
 import modules.base_module as mbm
 from .base_command import Command
 from utils.util import safely_write_file
@@ -17,7 +18,17 @@ from utils.util import safely_write_file
 logger = logging.getLogger(__name__)
 
 
+class OSFamily(Enum):
+    REDHAT = "RedHat"
+    DEBIAN = "Debian"
+    SUSE = "Suse"
+    ARCH = "Arch"
+    UNKNOWN = "Unknown"
+
+
 class ProvisionCommand(Command):
+
+    cloud_only_modules = ['Preprovision']
 
     def __init__(self, config):
         super().__init__(config)
@@ -73,7 +84,8 @@ class ProvisionCommand(Command):
         logger.info("Return Code: %s", result.returncode)
 
     def add_results_helper(self, file):
-        file.write("""
+        file.write(
+            """
             # Initialize the JSON results array
             json_results='{\n"results":[\n'
 
@@ -84,15 +96,20 @@ class ProvisionCommand(Command):
                 if [ "${#json_results}" -gt 20 ]; then
                     json_results+=',\n'
                 fi
-                json_results+='    {\n      "check": "'$check'",\n      "result": "'$result'",\n      "message": "'$message'"\n    }'
+                json_results+='    {\n'
+                json_results+='      "check": "'$check'",\n'
+                json_results+='      "result": "'$result'",\n'
+                json_results+='      "message": "'$message'"\n'
+                json_results+='    }'
             }
-        """)
+            """
+        )
 
     def print_results_helper(self, file):
         file.write("""
             print_results() {
                 any_fail=0
-                if [[ $json_results == *'"result":"FAIL"'* ]]; then
+                if [[ $json_results == *'"result": "FAIL"'* ]]; then
                     any_fail=1
                 fi
                 json_results+='\n]}'
@@ -124,15 +141,23 @@ class ProvisionCommand(Command):
         file.write("set -e\n")
 
     def _generate_template(self):
+        os_distribution, os_family, os_version = self._get_os_info()
         all_templates = {}
 
         for key in self.config:
             module = self._module_registry.get(key)
             if module is None:
                 continue
+            if module in self.cloud_only_modules:
+                continue
+            if module == 'InstallNodeAgent' and not self.config[key].is_install_node_agent:
+                continue
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
+            context["os_family"] = os_family
+            context["os_version"] = os_version
+            context["os_distribution"] = os_distribution
             module_instance = module[0]()
             rendered_template = module_instance.render_templates(context)
             if rendered_template is not None:
@@ -142,6 +167,41 @@ class ProvisionCommand(Command):
         run_combined_script = self._build_script(all_templates, "run")
 
         return run_combined_script, precheck_combined_script
+
+    def _get_os_info(self):
+        os_release_file = '/etc/os-release'
+
+        # Check if the os-release file exists
+        if not os.path.isfile(os_release_file):
+            return None, None, None
+
+        os_release_info = {}
+
+        # Parse the os-release file
+        with open(os_release_file) as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    os_release_info[key] = value.strip('"')
+
+        # Extract distribution and version
+        distribution = os_release_info.get("ID", "").lower()
+        version = os_release_info.get("VERSION_ID", "")
+        major_version = version.split('.')[0] if version else ""
+
+        # Determine OS family
+        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
+            os_family = OSFamily.REDHAT
+        elif distribution in {"ubuntu", "debian"}:
+            os_family = OSFamily.DEBIAN
+        elif distribution in {"suse", "opensuse", "sles"}:
+            os_family = OSFamily.SUSE
+        elif distribution == "arch":
+            os_family = OSFamily.ARCH
+        else:
+            os_family = OSFamily.UNKNOWN
+
+        return distribution, os_family, major_version
 
     def _check_package(self, package_manager, package_name):
         """Check if a package is installed."""
@@ -237,7 +297,7 @@ class ProvisionCommand(Command):
                     )
                 sys.exit(1)
 
-    def run_preflight_checks(self):
+    def run_preflight_checks(self, extra_vars):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)

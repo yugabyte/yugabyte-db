@@ -45,9 +45,7 @@ done
 
 
 # Get the status of yb-node-agent Service
-status=$(su - {{ yb_user }} -c \
-    "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p ActiveState \
-    \"$service_name\" | grep ActiveState | awk -F= '/ActiveState/ {print \$2}'")
+status=$(systemctl show -p ActiveState "$service_name" | grep ActiveState | awk -F= '{print $2}')
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
     add_result "Service Status Check" "PASS" "$service_name is active"
@@ -57,9 +55,7 @@ else
 fi
 
 # Check the memory usage for yb-node-agent service
-memory=$(su - {{ yb_user }} -c \
-    "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p MemoryCurrent \
-    \"$service_name\" | grep MemoryCurrent | awk -F= '/MemoryCurrent/ {print \$2}'")
+memory=$(systemctl show -p MemoryCurrent "$service_name" | grep MemoryCurrent | awk -F= '{print $2}')
 if [ "$memory" -gt 0 ]; then
     echo "MemoryCurrent is greater than 0: $memory"
     add_result "Memory Usage Check" "PASS" "MemoryCurrent is greater than 0: $memory"
@@ -91,7 +87,7 @@ if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
     echo "HTTP GET request successful. Processing response..."
 
     # Extract IPs using sed and grep
-    ips=$(echo "$response_body" | sed -n 's/.*"ip":"\([a-zA-Z0-9\.-]*\)".*/\1/p')
+    ips=$(echo "$response_body" | grep -o '"ip":"[a-zA-Z0-9.:_-]*"' | cut -d '"' -f4)
     for ip in $ips; do
         if [[ "$ip" == "{{ node_ip }}" ]]; then
             matched=true
