@@ -878,10 +878,12 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
 YBCStatus YBCPgInitVirtualWalForCDC(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations);
 
 YBCStatus YBCPgUpdatePublicationTableList(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations);
 
 YBCStatus YBCPgDestroyVirtualWalForCDC();
 
