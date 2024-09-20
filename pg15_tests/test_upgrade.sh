@@ -89,6 +89,11 @@ SELECT * FROM t ORDER BY h,r;
 CREATE INDEX ON t (v1);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM t WHERE v1 = 11;
 SELECT COUNT(*) FROM t WHERE v1 = 11;
+CREATE DATABASE userdb;
+\connect userdb
+CREATE TABLE t (a int);
+INSERT INTO t VALUES (1);
+SELECT * FROM t;
 EOT
 ) - <<EOT
  server_version_num
@@ -117,6 +122,15 @@ CREATE INDEX
  count
 -------
      1
+(1 row)
+
+CREATE DATABASE
+You are now connected to database "userdb" as user "yugabyte".
+CREATE TABLE
+INSERT 0 1
+ a
+---
+ 1
 (1 row)
 
 EOT

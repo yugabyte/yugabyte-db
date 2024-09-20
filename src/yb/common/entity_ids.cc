@@ -218,7 +218,20 @@ Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
   return GetPgsqlOid(tablespace_id, 0, "tablespace id");
 }
 
-bool IsPg15CatalogId(const std::string& hex_id) {
+bool IsPg11CatalogId(const TableId& hex_id) {
+  if (!IsPgsqlId(hex_id)) {
+    return false;
+  }
+  Result<uint32_t> res_oid = GetPgsqlTableOid(hex_id);
+  if (!res_oid.ok()) {
+    return false;
+  }
+  uint32_t oid = *res_oid;
+  std::string id = a2b_hex(hex_id);
+  return id[9] == 0 && oid < kPgFirstNormalObjectId;
+}
+
+bool IsPg15CatalogId(const TableId& hex_id) {
   if (!IsPgsqlId(hex_id)) {
     return false;
   }

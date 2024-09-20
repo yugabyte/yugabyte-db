@@ -8523,14 +8523,23 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           //  * In case #2, it means only PG15 system catalog tables, because PG11 catalog tables
           //    and user tables (which do not have a version) have already been added to the
           //    namespace previously.
-          //  * In case #3, it means all PG tables, though they will all be PG15 catalog tables or
-          //    user tables (which do not have a version).
+          //  * In case #3, it means all PG tables. Valid tables are either PG15 catalog tables or
+          //    user tables (which do not have a version). Any PG11 catalog tables are around just
+          //    because they have not been cleaned up yet.
           //
           // So in case #2, we must accept only PG15 catalog tables.
           const auto& table_id = table->id();
           if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
-            if (FLAGS_TEST_online_pg11_to_pg15_upgrade && !IsPg15CatalogId(table_id)) {
-              continue;
+            if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+              if (!IsPg15CatalogId(table_id)) {
+                continue;
+              }
+            } else {
+              // YB_TODO: Remove when we support cleanup of PG11 catalog tables after the YSQL
+              // major version upgrade.
+              if (IsPg11CatalogId(table_id)) {
+                continue;
+              }
             }
             // Since indexes have dependencies on the base tables, put the tables in the front.
             const bool is_table = table->indexed_table_id().empty();
