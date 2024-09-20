@@ -107,6 +107,10 @@ METRIC_DEFINE_gauge_uint64(server, involuntary_context_switches,
                            "Total involuntary context switches",
                            yb::EXPOSE_AS_COUNTER);
 
+DEFINE_NON_RUNTIME_int32(min_thread_stack_size_bytes, 512 * 1024,
+    "Default minimum stack size for new threads. If set to <=0, the system default will be used. "
+    "Note that the stack can grow larger than this if needed and allowed by system limits.");
+
 namespace yb {
 
 using std::endl;
@@ -744,6 +748,18 @@ std::string Thread::ToString() const {
   return Substitute("Thread $0 (name: \"$1\", category: \"$2\")", tid_, name_, category_);
 }
 
+Status Thread::TryStartThread(Thread* t) {
+  pthread_attr_t attr;
+  RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(pthread_attr_init, &attr));
+  if (FLAGS_min_thread_stack_size_bytes > 0) {
+    RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(
+        pthread_attr_setstacksize, &attr, FLAGS_min_thread_stack_size_bytes));
+  }
+  RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(
+      pthread_create, &t->thread_, &attr, &Thread::SuperviseThread, t));
+  return Status::OK();
+}
+
 Status Thread::StartThread(const std::string& category, const std::string& name,
                            ThreadFunctor functor, scoped_refptr<Thread> *holder) {
   InitThreading();
@@ -766,12 +782,14 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
     // Block stack trace collection while we create a thread. This also prevents stack trace
     // collection in the new thread while it is being started since it will inherit our signal
     // masks. SuperviseThread function will unblock the signal as soon as thread begins to run.
-    auto old_signal = VERIFY_RESULT(ThreadSignalMaskBlock({GetStackTraceSignal()}));
-    int ret = pthread_create(&t->thread_, NULL, &Thread::SuperviseThread, t.get());
-    RETURN_NOT_OK(ThreadSignalMaskRestore(old_signal));
-
-    if (ret) {
-      return STATUS(RuntimeError, "Could not create thread", Errno(ret));
+    const auto old_signal = VERIFY_RESULT(ThreadSignalMaskBlock({GetStackTraceSignal()}));
+    const auto thread_start_status = TryStartThread(t.get());
+    const auto mask_restore_status = ThreadSignalMaskRestore(old_signal);
+    if (!thread_start_status.ok() || !mask_restore_status.ok()) {
+      return STATUS_FORMAT(
+          RuntimeError, "Failed to start thread. "
+          "Thread start status: $0, signal mask restore status: $1",
+          thread_start_status, mask_restore_status);
     }
   }
 
