@@ -227,6 +227,12 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup
                         "stream.");
 TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_update_optimization_infra, false,
+                               "Enables optimizations of YSQL UPDATE queries. This includes "
+                               "(but not limited to) skipping redundant secondary index updates "
+                               "and redundant constraint checks.");
+TAG_FLAG(ysql_yb_update_optimization_infra, advanced);
+
 namespace yb {
 
 void InitCommonFlags() {

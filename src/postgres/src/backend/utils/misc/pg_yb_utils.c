@@ -1389,6 +1389,7 @@ int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
+	.is_enabled = false,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
@@ -4918,8 +4919,8 @@ YbGetRedactedQueryString(const char* query, int query_len,
 bool
 YbIsUpdateOptimizationEnabled()
 {
-	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
-	return yb_update_optimization_options.num_cols_to_compare > 0 &&
+	return yb_update_optimization_options.is_enabled &&
+		   yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 
