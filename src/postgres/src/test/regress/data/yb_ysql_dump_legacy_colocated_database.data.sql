@@ -184,6 +184,29 @@ SPLIT INTO 3 TABLETS;
 \endif
 
 --
+-- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16417'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16416'::pg_catalog.oid);
+
+CREATE TABLE public.tbl5 (
+    k integer,
+    v integer
+)
+WITH (colocation_id='20005');
+
+
+\if :use_roles
+    ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\endif
+
+--
 -- Data for Name: htest_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -221,6 +244,24 @@ COPY public.tbl3 (k, v) FROM stdin;
 
 COPY public.tbl4 (k, v, v2) FROM stdin;
 \.
+
+
+--
+-- Data for Name: tbl5; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.tbl5 (k, v) FROM stdin;
+\.
+
+
+--
+-- Name: tbl5 tbl5_v_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl5_v_key ON public.tbl5 USING lsm (v ASC) WITH (colocation_id=20006);
+
+ALTER TABLE ONLY public.tbl5
+    ADD CONSTRAINT tbl5_v_key UNIQUE USING INDEX tbl5_v_key;
 
 
 --
