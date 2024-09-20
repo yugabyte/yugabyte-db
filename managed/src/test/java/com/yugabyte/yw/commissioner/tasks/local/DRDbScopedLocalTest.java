@@ -298,8 +298,14 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
 
+    // Need to wait for masters to propagate dropping of db1 to tservers, which will take 1-2
+    // seconds.
+    Thread.sleep(5000);
+
+    // Validate rows are not replicated to target universe.
     insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
     validateRowCount(targetUniverse, table1, 1 /* expectedRows */);
+    validateNotExpectedRowCount(targetUniverse, table1, 2 /* notExpectedRows */);
 
     // Validate we are able to drop database on target universe (PITR config is dropped correctly).
     dropDatabase(sourceUniverse, db1);
