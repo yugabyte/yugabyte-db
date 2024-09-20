@@ -679,13 +679,13 @@ std::optional<Status> BenchmarkExecuteHelper(
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
-    using IndexType = typename ANNMethodTraits<ann_method_kind>::template IndexType<
+    using FactoryType = typename ANNMethodTraits<ann_method_kind>::template FactoryType<
         IndexedVector,
         typename DistanceTraits<IndexedVector, distance_kind>::Result>;
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args,
         [](const HNSWOptions& options) {
-          return CreateIndexFactory<IndexType>(options);
+          return std::bind(&FactoryType::Create, options);
         }
     ).Execute();
   }
