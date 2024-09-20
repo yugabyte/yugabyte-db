@@ -396,6 +396,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Invoked when the user-supplied function finishes or in the case of an
   // abrupt exit (i.e. pthread_exit()). Cleans up after SuperviseThread().
   static void FinishThread(void* arg);
+
+  static Status TryStartThread(Thread* t);
 };
 
 typedef scoped_refptr<Thread> ThreadPtr;
