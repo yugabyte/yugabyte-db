@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -60,4 +61,5 @@ public class BaseTaskDependencies {
   private final ImageBundleUtil imageBundleUtil;
   private final ReleaseManager releaseManager;
   private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final NodeUniverseManager nodeUniverseManager;
 }

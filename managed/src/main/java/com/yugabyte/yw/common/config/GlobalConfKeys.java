@@ -1483,13 +1483,4 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " will be evaluated and returned",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> numCloudYbaBackupsRetention =
-      new ConfKeyInfo<>(
-          "yb.auto_yba_backups.num_cloud_retention",
-          ScopeType.GLOBAL,
-          "Number of cloud YBA backups to retain",
-          "When continuous backups feature is enabled only the most recent n backups will be"
-              + " retained in the storage bucket",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
