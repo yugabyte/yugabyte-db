@@ -6519,6 +6519,7 @@ static const char *const map_old_guc_names[] = {
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
 };
 
 

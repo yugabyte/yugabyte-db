@@ -96,7 +96,9 @@ var listRestoreCmd = &cobra.Command{
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
 			if !hasNext {
-				logrus.Infoln("No more restores present\n")
+				if util.IsOutputType(formatter.TableFormatKey) {
+					logrus.Infoln("No more restores present\n")
+				}
 				break
 			}
 

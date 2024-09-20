@@ -1120,9 +1120,6 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.
         Map<String, String> sourceTableIdTargetTableIdMap =

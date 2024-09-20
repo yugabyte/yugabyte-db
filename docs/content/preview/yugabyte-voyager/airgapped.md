@@ -57,7 +57,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-0-rhel-8-x86_64.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.1-0-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -171,7 +171,7 @@ You can perform an airgapped installation on Ubuntu 22 and later.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_0_debian.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.1_0_debian.tar.gz
     ```
 
 1. Extract the bundle.

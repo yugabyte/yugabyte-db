@@ -27,6 +27,21 @@ check_ulimit() {
     fi
 }
 
+is_subdirectory() {
+  local dir="$1"
+  local parent="$2"
+
+  # Resolve the absolute canonical paths
+  dir=$(realpath -m "$dir")
+  parent=$(realpath -m "$parent")
+
+  # Append a trailing slash to the parent directory for accurate matching
+  case "$dir/" in
+    "$parent/"* ) return 0 ;;  # dir is inside parent
+    * ) return 1 ;;            # dir is not inside parent
+  esac
+}
+
 
 verify_systemd_conf() {
     local file=$1
@@ -87,12 +102,17 @@ else
     add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
 fi
 
+yb_home_dir={{ yb_home_dir }}
 threshold=49 #Gigabytes
 # Convert the space-separated string to an array in bash
 mount_points="{{ mount_points | default('') | trim }}"
 IFS=' ' read -ra mount_points_array <<< "$mount_points"
 # Verify each mount point
 for mount_point in "${mount_points_array[@]}"; do
+    if is_subdirectory "$mount_point" "$yb_home_dir"; then
+      message="Mountpoint $mount_point is inside home directory $yb_home_dir"
+      add_result "home directory check" "FAIL" "$message"
+    fi
     if [ -d "$mount_point" ]; then
         if [ -w "$mount_point" ] && [ $(( $(stat -c %a "$mount_point") % 10 & 2 )) -ne 0 ]; then
             result="PASS"
