@@ -53,7 +53,6 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
             TaskType.CreateYbaBackup,
             cbConfig.getFrequency(),
             null,
-            false /* useLocalTimezone */,
             cbConfig.getFrequencyTimeUnit(),
             null);
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
