@@ -3781,7 +3781,7 @@ namespace {
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
   return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
-} // namespace
+}  // namespace
 
 Status CatalogManager::CanAddPartitionsToTable(
     size_t desired_partitions, const PlacementInfoPB& placement_info) {
@@ -3981,18 +3981,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Get placement info.
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
-  const PlacementInfoPB& placement_info = replication_info.live_replicas();
+  // Whether the table is joining an existing colocation group, in other words it is a colocated
+  // non-parent table. Such tables will reuse tablets of their respective colocation group.
+  bool joining_colocation_group =
+      colocated && !IsColocationParentTableId(req.table_id());
 
-  int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
-  Status s = CanAddPartitionsToTable(num_tablets, placement_info);
-  if (s.ok()) {
+  int num_tablets = VERIFY_RESULT(
+      CalculateNumTabletsForTableCreation(req, schema, replication_info.live_replicas()));
+  auto s = CanAddPartitionsToTable(num_tablets, replication_info.live_replicas());
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+  }
+  if (!joining_colocation_group) {
     s = CanSupportAdditionalTabletsForTableCreation(
         num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
-  }
-  if (!s.ok()) {
-    LOG(WARNING) << s;
-    IncrementCounter(metric_create_table_too_many_tablets_);
-    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+    if (!s.ok()) {
+      IncrementCounter(metric_create_table_too_many_tablets_);
+      return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+    }
   }
   const auto [partition_schema, partitions] =
       VERIFY_RESULT(CreatePartitions(schema, num_tablets, colocated, &req, resp));
@@ -4048,13 +4054,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
 
-  // Whether the table is joining an existing colocation group - i.e. is a
-  // colocated non-parent table.
-  // Such tables will reuse tablets of their respective colocation group.
-  bool joining_colocation_group =
-      colocated && !IsColocationParentTableId(req.table_id());
   TabletInfoPtr colocated_tablet = nullptr;
-
   {
     UniqueLock lock(mutex_);
     auto ns_lock = ns->LockForRead();
@@ -4069,6 +4069,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // requests containing same table id to master.
     // (3) two concurrent CREATE TABLEs using the same fully qualified name cannot both succeed
     // because of the pg_class unique index on the qualified name.
+    Status s = Status::OK();
     if (req.table_type() == PGSQL_TABLE_TYPE) {
       table = tables_->FindTableOrNull(req.table_id());
       // We rarely remove deleted entries from tables_, so it is necessary to check if TableInfoPtr
