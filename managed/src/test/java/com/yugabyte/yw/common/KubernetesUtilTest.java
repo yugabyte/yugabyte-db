@@ -63,7 +63,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
   @Test
   public void testExtraNSScopedServiceToRemoveRRDeleteDifferentNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
-        addClusterAndNodeDetailsK8s("2024.2.0.0", true /* createRR */);
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", true /* createRR */);
     Map<String, String> universeConfig = universeConfig();
     String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
     Map<String, String> azConfig = new HashMap<>();
@@ -101,7 +101,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
   @Test
   public void testExtraNSScopedServiceToRemoveRRDeleteSameNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
-        addClusterAndNodeDetailsK8s("2024.2.0.0", true /* createRR */);
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", true /* createRR */);
     Map<String, String> universeConfig = universeConfig();
     String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
     Map<String, String> azConfig = new HashMap<>();
@@ -134,7 +134,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
   @Test
   public void testExtraNSScopedServiceToRemoveOverridesChange() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
-        addClusterAndNodeDetailsK8s("2024.2.0.0", false /* createRR */);
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
     Map<String, String> universeConfig = universeConfig();
     String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
     String serviceEndpointsOverriden =
@@ -162,7 +162,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
   @Test
   public void testExtraNSScopedServiceToRemoveDeleteAZMultiNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
-        addClusterAndNodeDetailsK8s("2024.2.0.0", false /* createRR */);
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
     Map<String, String> universeConfig = universeConfig();
     String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
     Map<String, String> azConfig = new HashMap<>();
@@ -232,7 +232,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
   @Test
   public void testExtraNSScopedServiceToRemoveDeleteAZSingleNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
-        addClusterAndNodeDetailsK8s("2024.2.0.0", false /* createRR */);
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
     Map<String, String> universeConfig = universeConfig();
     String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
     Map<String, String> azConfig = new HashMap<>();

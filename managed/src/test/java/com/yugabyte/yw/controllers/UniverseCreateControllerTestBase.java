@@ -1607,7 +1607,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   // SEO: ServiceEndpointOverrides
   @Test
   public void testCreateK8sUniverseMatchingSEOSingleNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1645,7 +1645,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseEmptyArraySEOSingleNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1683,7 +1683,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseNoSEOSingleNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1712,7 +1712,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseMatchingSEOMultiNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1758,7 +1758,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseWithRRMatchingSEOSameNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1796,7 +1796,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseWithRRMatchingSEOMultiNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1845,7 +1845,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseMCSMatchingSEOSameNSMultiAZSuccess() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1900,7 +1900,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseMismatchSEOMultiNSMultiAZFail() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -1948,7 +1948,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseMCSMismatchSEOSingleNSMultiAZFail() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -2010,7 +2010,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseWithRRMismatchSEOSingleNSMultiAZFail() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -2060,7 +2060,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseMismatchSEOSingleNSMultiAZFail() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");
@@ -2114,7 +2114,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateK8sUniverseConflictingSameNameSEOFail() {
-    String ybVersion = "2024.2.0.0-b1";
+    String ybVersion = "2024.2.0.0-b2";
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
         .thenReturn("Namespaced");

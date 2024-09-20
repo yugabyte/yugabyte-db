@@ -61,7 +61,9 @@ import play.libs.Json;
 public class KubernetesUtil {
 
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW = "2.23.0.0-b539";
-  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b999";
+  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b1";
+  public static String MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_PREVIEW = "2.23.1.0-b168";
+  public static String MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE = "2024.2.0.0-b1";
   // Kubelet secret sync time + k8s_parent template sync time.
   public static final int WAIT_FOR_GFLAG_SYNC_SECS = 90;
 
@@ -70,6 +72,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE,
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
+            true)
+        > 0;
+  }
+
+  public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE,
+            MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_PREVIEW,
             true)
         > 0;
   }
@@ -784,7 +795,9 @@ public class KubernetesUtil {
   public static boolean shouldConfigureNamespacedService(
       UniverseDefinitionTaskParams universeDetails, Map<String, String> universeConfig) {
     if (!universeDetails.useNewHelmNamingStyle
-        || universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("false")) {
+        || universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("false")
+        || !isNamespacedServiceSupported(
+            universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion)) {
       return false;
     }
     return true;
