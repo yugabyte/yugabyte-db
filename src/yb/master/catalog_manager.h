@@ -477,7 +477,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                 Result<std::optional<bool>> is_committed,
                                 const LeaderEpoch& epoch);
 
-  Status YsqlDdlTxnCompleteCallback(const std::string& pb_txn_id,
+  Status YsqlDdlTxnCompleteCallback(TableInfoPtr table,
+                                    const std::string& pb_txn_id,
                                     std::optional<bool> is_committed,
                                     const LeaderEpoch& epoch,
                                     const std::string& debug_caller_info);
@@ -499,6 +500,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data, bool success);
 
+  void UpdateDdlVerificationStateUnlocked(const TransactionId& txn,
+                                          YsqlDdlVerificationState state)
+      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
   void RemoveDdlTransactionStateUnlocked(
@@ -3344,6 +3348,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     // delete table calls.
     std::vector<scoped_refptr<TableInfo>> tables;
     std::unordered_set<TableId> processed_tables;
+    // Set of tables whose DocDB schema do not change.
+    std::unordered_set<TableId> nochange_tables;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.

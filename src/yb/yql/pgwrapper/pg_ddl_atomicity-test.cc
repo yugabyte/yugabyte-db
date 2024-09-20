@@ -1841,9 +1841,43 @@ TEST_F(PgDdlAtomicityTest, TestAlterTableAddUniqueConstraint) {
   // a retry of the same statement to succeed, which will create another index with
   // the same name y_unique (but with a different table id).
   ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 0);
   ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 2);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+}
+
+TEST_F(PgDdlAtomicityTest, TestAlterTableAddCheckConstraint) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD CONSTRAINT id_check CHECK (id > 5)"));
+  // There is nothing created in DocDB for foo_id_check.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("foo_id_check")).size(), 0);
+  auto foo_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
+  std::shared_ptr<client::YBTableInfo> foo_table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(foo_table_id, foo_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(foo_table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bar(id int)"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT bar_id_check CHECK (id > 5)"));
+  auto bar_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "bar"));
+  std::shared_ptr<client::YBTableInfo> bar_table_info = std::make_shared<client::YBTableInfo>();
+  sync.Reset();
+  ASSERT_OK(client->GetTableSchemaById(bar_table_id, bar_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(bar_table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT bar_id_check CHECK (id > 5)"));
+  bar_table_info = std::make_shared<client::YBTableInfo>();
+  sync.Reset();
+  ASSERT_OK(client->GetTableSchemaById(bar_table_id, bar_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(bar_table_info->schema.version(), 2);
 }
 
 } // namespace pgwrapper
