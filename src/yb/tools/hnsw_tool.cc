@@ -706,20 +706,20 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
   // method has to use in case the ANN method doesn't support the input vector type. To avoid
   // error-prone code duplication, we use a macro that expands to a bunch of if statements.
 
-#define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES      \
-    /* method, distance,   input type, indexed type */  \
-    /* Euclidean distance */                           \
-    ((Usearch, L2Squared,    float,      float  ))     \
-    ((Usearch, L2Squared,    uint8_t,    float  ))     \
-    ((Hnswlib, L2Squared,    float,      float  ))     \
-    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))     \
-    /* Cosine similarity */                            \
-    ((Usearch, Cosine,       float,      float  ))     \
-    ((Usearch, Cosine,       uint8_t,    float  ))     \
-    /* Inner product */                                \
-    ((Usearch, InnerProduct, float,      float  ))     \
-    ((Usearch, InnerProduct, uint8_t,    float  ))     \
-    ((Hnswlib, InnerProduct, float,      float  ))     \
+#define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES         \
+    /* method, distance,     input type, indexed type */  \
+    /* Euclidean distance */                              \
+    ((Usearch, L2Squared,    float,      float  ))        \
+    ((Usearch, L2Squared,    uint8_t,    float  ))        \
+    ((Hnswlib, L2Squared,    float,      float  ))        \
+    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))        \
+    /* Cosine similarity */                               \
+    ((Usearch, Cosine,       float,      float  ))        \
+    ((Usearch, Cosine,       uint8_t,    float  ))        \
+    /* Inner product */                                   \
+    ((Usearch, InnerProduct, float,      float  ))        \
+    ((Usearch, InnerProduct, uint8_t,    float  ))        \
+    ((Hnswlib, InnerProduct, float,      float  ))        \
     ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
