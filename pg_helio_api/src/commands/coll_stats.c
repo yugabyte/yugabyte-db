@@ -191,6 +191,14 @@ command_coll_stats_aggregation(PG_FUNCTION_ARGS)
 		{
 			/* This is fine: validate */
 			EnsureTopLevelFieldValueType("$collStats.count", value, BSON_TYPE_DOCUMENT);
+			if (!IsBsonValueEmptyDocument(value))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31170),
+								errmsg("expected an empty object, but got %s",
+									   BsonValueToJsonForLogging(value)),
+								errdetail_log(
+									"expected an empty object for `count` in $collStats")));
+			}
 			aggregateMode |= CollStatsAggMode_Count;
 		}
 		else if (strcmp(key, "queryExecStats") == 0)
