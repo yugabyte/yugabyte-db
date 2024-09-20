@@ -67,8 +67,6 @@ test: bson_aggregation_stage_project_tests
 test: bson_query_projection_operator_expressions_map_tests
 test: bson_query_projection_operator_expressions_tests
 test: bson_type_comparison_tests
-
-
 test: bson_aggregation_arithmetic_operators_tests
 test: bson_aggregation_pipeline_operator_expMovingAvg
 test: bson_aggregation_pipeline_operator_linearFill
@@ -79,3 +77,26 @@ test: bson_aggregation_pipeline_tests_merge_objects_group
 test: bson_aggregation_pipeline_tests
 test: bson_aggregation_stage_inversematch_tests
 test: bson_aggregation_stage_sample_tests
+
+test: bson_aggregation_trigonometric_operators_tests
+test: bson_base_aggregates_tests_runtime
+test: bson_get_indexes_b
+test: bson_order_aggregates_tests
+test: bson_query_index_selection_sharded_tests
+test: bson_query_modifier_orderby_tests_index
+test: bson_query_modifier_orderby_tests_runtime
+test: bson_query_operator_elemmatch_tests_index
+test: bson_query_operator_elemmatch_tests_runtime
+test: bson_query_operator_elemmatch_tests_explain_index
+test: bson_query_operator_elemmatch_tests_explain_runtime
+test: bson_selectivity_index_tests
+test: bson_query_operator_geospatial_multi_tests
+test: bson_query_operator_object_id_tests
+test: bson_query_shard_key_optimization_tests
+test: bson_query_operator_tests_index
+test: bson_query_operator_tests_runtime
+test: bson_update_document_tests
+test: bson_update_positional_all
+test: bson_update_positional_arrayFilters
+test: bson_update_positional_queryFilters
+test: bson_query_operator_geospatial_runtime_validation
