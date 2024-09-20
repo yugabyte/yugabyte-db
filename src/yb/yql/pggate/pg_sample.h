@@ -65,7 +65,8 @@ class PgSamplePicker : public PgSelectIndex {
  public:
   PgSamplePicker(PgSession::ScopedRefPtr pg_session,
                  const PgObjectId& table_id,
-                 bool is_region_local);
+                 bool is_region_local,
+                 HybridTime read_time);
   virtual ~PgSamplePicker();
 
   // Prepare picker
