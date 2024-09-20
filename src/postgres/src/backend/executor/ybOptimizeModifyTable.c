@@ -245,6 +245,7 @@ static void
 YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 						  Bitmapset *updated_cols, Bitmapset **modified_cols,
 						  Bitmapset **unmodified_cols,
+						  bool is_update_optimization_enabled,
 						  bool is_onconflict_update)
 {
 	Bitmapset *trig_cond_cols = NULL;
@@ -253,7 +254,7 @@ YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 	* If the optimization is not enabled, we only need to compare the
 	* columns that are not in the targetlist of the query.
 	*/
-	if (YbIsUpdateOptimizationEnabled())
+	if (is_update_optimization_enabled)
 	{
 		/*
 		 * If the optimization is enabled, we have already compared all the
@@ -472,10 +473,13 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
  * ----------------------------------------------------------------
  */
 void
-YbComputeModifiedColumnsAndSkippableEntities(
-	ModifyTable *plan, ResultRelInfo *resultRelInfo, EState *estate,
-	HeapTuple oldtuple, HeapTuple newtuple, Bitmapset **updated_cols,
-	bool beforeRowUpdateTriggerFired)
+YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
+											 ResultRelInfo *resultRelInfo,
+											 EState *estate,
+											 HeapTuple oldtuple,
+											 HeapTuple newtuple,
+											 Bitmapset **updated_cols,
+											 bool beforeRowUpdateTriggerFired)
 {
 	/*
 	 * InvalidAttrNumber indicates that the whole row is to be changed. This
@@ -516,7 +520,8 @@ YbComputeModifiedColumnsAndSkippableEntities(
 	Bitmapset *unmodified_cols = NULL;
 	Bitmapset *modified_cols = NULL;
 
-	if (YbIsUpdateOptimizationEnabled())
+	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
+	if (mtstate->yb_is_update_optimization_enabled)
 	{
 		YbComputeModifiedEntities(resultRelInfo, oldtuple, newtuple,
 								  &modified_cols, &unmodified_cols,
@@ -528,6 +533,7 @@ YbComputeModifiedColumnsAndSkippableEntities(
 	{
 		YBComputeExtraUpdatedCols(rel, oldtuple, newtuple, *updated_cols,
 								  &modified_cols, &unmodified_cols,
+								  mtstate->yb_is_update_optimization_enabled,
 								  (plan->operation == CMD_INSERT &&
 								   plan->onConflictAction == ONCONFLICT_UPDATE));
 	}

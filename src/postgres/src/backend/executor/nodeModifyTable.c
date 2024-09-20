@@ -2439,7 +2439,7 @@ yb_lreplace:;
 	if (!estate->yb_es_is_single_row_modify_txn)
 	{
 		YbComputeModifiedColumnsAndSkippableEntities(
-			plan, resultRelInfo, estate, oldtuple, tuple,
+			context->mtstate, resultRelInfo, estate, oldtuple, tuple,
 			cols_marked_for_update, beforeRowUpdateTriggerFired);
 	}
 
@@ -4593,6 +4593,19 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		ExecInitResultRelation(estate, mtstate->resultRelInfo,
 							   linitial_int(node->resultRelations));
 	}
+
+	/*
+	 * Check if the planner has passed down any optimization info for UPDATEs.
+	 * There are two scenarios where this may be NULL:
+	 * - There is nothing to optimize.
+	 * - Optimization(s) have been disabled.
+	 * Additionally, lookup the relevant GUCs. The GUCs may have been disabled
+	 * after the query plan was generated (prepared statements for example).
+	 * It is be safe to ignore the planned optimization in such cases.
+	 */
+	mtstate->yb_is_update_optimization_enabled =
+		(node->yb_update_affected_entities != NULL &&
+		 operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled());
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL, node->epqParam);

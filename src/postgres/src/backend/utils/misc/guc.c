@@ -2953,6 +2953,19 @@ static struct config_bool ConfigureNamesBool[] =
 		yb_enable_ash_check_hook, NULL, NULL
 	},
 
+	{
+		{"yb_update_optimization_infra", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables optimizations of YSQL UPDATE queries. This includes "
+						 "(but not limited to) skipping redundant secondary index updates "
+						 "and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_update_optimization_options.is_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4672,7 +4685,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,
-		0, 0, INT_MAX,
+		50, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
