@@ -65,7 +65,7 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       </Box>
       {provider.code !== CloudType.kubernetes && (
         <Box display="flex" width="100%" mt={2}>
-          <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} />
+          <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} isEditMode={!isCreateMode} />
         </Box>
       )}
       {provider.code === CloudType.aws && (

@@ -51,15 +51,20 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled 
   return (
     <Box display="flex" width="100%" data-testid="ConnectionPoolingField-Container">
       <YBTooltip
-        interactive={true}
         title={
-          <Typography className={classes.subText}>
-            {isYSQLEnabled
-              ? isConnectionPoolSupported
-                ? ''
-                : t('universeForm.advancedConfig.conPoolVersionTooltip')
-              : t('universeForm.advancedConfig.conPoolYSQLWarn')}
-          </Typography>
+          isYSQLEnabled ? (
+            isConnectionPoolSupported ? (
+              ''
+            ) : (
+              <Typography className={classes.subText}>
+                {t('universeForm.advancedConfig.conPoolVersionTooltip')}
+              </Typography>
+            )
+          ) : (
+            <Typography className={classes.subText}>
+              {t('universeForm.advancedConfig.conPoolYSQLWarn')}
+            </Typography>
+          )
         }
       >
         <div>
