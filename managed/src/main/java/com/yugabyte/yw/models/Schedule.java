@@ -204,6 +204,10 @@ public class Schedule extends Model {
   @ApiModelProperty(value = "Cron expression for the schedule")
   private String cronExpression;
 
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Whether to use local timezone with cron expression for the schedule")
+  private boolean useLocalTimezone = true;
+
   @ApiModelProperty(value = "Name of the schedule", accessMode = READ_ONLY)
   @Column(nullable = false)
   private String scheduleName;
@@ -476,6 +480,7 @@ public class Schedule extends Model {
               TaskType.CreateBackup,
               scheduleParams.schedulingFrequency,
               scheduleParams.cronExpression,
+              scheduleParams.useLocalTimezone,
               scheduleParams.frequencyTimeUnit,
               scheduleParams.scheduleName,
               State.Creating);
@@ -492,6 +497,7 @@ public class Schedule extends Model {
       TaskType taskType,
       long frequency,
       String cronExpression,
+      boolean useLocalTimezone,
       TimeUnit frequencyTimeUnit,
       String scheduleName) {
     return create(
@@ -501,6 +507,7 @@ public class Schedule extends Model {
         taskType,
         frequency,
         cronExpression,
+        useLocalTimezone,
         frequencyTimeUnit,
         scheduleName,
         State.Active);
@@ -513,6 +520,7 @@ public class Schedule extends Model {
       TaskType taskType,
       long frequency,
       String cronExpression,
+      boolean useLocalTimezone,
       TimeUnit frequencyTimeUnit,
       String scheduleName,
       State status) {
@@ -525,6 +533,7 @@ public class Schedule extends Model {
     schedule.frequency = frequency;
     schedule.status = status;
     schedule.cronExpression = cronExpression;
+    schedule.setUseLocalTimezone(useLocalTimezone);
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
     schedule.userEmail = Util.maybeGetEmailFromContext();
@@ -555,6 +564,7 @@ public class Schedule extends Model {
         taskType,
         frequency,
         cronExpression,
+        true /* useLocalTimezone */,
         frequencyTimeUnit,
         null);
   }
@@ -839,7 +849,7 @@ public class Schedule extends Model {
       CronParser unixCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
       ExecutionTime executionTime =
           ExecutionTime.forCron(unixCronParser.parse(this.cronExpression));
-      ZoneId defaultZoneId = ZoneId.systemDefault();
+      ZoneId defaultZoneId = this.isUseLocalTimezone() ? ZoneId.systemDefault() : ZoneId.of("UTC");
       Instant instant = lastScheduledTime.toInstant();
       ZonedDateTime zonedDateTime = instant.atZone(defaultZoneId);
       Duration duration = executionTime.timeToNextExecution(zonedDateTime).get();

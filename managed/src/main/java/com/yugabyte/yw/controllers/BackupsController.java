@@ -419,6 +419,7 @@ public class BackupsController extends AuthenticatedController {
             TaskType.CreateBackup,
             taskParams.schedulingFrequency,
             taskParams.cronExpression,
+            taskParams.useLocalTimezone,
             taskParams.frequencyTimeUnit,
             taskParams.scheduleName);
     UUID scheduleUUID = schedule.getScheduleUUID();
