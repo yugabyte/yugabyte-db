@@ -1037,7 +1037,16 @@ bson_derivative_transition(PG_FUNCTION_ARGS)
 		{
 			currentState->anchorX = xValueElement.bsonValue;
 		}
-		currentState->anchorY = yValueElement.bsonValue;
+		if (yValueElement.bsonValue.value_type == BSON_TYPE_DATE_TIME)
+		{
+			currentState->anchorY.value_type = BSON_TYPE_DOUBLE;
+			currentState->anchorY.value.v_double = BsonValueAsDouble(
+				&yValueElement.bsonValue);
+		}
+		else
+		{
+			currentState->anchorY = yValueElement.bsonValue;
+		}
 
 		/* We have the first document in state and the second incoming document
 		 * it's ready to calculate the derivative */
@@ -2091,6 +2100,11 @@ HandleIntegralDerivative(bson_value_t *xBsonValue, bson_value_t *yBsonValue,
 		xValue.value_type = BSON_TYPE_DOUBLE;
 		xValue.value.v_double = BsonValueAsDouble(xBsonValue);
 	}
+	if (yBsonValue->value_type == BSON_TYPE_DATE_TIME)
+	{
+		yValue.value_type = BSON_TYPE_DOUBLE;
+		yValue.value.v_double = BsonValueAsDouble(yBsonValue);
+	}
 
 	/* Calculation status */
 	bool success = isIntegralOperator ?
@@ -2170,12 +2184,13 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 	/* if unit is not specified and x is a date, throw an error */
 	else if (!timeUnitInt64 && xBsonValue->value_type == BSON_TYPE_DATE_TIME)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429513), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5429413), errmsg(
 							"For windows that involve date or time ranges, a unit must be provided.")));
 	}
 
-	/* y must be a number */
-	if (!BsonTypeIsNumber(yBsonValue->value_type))
+	/* y must be a number or valid date time*/
+	if (!(BsonTypeIsNumber(yBsonValue->value_type) ||
+		  yBsonValue->value_type == BSON_TYPE_DATE_TIME))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5423900),
 						errmsg(
@@ -2253,6 +2268,13 @@ DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
 	success &= SubtractNumberFromBsonValue(yValue, &stateYValue, &overflowedFromInt64);
 
 	/* get derivative */
+	if ((xValue->value_type == BSON_TYPE_DOUBLE && xValue->value.v_double == 0.0) ||
+		(xValue->value_type == BSON_TYPE_DECIMAL128 && IsDecimal128Zero(xValue)))
+	{
+		currentState->result.value_type = BSON_TYPE_NULL;
+		return success;
+	}
+
 	success &= DivideBsonValueNumbers(yValue, xValue);
 	currentState->result = *yValue;
 	return success;
