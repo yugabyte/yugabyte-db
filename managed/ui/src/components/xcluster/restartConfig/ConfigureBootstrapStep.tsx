@@ -33,10 +33,11 @@ export const ConfigureBootstrapStep = ({
   storageConfigUuid
 }: ConfigureBootstrapStepProps) => {
   const { t } = useTranslation('translation');
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName =
     storageConfigs?.find((storageConfig) => storageConfig.configUUID === storageConfigUuid)

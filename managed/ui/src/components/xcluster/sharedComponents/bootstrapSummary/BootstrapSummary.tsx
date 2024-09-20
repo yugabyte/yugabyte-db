@@ -99,10 +99,11 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   );
 
   // Looking up storage config name for DR UI only.
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName = props.isDrInterface
     ? storageConfigs?.find((storageConfig) => storageConfig.configUUID === props.storageConfigUuid)

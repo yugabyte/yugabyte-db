@@ -50,10 +50,11 @@ const TRANSLATION_KEY_PREFIX = 'storageConfig';
 export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
   props: Optional<YBReactSelectFieldProps<TFieldValues>, 'options'>
 ) => {
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const theme = useTheme();
   /**
