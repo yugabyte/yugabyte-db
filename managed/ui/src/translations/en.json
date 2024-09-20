@@ -39,7 +39,8 @@
       "endDate": "End Date",
       "dot": ".",
       "and": "and",
-      "learnMore": "Learn more"
+      "learnMore": "Learn more",
+      "reminder": "Reminder"
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -207,9 +208,18 @@
         "toggleLabel": "Enhanced Postgres Compatibility",
         "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
         "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "enableWarningRF1": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart.",
         "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
         "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
-        "disableWarning3": "May impact performance."
+        "disableWarning3": "May impact performance.",
+        "disableWarning1RF1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong> and may impact performance.",
+        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
+        "analyzeModal": {
+          "msg1": "Enabling Enhanced Postgres Compatibility also enables the <strong>Cost Based Optimizer (CBO).</strong>",
+          "msg2": "You must run",
+          "msg3": "on user tables after data load for the CBO to create optimal execution plans.",
+          "learnLink": "Learn more about ANALYZE"
+        }
       }
     },
     "commonErrors": {
@@ -272,8 +282,8 @@
         "ysqlServerRpcPort": "YSQL RPC Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
-        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",

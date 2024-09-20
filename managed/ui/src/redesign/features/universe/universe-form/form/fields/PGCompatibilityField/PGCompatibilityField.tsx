@@ -1,9 +1,10 @@
-import { FC } from 'react';
+import { FC, useState } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
 import { Box, makeStyles, Typography, Link } from '@material-ui/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { YBToggleField, YBLabel, YBTooltip } from '../../../../../../components';
+import { AnalyzeDialog } from '../../../../universe-actions/edit-pg-compatibility/AnalyzeDialog';
 import { isVersionPGSupported } from '../../../utils/helpers';
 import { UniverseFormData } from '../../../utils/dto';
 import { PG_COMPATIBILITY_FIELD, SOFTWARE_VERSION_FIELD } from '../../../utils/constants';
@@ -41,11 +42,13 @@ const useStyles = makeStyles((theme) => ({
 
 export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
+  const [openAnalyzeModal, setAnalyzeModal] = useState(false);
   const classes = useStyles();
   const { t } = useTranslation();
 
   //watchers
   const dbVersionValue = useWatch({ name: SOFTWARE_VERSION_FIELD });
+  const pgValue = useWatch({ name: PG_COMPATIBILITY_FIELD });
 
   const isPGSupported = isVersionPGSupported(dbVersionValue);
 
@@ -53,6 +56,10 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
     //set toggle to false if unsupported db version is selected
     if (!isVersionPGSupported(dbVersionValue)) setValue(PG_COMPATIBILITY_FIELD, false);
   }, [dbVersionValue]);
+
+  useUpdateEffect(() => {
+    if (pgValue) setAnalyzeModal(true);
+  }, [pgValue]);
 
   return (
     <Box display="flex" width="100%" data-testid="PGCompatibiltyField-Container">
@@ -65,7 +72,12 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
             <Typography className={classes.subText}>
               <Trans>
                 {t('universeForm.advancedConfig.pgTooltip')}
-                {/* <Link underline="always" className={classes.linkText}></Link> */}
+                <Link
+                  underline="always"
+                  href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                  className={classes.linkText}
+                  target="_blank"
+                ></Link>
               </Trans>
             </Typography>
           )
@@ -91,11 +103,17 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
           <Typography className={classes.subText}>
             <Trans>
               {t('universeForm.advancedConfig.pgSubText')}
-              {/* <Link underline="always" className={classes.linkText}></Link> */}
+              <Link
+                underline="always"
+                href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                className={classes.linkText}
+                target="_blank"
+              ></Link>
             </Trans>
           </Typography>
         </Box>
       </Box>
+      <AnalyzeDialog open={openAnalyzeModal} onClose={() => setAnalyzeModal(false)} />
     </Box>
   );
 };
