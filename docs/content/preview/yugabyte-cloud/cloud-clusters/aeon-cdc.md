@@ -26,7 +26,7 @@ You can use change data capture with YugabyteDB Aeon clusters to capture changes
 
 - Customer Kafka environment
 
-  - Confluent Cloud or AWS MSK Connect or Self Hosted Kafka (explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector)
+  - [Self-managed Kafka](explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as Confluent Cloud or AWS MSK Connect.
 
 - [YugabyteDB Connector v2.5.2](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1)
 
@@ -36,9 +36,16 @@ You can use change data capture with YugabyteDB Aeon clusters to capture changes
 
 By default, you have a maximum of two active replication slots. If you need more slots, contact YugabyteDB Support.
 
-## Configure YugabyteDB Connector
+## Configure change data capture
 
-YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, configure the YugabyteDB connector using a JSON file containing the connector configuration properties, including the connection parameters for your YugabyteDB Aeon cluster.
+YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, first configure the YugabyteDB connector settings using a JSON file containing the connector configuration properties, including the connection parameters for your YugabyteDB Aeon cluster.
+
+### Create Kafka topics
+
+If auto creation of topics is not enabled in the Kafka Connect cluster then you need to create the following topics in Kafka manually:
+
+- Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`.
+- Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The `topic.heartbeat.prefix` has a default value of `__debezium-heartbeat`.
 
 ### Configure the connector
 
@@ -55,7 +62,7 @@ The following example shows the required and common properties:
         "publication.autocreate.mode": "filtered",
         "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
         "database.dbname": "yugabyte",
-        "database.hostname": "us-west1.35263f18-0233-418a-8256-a40d075ffcde.gcp.ybdb.io",
+        "database.hostname": "<cluster-hostname>",
         "database.port": "5433",
         "database.user": "admin",
         "database.password": "P@ssw0rd",
@@ -107,6 +114,13 @@ For more details on deploying and configuring the connector, refer to the [Yugab
       Amazon MSK
     </a>
   </li>
+  <li >
+    <a href="#self" class="nav-link" id="self-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="self" aria-selected="false">
+      <i class="icon-kafka" aria-hidden="true"></i>
+      Self managed
+    </a>
+  </li>
 </ul>
 <div class="tab-content">
   <div id="confluent" class="tab-pane fade show active" role="tabpanel" aria-labelledby="confluent-tab">
@@ -115,7 +129,7 @@ To stream data change events from YugabyteDB databases, register the YugabyteDB 
 
 To create a plugin:
 
-1. In Confluent Cloud, navigate to your Kafka cluster, select **Topics**, and click **Add Plugin**.
+1. In Confluent Cloud, navigate to your Kafka cluster, select **Connectors**, and click **Add Plugin**.
 1. Enter a name and description for the plugin.
 1. Set **Connector class** to `io.debezium.connector.postgresql.YugabyteDBConnector`.
 1. Set **Connector type** to **Source**.
@@ -138,12 +152,31 @@ After the connector starts, it performs a consistent snapshot of the YugabyteDB 
 AWS MSK instructions
 
   </div>
+  <div id="self" class="tab-pane fade" role="tabpanel" aria-labelledby="self-tab">
+
+AWS MSK instructions
+
+  </div>
 </div>
 
 ## Monitor
 
-- Service side - YBM - new charts
-- Connector side - CC or AWS MSK
+- Service side - YBM - new charts and views explore/change-data-capture/using-logical-replication/monitor/
+
+Add queries for views - esp pg_publication_tables + pg_replication_slots
+
+```sh
+yugabyte=> select * from pg_replication_slots;
+```
+
+```output
+      slot_name      |  plugin  | slot_type | datoid | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn |           yb_stream_id           | yb_restart_commit_ht 
+---------------------+----------+-----------+--------+----------+-----------+--------+------------+------+--------------+-------------+---------------------+----------------------------------+----------------------
+ yb_replication_slot | yboutput | logical   |  13251 | yugabyte | f         | f      |            |    7 |            7 | 0/EA79      | 0/EA7A              | 0dc62aec28106aa8ba494b620769ec69 |  7072030957220536320
+(1 row)
+```
+
+If you are using a managed Kafka service, you can also monitor from the connector side.
 
 ## Manage CDC
 
