@@ -918,7 +918,7 @@ message SysTServerEntryPB {
     UNSPECIFIED = 0;
     // TServer may be live. Clients need to check the in-memory last heartbeat time to be sure the
     // TServer has heartbeated recently.
-    MAYBE_LIVE = 1;
+    LIVE = 1;
     // TServer has not heartbeated recently.
     UNRESPONSIVE = 2;
     // Another tserver which started more recently has registered with a conflicting

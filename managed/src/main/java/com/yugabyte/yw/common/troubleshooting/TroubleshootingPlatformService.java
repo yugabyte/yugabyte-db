@@ -70,6 +70,9 @@ public class TroubleshootingPlatformService {
     }
 
     validate(troubleshootingPlatform);
+    troubleshootingPlatform.setTpUrl(normalizeUrl(troubleshootingPlatform.getTpUrl()));
+    troubleshootingPlatform.setMetricsUrl(normalizeUrl(troubleshootingPlatform.getMetricsUrl()));
+    troubleshootingPlatform.setYbaUrl(normalizeUrl(troubleshootingPlatform.getYbaUrl()));
     client.putCustomerMetadata(troubleshootingPlatform);
     if (isUpdate) {
       troubleshootingPlatform.update();
@@ -167,5 +170,12 @@ public class TroubleshootingPlatformService {
           .forField("tpUrl", "platform with such url already exists.")
           .throwError();
     }
+  }
+
+  private String normalizeUrl(String url) {
+    if (url.endsWith("/")) {
+      return url.substring(0, url.length() - 1);
+    }
+    return url;
   }
 }

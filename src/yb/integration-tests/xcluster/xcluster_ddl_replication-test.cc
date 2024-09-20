@@ -209,7 +209,7 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().tables_size(), 3);  // ddl_queue + base_table + index
+    EXPECT_EQ(resp.entry().tables_size(), 4);  // ddl_queue + base_table + index + sequences_data
   }
   ASSERT_TRUE(ASSERT_RESULT(c_conn.HasIndexScan(kCol2CountStmt)));
 

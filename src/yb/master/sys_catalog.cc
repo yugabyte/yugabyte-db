@@ -169,33 +169,33 @@ std::string SysCatalogTable::schema_column_id() { return kSysCatalogTableColId; 
 
 std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableColMetadata; }
 
-SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
-                                 ElectedLeaderCallback leader_cb)
+SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
           kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, BuildTableSchema(),
           kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
-      master_(master),
-      leader_cb_(std::move(leader_cb)) {
-  CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
-  CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+      master_(master) {}
+
+SysCatalogTable::~SysCatalogTable() {}
+
+Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
+  leader_cb_ = std::move(leader_cb);
+  RETURN_NOT_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
     .name = "raft_notifications",
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
-  CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
-  CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
-  CHECK_OK(ThreadPoolBuilder("log-sync")
-              .set_min_threads(1).Build(&log_sync_pool_));
-  CHECK_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("log-sync").set_min_threads(1).Build(&log_sync_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
 
   setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
   peer_write_count = METRIC_sys_catalog_peer_write_count.Instantiate(metric_entity_);
-}
-
-SysCatalogTable::~SysCatalogTable() {
+  return Status::OK();
 }
 
 void SysCatalogTable::StartShutdown() {

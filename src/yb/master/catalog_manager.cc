@@ -82,13 +82,13 @@
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -925,8 +925,9 @@ std::vector<scoped_refptr<NamespaceInfo>> CatalogManager::NamespaceNameMapper::G
   return result;
 }
 
-CatalogManager::CatalogManager(Master* master)
+CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
     : master_(DCHECK_NOTNULL(master)),
+      sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
       tablet_exists_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -946,12 +947,8 @@ CatalogManager::CatalogManager(Master* master)
                .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
-
-  sys_catalog_.reset(new SysCatalogTable(
-      master_, master_->metric_registry(),
-      Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
-
-  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
+  CHECK_OK(sys_catalog_->Start(Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
+  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
 }
 
 CatalogManager::~CatalogManager() {
@@ -1373,7 +1370,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
       // need to do a one-time migration to make YSQL system catalog tables transactional.
       RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
-          tables_->GetAllTables(), sys_catalog_.get(), ysql_catalog_config_.get(), state->epoch));
+          tables_->GetAllTables(), sys_catalog_, ysql_catalog_config_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
   return Status::OK();
@@ -1475,6 +1472,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
+  RETURN_NOT_OK(master_->ts_manager()->RunLoader());
 
   return Status::OK();
 }
@@ -3679,7 +3677,7 @@ namespace {
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
   return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
-} // namespace
+}  // namespace
 
 Status CatalogManager::CanAddPartitionsToTable(
     size_t desired_partitions, const PlacementInfoPB& placement_info) {
@@ -3880,18 +3878,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Get placement info.
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
-  const PlacementInfoPB& placement_info = replication_info.live_replicas();
+  // Whether the table is joining an existing colocation group, in other words it is a colocated
+  // non-parent table. Such tables will reuse tablets of their respective colocation group.
+  bool joining_colocation_group =
+      colocated && !IsColocationParentTableId(req.table_id());
 
-  int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
-  Status s = CanAddPartitionsToTable(num_tablets, placement_info);
-  if (s.ok()) {
+  int num_tablets = VERIFY_RESULT(
+      CalculateNumTabletsForTableCreation(req, schema, replication_info.live_replicas()));
+  auto s = CanAddPartitionsToTable(num_tablets, replication_info.live_replicas());
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+  }
+  if (!joining_colocation_group) {
     s = CanSupportAdditionalTabletsForTableCreation(
         num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
-  }
-  if (!s.ok()) {
-    LOG(WARNING) << s;
-    IncrementCounter(metric_create_table_too_many_tablets_);
-    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+    if (!s.ok()) {
+      IncrementCounter(metric_create_table_too_many_tablets_);
+      return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+    }
   }
   const auto [partition_schema, partitions] =
       VERIFY_RESULT(CreatePartitions(schema, num_tablets, colocated, &req, resp));
@@ -3947,13 +3951,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
 
-  // Whether the table is joining an existing colocation group - i.e. is a
-  // colocated non-parent table.
-  // Such tables will reuse tablets of their respective colocation group.
-  bool joining_colocation_group =
-      colocated && !IsColocationParentTableId(req.table_id());
   TabletInfoPtr colocated_tablet = nullptr;
-
   {
     UniqueLock lock(mutex_);
     auto ns_lock = ns->LockForRead();
@@ -3968,6 +3966,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // requests containing same table id to master.
     // (3) two concurrent CREATE TABLEs using the same fully qualified name cannot both succeed
     // because of the pg_class unique index on the qualified name.
+    Status s = Status::OK();
     if (req.table_type() == PGSQL_TABLE_TYPE) {
       table = tables_->FindTableOrNull(req.table_id());
       // We rarely remove deleted entries from tables_, so it is necessary to check if TableInfoPtr
@@ -4392,7 +4391,7 @@ void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
     WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, false /* ddl_atomicity_enabled */);
 }
 
@@ -8600,7 +8599,7 @@ void CatalogManager::ScheduleVerifyNamespacePgLayer(
     WARN_NOT_OK(VerifyNamespacePgLayer(ns, result, epoch), "VerifyNamespacePgLayer");
   };
   NamespaceVerificationTask::CreateAndStartTask(
-      *this, ns, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, ns, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch);
 }
 
@@ -9820,7 +9819,8 @@ Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate() {
   return Status::OK();
 }
 
-Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {
+Status CatalogManager::RegisterTsFromRaftConfig(
+    const consensus::RaftPeerPB& peer, const LeaderEpoch& epoch) {
   NodeInstancePB instance_pb;
   instance_pb.set_permanent_uuid(peer.permanent_uuid());
   instance_pb.set_instance_seqno(0);
@@ -9843,7 +9843,7 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
     common->set_placement_uuid(placement_uuid);
   }
   return master_->ts_manager()->RegisterFromRaftConfig(
-      instance_pb, registration_pb, master_->MakeCloudInfoPB(), &master_->proxy_cache());
+      instance_pb, registration_pb, master_->MakeCloudInfoPB(), epoch, &master_->proxy_cache());
 }
 
 Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const TabletId& tablet_id) const {
@@ -12694,12 +12694,9 @@ Status CatalogManager::PromoteTableToRunningState(
       l.mutable_data()->IsPreparing(), IllegalState,
       "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),
       l.mutable_data()->pb.state());
-
   l.mutable_data()->pb.set_state(SysTablesEntryPB::RUNNING);
   RETURN_NOT_OK_PREPEND(
-                        sys_catalog_->Upsert(epoch, table_info.get()),
-      "Promote table to RUNNING state");
-
+      sys_catalog_->Upsert(epoch, table_info.get()), "Promote table to RUNNING state");
   l.Commit();
   return Status::OK();
 }

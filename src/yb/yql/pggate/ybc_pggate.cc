@@ -838,6 +838,11 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
+void YBCPgAlterTableInvalidateTableByOid(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_relfilenode_oid));
+}
+
 // Tablegroup Operations ---------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
@@ -2625,6 +2630,42 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
         .partition_key_start_len = tablet.partition().partition_key_start().size(),
         .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
         .partition_key_end_len = tablet.partition().partition_key_end().size(),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_t* count) {
+  const auto result = pgapi->ServersMetrics();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& servers_metrics = result.get().servers_metrics();
+  *count = servers_metrics.size();
+  if (!servers_metrics.empty()) {
+    *servers_metrics_info = static_cast<YBCPgServerMetricsInfo*>(
+        YBCPAlloc(sizeof(YBCPgServerMetricsInfo) * servers_metrics.size()));
+    YBCPgServerMetricsInfo* dest = *servers_metrics_info;
+    for (const auto& server_metrics_info : servers_metrics) {
+      size_t metrics_count = server_metrics_info.metrics().size();
+      YBCMetricsInfo* metrics =
+          static_cast<YBCMetricsInfo*>(
+              YBCPAlloc(sizeof(YBCMetricsInfo) * metrics_count));
+
+      int metrics_idx = 0;
+      for (const auto& metrics_info : server_metrics_info.metrics()) {
+        metrics[metrics_idx].name = YBCPAllocStdString(metrics_info.name());
+        metrics[metrics_idx].value = YBCPAllocStdString(metrics_info.value());
+        metrics_idx++;
+      }
+      new (dest) YBCPgServerMetricsInfo {
+        .uuid = YBCPAllocStdString(server_metrics_info.uuid()),
+        .metrics = metrics,
+        .metrics_count = metrics_count,
+        .status = YBCPAllocStdString(PgMetricsInfoStatus_Name(server_metrics_info.status())),
+        .error = YBCPAllocStdString(server_metrics_info.error()),
       };
       ++dest;
     }

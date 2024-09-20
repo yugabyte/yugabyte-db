@@ -42,14 +42,4 @@ class UsearchIndex : public VectorIndexBase<
   using Impl = detail::UsearchIndexImpl<Vector, DistanceResult>;
 };
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
- public:
-  UsearchIndexFactory() = default;
-
-  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    return std::make_unique<UsearchIndex<Vector, DistanceResult>>(this->hnsw_options_);
-  }
-};
-
 }  // namespace yb::vectorindex
