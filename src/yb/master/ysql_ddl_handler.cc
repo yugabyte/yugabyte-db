@@ -128,7 +128,7 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
   ysql_ddl_txn_verfication_state_map_.emplace(txn.transaction_id,
       YsqlDdlTransactionState{TxnState::kUnknown,
                               YsqlDdlVerificationState::kDdlInProgress,
-                              {table}, {} /* processed_tables */});
+                              {table}, {} /* processed_tables */, {} /* nochange_tables */});
   return true;
 }
 
@@ -174,10 +174,11 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
         table->ToString(), txn, is_committed.status());
   }
 
-  return YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
+  return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
-Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
+Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
+                                                  const string& pb_txn_id,
                                                   std::optional<bool> is_committed,
                                                   const LeaderEpoch& epoch,
                                                   const std::string& debug_caller_info) {
@@ -238,6 +239,30 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
     }
     tables = verifier_state->tables;
     processed_tables = verifier_state->processed_tables;
+    if (txn_state == TxnState::kNoChange) {
+      DCHECK(table);
+      verifier_state->nochange_tables.insert(table->id());
+    }
+
+    // If we have used a table whose schema does not change for schema comparison, then we
+    // cannot decide whether the transaction is committed or aborted. All we can tell is that
+    // the transaction is terminated. In this case, if there are more tables in this
+    // transaction, we should try to use another table to do the schema comparison.
+    // For example, a DDL like "alter table mytable add constraint x_unique unique(x)"
+    // does not change the table mytable's DocDB schema, but it creates a new index
+    // x_unique in DocDB. We cannot use mytable to decide whether the transaction has
+    // committed or aborted, but we can use x_uniqe for that purpose.
+    if (!is_committed.has_value() &&
+      // Try to find a table that may have its schema changed before/after the DDL.
+        std::find_if(
+          tables.cbegin(), tables.cend(), [verifier_state](const TableInfoPtr& table) {
+            return !verifier_state->nochange_tables.contains(table->id());
+          }) != tables.cend()) {
+      // Set to kDdlPostProcessingFailed so we can restart the verification task next time,
+      // where we will try to choose a different table.
+      UpdateDdlVerificationStateUnlocked(txn, YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      return Status::OK();
+    }
   }
 
   bool ddl_verification_success = true;
@@ -300,7 +325,10 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
       "Received ReportYsqlDdlTxnStatus request without transaction id");
-  return YsqlDdlTxnCompleteCallback(req_txn, req->is_committed(), epoch, __FUNCTION__);
+  // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
+  // needed.
+  return YsqlDdlTxnCompleteCallback(nullptr /* table */, req_txn, req->is_committed(),
+                                    epoch, __FUNCTION__);
 }
 
 struct YsqlTableDdlTxnState {
@@ -549,14 +577,18 @@ Status CatalogManager::IsYsqlDdlVerificationDone(
   return Status::OK();
 }
 
-void CatalogManager::UpdateDdlVerificationState(const TransactionId& txn,
-                                                YsqlDdlVerificationState state) {
-  LockGuard lock(ddl_txn_verifier_mutex_);
+void CatalogManager::UpdateDdlVerificationStateUnlocked(const TransactionId& txn,
+                                                        YsqlDdlVerificationState state) {
   auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
   if (verifier_state) {
     LOG(INFO) << "Updating the verification state for " << txn << " to " << state;
     verifier_state->state = state;
   }
+}
+void CatalogManager::UpdateDdlVerificationState(const TransactionId& txn,
+                                                YsqlDdlVerificationState state) {
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  UpdateDdlVerificationStateUnlocked(txn, state);
 }
 
 void CatalogManager::RemoveDdlTransactionStateUnlocked(
@@ -616,11 +648,23 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       return Status::OK();
     }
 
-    if (verifier_state->txn_state != TxnState::kUnknown) {
-      // We already know whether this transaction is a success or a failure. We don't need to poll
-      // the transaction coordinator at this point. We can simply invoke post DDL verification
-      // directly.
-      const bool is_committed = verifier_state->txn_state == TxnState::kCommitted;
+    if (verifier_state->txn_state == TxnState::kCommitted  ||
+        verifier_state->txn_state == TxnState::kAborted ||
+        (verifier_state->txn_state == TxnState::kNoChange && verifier_state->tables.size() == 1)) {
+      // (1) For kCommitted and kAborted, we already know whether this transaction is a success or
+      // a failure.
+      // (2) For kNoChange, if there is only one table involved then we know its DocDB
+      // schema does not change so whether we treat it as kCommitted or kAborted does not matter.
+      // In both cases, we don't need to poll the transaction coordinator at this point. We can
+      // simply invoke post DDL verification directly.
+      // When txn_state is kNoChange and there are multiple tables involved, we want to use
+      // another table to do schema comparison which can yield kCommitted or kAborted.
+      std::optional<bool> is_committed = std::nullopt;
+      if (verifier_state->txn_state == TxnState::kCommitted) {
+        is_committed = true;
+      } else if (verifier_state->txn_state == TxnState::kAborted) {
+        is_committed = false;
+      }
       string pb_txn_id;
       vector<TableId> table_ids;
       for (const auto& table : verifier_state->tables) {
@@ -661,7 +705,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
         }
         return background_tasks_thread_pool_->SubmitFunc(
           [this, table, pb_txn_id, is_committed, epoch, debug_caller_info = __FUNCTION__]() {
-              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch,
+              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed, epoch,
                                                      debug_caller_info),
                           Format("YsqlDdlTxnCompleteCallback failed, table: $0",
                                  table->id()));
@@ -673,7 +717,20 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
               << " or have a new txn_id";
       return Status::OK();
     }
-    table = verifier_state->tables.front();
+    // Pick a table that is not in nochange_tables.
+    for (size_t index = 0; index < verifier_state->tables.size(); ++index) {
+      table = verifier_state->tables[index];
+      if (!verifier_state->nochange_tables.contains(table->id())) {
+        VLOG(3) << "Picked table at index " << index << " out of "
+                << verifier_state->tables.size();
+        break;
+      }
+    }
+    // If none of the tables have schema change, pick the first table and use it
+    // to complete the transaction.
+    if (!table) {
+      table = verifier_state->tables.front();
+    }
   }
 
   // Schedule transaction verification.
