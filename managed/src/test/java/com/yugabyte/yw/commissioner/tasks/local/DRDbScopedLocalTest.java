@@ -216,7 +216,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  //  @Test
+  @Test
   public void testDrDbScopedUpdate() throws InterruptedException {
     Universe sourceUniverse =
         createDRUniverse(DB_SCOPED_STABLE_VERSION, "source-universe", true, 1, 1);
@@ -298,8 +298,14 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
 
+    // Need to wait for masters to propagate dropping of db1 to tservers, which will take 1-2
+    // seconds.
+    Thread.sleep(5000);
+
+    // Validate rows are not replicated to target universe.
     insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
     validateRowCount(targetUniverse, table1, 1 /* expectedRows */);
+    validateNotExpectedRowCount(targetUniverse, table1, 2 /* notExpectedRows */);
 
     insertRow(sourceUniverse, table2, Map.of("id", "12", "name", "'val12'"));
     validateRowCount(targetUniverse, table2, 2 /* expectedRows */);

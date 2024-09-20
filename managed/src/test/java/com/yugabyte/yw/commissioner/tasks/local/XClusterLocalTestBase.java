@@ -163,6 +163,31 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     }
   }
 
+  // Validates that the number of rows never becomes notExpectedRows.
+  public void validateNotExpectedRowCount(Universe universe, Table table, int notExpectedRows) {
+    assertNotEquals(-1, notExpectedRows);
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              try {
+                int rowCount = getRowCount(universe, table);
+                log.debug("row count: {}", rowCount);
+                return rowCount;
+              } catch (Exception e) {
+                log.error(e.getMessage());
+                return -1;
+              }
+            },
+            rowCount -> rowCount == notExpectedRows);
+    boolean success = condition.retryUntilCond(1 /* delayBetweenRetrySecs */, 10 /* timeoutSecs */);
+    if (success) {
+      throw new RuntimeException(
+          String.format(
+              "Got number of rows we did not expect: %d for table %s.",
+              notExpectedRows, table.name));
+    }
+  }
+
   public void createDatabase(Universe universe, Db db) {
     NodeDetails node = getLiveNode(universe);
     String query = String.format("create database %s with colocation = %b", db.name, db.colocation);
