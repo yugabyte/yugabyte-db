@@ -145,10 +145,8 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     If you are using a RHEL CIS hardened image and want SSH access to database nodes, you need to manually add the `yugabyte` user to `sshd_config`.
 
     ```sh
-    add_cmd = (
-            f"sudo sed -i '/^AllowUsers / s/$/ yugabyte/' /etc/ssh/sshd_config && "
-            "sudo systemctl restart sshd"
-        )
+    sudo sed -i '/^AllowUsers / s/$/ yugabyte/' /etc/ssh/sshd_config
+    sudo systemctl restart sshd
     ```
 
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
