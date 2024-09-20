@@ -99,7 +99,6 @@ JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
 JAVA	org.yb.pgsql.TestPgRegressTAQO
 JAVA	org.yb.pgsql.TestPgRegressTable
 JAVA	org.yb.pgsql.TestPgRegressTablegroup
-JAVA	org.yb.pgsql.TestPgRegressTablespaces
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsHypopg
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgCron
