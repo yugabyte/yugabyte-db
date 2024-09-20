@@ -33,7 +33,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,16 +40,11 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
-import org.yb.master.CatalogEntityInfo;
 import org.yb.util.ServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
-@Slf4j
 public class MasterFailoverTaskTest extends CommissionerBaseTest {
 
   private MockedStatic<MetricGroup> mockedMetricGroup;
@@ -117,20 +111,13 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
-
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
-        new ChangeMasterClusterConfigResponse(1112, "", null);
-    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
-        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
     ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     ServerInfo mockServerInfo =
         new ServerInfo(
             "uuid-1", "10.0.0.4", 7000, false, "TO_BE_ADDED", CommonTypes.PeerRole.FOLLOWER);
-    List<ServerInfo> mockerServerInfoList = new ArrayList();
+    List<ServerInfo> mockerServerInfoList = new ArrayList<>();
     mockerServerInfoList.add(mockServerInfo);
     mockedMetricGroup = Mockito.mockStatic(MetricGroup.class);
     mockedMetricGroup

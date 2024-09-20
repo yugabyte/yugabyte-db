@@ -68,6 +68,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
+  private YBClient mockClient = mock(YBClient.class);
+
   @Override
   @Before
   public void setUp() {
@@ -80,7 +82,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "2.21.1.1-b1";
-    userIntent.numNodes = 3;
+    userIntent.numNodes = 4;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
@@ -89,6 +91,15 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              NodeDetails node1 = u.getNode("host-n1");
+              NodeDetails node2 = u.getNode("host-n4");
+              node2.cloudInfo.az = node1.cloudInfo.az;
+              node2.cloudInfo.region = node1.cloudInfo.region;
+            });
 
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
@@ -111,8 +122,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
-
-    YBClient mockClient = mock(YBClient.class);
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
     try {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
@@ -130,16 +141,19 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
     } catch (Exception e) {
       fail();
     }
 
+    setFollowerLagMock();
     setUnderReplicatedTabletsMock();
     setLeaderlessTabletsMock();
     setCheckNodesAreSafeToTakeDown(mockClient);
@@ -147,8 +161,19 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
+  private void mockListMastersForChangeConfig() {
+    List<String> masters =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.nodeName.equals("host-n1"))
+            .filter(n -> n.isMaster || n.nodeName.equals("host-n4"))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masters);
+  }
+
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = -1;
     taskParams.nodeName = nodeName;
     try {
       UUID taskUUID = commissioner.submit(TaskType.StopNodeInUniverse, taskParams);
@@ -255,7 +280,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -282,7 +306,81 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
+  private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER_REPLACE =
+      ImmutableList.of(
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
+          TaskType.ModifyBlackList,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.ModifyBlackList,
+          TaskType.UpdateNodeProcess,
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
+          TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
+          TaskType.SetNodeState,
+          TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
+
+  private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_REPLACE_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("state", "Starting")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of("isAdd", true, "processType", "MASTER")),
+          Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          Json.toJson(ImmutableMap.of("opType", "AddMaster")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          // Wait for master leader.
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("isAdd", false, "processType", "MASTER")),
+          // Tserver.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          // Master.
+          Json.toJson(ImmutableMap.of("type", "GFlags")),
+          Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of("serverType", "MASTER")),
+          Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -310,7 +408,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -338,7 +435,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -358,7 +454,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -378,19 +473,28 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertStopNodeSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean isMaster, boolean isYbcConfigured) {
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      boolean isMaster,
+      boolean isYbcConfigured,
+      boolean isReplaceMaster) {
     if (!isYbcConfigured) {
       if (isMaster) {
-        assertTasks(
-            STOP_NODE_TASK_SEQUENCE_MASTER,
-            STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS,
-            subTasksByPosition);
+        if (isReplaceMaster) {
+          assertTasks(
+              STOP_NODE_TASK_SEQUENCE_MASTER_REPLACE,
+              STOP_NODE_TASK_SEQUENCE_MASTER_REPLACE_RESULTS,
+              subTasksByPosition);
+        } else {
+          assertTasks(
+              STOP_NODE_TASK_SEQUENCE_MASTER,
+              STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS,
+              subTasksByPosition);
+        }
       } else {
         assertTasks(STOP_NODE_TASK_SEQUENCE, STOP_NODE_TASK_EXPECTED_RESULTS, subTasksByPosition);
       }
@@ -434,18 +538,18 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       JsonNode expectedResults = details.get(position);
       List<JsonNode> taskDetails =
           tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
-      assertJsonEqual(expectedResults, taskDetails.get(0));
+      assertJsonEqual("Params check failed for " + taskType, expectedResults, taskDetails.get(0));
       position++;
     }
   }
 
   @Test
   public void testStopMasterNode() {
+    mockListMastersForChangeConfig();
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -454,11 +558,12 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertStopNodeSequence(subTasksByPosition, true, false);
+    assertStopNodeSequence(subTasksByPosition, true, false, true);
   }
 
   @Test
@@ -500,7 +605,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         UniverseControllerRequestBinder.deepCopy(
             universe.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(universe.getUniverseUUID());
-
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -512,7 +616,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertStopNodeSequence(subTasksByPosition, true, true);
+    assertStopNodeSequence(subTasksByPosition, true, true, false);
   }
 
   @Test
@@ -546,7 +650,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertStopNodeSequence(subTasksByPosition, false, false);
+    assertStopNodeSequence(subTasksByPosition, false, false, false);
   }
 
   @Test
@@ -595,7 +699,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertStopNodeSequence(subTasksByPosition, false, true);
+    assertStopNodeSequence(subTasksByPosition, false, true, false);
   }
 
   @Test
@@ -642,7 +746,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
