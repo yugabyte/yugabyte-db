@@ -37,7 +37,7 @@ WHERE collection_name = 'reshard' AND database_name = 'db' \gset
 
 -- insert an invalid index metadata entry before re-sharding
 INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
-VALUES (:reshard_collection_id, 2020, ('invalid_index', '{"c": 1}', null, null, null, null, 2, null), false);
+VALUES (:reshard_collection_id, 2020, ('invalid_index', '{"c": 1}', null, null, null, null, 2, null, null, null), false);
 
 -- shard based on value key
 SELECT helio_api.shard_collection('db','reshard', '{"value":"hashed"}', false);

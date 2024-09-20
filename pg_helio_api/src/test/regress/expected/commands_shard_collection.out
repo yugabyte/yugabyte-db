@@ -69,7 +69,7 @@ Check constraints:
 
 -- insert an invalid index metadata entry before re-sharding
 INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
-VALUES (:reshard_collection_id, 2020, ('invalid_index', '{"c": 1}', null, null, null, null, 2, null), false);
+VALUES (:reshard_collection_id, 2020, ('invalid_index', '{"c": 1}', null, null, null, null, 2, null, null, null), false);
 -- shard based on value key
 SELECT helio_api.shard_collection('db','reshard', '{"value":"hashed"}', false);
  shard_collection 
@@ -513,11 +513,11 @@ SELECT collection_id AS reshard_collection_id FROM helio_api_catalog.collections
 WHERE collection_name = 'reshardwithindexes2' AND database_name = 'db' \gset
 set local helio_core.bsonUseEJson to true;
 SELECT index_spec from helio_api_catalog.collection_indexes WHERE collection_id = :reshard_collection_id order by index_id ASC;
-                           index_spec                            
------------------------------------------------------------------
- (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
- (idx1,"{ ""value"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
- (idx2,"{ ""otherValue"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
+                            index_spec                             
+-------------------------------------------------------------------
+ (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
+ (idx1,"{ ""value"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
+ (idx2,"{ ""otherValue"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
 (3 rows)
 
 SELECT database_name, collection_name, shard_key from helio_api_catalog.collections WHERE collection_id = :reshard_collection_id;

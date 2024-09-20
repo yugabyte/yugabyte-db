@@ -19,7 +19,15 @@
       Table "helio_api_distributed.helio_cluster_data"
   Column  |      Type       | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- metadata | helio_core.bson |           |          | 
+ metadata | helio_core.bson |           | not null | 
+Indexes:
+    "helio_cluster_data_pkey" PRIMARY KEY, btree (metadata)
 Triggers:
     helio_versions_trigger AFTER DELETE OR UPDATE ON helio_api_distributed.helio_cluster_data FOR EACH STATEMENT EXECUTE FUNCTION helio_api_internal.update_helio_version_data()
+
+Index "helio_api_distributed.helio_cluster_data_pkey"
+  Column  |      Type       | Key? | Definition 
+---------------------------------------------------------------------
+ metadata | helio_core.bson | yes  | metadata
+primary key, btree, for table "helio_api_distributed.helio_cluster_data"
 

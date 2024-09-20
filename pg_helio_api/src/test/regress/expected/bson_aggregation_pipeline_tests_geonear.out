@@ -85,11 +85,11 @@ SELECT helio_test_helpers.drop_primary_key('db','agg_geonear');
 (1 row)
 
 SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'agg_geonear') ORDER BY collection_id, index_id;
- collection_id | index_id |                                       index_spec_as_bson                                       | index_is_valid 
----------------+----------+------------------------------------------------------------------------------------------------+----------------
-          4900 |     4901 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2d" }, "name" : "my_2d_ab_idx" }            | t
-          4900 |     4902 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2dsphere" }, "name" : "my_2ds_ab_idx" }     | t
-          4900 |     4903 | { "v" : { "$numberInt" : "2" }, "key" : { "a.geo" : "2dsphere" }, "name" : "my_2ds_ageo_idx" } | t
+ collection_id | index_id |                                                               index_spec_as_bson                                                                | index_is_valid 
+---------------+----------+-------------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          4900 |     4901 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2d" }, "name" : "my_2d_ab_idx" }                                                             | t
+          4900 |     4902 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2dsphere" }, "name" : "my_2ds_ab_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } }     | t
+          4900 |     4903 | { "v" : { "$numberInt" : "2" }, "key" : { "a.geo" : "2dsphere" }, "name" : "my_2ds_ageo_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } } | t
 (3 rows)
 
 BEGIN;

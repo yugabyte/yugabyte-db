@@ -366,6 +366,8 @@ btree, for table "helio_api_catalog.helio_index_queue"
  index_is_unique            | boolean         |           |          | 
  index_version              | integer         |           |          | 
  index_expire_after_seconds | integer         |           |          | 
+ cosmos_search_options      | helio_core.bson |           |          | 
+ index_options              | helio_core.bson |           |          | 
 
      Composite type "helio_api_catalog.shard_key_and_document"
      Column      |      Type       | Collation | Nullable | Default 

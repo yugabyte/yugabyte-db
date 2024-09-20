@@ -14,6 +14,9 @@
 #include "utils/resowner.h"
 #include "lib/stringinfo.h"
 #include "access/xact.h"
+#include "utils/typcache.h"
+#include "parser/parse_type.h"
+#include "nodes/makefuncs.h"
 
 #include "utils/helio_errors.h"
 #include "metadata/collection.h"
@@ -21,6 +24,7 @@
 #include "utils/guc_utils.h"
 #include "utils/query_utils.h"
 #include "utils/version_utils.h"
+#include "utils/error_utils.h"
 #include "utils/version_utils_private.h"
 #include "api_hooks.h"
 
@@ -167,7 +171,12 @@ SetupCluster(bool isInitialize)
 		DistributeCrudFunctions();
 
 		CreateValidateDbNameTrigger();
-		AlterDefaultDatabaseObjects();
+
+		/* As of 1.23 the schema installs the type columns. */
+		if (!IsExtensionVersionAtleastThis(installedVersion, 1, 23, 0))
+		{
+			AlterDefaultDatabaseObjects();
+		}
 
 		resetStringInfo(relationName);
 		appendStringInfo(relationName, "%s.%s_cluster_data", ApiDistributedSchemaName,
@@ -246,6 +255,26 @@ SetupCluster(bool isInitialize)
 			ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
 										&isNull);
 		}
+	}
+
+	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, 1, 23, 0))
+	{
+		/* Re-add the primary key in the context of the cluster operations. */
+		StringInfo cmdStr = makeStringInfo();
+		bool isNull = false;
+		appendStringInfo(cmdStr,
+						 "ALTER TABLE %s.%s_cluster_data DROP CONSTRAINT IF EXISTS %s_cluster_data_pkey",
+						 ApiDistributedSchemaName, ExtensionObjectPrefix,
+						 ExtensionObjectPrefix);
+		ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
+									&isNull);
+
+		resetStringInfo(cmdStr);
+		appendStringInfo(cmdStr,
+						 "ALTER TABLE %s.%s_cluster_data ADD PRIMARY KEY(metadata)",
+						 ApiDistributedSchemaName, ExtensionObjectPrefix);
+		ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
+									&isNull);
 	}
 
 	TriggerInvalidateClusterMetadata();
@@ -510,13 +539,64 @@ CreateValidateDbNameTrigger()
 
 
 /*
+ * Handle failures if the worker has the attribute.
+ * This handles mixed schema versioning.
+ */
+static bool
+AddAttributeHandleIfExists(const char *addAttributeQuery)
+{
+	volatile bool isSuccess = false;
+
+	/* use a subtransaction to correctly handle failures */
+	MemoryContext oldContext = CurrentMemoryContext;
+	ResourceOwner oldOwner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+
+	PG_TRY();
+	{
+		bool readOnly = false;
+		bool isNull = false;
+		ExtensionExecuteQueryViaSPI(addAttributeQuery, readOnly, SPI_OK_UTILITY,
+									&isNull);
+
+		/* Commit the inner transaction, return to outer xact context */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldContext);
+		CurrentResourceOwner = oldOwner;
+		isSuccess = true;
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldContext);
+		ErrorData *errorData = CopyErrorDataAndFlush();
+
+		/* Abort the inner transaction */
+		RollbackAndReleaseCurrentSubTransaction();
+
+		/* Rollback changes MemoryContext */
+		MemoryContextSwitchTo(oldContext);
+		CurrentResourceOwner = oldOwner;
+
+		if (errorData->sqlerrcode != ERRCODE_DUPLICATE_COLUMN)
+		{
+			ReThrowError(errorData);
+		}
+
+		isSuccess = false;
+	}
+	PG_END_TRY();
+
+	return isSuccess;
+}
+
+
+/*
  * Change internal tables to include new fields and constraints required by the extension.
+ * TODO: Remove this after Cluster Version 1.23-0
  */
 static void
 AlterDefaultDatabaseObjects()
 {
-	bool isNull = false;
-	bool readOnly = false;
 	StringInfo cmdStr = makeStringInfo();
 
 	/* -- We do the ALTER TYPE in the Initialize/Complete function so that we handle the */
@@ -524,11 +604,20 @@ AlterDefaultDatabaseObjects()
 	/* -- fail if any one upgrades first and we did the ALTER TYPE in the extension upgrade. */
 	/* -- by doing this in the initialize/complete, we guarantee it happens once from the DDL */
 	/* -- coordinator and it's transactional. */
+	resetStringInfo(cmdStr);
 	appendStringInfo(cmdStr,
 					 "ALTER TYPE %s.index_spec_type_internal ADD ATTRIBUTE cosmos_search_options %s.bson;",
 					 ApiCatalogSchemaName, CoreSchemaName);
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
+	bool attributeAdded = AddAttributeHandleIfExists(cmdStr->data);
+
+	if (!attributeAdded)
+	{
+		/* Scenario where worker has it but coordinator doesn't, disable DDL propagation and try again */
+		int gucLevel = NewGUCNestLevel();
+		SetGUCLocally("citus.enable_ddl_propagation", "off");
+		AddAttributeHandleIfExists(cmdStr->data);
+		RollbackGUCChange(gucLevel);
+	}
 
 	/* -- all new options will go into this one bson field. */
 	/* -- Older options will be cleaned up in a separate release. */
@@ -536,8 +625,15 @@ AlterDefaultDatabaseObjects()
 	appendStringInfo(cmdStr,
 					 "ALTER TYPE %s.index_spec_type_internal ADD ATTRIBUTE index_options %s.bson;",
 					 ApiCatalogSchemaName, CoreSchemaName);
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
-								&isNull);
+	attributeAdded = AddAttributeHandleIfExists(cmdStr->data);
+	if (!attributeAdded)
+	{
+		/* Scenario where worker has it but coordinator doesn't, disable DDL propagation and try again */
+		int gucLevel = NewGUCNestLevel();
+		SetGUCLocally("citus.enable_ddl_propagation", "off");
+		AddAttributeHandleIfExists(cmdStr->data);
+		RollbackGUCChange(gucLevel);
+	}
 }
 
 

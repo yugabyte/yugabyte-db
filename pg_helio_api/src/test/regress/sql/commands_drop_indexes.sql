@@ -47,7 +47,7 @@ WHERE collection_name = 'drop_collection_test' AND database_name = 'db' \gset
 -- Insert a record into index metadata that indicates an invalid collection index
 -- to show that we delete records for invalid indexes too when dropping collection.
 INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
-VALUES (:db_drop_collection_test_id, 1010, ('invalid_index_1', '{"a": 1}', null, null, null, null, 2, null), false);
+VALUES (:db_drop_collection_test_id, 1010, ('invalid_index_1', '{"a": 1}', null, null, null, null, 2, null, null, null), false);
 
 SELECT helio_api.drop_collection('db', 'drop_collection_test');
 
