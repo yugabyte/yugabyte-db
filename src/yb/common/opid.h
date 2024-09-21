@@ -84,6 +84,9 @@ struct OpId {
 
   std::string ToString() const;
 
+  static OpId MinValid(const OpId& lhs, const OpId& rhs);
+  static OpId MaxValid(const OpId& lhs, const OpId& rhs);
+
   // Parse OpId from TERM.INDEX string.
   static Result<OpId> FromString(Slice input);
 };
@@ -110,6 +113,18 @@ inline bool operator>(const OpId& lhs, const OpId& rhs) {
 
 inline bool operator>=(const OpId& lhs, const OpId& rhs) {
   return !(lhs < rhs);
+}
+
+inline OpId OpId::MinValid(const OpId& lhs, const OpId& rhs) {
+  if (!lhs.valid()) return rhs;
+  if (!rhs.valid()) return lhs;
+  return std::min(lhs, rhs);
+}
+
+inline OpId OpId::MaxValid(const OpId& lhs, const OpId& rhs) {
+  if (!lhs.valid()) return rhs;
+  if (!rhs.valid()) return lhs;
+  return std::max(lhs, rhs);
 }
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id);

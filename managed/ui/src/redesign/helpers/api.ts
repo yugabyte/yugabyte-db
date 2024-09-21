@@ -256,6 +256,10 @@ export interface UpdateTablesInDrRequest {
   autoIncludeIndexTables?: boolean;
 }
 
+export interface UpdateDbsInDrRequest {
+  dbs: string[];
+}
+
 export interface CreateHaConfigRequest {
   cluster_key: string;
 
@@ -520,6 +524,11 @@ class ApiService {
     return axios
       .post<YBPTask>(requestUrl, updateTablesInDrRequest)
       .then((response) => response.data);
+  };
+
+  updateDbsInDr = (drConfigUuid: string, updateDbsInDrRequest: UpdateDbsInDrRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_dbs`;
+    return axios.put<YBPTask>(requestUrl, updateDbsInDrRequest).then((response) => response.data);
   };
 
   syncDrConfig = (drConfigUuid: string) => {

@@ -320,6 +320,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
+  Result<OpId> MaxPersistentOpId() const override;
+
   // Returns the the minimum log index for transaction tables and latest log index for other tables.
   // Returns the bootstrap_time which is safe_time higher than the time of the returned OpId.
   // If FLAGS_abort_active_txns_during_cdc_bootstrap is set then all active transactions are
@@ -600,7 +602,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinRunningHybridTimeUpdated(HybridTime min_running_ht);
+  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
 
   MetricRegistry* metric_registry_;
 

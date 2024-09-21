@@ -2037,6 +2037,8 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		recurse;		/* exec-time recursion */
 
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
+	bool 		yb_cascade;		/* to restrict movement of single table in
+								 * colocated tablespace */
 } AlterTableCmd;
 
 

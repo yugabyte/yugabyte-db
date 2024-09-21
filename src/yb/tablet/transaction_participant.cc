@@ -20,6 +20,7 @@
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/client/transaction_rpc.h"
@@ -49,6 +50,7 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
@@ -113,6 +115,9 @@ DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
 DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
     "Delays the abort callback in StopActiveTxns to repro GitHub #23399.");
 
+DEFINE_test_flag(bool, no_schedule_remove_intents, false,
+                 "Don't schedule remove intents when transaction is cleaned from memory.");
+
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
@@ -129,6 +134,10 @@ METRIC_DEFINE_simple_gauge_uint64(
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, aborted_transactions_pending_cleanup,
     "Total number of aborted transactions running in participant",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_gauge_uint64(
+    tablet, wal_replayable_applied_transactions,
+    "Total number of recently applied transactions that may be found during WAL replay",
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_event_stats(tablet, conflict_resolution_latency, "Conflict Resolution Latency",
                                yb::MetricUnit::kMicroseconds,
@@ -197,6 +206,8 @@ class TransactionParticipant::Impl
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
     metric_aborted_transactions_pending_cleanup_ =
         METRIC_aborted_transactions_pending_cleanup.Instantiate(entity, 0);
+    metric_wal_replayable_applied_transactions_ =
+        METRIC_wal_replayable_applied_transactions.Instantiate(entity, 0);
     metric_conflict_resolution_latency_ =
         METRIC_conflict_resolution_latency.Instantiate(entity);
     metric_conflict_resolution_num_keys_scanned_ =
@@ -624,7 +635,9 @@ class TransactionParticipant::Impl
         OpId op_id = (**it).GetApplyOpId();
 
         if (op_id <= checkpoint_op_id) {
-          (**it).ScheduleRemoveIntents(*it, front.reason);
+          if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
+            (**it).ScheduleRemoveIntents(*it, front.reason);
+          }
         } else {
           if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
               !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
@@ -1075,18 +1088,22 @@ class TransactionParticipant::Impl
     return &participant_context_;
   }
 
-  void SetMinRunningHybridTimeLowerBound(HybridTime lower_bound) {
-    if (lower_bound == HybridTime::kMax || lower_bound == HybridTime::kInvalid) {
+  void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
+    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid) {
       return;
     }
-    HybridTime current_ht = min_running_ht_.load(std::memory_order_acquire);
-    while ((!current_ht || current_ht < lower_bound)
-        && !min_running_ht_.compare_exchange_weak(current_ht, lower_bound)) {}
-    VLOG_WITH_PREFIX(1) << "Updated min running hybrid time to at least " << lower_bound
+    HybridTime current_ht = min_replay_txn_start_ht_.load(std::memory_order_acquire);
+    while ((!current_ht || current_ht < start_ht)
+        && !min_replay_txn_start_ht_.compare_exchange_weak(current_ht, start_ht)) {}
+    VLOG_WITH_PREFIX(1) << "Set min replay txn start time to at least " << start_ht
                         << ", was " << current_ht;
   }
 
-  HybridTime MinRunningHybridTime() override {
+  HybridTime MinReplayTxnStartTime() override {
+    return min_replay_txn_start_ht_.load(std::memory_order_acquire);
+  }
+
+  HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
         || !transactions_loaded_.load()) {
@@ -1252,9 +1269,9 @@ class TransactionParticipant::Impl
     return transactions_.size();
   }
 
-  void SetMinRunningHybridTimeUpdateCallback(std::function<void(HybridTime)> callback) {
+  void SetMinReplayTxnStartTimeUpdateCallback(std::function<void(HybridTime)> callback) {
     std::lock_guard lock(mutex_);
-    min_running_ht_callback_ = std::move(callback);
+    min_replay_txn_start_ht_callback_ = std::move(callback);
   }
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) {
@@ -1406,9 +1423,28 @@ class TransactionParticipant::Impl
     metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
   }
 
+  Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
+      const OpId& retryable_requests_flushed_op_id) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return DoProcessRecentlyAppliedTransactions(
+        retryable_requests_flushed_op_id, false /* persist */);
+  }
+
+  void SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    retryable_requests_flushed_op_id_ = flushed_op_id;
+  }
+
+  Status ProcessRecentlyAppliedTransactions() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return ResultToStatus(DoProcessRecentlyAppliedTransactions(
+        retryable_requests_flushed_op_id_, true /* persist */));
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
+  class ApplyOpIdTag;
 
   typedef boost::multi_index_container<RunningTransactionPtr,
       boost::multi_index::indexed_by <
@@ -1428,6 +1464,26 @@ class TransactionParticipant::Impl
           >
       >
   > Transactions;
+
+  struct AppliedTransactionState {
+    OpId apply_op_id;
+    HybridTime start_ht;
+  };
+
+  using RecentlyAppliedTransactions = boost::multi_index_container<AppliedTransactionState,
+      boost::multi_index::indexed_by <
+          boost::multi_index::ordered_unique <
+              boost::multi_index::tag<ApplyOpIdTag>,
+              boost::multi_index::member <
+                  AppliedTransactionState, OpId, &AppliedTransactionState::apply_op_id>
+          >,
+          boost::multi_index::ordered_non_unique <
+              boost::multi_index::tag<StartTimeTag>,
+              boost::multi_index::member <
+                  AppliedTransactionState, HybridTime, &AppliedTransactionState::start_ht>
+          >
+      >
+  >;
 
   void LoadFinished(Status load_status) EXCLUDES(status_resolvers_mutex_) override {
     // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
@@ -1509,10 +1565,8 @@ class TransactionParticipant::Impl
   }
 
   void SetMinRunningHybridTime(HybridTime min_running_ht) REQUIRES(mutex_) {
-    min_running_ht_.store(min_running_ht, std::memory_order_release);
-    if (min_running_ht_callback_) {
-      min_running_ht_callback_(min_running_ht);
-    }
+    min_running_ht_.store(min_running_ht);
+    UpdateMinReplayTxnStartTimeIfNeeded();
   }
 
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
@@ -1632,7 +1686,9 @@ class TransactionParticipant::Impl
       bool remove_transaction = true;
 
       if (op_id < checkpoint_op_id) {
-        (**it).ScheduleRemoveIntents(*it, reason);
+        if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
+          (**it).ScheduleRemoveIntents(*it, reason);
+        }
       } else {
         if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
             !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
@@ -1811,6 +1867,7 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
+    AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
     transactions_.erase(it);
     mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
@@ -2087,6 +2144,100 @@ class TransactionParticipant::Impl
     participant_context_.StrandEnqueue(write_metadata_task.get());
   }
 
+  void AddRecentlyAppliedTransaction(HybridTime start_ht, const OpId& apply_op_id)
+      REQUIRES(mutex_) {
+    // We only care about the min start_ht, while cleaning out all entries with apply_op_id less
+    // than progressively higher boundaries, so entries with apply_op_id lower and higher start_ht
+    // than the entry with the lowest start_ht are irrelevant. Likewise, if apply_op_id is higher
+    // and start_ht is lower than the lowest start_ht entry, the lowest start_ht entry is now
+    // irrelevant and can be cleaned up.
+
+    int64_t cleaned = 0;
+    if (!recently_applied_.empty()) {
+      auto& index = recently_applied_.get<StartTimeTag>();
+
+      auto itr = index.begin();
+      if (start_ht >= itr->start_ht && apply_op_id <= itr->apply_op_id) {
+        VLOG_WITH_PREFIX(2)
+            << "Not adding recently applied transaction: "
+            << "start_ht=" << start_ht << " (min=" << itr->start_ht << "), "
+            << "apply_op_id=" << apply_op_id << " (min=" << itr->apply_op_id << ")";
+        return;
+      }
+
+      cleaned = EraseElementsUntil(
+          index,
+          [start_ht, &apply_op_id](const AppliedTransactionState& state) {
+            return start_ht > state.start_ht || apply_op_id < state.apply_op_id;
+          });
+    }
+
+    VLOG_WITH_PREFIX(2)
+        << "Adding recently applied transaction: "
+        << "start_ht=" << start_ht << " apply_op_id=" << apply_op_id
+        << " (cleaned " << cleaned << ")";
+    recently_applied_.insert(AppliedTransactionState{apply_op_id, start_ht});
+    metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
+    UpdateMinReplayTxnStartTimeIfNeeded();
+  }
+
+  Result<HybridTime> DoProcessRecentlyAppliedTransactions(
+      const OpId& retryable_requests_flushed_op_id, bool persist) REQUIRES(mutex_) {
+    auto threshold = VERIFY_RESULT(participant_context_.MaxPersistentOpId());
+    threshold = OpId::MinValid(threshold, retryable_requests_flushed_op_id);
+
+    if (!threshold.valid()) {
+      return min_replay_txn_start_ht_.load(std::memory_order_acquire);
+    }
+
+    auto recently_applied_copy =
+        persist ? RecentlyAppliedTransactions() : RecentlyAppliedTransactions(recently_applied_);
+    auto& recently_applied = persist ? recently_applied_ : recently_applied_copy;
+
+    auto cleaned = CleanRecentlyAppliedTransactions(recently_applied, threshold);
+    if (persist && cleaned > 0) {
+      metric_wal_replayable_applied_transactions_->DecrementBy(cleaned);
+      VLOG_WITH_PREFIX(1) << "Cleaned recently applied transactions with threshold: " << threshold
+                          << ", cleaned " << cleaned
+                          << ", remaining " << recently_applied_.size();
+      UpdateMinReplayTxnStartTimeIfNeeded();
+    }
+
+    return GetMinReplayTxnStartTime(recently_applied);
+  }
+
+  int64_t CleanRecentlyAppliedTransactions(
+        RecentlyAppliedTransactions& recently_applied, const OpId& threshold) {
+    if (!threshold.valid() || recently_applied.empty()) {
+      return 0;
+    }
+
+    return EraseElementsUntil(
+        recently_applied.get<ApplyOpIdTag>(),
+        [&threshold](const AppliedTransactionState& state) {
+          return state.apply_op_id >= threshold;
+        });
+  }
+
+  HybridTime GetMinReplayTxnStartTime(RecentlyAppliedTransactions& recently_applied) {
+    auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);
+    auto applied_min_ht = recently_applied.empty()
+        ? HybridTime::kMax
+        : (*recently_applied.get<StartTimeTag>().begin()).start_ht;
+
+    applied_min_ht.MakeAtMost(min_running_ht);
+    return applied_min_ht;
+  }
+
+  void UpdateMinReplayTxnStartTimeIfNeeded() REQUIRES(mutex_) {
+    if (min_replay_txn_start_ht_callback_) {
+      auto ht = GetMinReplayTxnStartTime(recently_applied_);
+      if (min_replay_txn_start_ht_.exchange(ht, std::memory_order_acq_rel) != ht) {
+        min_replay_txn_start_ht_callback_(ht);
+      }
+    }
+  }
+
   struct ImmediateCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
@@ -2136,6 +2287,16 @@ class TransactionParticipant::Impl
   std::deque<ImmediateCleanupQueueEntry> immediate_cleanup_queue_ GUARDED_BY(mutex_);
   std::deque<GracefulCleanupQueueEntry> graceful_cleanup_queue_ GUARDED_BY(mutex_);
 
+  // Information about recently applied transactions that are still needed at bootstrap time, used
+  // to calculate min_replay_txn_start_ht (lowest start_ht of any transaction which may be
+  // read during bootstrap log replay).
+  RecentlyAppliedTransactions recently_applied_ GUARDED_BY(mutex_);
+
+  // Retryable requests flushed_op_id, used to calculate bootstrap_start_op_id. A copy is held
+  // here instead of querying participant_context_ to avoid grabbing TabletPeer lock and causing
+  // a deadlock between flush listener and thread waiting for sync flush.
+  OpId retryable_requests_flushed_op_id_ GUARDED_BY(mutex_) = OpId::Invalid();
+
   // Remove queue maintains transactions that could be cleaned when safe time for follower reaches
   // appropriate time for an entry.
   // Since we add entries with increasing time, this queue is ordered by time.
@@ -2171,6 +2332,7 @@ class TransactionParticipant::Impl
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<AtomicGauge<uint64_t>> metric_aborted_transactions_pending_cleanup_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_wal_replayable_applied_transactions_;
   scoped_refptr<Counter> metric_transaction_not_found_;
   scoped_refptr<EventStats> metric_conflict_resolution_latency_;
   scoped_refptr<EventStats> metric_conflict_resolution_num_keys_scanned_;
@@ -2181,10 +2343,11 @@ class TransactionParticipant::Impl
   CountDownLatch shutdown_latch_{1};
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
+  std::atomic<HybridTime> min_replay_txn_start_ht_{HybridTime::kInvalid};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
   std::atomic<bool> shutdown_done_{false};
-  std::function<void(HybridTime)> min_running_ht_callback_ GUARDED_BY(mutex_);
+  std::function<void(HybridTime)> min_replay_txn_start_ht_callback_ GUARDED_BY(mutex_);
 
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
@@ -2331,8 +2494,12 @@ TransactionParticipantContext* TransactionParticipant::context() const {
   return impl_->participant_context();
 }
 
-void TransactionParticipant::SetMinRunningHybridTimeLowerBound(HybridTime lower_bound) {
-  impl_->SetMinRunningHybridTimeLowerBound(lower_bound);
+void TransactionParticipant::SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
+  impl_->SetMinReplayTxnStartTimeLowerBound(start_ht);
+}
+
+HybridTime TransactionParticipant::MinReplayTxnStartTime() const {
+  return impl_->MinReplayTxnStartTime();
 }
 
 HybridTime TransactionParticipant::MinRunningHybridTime() const {
@@ -2444,9 +2611,22 @@ void TransactionParticipant::RecordConflictResolutionScanLatency(MonoDelta laten
   impl_->RecordConflictResolutionScanLatency(latency);
 }
 
-void TransactionParticipant::SetMinRunningHybridTimeUpdateCallback(
+void TransactionParticipant::SetMinReplayTxnStartTimeUpdateCallback(
     std::function<void(HybridTime)> callback) {
-  impl_->SetMinRunningHybridTimeUpdateCallback(std::move(callback));
+  impl_->SetMinReplayTxnStartTimeUpdateCallback(std::move(callback));
+}
+
+Result<HybridTime> TransactionParticipant::SimulateProcessRecentlyAppliedTransactions(
+    const OpId& retryable_requests_flushed_op_id) {
+  return impl_->SimulateProcessRecentlyAppliedTransactions(retryable_requests_flushed_op_id);
+}
+
+void TransactionParticipant::SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id) {
+  return impl_->SetRetryableRequestsFlushedOpId(flushed_op_id);
+}
+
+Status TransactionParticipant::ProcessRecentlyAppliedTransactions() {
+  return impl_->ProcessRecentlyAppliedTransactions();
 }
 
 }  // namespace tablet

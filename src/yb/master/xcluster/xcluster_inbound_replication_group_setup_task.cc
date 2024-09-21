@@ -54,6 +54,8 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
+
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -550,8 +552,10 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
 
   std::set<TableId> validated_tables;
   for (const auto& namespace_id : target_namespace_ids_) {
-    auto table_infos =
-        VERIFY_RESULT(GetTablesEligibleForXClusterReplication(catalog_manager_, namespace_id));
+    auto table_infos = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
+        catalog_manager_, namespace_id,
+        /*include_sequences_data=*/
+        (automatic_ddl_mode_ && FLAGS_TEST_xcluster_enable_sequence_replication)));
 
     std::vector<TableId> missing_tables;
 

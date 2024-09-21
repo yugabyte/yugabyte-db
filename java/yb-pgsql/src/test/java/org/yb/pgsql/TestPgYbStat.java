@@ -14,6 +14,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -62,15 +63,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   private void executeQueryAndSendSignal(final String query,
     final Connection inputConnection, final String signal) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
-
-      int[] pids = new int[CONN_MGR_WARMUP_BACKEND_COUNT];
-      if (isConnMgrWarmupRoundRobinMode()) {
-        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++){
-          pids[i] = getPid(inputConnection);
-        }
-      } else {
-        pids[0] = getPid(inputConnection);
-      }
+      final int pid = getPid(inputConnection);
 
       final CountDownLatch startSignal = new CountDownLatch(1);
       final List<ThrowingRunnable> cmds = new ArrayList<>();
@@ -91,13 +84,7 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         Thread.sleep(100); // Allow the query execution a headstart before killing
-        if (isConnMgrWarmupRoundRobinMode()) {
-          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
-            ProcessUtil.signalProcess(pids[i], signal);
-          }
-        } else {
-          ProcessUtil.signalProcess(pids[0], signal);
-        }
+        ProcessUtil.signalProcess(pid, signal);
       });
       MiscUtil.runInParallel(cmds, startSignal, 60);
     } catch (Throwable exception) {
@@ -160,7 +147,10 @@ public class TestPgYbStat extends BasePgSQLTest {
 
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
-    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+    // (DB-12741) Test is flaky with connection manager irrespective of warmup
+    // mode. Disable the test for now when running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.

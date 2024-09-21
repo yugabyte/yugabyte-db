@@ -2373,7 +2373,8 @@ static struct config_bool ConfigureNamesBool[] =
 					"Enable this with high caution. It was added to avoid disruption for users who were "
 					"already using advisory locks but seeing success messages without the lock really being "
 					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks."),
+					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+					"for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -2760,6 +2761,18 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_make_next_ddl_statement_nonbreaking,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_make_next_ddl_statement_nonincrementing", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "catalog version to increment. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonincrementing,
 		false,
 		NULL, NULL, NULL
 	},

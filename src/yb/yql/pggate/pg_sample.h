@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/yql/pggate/pg_select_index.h"
 
 #include "yb/yql/pggate/pg_tools.h"
@@ -29,7 +31,7 @@ class PgSample : public PgDmlRead {
  public:
   PgSample(
       PgSession::ScopedRefPtr pg_session, int targrows, const PgObjectId& table_id,
-      bool is_region_local);
+      bool is_region_local, HybridTime read_time);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SAMPLE; }
 
@@ -52,6 +54,9 @@ class PgSample : public PgDmlRead {
 
   // How many sample rows are needed
   const int targrows_;
+
+  // Holds the read time used for executing ANALYZE on the table.
+  HybridTime read_time_;
 };
 
 }  // namespace yb::pggate

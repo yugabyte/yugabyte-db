@@ -1461,7 +1461,7 @@ class PgClientServiceImpl::Impl {
         continue;
       }
       if (local_uuid) {
-        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_yql_endpoint_tserver_uuid());
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_top_level_node_id());
       }
       MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }

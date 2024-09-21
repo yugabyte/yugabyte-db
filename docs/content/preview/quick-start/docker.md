@@ -104,7 +104,7 @@ docker ps
 
 ```output
 CONTAINER ID   IMAGE                               COMMAND                  CREATED         STATUS         PORTS                                                                                                                                                                                               NAMES
-c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
+c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
 ```
 
 Run the following command to check the cluster status:

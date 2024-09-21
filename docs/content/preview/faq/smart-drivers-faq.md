@@ -52,9 +52,17 @@ Topology-aware load balancing further achieves lower latencies by enabling appli
 
 ### When should I use a smart driver?
 
-**YugabyteDB** - Use a smart driver if all the nodes in the cluster are available for direct connectivity from the location where the client application is running.
+- YugabyteDB - Use a smart driver if all the nodes in the cluster are available for direct connectivity from the location where the client application is running. For example, if the VPC hosting YugabateDB is peered with the VPC hosting the application.
 
-**YugabyteDB Aeon** - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Aeon falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
+- YugabyteDB Aeon - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Aeon falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
+
+If the external address given in the connection URL and individual nodes are not accessible directly, do not enable smart driver load balancing. Applications that use smart drivers from outside the peered network with load balance on will try to connect to the inaccessible nodes before falling back to the upstream driver behavior. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing. To avoid the added latency incurred, turn load balance off or use the upstream driver.
 
 ### How hard is it to port an application to use a smart driver?
 

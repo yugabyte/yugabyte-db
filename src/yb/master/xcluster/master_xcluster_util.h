@@ -28,7 +28,8 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
 std::string GetFullTableName(const TableInfo& table_info);
 
 Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
-    const CatalogManager& catalog_manager, const NamespaceId& namespace_id);
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
+    bool include_sequences_data);
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
 

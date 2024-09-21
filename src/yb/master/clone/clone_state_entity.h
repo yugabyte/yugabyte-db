@@ -19,6 +19,8 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/util/countdown_latch.h"
+
 namespace yb::master {
 
 struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB> {};
@@ -69,6 +71,9 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   const TxnSnapshotRestorationId& RestorationId();
   void SetRestorationId(const TxnSnapshotRestorationId& restoration_id);
 
+  std::shared_ptr<CountDownLatch> NumTserversWithStaleMetacache();
+  void SetNumTserversWithStaleMetacache(uint64_t count);
+
  private:
   // The ID field is used in the sys_catalog table.
   const std::string clone_request_id_;
@@ -83,6 +88,10 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
 
   // This is set before the clone state is set to RESTORING.
   TxnSnapshotRestorationId restoration_id_ GUARDED_BY(mutex_) = TxnSnapshotRestorationId::Nil();
+
+  // The number of tservers that a Clear Metacache rpc has been sent to but didn't respond with
+  // success. Only enable connections to target DB after all tservers cleared thier metacache.
+  std::shared_ptr<CountDownLatch> num_tservers_with_stale_metacache;
 
   std::mutex mutex_;
 

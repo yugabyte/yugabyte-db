@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK;
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK_TABLE_NAME;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
@@ -509,12 +509,26 @@ public class YsqlQueryExecutor {
     @JsonProperty("seq_num")
     private int seqNum;
 
-    public UUID getTaskUuid() {
+    @JsonProperty("yw_uuid")
+    private UUID ywUuid;
+
+    @JsonProperty("yw_host")
+    private String ywHost;
+
+    public UUID getTaskUUID() {
       return taskUuid;
     }
 
     public int getSeqNum() {
       return seqNum;
+    }
+
+    public UUID getYwUUID() {
+      return ywUuid;
+    }
+
+    public String getYwHost() {
+      return ywHost;
     }
   }
 
@@ -530,14 +544,16 @@ public class YsqlQueryExecutor {
     ysqlQuery.setDbName(SYSTEM_PLATFORM_DB);
     ysqlQuery.setQuery(
         String.format(
-            "SELECT seq_num, task_uuid FROM %s ORDER BY seq_num DESC LIMIT 1", CONSISTENCY_CHECK));
+            "SELECT seq_num, task_uuid, yw_uuid, yw_host FROM %s ORDER BY seq_num DESC LIMIT 1",
+            CONSISTENCY_CHECK_TABLE_NAME));
     JsonNode response = executeQueryInNodeShell(universe, ysqlQuery, node);
     int retries = 0;
     while (response != null && response.has("error") && retries < 5) {
-      String match = String.format("relation \"%s\" does not exist", CONSISTENCY_CHECK);
+      String match = String.format("relation \"%s\" does not exist", CONSISTENCY_CHECK_TABLE_NAME);
       if (response.get("error").asText().contains(match)) {
         throw new RecoverableException("consistency_check table does not exist");
       }
+      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
       retries += 1;
       response = executeQueryInNodeShell(universe, ysqlQuery, node);
     }
@@ -580,5 +596,10 @@ public class YsqlQueryExecutor {
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
     runUserDbCommands(allQueries.toString(), data.dbName, universe);
+  }
+
+  public void dropTable(Universe universe, String dbName, String tableName) {
+    String query = String.format("DROP TABLE if exists %s;", tableName);
+    runUserDbCommands(query, dbName, universe);
   }
 }

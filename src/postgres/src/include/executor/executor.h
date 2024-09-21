@@ -656,6 +656,14 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
 									   EState *estate, bool newIndex);
 extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
 								  EState *estate);
+extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
+									 TupleTableSlot *slot,
+									 Datum ybctid,
+									 HeapTuple oldtuple,
+									 ItemPointer tupleid,
+									 EState *estate,
+									 Bitmapset *updatedCols,
+									 bool is_pk_updated);
 
 /*
  * prototypes from functions in execReplication.c

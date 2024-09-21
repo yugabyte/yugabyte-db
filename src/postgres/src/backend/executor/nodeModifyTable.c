@@ -2271,7 +2271,8 @@ lreplace:;
 static bool
 YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-				bool canSetTag, UpdateContext *updateCxt)
+				bool canSetTag, UpdateContext *updateCxt,
+				Bitmapset **cols_marked_for_update, bool *is_pk_updated)
 {
 	EState	*estate = context->estate;
 	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
@@ -2404,7 +2405,7 @@ yb_lreplace:;
 	 * This guardrail may be removed in the future. This also helps avoid
 	 * having a dependency on row locking.
 	 */
-	Bitmapset *cols_marked_for_update = bms_copy(rte->updatedCols);
+	*cols_marked_for_update = bms_copy(rte->updatedCols);
 
 	if (resultRelInfo->ri_NumGeneratedNeeded > 0)
 	{
@@ -2415,7 +2416,8 @@ yb_lreplace:;
 		Bitmapset *generatedCols =
 			ExecGetExtraUpdatedCols(resultRelInfo, estate);
 		Assert(!bms_is_empty(generatedCols));
-		cols_marked_for_update = bms_union(cols_marked_for_update, generatedCols);
+		*cols_marked_for_update = bms_union(*cols_marked_for_update,
+											generatedCols);
 	}
 
 	ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
@@ -2438,7 +2440,7 @@ yb_lreplace:;
 	{
 		YbComputeModifiedColumnsAndSkippableEntities(
 			plan, resultRelInfo, estate, oldtuple, tuple,
-			&cols_marked_for_update, beforeRowUpdateTriggerFired);
+			cols_marked_for_update, beforeRowUpdateTriggerFired);
 	}
 
 	/*
@@ -2447,8 +2449,8 @@ yb_lreplace:;
 	 * making up the primary key are not a part of the target list but are
 	 * updated by a before row trigger.
 	 */
-	bool is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
-											   cols_marked_for_update);
+	*is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
+										   *cols_marked_for_update);
 
 	/*
 	 * TODO(alex): It probably makes more sense to pass a
@@ -2456,7 +2458,7 @@ yb_lreplace:;
 	 *             that it can have tuple materialized already.
 	 */
 
-	if (is_pk_updated)
+	if (*is_pk_updated)
 	{
 		YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
 		row_found = true;
@@ -2467,9 +2469,8 @@ yb_lreplace:;
 									 context->mtstate->yb_fetch_target_tuple,
 									 estate->yb_es_is_single_row_modify_txn
 											? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
-									 cols_marked_for_update, canSetTag);
+									 *cols_marked_for_update, canSetTag);
 
-	bms_free(cols_marked_for_update);
 	return row_found;
 }
 
@@ -2484,7 +2485,8 @@ static void
 ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
 				   HeapTuple oldtuple, TupleTableSlot *slot,
-				   List *recheckIndexes)
+				   List *recheckIndexes, Bitmapset *yb_cols_marked_for_update,
+				   bool yb_is_pk_updated)
 {
 	ModifyTableState *mtstate = context->mtstate;
 
@@ -2498,16 +2500,10 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 			mtstate->yb_fetch_target_tuple)
 		{
-			Datum ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
-
-			/* Delete index entries of the old tuple */
-			ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple,
-								  context->estate);
-
-			/* Insert new index entries for tuple */
-			recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot,
-												   context->estate, false, true,
-												   NULL, NIL);
+			recheckIndexes =  YbExecUpdateIndexTuples(
+				resultRelInfo, slot, YBCGetYBTupleIdFromSlot(context->planSlot),
+				oldtuple, tupleid, context->estate, yb_cols_marked_for_update,
+				yb_is_pk_updated);
 		}
 	}
 	else
@@ -2656,6 +2652,8 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	UpdateContext updateCxt = {0};
 	List	   *recheckIndexes = NIL;
 	TM_Result	result;
+	Bitmapset  *cols_marked_for_update = NULL;
+	bool		pk_is_updated = false;
 
 	/*
 	 * abort the operation if not running transactions
@@ -2705,7 +2703,8 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		/* Fill in the slot appropriately */
 		ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
 		if (!YBExecUpdateAct(context, resultRelInfo, tupleid, oldtuple, slot,
-							 canSetTag, &updateCxt))
+							 canSetTag, &updateCxt, &cols_marked_for_update,
+							 &pk_is_updated))
 		{
 			/*
 			 * No row was found. This is possible if it's a single row txn
@@ -2886,9 +2885,11 @@ redo_act:
 		(estate->es_processed)++;
 
 	ExecUpdateEpilogue(context, &updateCxt, resultRelInfo, tupleid, oldtuple,
-					   slot, recheckIndexes);
+					   slot, recheckIndexes, cols_marked_for_update,
+					   pk_is_updated);
 
 	YbClearSkippableEntities(&estate->yb_skip_entities);
+	bms_free(cols_marked_for_update);
 
 	list_free(recheckIndexes);
 
@@ -3357,8 +3358,17 @@ lmerge_matched:;
 									   newslot, mtstate->canSetTag, &updateCxt);
 				if (result == TM_Ok && updateCxt.updated)
 				{
+					/*
+					 * YB Note: yb_cols_marked_for_update and yb_is_pk_updated
+					 * are used only in a YB context. Since the MERGE command
+					 * is not supported in YB yet, do not bother computing
+					 * correct values for these params.
+					 * Re-evaluate when adding MERGE support.
+					 */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
-									   tupleid, NULL, newslot, recheckIndexes);
+									   tupleid, NULL, newslot, recheckIndexes,
+									   NULL /* yb_cols_marked_for_update */,
+									   false /* yb_is_pk_updated */);
 					mtstate->mt_merge_updated += 1;
 				}
 

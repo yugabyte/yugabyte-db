@@ -113,6 +113,7 @@ checksumming
 CIDRs
 Citrix
 Citus
+CLion
 clonable
 Cloudwatch
 CMake
@@ -320,6 +321,7 @@ Javafuzz
 JavaScript
 Jenkins
 Jenkinsfile
+Jepsen
 Jira
 jq
 jQuery

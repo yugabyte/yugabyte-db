@@ -466,7 +466,7 @@ export const getEnabledConfigActions = (
   isXClusterConfigAllBidirectional: boolean,
   drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
-  if (drConfigState === DrConfigState.ERROR) {
+  if (drConfigState === DrConfigState.FAILED) {
     // When DR config is in error state, we only allow the DR config delete operation.
     return [];
   }

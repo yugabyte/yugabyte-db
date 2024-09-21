@@ -45,6 +45,7 @@ class XClusterCheckpointNamespaceTask : public MultiStepCatalogEntityTask {
   Status FirstStep() override;
 
  private:
+  Status CreateStreams();
   Status CheckpointStreams();
   void CheckpointStreamsCallback(XClusterCheckpointStreamsResult result);
   Status MarkTablesAsCheckpointed(XClusterCheckpointStreamsResult result);

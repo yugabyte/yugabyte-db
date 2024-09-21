@@ -1553,6 +1553,7 @@ bool yb_enable_index_aggregate_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
+bool yb_make_next_ddl_statement_nonincrementing = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
@@ -1750,7 +1751,7 @@ MergeCatalogModificationAspects(
 }
 
 static void
-YBResetEnableNonBreakingDDLMode()
+YBResetEnableSpecialDDLMode()
 {
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
@@ -1762,6 +1763,17 @@ YBResetEnableNonBreakingDDLMode()
 	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonbreaking)
 		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonbreaking", "false");
 	yb_make_next_ddl_statement_nonbreaking = false;
+
+	/*
+	 * Reset yb_make_next_ddl_statement_nonincrementing to avoid its further side
+	 * effect that may not be intended.
+	 *
+	 * Also, reset Connection Manager cache if the value was cached to begin
+	 * with.
+	 */
+	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonincrementing)
+		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonincrementing", "false");
+	yb_make_next_ddl_statement_nonincrementing = false;
 }
 
 /*
@@ -1805,7 +1817,7 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
-	YBResetEnableNonBreakingDDLMode();
+	YBResetEnableSpecialDDLMode();
 	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
@@ -1879,7 +1891,7 @@ YBDecrementDdlNestingLevel()
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
-		YBResetEnableNonBreakingDDLMode();
+		YBResetEnableSpecialDDLMode();
 		bool increment_done = false;
 		bool is_silent_altering = false;
 		if (has_write)
@@ -2451,6 +2463,18 @@ YbDdlModeOptional YbGetDdlMode(
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
+	/*
+	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
+	 * will cause a catalog version to increment. Note that we also disable breaking
+	 * catalog change as well because it does not make sense to only increment
+	 * breaking breaking catalog version.
+	 */
+	if (yb_make_next_ddl_statement_nonincrementing)
+	{
+		is_version_increment = false;
+		is_breaking_change = false;
+	}
+
 
 	is_altering_existing_data |= is_version_increment;
 
@@ -4669,8 +4693,10 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
+LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
+	LockWaitPolicy result = pg_wait_policy;
+
 	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
 	{
 		/* The user requested NOWAIT, which isn't allowed in RR. */
@@ -4689,14 +4715,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 						  "(GH issue #11761)",
 						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
 
-		*docdb_wait_policy = LockWaitBlock;
-	}
-	else
-	{
-		*docdb_wait_policy = pg_wait_policy;
+		result = LockWaitBlock;
 	}
 
-	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
+	if (result == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -4705,9 +4727,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
 		elog(DEBUG1, "Falling back to LockWaitError since wait-queues are not enabled");
-		*docdb_wait_policy = LockWaitError;
+		result = LockWaitError;
 	}
-	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", *docdb_wait_policy, pg_wait_policy);
+	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", result, pg_wait_policy);
+	return result;
 }
 
 uint32_t YbGetNumberOfDatabases()
@@ -5274,4 +5297,20 @@ bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
 	return bms_is_member(attnum -
 		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
+}
+
+/* Retrieve the sort ordering of the first key element of an index. */
+SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
+{
+	if (IndexRelationGetNumberOfKeyAttributes(indexRel) == 0)
+		return SORTBY_DEFAULT;
+	/*
+	 * If there are key columns, check the indoption of the first
+	 * key attribute.
+	 */
+	if (indexRel->rd_indoption[0] & INDOPTION_HASH)
+		return SORTBY_HASH;
+	if (indexRel->rd_indoption[0] & INDOPTION_DESC)
+		return SORTBY_DESC;
+	return SORTBY_ASC;
 }

@@ -65,11 +65,19 @@ std::string GetFullTableName(const TableInfo& table_info) {
 }
 
 Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
-    const CatalogManager& catalog_manager, const NamespaceId& namespace_id) {
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
+    bool include_sequences_data) {
   auto table_infos = VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(namespace_id));
   EraseIf(
       [](const TableInfoPtr& table) { return !IsTableEligibleForXClusterReplication(*table); },
       &table_infos);
+
+  if (include_sequences_data) {
+    auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
+    if (sequence_table_info) {
+      table_infos.push_back(std::move(sequence_table_info));
+    }
+  }
   return table_infos;
 }
 

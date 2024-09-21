@@ -28,7 +28,7 @@ const (
 	activeHeader          = "Active"
 	globalYbImageHeader   = "Global YB Image"
 	archHeader            = "Architecture"
-	useIMDSv2Header       = "Use IMDS V2"
+	useIMDSv2Header       = "Use IMDS V2 (AWS)"
 	regionOverridesHeader = "Region Overrides"
 	imageBundleTypeHeader = "Image Bundle Type"
 	versionHeader         = "Version"

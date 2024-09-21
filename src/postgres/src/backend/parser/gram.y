@@ -2727,7 +2727,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> VALIDATE CONSTRAINT ... */
 			| VALIDATE CONSTRAINT name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE VALIDATE CONSTRAINT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_ValidateConstraint;
@@ -2976,6 +2975,7 @@ alter_table_cmd:
 
 					n->subtype = AT_SetTableSpace;
 					n->name = $3;
+					n->yb_cascade = false;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> SET (...) */

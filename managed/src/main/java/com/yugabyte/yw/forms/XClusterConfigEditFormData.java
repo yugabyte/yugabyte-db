@@ -36,7 +36,7 @@ public class XClusterConfigEditFormData {
       value = "WARNING: This is a preview API that could change. Source universe database IDs",
       example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
-  public Set<String> databases;
+  public Set<String> dbs;
 
   @ApiModelProperty(
       value =

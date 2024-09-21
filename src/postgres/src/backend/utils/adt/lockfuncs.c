@@ -32,8 +32,9 @@ YbPreventAdvisoryLocks(void)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("advisory locks are not yet implemented"),
 				 errhint(
-						"See https://github.com/yugabyte/yugabyte-db/issues/3642. "
-						"React with thumbs up to raise its priority")));
+				    "If the app doesn't need strict functionality, this error can be silenced "
+				    "by using the GFlag yb_silence_advisory_locks_not_supported_error. "
+				    "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
 
 /*

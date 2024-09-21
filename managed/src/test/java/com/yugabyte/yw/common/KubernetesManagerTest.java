@@ -150,7 +150,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "json"),
         command.getValue());
     assertEquals(
-        "There must be exactly one Master or TServer endpoint service, got 0",
+        "There must be atleast one Master or TServer endpoint service, got 0",
         exception.getMessage());
   }
 

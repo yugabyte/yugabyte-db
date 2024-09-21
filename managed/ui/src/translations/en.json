@@ -2218,7 +2218,7 @@
       "info": {
         "task": "Task",
         "type": "Type",
-        "target": "Target",
+        "target": "Performed On",
         "status": "Status",
         "startTime": "Start Time",
         "endTime": "End time",
@@ -2234,7 +2234,9 @@
         "title": "Progress",
         "complete": "{{progress}}% Completed",
         "expand": "Expand",
-        "showLog": "YugaWare Log"
+        "viewLess": "Collapse",
+        "showLog": "YugaWare Log",
+        "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
         "viewDetails": "View Details",
@@ -2247,6 +2249,7 @@
       "diffModal": {
         "title": "Universe Changes",
         "expandAll": "Expand All",
+        "collapseAll": "Collapse All",
         "diffDetailsNotFound": "Unable to find diff details",
         "alerts": {
           "inProgress": "This operation intends to modify the following {{count}} value(s). ",

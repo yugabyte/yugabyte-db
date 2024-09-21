@@ -48,41 +48,44 @@
         - name: Set the systemd prefix
           set_fact:
             systemd_prefix: "{{ 'systemctl --user' if systemd_user.stat.exists else 'sudo systemctl'}}"
+        - name: Set systemd name
+          set_fact:
+            systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
         - name: Print systemd_prefix
           debug:
             var: systemd_prefix
         - block:
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"
-          - name: Enable the {{ process }}
-            shell: "{{ systemd_prefix }} enable yb-{{ process }}"
+          - name: Enable the {{ systemd_process }}
+            shell: "{{ systemd_prefix }} enable {{ systemd_process }}"
             when: command == 'start'
-          - name: Perform {{ command }} on the {{ process }}
-            shell: "{{ systemd_prefix }} {{ command }} yb-{{ process }}"
+          - name: Perform {{ command }} on the {{ systemd_process }}
+            shell: "{{ systemd_prefix }} {{ command }} {{ systemd_process }}"
             when: command == 'start' or command == 'stop'
-          - name: Disable the {{ process }}
-            shell: "{{ systemd_prefix }} disable yb-{{ process }}"
+          - name: Disable the {{ systemd_process }}
+            shell: "{{ systemd_prefix }} disable {{ systemd_process }}"
             when: command == 'stop'
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"
           when: command != "stop-destroy"
 
-        - name: Stop the {{ process }} process with systemd on destroy
+        - name: Stop the {{ systemd_process }} process with systemd on destroy
           block:
             - name: Reload daemon
               shell: "{{ systemd_prefix }} daemon-reload"
-            - name: yb-{{ process }} status output
-              shell: "{{ systemd_prefix }} status yb-{{ process }}"
+            - name: "{{ systemd_process }} status output"
+              shell: "{{ systemd_prefix }} status {{ systemd_process }}"
               register: systemd_status_output
               ignore_errors: True
             - name: Print systemd_status_output.rc
               debug:
                 msg: "{{ systemd_status_output.rc }}"
-            - name: Perform stop on the {{ process }}
-              shell: "{{ systemd_prefix }} stop yb-{{ process }}"
+            - name: Perform stop on the {{ systemd_process }}
+              shell: "{{ systemd_prefix }} stop {{ systemd_process }}"
               when: systemd_status_output.rc != 4
-            - name: Disable the {{ process }}
-              shell: "{{ systemd_prefix }} disable yb-{{ process }}"
+            - name: Disable the {{ systemd_process }}
+              shell: "{{ systemd_prefix }} disable {{ systemd_process }}"
               when: systemd_status_output.rc != 4
             - name: Reload daemon
               shell: "{{ systemd_prefix }} daemon-reload"
@@ -107,13 +110,9 @@
     - block:
       - set_fact:
           prometheus_systemd_unit_dir: "/lib/systemd/system"
-          otel_systemd_dir: "/etc/systemd/system"
       - set_fact:
           prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
         when: ansible_os_family == "Suse"
-      - set_fact:
-          otel_systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
-        when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
 
       - block:
         - name: Check node exporter service exists
@@ -140,37 +139,11 @@
           become_method: sudo
         when: clean_node_exporter is defined and clean_node_exporter|bool
 
-      - block:
-        - name: Check otel collector service exists
-          stat:
-            path: "{{ otel_systemd_dir }}/otel-collector.service"
-          register: otel_collector_stat
-        - name: Log otel_collector_stat
-          debug:
-            var: otel_collector_stat
-        - name: Stop otel collector service
-          service:
-            enabled: yes
-            name: otel-collector
-            state: stopped
-          become: yes
-          become_method: sudo
-          when: otel_collector_stat.stat.exists
-
-        - name: Delete otel collector service
-          file:
-            path: "{{ otel_systemd_dir }}/otel-collector.service"
-            state: absent
-          become: yes
-          become_method: sudo
-        when: clean_otel_collector is defined and clean_otel_collector|bool
-
       - name: Perform daemon-reload for removed services
         shell:
           cmd: "systemctl daemon-reload"
         become: yes
         become_method: sudo
-
       when: process == "thirdparty" and command == "remove-services"
 
 - name: Removing platform services
@@ -265,6 +238,14 @@
           state: absent
         become: yes
         become_method: sudo
+
+      - name: Delete otel collector service
+        file:
+          path: "{{ systemd_dir }}/otel-collector.service"
+          state: absent
+        become: yes
+        become_method: sudo
+        when: clean_otel_collector is defined and clean_otel_collector|bool
 
       - name: Perform daemon-reload for removed services
         shell:
