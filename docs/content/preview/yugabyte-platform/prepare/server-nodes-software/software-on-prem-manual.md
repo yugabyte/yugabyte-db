@@ -619,13 +619,13 @@ You must reboot the system for these two settings to take effect.
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
+The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
 
 For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
 Use the following procedure to install node agent for fully manual provisioning.
 
-To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
+To install the node agent manually, as the `yugabyte` user, do the following:
 
 1. If you are re-provisioning the node (for example, you are [patching the Linux operating system](../../../manage-deployments/upgrade-nodes/), where node agent has previously been installed on the node), you need to [unregister the node agent](#unregister-node-agent) before installing node agent.
 

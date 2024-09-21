@@ -17,7 +17,7 @@ type: indexpage
 
 The Linux OS and other software components on each database cluster node must meet the following minimum software requirements.
 
-Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere (YBA) will install it all automatically.
+Depending on the [provider type](../../yba-overview/#provider-configurations) and permissions you grant, you may have to install all of these requirements manually, or YugabyteDB Anywhere will install it all automatically.
 
 {{< warning title="Using disk encryption software with YugabyteDB" >}}
 If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
@@ -25,15 +25,15 @@ If you are using third party disk encryption software, such as Vormetric or Ciph
 To avoid problems, [pause the universe](../../manage-deployments/delete-universe/#pause-a-universe) _before_ enabling or disabling the disk encryption service on universe nodes.
 {{< /warning >}}
 
-##### Linux OS
+### Linux OS
 
-YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/).
+YugabyteDB Anywhere supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/).
 
 AlmaLinux OS 8 disk images are used by default, but you can specify a custom disk image and OS.
 
-##### Additional software
+### Additional software
 
-YBA requires the following additional software to be pre-installed on nodes:
+YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
 
 - Python 3.6-3.8
 - Install the python selinux package corresponding to your version of python. For example, using pip, you can install as follows:
@@ -47,7 +47,7 @@ YBA requires the following additional software to be pre-installed on nodes:
 - unzip
 - policycoreutils-python-utils
 
-##### Additional software for airgapped deployment
+### Additional software for airgapped deployment
 
 Additionally, if not connected to the public Internet (that is, airgapped); and not connected to a local Yum repository that contains the [additional software](#additional-software), database cluster nodes must also have the following additional software pre-installed:
 
