@@ -712,14 +712,22 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_VECTORS_EQ(rows, kRows);
 
   // Verify first clone only has the first row.
-  auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_EQ(row, kRows[0]);
+  // Use a scope here and below so we can drop the cloned databases after.
+  {
+    auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, kRows[0]);
+  }
 
   // Verify second clone has both rows.
-  auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-  rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
+  {
+    auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+    rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_VECTORS_EQ(rows, kRows);
+  }
+
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {

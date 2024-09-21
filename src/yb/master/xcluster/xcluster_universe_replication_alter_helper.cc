@@ -243,6 +243,7 @@ Status AlterUniverseReplicationHelper::AddTablesToReplication(
   setup_req.mutable_producer_master_addresses()->CopyFrom(
       original_universe_pb.producer_master_addresses());
   setup_req.set_transactional(original_universe_pb.transactional());
+  setup_req.set_automatic_ddl_mode(original_universe_pb.db_scoped_info().automatic_ddl_mode());
 
   if (req->has_producer_namespace_to_add()) {
     *setup_req.add_producer_namespaces() = req->producer_namespace_to_add();

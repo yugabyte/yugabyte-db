@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -153,10 +154,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
                 return -1;
               }
             },
-            rowCount -> {
-              return rowCount == expectedRows;
-            });
-    boolean success = condition.retryUntilCond(5, TimeUnit.MINUTES.toSeconds(1));
+            rowCount -> rowCount == expectedRows);
+    boolean success = condition.retryUntilCond(1, TimeUnit.MINUTES.toSeconds(1));
     if (!success) {
       throw new RuntimeException(
           String.format(
@@ -235,5 +234,25 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
         "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUUID,
         user.createAuthToken(),
         Json.toJson(formData));
+  }
+
+  protected void assertYsqlOutputEqualsWithRetry(
+      Universe universe, String ysqlCommand, String expectedValue) {
+    NodeDetails targetNodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    doWithRetry(
+        Duration.ofSeconds(1),
+        Duration.ofMinutes(1),
+        () -> {
+          ShellResponse targetYsqlResponse =
+              localNodeUniverseManager.runYsqlCommand(
+                  targetNodeDetails, universe, YUGABYTE_DB, ysqlCommand, 10);
+          if (!targetYsqlResponse.isSuccess()) {
+            throw new RuntimeException("Failed to run ysql command");
+          }
+          String response = CommonUtils.extractJsonisedSqlResponse(targetYsqlResponse).trim();
+          if (!response.equals(expectedValue)) {
+            throw new RuntimeException("Expected " + expectedValue + ", got " + response);
+          }
+        });
   }
 }

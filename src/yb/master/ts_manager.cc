@@ -39,7 +39,9 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
@@ -52,76 +54,63 @@ DEFINE_NON_RUNTIME_bool(
     "of on all. The used host/port combination depends on the value of --use_private_ip.");
 TAG_FLAG(master_register_ts_check_desired_host_port, advanced);
 
+DEFINE_RUNTIME_int32(
+    tserver_unresponsive_timeout_ms, 60 * 1000,
+    "The period of time that a Master can go without receiving a heartbeat from a tablet server "
+    "before considering it unresponsive. Unresponsive servers are not selected when assigning "
+    "replicas during table creation or re-replication.");
+TAG_FLAG(tserver_unresponsive_timeout_ms, advanced);
+
+DEFINE_test_flag(
+    bool, persist_tserver_registry, false,
+    "Whether to persist the map of registered tservers in the universe to the sys catalog. Also "
+    "controls whether to reload the map of registered tservers from the sys catalog when reloading "
+    "the sys catalog.");
+
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
-namespace yb {
-namespace master {
-
+namespace yb::master {
 namespace {
-bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
-  return lhs.host() == rhs.host() && lhs.port() == rhs.port();
-}
+
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
 
 bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
-                     const google::protobuf::RepeatedPtrField<HostPortPB>& rhs) {
-  for (const auto& lhs_hp : lhs) {
-    for (const auto& rhs_hp : rhs) {
-      if (HasSameHostPort(lhs_hp, rhs_hp)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
+                     const google::protobuf::RepeatedPtrField<HostPortPB>& rhs);
 
 bool HasSameHostPort(
     const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs,
-    const CloudInfoPB& cloud_info) {
-  return HasSameHostPort(DesiredHostPort(lhs, cloud_info), DesiredHostPort(rhs, cloud_info));
-}
+    const CloudInfoPB& cloud_info);
 
-bool HasSameHostPort(const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs) {
-  return HasSameHostPort(lhs.private_rpc_addresses(), rhs.private_rpc_addresses()) ||
-         HasSameHostPort(lhs.broadcast_addresses(), rhs.broadcast_addresses());
-}
+bool HasSameHostPort(const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs);
 
 bool HasSameHostPort(
     const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs,
-    const std::vector<CloudInfoPB>& perspectives) {
-  auto find_it = std::find_if(
-      perspectives.begin(), perspectives.end(), [&lhs, &rhs](const CloudInfoPB& cloud_info) {
-        return HasSameHostPort(lhs, rhs, cloud_info);
-      });
-  return find_it != perspectives.end();
-}
+    const std::vector<CloudInfoPB>& perspectives);
 
 // Returns a function to determine whether a registered ts matches the host port of the registering
 // ts.
 std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
-    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info) {
-  // This pivots on a runtime flag so we cannot return a static function.
-  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))) {
-    // When desired host-port check is enabled, we do the following checks:
-    // 1. For master, the host-port for existing and registering tservers are different.
-    // 2. The existing and registering tservers have distinct host-port from each others
-    // perspective.
-    return
-        [&registration, &local_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
-          auto cloud_info_perspectives = {
-              local_cloud_info,                       // master's perspective
-              existing_ts_registration.cloud_info(),  // existing ts' perspective
-              registration.common().cloud_info()};    // registering ts' perspective
-          return HasSameHostPort(
-              existing_ts_registration, registration.common(), cloud_info_perspectives);
-        };
-  } else {
-    return [&registration](const ServerRegistrationPB& existing_ts_registration) {
-      return HasSameHostPort(existing_ts_registration, registration.common());
-    };
-  }
-}
+    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info);
+
+class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
+ public:
+  TSDescriptorLoader() noexcept {}
+
+  std::unordered_map<std::string, TSDescriptorPtr>&& TakeMap();
+
+ protected:
+  Status Visit(const std::string& id, const SysTServerEntryPB& metadata) override;
+
+ private:
+  std::unordered_map<std::string, TSDescriptorPtr> map_;
+};
+
+template <typename... Items>
+Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, Items&&... items);
 
 }  // namespace
+
+TSManager::TSManager(SysCatalogTable& sys_catalog) noexcept : sys_catalog_(sys_catalog) {}
 
 Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
@@ -217,7 +206,8 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
     } else {
       // This tserver has registered before. We just need to update its registration metadata.
       reg_data.registered_desc_lock = VERIFY_RESULT(it->second->UpdateRegistration(
-          instance, registration, std::move(local_cloud_info), proxy_cache));
+          instance, registration, std::move(local_cloud_info), registered_through_heartbeat,
+          proxy_cache));
       reg_data.desc = it->second;
     }
   }
@@ -226,37 +216,36 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
 
 Status TSManager::RegisterFromRaftConfig(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
   // todo(zdrudi): what happens if the registration through raft config is blocked because of a host
   // port collision? add a test.
-  VERIFY_RESULT(
-      RegisterInternal(instance, registration, {}, std::move(local_cloud_info), proxy_cache));
+  VERIFY_RESULT(RegisterInternal(
+      instance, registration, {}, std::move(local_cloud_info), epoch, proxy_cache));
   return Status::OK();
 }
 
 Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
-    const TSHeartbeatRequestPB& heartbeat_request) const {
+    const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
   RETURN_NOT_OK(desc->UpdateTSMetadataFromHeartbeat(heartbeat_request, &lock));
-  // todo(zdrudi): write to sys catalog here. The write may be a no-op if the TServer was already
-  // live.
+  RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
   return desc;
 }
 
 Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
-    const TSHeartbeatRequestPB& heartbeat_request, CloudInfoPB&& local_cloud_info,
-    rpc::ProxyCache* proxy_cache) {
+    const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
+    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
   return RegisterInternal(
       heartbeat_request.common().ts_instance(), heartbeat_request.registration(),
-      std::cref(heartbeat_request), std::move(local_cloud_info), proxy_cache);
+      std::cref(heartbeat_request), std::move(local_cloud_info), epoch, proxy_cache);
 }
 
 Result<TSDescriptorPtr> TSManager::RegisterInternal(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
-    CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
   TSCountCallback callback;
   TSDescriptorPtr result;
   auto registered_through_heartbeat = RegisteredThroughHeartbeat(request.has_value());
@@ -270,7 +259,7 @@ Result<TSDescriptorPtr> TSManager::RegisterInternal(
           *request, &reg_data.registered_desc_lock));
     }
     std::tie(result, callback) =
-        VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data)));
+      VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
   }
   if (callback) {
     callback();
@@ -280,9 +269,11 @@ Result<TSDescriptorPtr> TSManager::RegisterInternal(
 
 Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMutation(
     const NodeInstancePB& new_ts_instance, const TSRegistrationPB& registration,
-    TSManager::RegistrationMutationData&& registration_data) {
+    TSManager::RegistrationMutationData&& registration_data,
+    const LeaderEpoch& epoch) {
   TSCountCallback callback;
-  // todo(zdrudi): write all descs in registration to sys catalog here.
+  RETURN_NOT_OK(UpsertIfRequired(
+      epoch, sys_catalog_, registration_data.desc, registration_data.replaced_descs));
   registration_data.registered_desc_lock.Commit();
   for (auto& l : registration_data.replaced_desc_locks) {
     LOG(WARNING) << "Removing entry: " << l->pb.ShortDebugString()
@@ -317,17 +308,16 @@ void TSManager::GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condi
 }
 
 void TSManager::GetDescriptorsUnlocked(
-    std::function<bool(const TSDescriptorPtr&)> condition, TSDescriptorVector* descs) const {
+    std::function<bool(const TSDescriptorPtr&)> predicate, TSDescriptorVector* descs) const {
   descs->clear();
 
   descs->reserve(servers_by_id_.size());
-  for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
-    const TSDescriptorPtr& ts = entry.second;
-    if (condition(ts)) {
-      VLOG(1) << " Adding " << yb::ToString(*ts);
-      descs->push_back(ts);
+  for (const auto& [id, desc] : servers_by_id_) {
+    if (predicate(desc)) {
+      VLOG(1) << " Adding " << yb::ToString(desc);
+      descs->push_back(desc);
     } else {
-      VLOG(1) << " NOT Adding " << yb::ToString(*ts);
+      VLOG(1) << " NOT Adding " << yb::ToString(desc);
     }
   }
 }
@@ -412,28 +402,150 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
-void TSManager::MarkUnresponsiveTServers() {
+Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   SharedLock<decltype(map_lock_)> l(map_lock_);
   auto current_time = MonoTime::Now();
   auto unresponsive_timeout_millis = GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms);
-  std::vector<TSDescriptor::WriteLock> locks;
+  std::vector<TSDescriptor*> updated_descs;
+  std::vector<TSDescriptor::WriteLock> cow_locks;
   for (const auto& [id, desc] : servers_by_id_) {
     auto last_heartbeat_time = desc->LastHeartbeatTime();
     if (last_heartbeat_time && current_time.GetDeltaSince(last_heartbeat_time).ToMilliseconds() <
                                    unresponsive_timeout_millis) {
       continue;
     }
-    auto desc_lock = desc->LockForWrite();
-    if (desc_lock->pb.state() == SysTServerEntryPB::MAYBE_LIVE) {
-      desc_lock.mutable_data()->pb.set_state(SysTServerEntryPB::UNRESPONSIVE);
-      locks.push_back(std::move(desc_lock));
+    auto l = desc->LockForWrite();
+    if (l->pb.state() == SysTServerEntryPB::LIVE) {
+      l.mutable_data()->pb.set_state(SysTServerEntryPB::UNRESPONSIVE);
+      updated_descs.push_back(desc.get());
+      cow_locks.push_back(std::move(l));
     }
   }
-  // todo(zdrudi): write to sys catalog here
-  for (auto& lock : locks) {
-    lock.Commit();
+  RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
+  for (auto& l : cow_locks) {
+    l.Commit();
+  }
+  return Status::OK();
+}
+
+Status TSManager::RunLoader() {
+  if (!GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+    return Status::OK();
+  }
+  auto loader = std::make_unique<TSDescriptorLoader>();
+  RETURN_NOT_OK(sys_catalog_.Visit(loader.get()));
+  MutexLock l_reg(registration_lock_);
+  std::lock_guard l_map(map_lock_);
+  servers_by_id_ = loader->TakeMap();
+  // todo(zdrudi): cluster can be wedged (permanently?) if we crash after registering enough
+  // tservers but before calling the callback.  so add a check to potentially schedule the callback
+  // here.
+  // https://github.com/yugabyte/yugabyte-db/issues/23744
+  return Status::OK();
+}
+
+namespace {
+
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
+  return lhs.host() == rhs.host() && lhs.port() == rhs.port();
+}
+
+bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
+                     const google::protobuf::RepeatedPtrField<HostPortPB>& rhs) {
+  for (const auto& lhs_hp : lhs) {
+    for (const auto& rhs_hp : rhs) {
+      if (HasSameHostPort(lhs_hp, rhs_hp)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool HasSameHostPort(
+    const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs,
+    const CloudInfoPB& cloud_info) {
+  return HasSameHostPort(DesiredHostPort(lhs, cloud_info), DesiredHostPort(rhs, cloud_info));
+}
+
+bool HasSameHostPort(const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs) {
+  return HasSameHostPort(lhs.private_rpc_addresses(), rhs.private_rpc_addresses()) ||
+         HasSameHostPort(lhs.broadcast_addresses(), rhs.broadcast_addresses());
+}
+
+bool HasSameHostPort(
+    const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs,
+    const std::vector<CloudInfoPB>& perspectives) {
+  auto find_it = std::find_if(
+      perspectives.begin(), perspectives.end(), [&lhs, &rhs](const CloudInfoPB& cloud_info) {
+        return HasSameHostPort(lhs, rhs, cloud_info);
+      });
+  return find_it != perspectives.end();
+}
+
+std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
+    const TSRegistrationPB& registration, const CloudInfoPB& local_cloud_info) {
+  // This pivots on a runtime flag so we cannot return a static function.
+  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))) {
+    // When desired host-port check is enabled, we do the following checks:
+    // 1. For master, the host-port for existing and registering tservers are different.
+    // 2. The existing and registering tservers have distinct host-port from each others
+    // perspective.
+    return
+        [&registration, &local_cloud_info](const ServerRegistrationPB& existing_ts_registration) {
+          auto cloud_info_perspectives = {
+              local_cloud_info,                       // master's perspective
+              existing_ts_registration.cloud_info(),  // existing ts' perspective
+              registration.common().cloud_info()};    // registering ts' perspective
+          return HasSameHostPort(
+              existing_ts_registration, registration.common(), cloud_info_perspectives);
+        };
+  } else {
+    return [&registration](const ServerRegistrationPB& existing_ts_registration) {
+      return HasSameHostPort(existing_ts_registration, registration.common());
+    };
   }
 }
 
-} // namespace master
-} // namespace yb
+std::unordered_map<std::string, TSDescriptorPtr>&& TSDescriptorLoader::TakeMap() {
+  return std::move(map_);
+}
+
+Status TSDescriptorLoader::Visit(
+    const std::string& id, const SysTServerEntryPB& metadata) {
+  // todo(zdrudi): not sure what we should do with registered_through_heartbeat.
+  TSDescriptorPtr desc = std::make_shared<TSDescriptor>(id, RegisteredThroughHeartbeat::kTrue);
+  // todo(zdrudi): should give some thought to state here, in particular LIVE.
+  // In the general case, the new leader will spin up seconds after the old leader loses leadership,
+  // so keeping the live state for all loaded ts descriptors is correct.
+  //
+  // However it could happen that a cluster is down for some time before a new master takes
+  // leadership. Concretely consider pausing a universe. In this case the new master leader should
+  // not assume all ts descriptors read from the sys catalog in the LIVE state describe live
+  // tservers.
+  //
+  // A simple solution is to add additional logic to MarkUnresponsiveTServers to update some object
+  // in the sys catalog with a "fresh as of" field so the loader can use that field to decide
+  // whether or not to trust the LIVE state.
+  desc->Load(metadata);
+  auto [it, inserted] = map_.insert({id, std::move(desc)});
+  if (!inserted) {
+    return STATUS(
+        AlreadyPresent, Format(
+                            "Collision loading tserver entries in tserver uuids: $0, tserver "
+                            "already present: $1, tserver to insert: $2",
+                            id, *it, metadata));
+  }
+  return Status::OK();
+}
+
+template <typename... Items>
+Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, Items&&... items) {
+  if (!GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+    return Status::OK();
+  }
+  return sys_catalog.Upsert(epoch, std::forward<Items>(items)...);
+}
+
+}  // namespace
+}  // namespace yb::master

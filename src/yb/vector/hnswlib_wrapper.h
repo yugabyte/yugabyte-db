@@ -39,14 +39,4 @@ class HnswlibIndex : public VectorIndexBase<
   using Impl = detail::HnswlibIndexImpl<Vector, DistanceResult>;
 };
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
- public:
-  HnswlibIndexFactory() = default;
-
-  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    return std::make_unique<HnswlibIndex<Vector, DistanceResult>>(this->hnsw_options_);
-  }
-};
-
 }  // namespace yb::vectorindex

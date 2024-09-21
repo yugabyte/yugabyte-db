@@ -51,8 +51,8 @@ class SCOPED_CAPABILITY UniqueLock {
 };
 
 template <class Mutex>
-std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
-  return lock->internal_unique_lock();
+std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>& lock) {
+  return lock.internal_unique_lock();
 }
 
 #else
@@ -65,8 +65,8 @@ template<class Mutex>
 using UniqueLock = std::unique_lock<Mutex>;
 
 template <class Mutex>
-std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
-  return *lock;
+std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>& lock) {
+  return lock;
 }
 
 #endif
@@ -74,13 +74,13 @@ std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
 template<typename Mutex>
 void WaitOnConditionVariable(std::condition_variable* cond_var, UniqueLock<Mutex>* lock)
     REQUIRES(*lock) {
-  cond_var->wait(GetLockForCondition(lock));
+  cond_var->wait(GetLockForCondition(*lock));
 }
 
 template<typename Mutex, typename Functor>
 void WaitOnConditionVariable(
     std::condition_variable* cond_var, UniqueLock<Mutex>* lock, Functor f) {
-  cond_var->wait(GetLockForCondition(lock), std::move(f));
+  cond_var->wait(GetLockForCondition(*lock), std::move(f));
 }
 
 } // namespace yb

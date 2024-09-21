@@ -82,7 +82,7 @@ class MiniMaster {
 
   // Restart the master on the same ports as it was previously bound.
   // Requires that the master is currently started.
-  Status Restart();
+  Status Restart(bool wait_until_catalog_manager_is_leader = false);
 
   // Use custom master_addresses, rpc_bind_addresses, and broadcast_addresses.
   // Warning: this can be used only when starting a master on its own.

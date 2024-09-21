@@ -1777,7 +1777,7 @@ class TransactionParticipant::Impl
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
           return LockAndFindResult{};
         }
-        return LockAndFindResult{std::move(GetLockForCondition(&lock)), it};
+        return LockAndFindResult{std::move(GetLockForCondition(lock)), it};
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
       deadlock_status = GetTransactionDeadlockStatusUnlocked(id);

@@ -189,7 +189,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -2956,27 +2955,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         nodes,
         type,
         config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
-        null /* userIntent */,
-        null /* communicationPorts */);
+        null /* currentUniverseState */);
   }
 
   public SubTaskGroup createWaitForServersTasks(
-      Collection<NodeDetails> nodes,
-      ServerType type,
-      UserIntent userIntent,
-      CommunicationPorts communicationPorts) {
+      Collection<NodeDetails> nodes, ServerType type, Universe currentUniverseState) {
     return createWaitForServersTasks(
         nodes,
         type,
         config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
-        userIntent,
-        communicationPorts);
+        currentUniverseState);
   }
 
   public SubTaskGroup createWaitForServersTasks(
       Collection<NodeDetails> nodes, ServerType type, Duration timeout) {
-    return createWaitForServersTasks(
-        nodes, type, timeout, null /* userIntent */, null /* communicationPorts */);
+    return createWaitForServersTasks(nodes, type, timeout, null /* currentUniverseState */);
   }
 
   /**
@@ -2985,15 +2978,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type : Master or tserver type server running on this node.
    * @param timeout : time to wait for each rpc call to the server.
-   * @param userIntent : userIntent of the node.
-   * @param communicationPorts: custom communication ports of the node.
+   * @param currentUniverseState : Universe state at the moment (not persisted in DB).
    */
   public SubTaskGroup createWaitForServersTasks(
       Collection<NodeDetails> nodes,
       ServerType type,
       Duration timeout,
-      @Nullable UserIntent userIntent,
-      @Nullable UniverseTaskParams.CommunicationPorts communicationPorts) {
+      @Nullable Universe currentUniverseState) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServer");
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
@@ -3001,8 +2992,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeName = node.nodeName;
       params.serverType = type;
       params.serverWaitTimeoutMs = timeout.toMillis();
-      params.userIntent = userIntent;
-      params.customCommunicationPorts = communicationPorts;
+      params.currentUniverseState = currentUniverseState;
       WaitForServer task = createTask(WaitForServer.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
