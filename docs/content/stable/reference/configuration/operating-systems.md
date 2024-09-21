@@ -62,7 +62,7 @@ To use a CIS hardened image for cluster nodes:
 To use a CIS hardened image for installing YugabyteDB Anywhere:
 
 1. Install the image on the node.
-1. [Change the firewall rules](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-images).
+1. [Change the firewall rules](../../../yugabyte-platform/prepare/networking/#firewall-changes-for-cis-hardened-images) for YugabyteDB Anywhere installation.
 
 ### YugabyteDB Anywhere universe
 
