@@ -191,6 +191,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  Status BootstrapDdlObjectLocks(const master::TSHeartbeatResponsePB& heartbeat_resp);
 
   Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const EXCLUDES(lock_) override;
@@ -371,6 +372,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
   void ClearAllMetaCachesOnServer() override;
+
+  Status ClearMetacache(const std::string& namespace_id) override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 

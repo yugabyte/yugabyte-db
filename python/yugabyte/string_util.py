@@ -11,7 +11,7 @@
 # under the License.
 
 import hashlib
-from typing import Union
+from typing import Union, Optional, Any
 
 
 def encode_if_needed(s: Union[bytes, str]) -> bytes:
@@ -22,3 +22,16 @@ def encode_if_needed(s: Union[bytes, str]) -> bytes:
 
 def compute_sha256(s: Union[bytes, str]) -> str:
     return hashlib.sha256(encode_if_needed(s)).hexdigest()
+
+
+def none_to_empty_string(x: Optional[Any]) -> Any:
+    if x is None:
+        return ''
+    return x
+
+
+def matches_maybe_empty(a: Optional[str], b: Optional[str]) -> bool:
+    """
+    Returns True if a or b are equal, but treating all None values as empty strings.
+    """
+    return (a or '') == (b or '')

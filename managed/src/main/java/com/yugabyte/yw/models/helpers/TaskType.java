@@ -649,6 +649,8 @@ public enum TaskType {
 
   ChangeAdminPassword(com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword.class),
 
+  DropTable(com.yugabyte.yw.commissioner.tasks.subtasks.DropTable.class),
+
   CreateTable(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable.class),
 
   DeleteNode(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode.class),

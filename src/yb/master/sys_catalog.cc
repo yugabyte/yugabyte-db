@@ -926,7 +926,7 @@ Status SysCatalogTable::ReadWithRestarts(
   do {
     if (read_restart_ht.is_valid()) {
       safe_ht_to_read = VERIFY_RESULT(tablet->SafeTime(require_lease, read_restart_ht));
-      VLOG(0) << __func__ << " restarting read with ht = " << safe_ht_to_read
+      VLOG(3) << __func__ << " restarting read with ht = " << safe_ht_to_read
               << " >= " << read_restart_ht << ". Encountered read restart when reading at "
               << read_time.ToString();
       read_time.read.MakeAtLeast(safe_ht_to_read);

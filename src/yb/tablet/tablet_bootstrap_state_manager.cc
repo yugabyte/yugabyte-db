@@ -21,32 +21,36 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/transaction_participant.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 
 namespace yb::tablet {
 
 TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs):
-    min_running_ht_(rhs.min_running_ht_.load()) {}
+    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
 
 TabletBootstrapState::TabletBootstrapState(TabletBootstrapState&& rhs):
-    min_running_ht_(rhs.min_running_ht_.load()) {}
+    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
 
 void TabletBootstrapState::operator=(TabletBootstrapState&& rhs) {
-  min_running_ht_.store(rhs.min_running_ht_.load());
+  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
 }
 
 void TabletBootstrapState::CopyFrom(const TabletBootstrapState& rhs) {
-  min_running_ht_.store(rhs.min_running_ht_.load());
+  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
 }
 
 void TabletBootstrapState::ToPB(consensus::TabletBootstrapStatePB* pb) const {
-  pb->set_min_running_ht(min_running_ht_.load().ToUint64());
+  pb->set_min_replay_txn_start_ht(min_replay_txn_start_ht_.load().ToUint64());
 }
 
 void TabletBootstrapState::FromPB(const consensus::TabletBootstrapStatePB& pb) {
-  min_running_ht_.store(
-      pb.has_min_running_ht() ? HybridTime(pb.min_running_ht()) : HybridTime::kInvalid);
+  min_replay_txn_start_ht_.store(
+      pb.has_min_replay_txn_start_ht() ? HybridTime(pb.min_replay_txn_start_ht())
+                                       : HybridTime::kInvalid);
 }
 
 TabletBootstrapStateManager::TabletBootstrapStateManager() { }
@@ -71,14 +75,31 @@ Status TabletBootstrapStateManager::Init() {
   return Status::OK();
 }
 
-Status TabletBootstrapStateManager::SaveToDisk(consensus::RaftConsensus& raft_consensus) {
+Status TabletBootstrapStateManager::SaveToDisk(
+    const TabletWeakPtr& tablet_ptr, consensus::RaftConsensus& raft_consensus) {
   auto retryable_requests = VERIFY_RESULT(raft_consensus.TakeSnapshotOfRetryableRequests());
   if (!retryable_requests) {
     LOG(INFO) << "Nothing to save";
     return Status::OK();
   }
 
+  auto max_replicated_op_id = retryable_requests->GetMaxReplicatedOpId();
+
   TabletBootstrapState bootstrap_state(bootstrap_state_);
+
+  // Set min replay txn start time to what it will be after this flush succeeds - this is safe
+  // because if the flush succeeds, replay start op id will be calculated from the new value.
+  auto tablet = tablet_ptr.lock();
+  TransactionParticipant* participant = nullptr;
+  if (tablet) {
+    participant = tablet->transaction_participant();
+    if (participant) {
+      auto start_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
+          max_replicated_op_id));
+      VLOG(1) << "Using min_replay_txn_start_ht = " << start_ht;
+      bootstrap_state.SetMinReplayTxnStartTime(start_ht);
+    }
+  }
 
   consensus::TabletBootstrapStatePB pb;
   retryable_requests->ToPB(&pb);
@@ -101,8 +122,16 @@ Status TabletBootstrapStateManager::SaveToDisk(consensus::RaftConsensus& raft_co
   has_file_on_disk_ = true;
   RETURN_NOT_OK(env->SyncDir(dir_));
 
-  auto max_replicated_op_id = retryable_requests->GetMaxReplicatedOpId();
-  return raft_consensus.SetLastFlushedOpIdInRetryableRequests(max_replicated_op_id);
+  RETURN_NOT_OK(raft_consensus.SetLastFlushedOpIdInRetryableRequests(max_replicated_op_id));
+
+  if (participant) {
+    VLOG(1)
+        << "Bootstrap state saved to disk, triggering cleanup of recently applied transactions";
+    participant->SetRetryableRequestsFlushedOpId(max_replicated_op_id);
+    return participant->ProcessRecentlyAppliedTransactions();
+  }
+
+  return Status::OK();
 }
 
 Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromDisk() {

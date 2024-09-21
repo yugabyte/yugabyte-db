@@ -67,7 +67,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
-        GlobalConfKeys.dbScopedXClusterEnabled.getKey(),
+        GlobalConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
 
@@ -283,10 +283,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     List<String> updateNamespaceNames = Arrays.asList("dbcolocated");
     DrConfigSetDatabasesForm setDatabasesFormData = new DrConfigSetDatabasesForm();
-    setDatabasesFormData.databases = new HashSet<String>();
+    setDatabasesFormData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (updateNamespaceNames.contains(namespace.name)) {
-        setDatabasesFormData.databases.add(namespace.namespaceUUID.toString());
+        setDatabasesFormData.dbs.add(namespace.namespaceUUID.toString());
       }
     }
 
@@ -462,6 +462,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
 
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -538,6 +543,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
+
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();

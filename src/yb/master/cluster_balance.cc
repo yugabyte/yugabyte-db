@@ -557,11 +557,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
 
     // We may have modified global loads, so we need to reset this state's load.
     state_->SortLoad();
+    state_->SortLeaderLoad();
 
     VLOG(2) << "Per table state for table: " << table->id() << ", " << state_->ToString();
     VLOG(2) << "Global state: " << global_state_->ToString();
     VLOG(2) << "Sorted load: " << table->id() << ", " << GetSortedLoad();
-    VLOG(2) << "Global load: " << table->id() << ", " << GetSortedLeaderLoad();
+    VLOG(2) << "Sorted leader load: " << table->id() << ", " << GetSortedLeaderLoad();
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -1070,7 +1071,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
                                      global_state_->GetGlobalLoad(low_load_uuid);
-          if (global_load_variance < state_->options_->kMinGlobalLoadVarianceToBalance) {
+          if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
             // Already globally balanced. Since we are sorted by global load, we can return here as
             // there are no other moves for us to make.
             return false;
@@ -1309,13 +1310,14 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
       bool is_global_balancing_move = false;
 
       // Check for state change or end conditions.
-      if (left == right || (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
-            !high_leader_blacklisted)) {
+      if (high_leader_blacklisted && state_->GetLeaderLoad(high_load_uuid) == 0) {
+        continue;  // No leaders to move from this blacklisted TS.
+      }
+      if (left == right || (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
+                            !high_leader_blacklisted)) {
         // Global leader balancing only if per table variance is > 0.
-        // If both left and right are same (i.e. load_variance is 0) and right is last_pos
-        // or right is last_pos and load_variance is 0 then we can return as we don't
-        // have any other moves to make.
         if (load_variance == 0 && right == last_pos) {
+          // We can return as we don't have any other moves to make.
           return false;
         }
         // Check if we can benefit from global leader balancing.
@@ -1323,10 +1325,15 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid) -
                                         state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
-          // Already globally balanced. Since we are sorted by global load, we can return here as
-          // there are no other moves for us to make.
-          if (global_load_variance < state_->options_->kMinGlobalLeaderLoadVarianceToBalance) {
-            return false;
+          // Already globally balanced. Since we are sorted by (leaders, global leader load), we can
+          // break here as there are no other leaders for us to move to this left tserver.
+          // However, as opposed to global load balancing, we cannot return early here, and instead
+          // must just break. This is because for global load balancing we can always find a tablet
+          // to move from the high load TS to the low load TS (assuming proper placements). But for
+          // leader balancing, we have the additional constraint that both tservers must have a peer
+          // for this tablet. Thus we must continue to the next left tserver.
+          if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
+            break;
           }
           VLOG(3) << "This is a global leader balancing pass";
           is_global_balancing_move = true;
@@ -1369,7 +1376,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
         }
 
         // Leader movement solely due to leader blacklist.
-        if (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
+        if (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
             high_leader_blacklisted) {
           LOG(INFO) << "Move tablet " << tablet.first << " leader from leader blacklisted TS "
             << *from_ts << " to TS " << *to_ts;

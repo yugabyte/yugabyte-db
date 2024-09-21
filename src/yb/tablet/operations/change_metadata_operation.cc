@@ -160,9 +160,30 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
 
   MetadataChange metadata_change = MetadataChange::NONE;
   bool request_has_newer_schema = false;
+  SchemaVersion current_schema_version = std::numeric_limits<SchemaVersion>::max();
   if (request()->has_schema()) {
+    const auto& schema = request()->schema();
     metadata_change = MetadataChange::SCHEMA;
-    request_has_newer_schema = tablet->metadata()->schema_version() < schema_version();
+    if (schema.has_colocated_table_id()) {
+      switch (schema.colocated_table_id().value_case()) {
+        case ColocatedTableIdentifierPB::kCotableId: {
+          auto uuid = VERIFY_RESULT(Uuid::FromSlice(schema.colocated_table_id().cotable_id()));
+          current_schema_version = VERIFY_RESULT(tablet->metadata()->schema_version(uuid));
+          break;
+        }
+        case ColocatedTableIdentifierPB::kColocationId:
+          current_schema_version = VERIFY_RESULT(tablet->metadata()->schema_version(
+              schema.colocated_table_id().colocation_id()));
+          break;
+        case ColocatedTableIdentifierPB::VALUE_NOT_SET:
+          // Not set means we should use the parent table schema version.
+          current_schema_version = tablet->metadata()->primary_table_schema_version();
+          break;
+      }
+    } else {
+      current_schema_version = tablet->metadata()->primary_table_schema_version();
+    }
+    request_has_newer_schema = current_schema_version < schema_version();
     if (request_has_newer_schema) {
       ++num_operations;
     }
@@ -207,7 +228,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     case MetadataChange::SCHEMA:
       if (!request_has_newer_schema) {
         LOG_WITH_PREFIX(INFO)
-            << "Already running schema version " << tablet->metadata()->schema_version()
+            << "Already running schema version " << current_schema_version
             << " got alter request for version " << schema_version();
         break;
       }

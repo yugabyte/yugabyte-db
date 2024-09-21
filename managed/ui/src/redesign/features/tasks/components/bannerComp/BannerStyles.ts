@@ -28,6 +28,6 @@ export const useBannerCommonStyles = makeStyles((theme) => ({
     width: '1px',
     height: '24px',
     background: theme.palette.ybacolors.ybBorderGray,
-    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    border: `0.5px solid ${theme.palette.ybacolors.ybBorderGray}`
   }
 }));

@@ -12,9 +12,10 @@
 //
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
-#include "yb/common/xcluster_util.h"
+
 #include "yb/client/xcluster_client.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/util/is_operation_done_result.h"
@@ -23,6 +24,8 @@
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
+
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 using namespace std::placeholders;
 
@@ -77,6 +80,7 @@ XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
     : CatalogEntityWithTasks(std::move(tasks_tracker)),
       helper_functions_(std::move(helper_functions)),
       task_factory_(task_factory) {
+  automatic_ddl_mode_ = outbound_replication_group_pb.automatic_ddl_mode();
   outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
   outbound_rg_info_->Load(outbound_replication_group_pb);
 }
@@ -263,7 +267,9 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
       "Namespace in unexpected state");
 
   if (table_ids.empty()) {
-    auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+    auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(
+        namespace_id, /*include_sequences_data=*/(
+            AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
     std::set<TableId> tables;
     std::transform(
         table_infos.begin(), table_infos.end(), std::inserter(tables, tables.begin()),
@@ -342,7 +348,9 @@ Result<NamespaceName> XClusterOutboundReplicationGroup::GetNamespaceName(
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
-  auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+  auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(
+      namespace_id, /*include_sequences_data=*/(
+          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_infos);
 
   SCHECK(
@@ -376,6 +384,23 @@ XClusterOutboundReplicationGroup::CreateNamespaceInfo(
   }
 
   return ns_info;
+}
+
+Status XClusterOutboundReplicationGroup::AddTableToInitialBootstrapMapping(
+    const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForWrite());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  if (ns_info->mutable_table_infos()->count(table_id) > 0) {
+    return Status::OK();
+  }
+  SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::TableInfoPB table_info;
+  table_info.set_is_checkpointing(true);
+  table_info.set_is_part_of_initial_bootstrap(true);
+  ns_info->mutable_table_infos()->insert({table_id, std::move(table_info)});
+
+  return Upsert(l, epoch);
 }
 
 Result<bool> XClusterOutboundReplicationGroup::AddNamespaceInternal(
@@ -576,7 +601,9 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
   NamespaceCheckpointInfo ns_info;
   ns_info.initial_bootstrap_required = namespace_info->initial_bootstrap_required();
 
-  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
+      namespace_id, /*include_sequences_data=*/(
+          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
   std::vector<scoped_refptr<TableInfo>> table_infos;
 
   if (!table_names.empty()) {
@@ -1147,10 +1174,8 @@ Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
   return table_info->stream_id();
 }
 
-Result<bool> XClusterOutboundReplicationGroup::AutomaticDDLMode() const {
-  SharedLock mutex_lock(mutex_);
-  auto l = VERIFY_RESULT(LockForRead());
-  return l->pb.automatic_ddl_mode();
+bool XClusterOutboundReplicationGroup::AutomaticDDLMode() const {
+  return automatic_ddl_mode_;
 }
 
 }  // namespace yb::master

@@ -70,6 +70,7 @@
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
@@ -406,11 +407,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      const LeaderEpoch& epoch);
 
   void AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
-      rpc::RpcContext rpc);
+      LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB* req,
+      tserver::AcquireObjectLockResponsePB* resp, rpc::RpcContext rpc);
   void ReleaseObjectLocks(
-      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
-      rpc::RpcContext rpc);
+      LeaderEpoch epoch, const tserver::ReleaseObjectLockRequestPB* req,
+      tserver::ReleaseObjectLockResponsePB* resp, rpc::RpcContext rpc);
+  void ExportObjectLockInfo(tserver::DdlLockEntriesPB* resp);
 
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -787,8 +789,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool IsLoadBalancerEnabled() override;
 
   // Return the table info for the table with the specified UUID, if it exists.
-  TableInfoPtr GetTableInfo(const TableId& table_id) EXCLUDES(mutex_) override;
-  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(mutex_);
+  TableInfoPtr GetTableInfo(const TableId& table_id) const EXCLUDES(mutex_) override;
+  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   // Gets the table info for each table id, or sets it to null if the table id was not found.
   std::unordered_map<TableId, TableInfoPtr> GetTableInfos(const std::vector<TableId>& table_ids)
@@ -1684,6 +1686,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTargetTask;
   friend class VerifyDdlTransactionTask;
+  friend class ObjectLockLoader;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -2392,6 +2395,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
       GUARDED_BY(mutex_);
+
+  std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;

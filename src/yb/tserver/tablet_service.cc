@@ -739,7 +739,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+  // TODO(asrivastava): This does not correctly handle colocated tables.
+  const uint32_t our_schema_version =
+      tablet.peer->tablet_metadata()->primary_table_schema_version();
   const uint32_t their_schema_version = req->schema_version();
   bool all_at_backfill = true;
   bool all_past_backfill = true;
@@ -3337,6 +3339,21 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
     rpc::RpcContext context) {
   server_->ClearAllMetaCachesOnServer();
   context.RespondSuccess();
+}
+
+void TabletServiceImpl::ClearMetacache(
+    const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp, rpc::RpcContext context) {
+  if (!req->has_namespace_id()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "namespace_id is not specified"), &context);
+    return;
+  }
+  auto s = server_->ClearMetacache(req->namespace_id());
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
 }
 
 void TabletServiceImpl::AcquireObjectLocks(

@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
@@ -432,7 +433,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.universe.consistency_check_enabled", "true");
+        .setValue("yb.universe.consistency_check.enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
     localNodeManager.setIpRangeEnd(ipRange.getSecond());
@@ -455,6 +456,11 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         ReleaseManager.YBC_CONFIG_TYPE.name(),
         getMetadataJson("ybc-" + YBC_VERSION, true),
         "release");
+    ObjectNode ywMetadata = Json.newObject();
+    ywMetadata.put("yugaware_uuid", UUID.randomUUID().toString());
+    ywMetadata.put("version", ybVersion);
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.YugawareMetadata.name(), ywMetadata, "Yugaware Metadata");
 
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);

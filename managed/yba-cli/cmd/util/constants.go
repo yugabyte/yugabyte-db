@@ -394,3 +394,9 @@ func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
 	}
 	return false
 }
+
+// IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP
+func IsCloudBasedProvider(providerType string) bool {
+	return providerType == AWSProviderType ||
+		providerType == AzureProviderType || providerType == GCPProviderType
+}

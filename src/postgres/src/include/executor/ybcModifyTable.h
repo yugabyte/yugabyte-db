@@ -51,6 +51,14 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 											Datum ybbasectid,
 											bool ybctid_as_value);
 
+typedef void (*yb_assign_for_write_function) (YBCPgStatement stmt,
+											  Relation index,
+											  Datum *values,
+											  bool *isnull,
+											  int natts,
+											  Datum old_ybbasectid,
+											  Datum new_ybbasectid);
+
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
@@ -152,6 +160,14 @@ extern void YBCExecuteDeleteIndex(Relation index,
                                   Datum ybctid,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
+
+extern void YBCExecuteUpdateIndex(Relation index,
+								  Datum *values,
+								  bool *isnull,
+								  Datum oldYbctid,
+								  Datum newYbctid,
+								  yb_assign_for_write_function callback);
+
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
  * If this is a single row op we will return false in the case that there was

@@ -528,7 +528,7 @@ public class XClusterConfigController extends AuthenticatedController {
       Set<String> databaseIdsToRemove) {
 
     XClusterConfigEditFormData editForm = new XClusterConfigEditFormData();
-    editForm.databases = databaseIds;
+    editForm.dbs = databaseIds;
 
     return new XClusterConfigTaskParams(
         xClusterConfig, bootstrapParams, editForm, databaseIdsToAdd, databaseIdsToRemove);

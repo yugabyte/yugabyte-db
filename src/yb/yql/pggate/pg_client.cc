@@ -159,7 +159,7 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
 
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
-  ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
+  ash_metadata->set_top_level_node_id(ash_config.top_level_node_id, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
   ash_metadata->set_pid(pg_metadata->pid);
@@ -401,7 +401,7 @@ class PgClient::Impl : public BigDataFetcher {
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
     ash_config_ = *ash_config;
-    memcpy(ash_config_.yql_endpoint_tserver_uuid, tserver_shared_data_.tserver_uuid(), 16);
+    memcpy(ash_config_.top_level_node_id, tserver_shared_data_.tserver_uuid(), 16);
 
     return Status::OK();
   }

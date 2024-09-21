@@ -2064,6 +2064,10 @@ void RaftGroupMetadata::GetTableIdToSchemaVersionMap(
   }
 }
 
+SchemaVersion RaftGroupMetadata::primary_table_schema_version() const {
+  return schema_version("");
+}
+
 SchemaVersion RaftGroupMetadata::schema_version(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id));
@@ -2082,8 +2086,8 @@ Result<SchemaVersion> RaftGroupMetadata::schema_version(ColocationId colocation_
 Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   if (cotable_id.IsNil()) {
-    // Return the parent table schema version
-    return schema_version();
+    // Return the parent table schema version.
+    return schema_version("");
   }
 
   auto res = GetTableInfo(cotable_id.ToHexString());

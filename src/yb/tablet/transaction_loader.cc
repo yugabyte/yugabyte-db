@@ -77,11 +77,11 @@ class TransactionLoader::Executor {
     if (!scoped_pending_operation_.ok()) {
       return false;
     }
-    auto min_running_ht = context().MinRunningHybridTime();
-    VLOG_WITH_PREFIX(1) << "TransactionLoader min_running_ht: " << min_running_ht;
+    auto min_replay_txn_start_ht = context().MinReplayTxnStartTime();
+    VLOG_WITH_PREFIX(1) << "TransactionLoader min_replay_txn_start_ht: " << min_replay_txn_start_ht;
     regular_iterator_ = CreateFullScanIterator(db.regular, nullptr /* filter */);
     intents_iterator_ = CreateFullScanIterator(db.intents,
-        docdb::CreateIntentHybridTimeFileFilter(min_running_ht));
+        docdb::CreateIntentHybridTimeFileFilter(min_replay_txn_start_ht));
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))

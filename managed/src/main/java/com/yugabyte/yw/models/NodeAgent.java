@@ -69,9 +69,11 @@ import play.mvc.Http.Status;
 @Setter
 @ApiModel(description = "Node agent details")
 public class NodeAgent extends Model {
-
   public static final KeyLock<UUID> NODE_AGENT_KEY_LOCK = new KeyLock<UUID>();
   public static final String NODE_AGENT_DIR = "node-agent";
+
+  private static final Set<State> INACTIVE_STATES =
+      ImmutableSet.of(State.REGISTERING, State.REGISTERED);
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -302,7 +304,7 @@ public class NodeAgent extends Model {
     return expr.findList();
   }
 
-  public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
+  public static Set<NodeAgent> getAll(UUID customerUuid) {
     return finder.query().where().eq("customer_uuid", customerUuid).findSet();
   }
 
@@ -485,6 +487,11 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public Path getServerKeyFilePath() {
     return getCertDirPath().resolve(SERVER_KEY_NAME);
+  }
+
+  @JsonIgnore
+  public boolean isActive() {
+    return !INACTIVE_STATES.contains(getState());
   }
 
   public void updateCertDirPath(Path certDirPath) {

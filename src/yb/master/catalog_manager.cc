@@ -120,6 +120,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager-internal.h"
@@ -140,7 +141,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
-#include "yb/master/object_lock.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -932,6 +933,7 @@ CatalogManager::CatalogManager(Master* master)
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
+      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -1412,6 +1414,9 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear redis config mapping.
   redis_config_map_.clear();
 
+  // Clear Object lock mapping.
+  object_lock_info_manager_->Clear();
+
   // Clear ysql catalog config.
   ysql_catalog_config_.reset();
 
@@ -1458,6 +1463,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
+  RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
@@ -5346,6 +5352,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -6161,8 +6168,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
 }
 
 void CatalogManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
-    rpc::RpcContext rpc) {
+    LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB* req,
+    tserver::AcquireObjectLockResponsePB* resp, rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
@@ -6170,12 +6177,12 @@ void CatalogManager::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  LockObject(master_, this, req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(epoch, req, resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocks(
-    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
-    rpc::RpcContext rpc) {
+    LeaderEpoch epoch, const tserver::ReleaseObjectLockRequestPB* req,
+    tserver::ReleaseObjectLockResponsePB* resp, rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
@@ -6183,7 +6190,11 @@ void CatalogManager::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  UnlockObject(master_, this, req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(epoch, req, resp, std::move(rpc));
+}
+
+void CatalogManager::ExportObjectLockInfo(tserver::DdlLockEntriesPB* resp) {
+  object_lock_info_manager_->ExportObjectLockInfo(resp);
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -7864,11 +7875,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) const {
   return tables_->FindTableOrNull(table_id);
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) const {
   SharedLock lock(mutex_);
   return GetTableInfoUnlocked(table_id);
 }

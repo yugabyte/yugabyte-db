@@ -63,7 +63,6 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private NodeAgentInstaller mockNodeAgentInstaller;
   private NodeAgentEnabler nodeAgentEnabler;
   private TestUniverseTaskBase universeTaskBase;
-  private BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {
@@ -81,14 +80,16 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     platformExecutorFactory = app.injector().instanceOf(PlatformExecutorFactory.class);
     platformScheduler = app.injector().instanceOf(PlatformScheduler.class);
-    baseTaskDependencies = app.injector().instanceOf(BaseTaskDependencies.class);
     executorService = Executors.newCachedThreadPool();
     mockNodeAgentInstaller = mock(NodeAgentInstaller.class);
     nodeAgentEnabler =
         new NodeAgentEnabler(
             confGetter, platformExecutorFactory, platformScheduler, mockNodeAgentInstaller);
     nodeAgentEnabler.setUniverseInstallerExecutor(executorService);
-    universeTaskBase = new TestUniverseTaskBase(baseTaskDependencies);
+    nodeAgentEnabler.enable();
+    universeTaskBase =
+        new TestUniverseTaskBase(
+            app.injector().instanceOf(BaseTaskDependencies.class), nodeAgentEnabler);
   }
 
   @After
@@ -99,12 +100,23 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   }
 
   private static class TestUniverseTaskBase extends UniverseTaskBase {
+    private final NodeAgentEnabler nodeAgentEnabler;
     private final RunnableTask runnableTask;
 
-    public TestUniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    public TestUniverseTaskBase(
+        BaseTaskDependencies baseTaskDependencies, NodeAgentEnabler nodeAgentEnabler) {
       super(baseTaskDependencies);
+      this.nodeAgentEnabler = nodeAgentEnabler;
       runnableTask = mock(RunnableTask.class);
       taskParams = mock(UniverseTaskParams.class);
+    }
+
+    @Override
+    protected <T> T getInstanceOf(Class<T> clazz) {
+      if (clazz == NodeAgentEnabler.class) {
+        return clazz.cast(nodeAgentEnabler);
+      }
+      return super.getInstanceOf(clazz);
     }
 
     public UniverseTaskParams getMockParams() {

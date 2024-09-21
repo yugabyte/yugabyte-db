@@ -752,7 +752,7 @@ ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
 */ -- YB
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
-\d+ fd_pt1 \\ -- YB: output differs with the original test due to failed ALTER TABLE above
+\d+ fd_pt1
 /* YB: uncomment when INHERITS is supported
 \d+ ft2
 */ -- YB

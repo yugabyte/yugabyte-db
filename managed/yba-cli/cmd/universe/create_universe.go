@@ -84,7 +84,7 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		enableYbc := true
-		communicationPorts := buildCommunicationPorts(cmd)
+		communicationPorts := buildCommunicationPorts()
 
 		certUUID := ""
 		clientRootCA := v1.GetString("root-ca")
@@ -149,7 +149,7 @@ var createUniverseCmd = &cobra.Command{
 			cpuArch = util.X86_64
 		}
 
-		clusters, err := buildClusters(cmd, authAPI, universeName)
+		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

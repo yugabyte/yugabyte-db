@@ -357,6 +357,9 @@ EOF
   [Install]
   WantedBy=multi-user.target
 EOF
+  # Set the permissions after file creation. This is needed so that the service file
+  # is executable during restart of systemd unit.
+  chmod 755 "$SERVICE_FILE_PATH"
   fi
 
   echo "* Starting the systemd service"

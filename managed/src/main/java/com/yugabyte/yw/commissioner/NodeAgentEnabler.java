@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.google.common.base.Preconditions.checkState;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -25,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +43,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -53,7 +60,7 @@ import org.apache.commons.lang3.StringUtils;
  * Auto node agent enabler running in the background to migrate universes to node agents. The first
  * step is to mark the universes pending node agent installations. As long as the marker is present,
  * the universe cannot use node agents for communication. The marker can also be set externally when
- * a new node is added while client is disabled for the provider.*
+ * a new node is added while client is disabled for the provider.
  */
 public class NodeAgentEnabler {
   private static final String UNIVERSE_INSTALLER_POOL_NAME =
@@ -66,9 +73,8 @@ public class NodeAgentEnabler {
   private final PlatformScheduler platformScheduler;
   private final NodeAgentInstaller nodeAgentInstaller;
   private final Map<UUID, UniverseNodeAgentInstaller> customerNodeAgentInstallers;
-  // This controls the number of customers as only one universe is picked at a time for each
-  // customer.
   private ExecutorService universeInstallerExecutor;
+  private volatile boolean enabled;
 
   @Inject
   public NodeAgentEnabler(
@@ -84,12 +90,14 @@ public class NodeAgentEnabler {
   }
 
   public void init() {
+    checkState(!isEnabled(), "Node agent enabler is already enabled");
     Duration scannerInterval =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerScanInterval);
     if (scannerInterval.isZero()) {
       log.info("Node agent enabler is disabled because the scanner interval is to zero");
       return;
     }
+    enable();
     // Mark the eligible universes on init.
     // TODO we may not want to run this everytime on startup. Will be fixed in subsequent tasks.
     markUniverses();
@@ -109,27 +117,78 @@ public class NodeAgentEnabler {
    * quickly decide if the universe can use node-agent or not. As long as the marker field is set to
    * true, the universe has nodes pending node-agent installation.
    */
-  public void markUniverses() {
+  @VisibleForTesting
+  void markUniverses() {
     Customer.getAll()
         .forEach(
-            c ->
-                c.getUniverses().stream()
-                    .filter(u -> !u.getUniverseDetails().disableNodeAgent)
-                    .filter(
-                        u -> {
-                          Optional<Boolean> optional = isNodeAgentEnabled(u);
-                          return optional.isPresent() && optional.get() == false;
-                        })
-                    .forEach(u -> markUniverse(u.getUniverseUUID())));
+            c -> {
+              AtomicReference<Set<String>> cachedIps = new AtomicReference<>();
+              Supplier<Set<String>> supplier =
+                  () -> {
+                    Set<String> ips = cachedIps.get();
+                    if (ips == null) {
+                      ips =
+                          NodeAgent.getAll(c.getUuid()).stream()
+                              .filter(NodeAgent::isActive)
+                              .map(NodeAgent::getIp)
+                              .collect(ImmutableSet.toImmutableSet());
+                      cachedIps.set(ips);
+                    }
+                    return ips;
+                  };
+              c.getUniverses().stream()
+                  .filter(u -> !u.getUniverseDetails().disableNodeAgent)
+                  .filter(
+                      u -> {
+                        Optional<Boolean> optional =
+                            isNodeAgentEnabled(u, p -> true /* include provider flag */);
+                        return optional.isPresent() && optional.get() == false;
+                      })
+                  .filter(
+                      u ->
+                          u.getNodes().stream()
+                              .anyMatch(
+                                  n ->
+                                      n.cloudInfo == null
+                                          || StringUtils.isEmpty(n.cloudInfo.private_ip)
+                                          || !supplier.get().contains(n.cloudInfo.private_ip)))
+                  .forEach(u -> markUniverse(u.getUniverseUUID()));
+            });
   }
 
   /**
-   * Checks if node agent is enabled for the universe.
+   * Checks if node agent enabler is enabled.
+   *
+   * @return true if it is enabled else false.
+   */
+  public boolean isEnabled() {
+    return enabled;
+  }
+
+  @VisibleForTesting
+  void enable() {
+    enabled = true;
+  }
+
+  /**
+   * Checks if node agent is enabled for the universe during universe tasks like universe creation.
+   * For onprem provider, the provider flag is included in the check to detect old provider.
    *
    * @param universe the given universe.
    * @return empty for non-supported universes, true if node agent is enabled else false.
    */
   public Optional<Boolean> isNodeAgentEnabled(Universe universe) {
+    // Provider flag is always included for onprem irrespective of the enabler state to be lenient
+    // on new node addition. It is up to the caller to further check the universe field to verify if
+    // the node agent client is immediately available.
+    return isNodeAgentEnabled(universe, p -> p.getCloudCode() == CloudType.onprem || !isEnabled());
+  }
+
+  // This checks if node agent is enabled for the universe with the optional parameter to include or
+  // exclude the flag or field set in provider details.
+  private Optional<Boolean> isNodeAgentEnabled(
+      Universe universe, Predicate<Provider> includeProviderFlag) {
+    Map<String, Boolean> providerEnabledMap = new HashMap<>();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       if (cluster.userIntent == null
           || cluster.userIntent.providerType == CloudType.kubernetes
@@ -137,24 +196,48 @@ public class NodeAgentEnabler {
         // Unsupported cluster is found.
         return Optional.empty();
       }
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (!provider.getDetails().enableNodeAgent
-          || !confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient)) {
+      boolean enabled =
+          providerEnabledMap.computeIfAbsent(
+              cluster.userIntent.provider,
+              k -> {
+                Provider provider =
+                    Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient)) {
+                  log.debug("Node agent is not enabled for provider {}", provider.getUuid());
+                  return false;
+                }
+                if (includeProviderFlag != null
+                    && includeProviderFlag.test(provider)
+                    && !provider.getDetails().isEnableNodeAgent()) {
+                  log.debug("Node agent is not enabled for old provider {}", provider.getUuid());
+                  return false;
+                }
+                return true;
+              });
+      if (!enabled) {
         return Optional.of(false);
       }
     }
     return Optional.of(universe.getUniverseDetails().clusters.size() > 0);
   }
 
-  public static void markUniverse(UUID universeUuid) {
-    Universe.saveUniverseDetails(
-        universeUuid,
-        null /* version increment CB */,
-        u -> {
-          UniverseDefinitionTaskParams d = u.getUniverseDetails();
-          d.disableNodeAgent = true;
-          u.setUniverseDetails(d);
-        });
+  /**
+   * Mark universe to disable node agent only if the node agent enabler is enabled.
+   *
+   * @param universeUuid the given universe UUID.
+   */
+  public void markUniverse(UUID universeUuid) {
+    if (isEnabled()) {
+      Universe.saveUniverseDetails(
+          universeUuid,
+          null /* version increment CB */,
+          u -> {
+            UniverseDefinitionTaskParams d = u.getUniverseDetails();
+            d.disableNodeAgent = true;
+            u.setUniverseDetails(d);
+          });
+      log.debug("Marked universe {} to disable node agent", universeUuid);
+    }
   }
 
   // Used only for testing.
@@ -250,11 +333,12 @@ public class NodeAgentEnabler {
                 customer.getUuid());
             continue;
           }
-          if (!shouldInstallNodeAgents(universe)) {
-            log.debug(
+          if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
+            log.trace(
                 "Skipping installation for universe {} for customer {} as it is not eligible",
                 universe.getName(),
                 customer.getUuid());
+            continue;
           }
           log.info(
               "Picking up universe {} ({}) for customer {} for installation",
@@ -310,10 +394,18 @@ public class NodeAgentEnabler {
     }
   }
 
-  public boolean shouldInstallNodeAgents(Universe universe) {
+  /**
+   * Checks if node agents should be installed immediately on this universe.
+   *
+   * @param universe the universe to be checked.
+   * @param ignoreUniverseLock true to ignore universe lock, otherwise the check returns false if
+   *     the universe is locked.
+   * @return true if node agents should be installed on the universe else false.
+   */
+  public boolean shouldInstallNodeAgents(Universe universe, boolean ignoreUniverseLock) {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     if (!details.disableNodeAgent) {
-      log.debug(
+      log.trace(
           "Skipping installation for universe {} as marker is not set", universe.getUniverseUUID());
       // No marker set to install node-agent.
       return false;
@@ -321,6 +413,13 @@ public class NodeAgentEnabler {
     if (details.universePaused) {
       log.info("Skipping installation for universe {} as it is paused", universe.getUniverseUUID());
       // No marker set to install node-agent.
+      return false;
+    }
+    if (!ignoreUniverseLock && details.updateInProgress) {
+      log.debug(
+          "Skipping installation for universe {} as another task is already running",
+          universe.getUniverseUUID());
+      // This only prevents starting installation but allows another task to run in parallel.
       return false;
     }
     if (universe.getNodes().stream().anyMatch(n -> n.state != NodeDetails.NodeState.Live)) {
@@ -336,8 +435,7 @@ public class NodeAgentEnabler {
           universe.getUniverseUUID());
       return false;
     }
-    // Check if node agent client is disabled at the moment.
-    Optional<Boolean> optional = isNodeAgentEnabled(universe);
+    Optional<Boolean> optional = isNodeAgentEnabled(universe, p -> !isEnabled());
     return optional.isPresent() && optional.get();
   }
 
@@ -415,8 +513,7 @@ public class NodeAgentEnabler {
                     if (!nodeAgentOpt.isPresent()) {
                       return nodeAgentInstaller.install(getCustomerUuid(), getUniverseUuid(), node);
                     }
-                    if (nodeAgentOpt.get().getState() == NodeAgent.State.REGISTERING
-                        || nodeAgentOpt.get().getState() == NodeAgent.State.REGISTERED) {
+                    if (!nodeAgentOpt.get().isActive()) {
                       return nodeAgentInstaller.reinstall(
                           getCustomerUuid(), getUniverseUuid(), node, nodeAgentOpt.get());
                     }
@@ -443,8 +540,8 @@ public class NodeAgentEnabler {
     // nodes are deleted, migration will not happen due to installation failure and next cycle takes
     // care.
     private boolean processNodes(Universe universe, Function<NodeDetails, Boolean> callback) {
-      if (!shouldInstallNodeAgents(universe)) {
-        log.info(
+      if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
+        log.trace(
             "Skipping installation for universe {} as it is not eligible",
             universe.getUniverseUUID());
         return false;
