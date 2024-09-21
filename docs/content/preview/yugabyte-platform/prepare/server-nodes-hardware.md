@@ -72,7 +72,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Disks](../../../deploy/checklist/#disks)
 - [Amazon Web Services instance type and volume recommendations](../../../deploy/checklist/#amazon-web-services-aws)
 
-  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YugabyteDB Anywhere (YBA) operations. Instances with EBS attached storage are recommended.
+  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YugabyteDB Anywhere operations. Instances with EBS attached storage are recommended.
 
   </div>
 
@@ -85,7 +85,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Disks](../../../deploy/checklist/#disks)
 - [Google Cloud instance type and volume type recommendations](../../../deploy/checklist/#google-cloud)
 
-  Note that using local disks comes with certain restrictions for Day 2 YBA operations. For YBA, remote disks are recommended.
+  Note that using local disks comes with certain restrictions for Day 2 YugabyteDB Anywhere operations. For YugabyteDB Anywhere, remote disks are recommended.
 
   </div>
 
@@ -98,7 +98,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Disks](../../../deploy/checklist/#disks)
 - [Azure instance type and disk type recommendations](../../../deploy/checklist/#azure)
 
-YBA does not support using ephemeral OS disks for Azure DB clusters.
+YugabyteDB Anywhere does not support using ephemeral OS disks for Azure DB clusters.
 
   </div>
 
@@ -117,9 +117,9 @@ However, to estimate the exact resources needed, see [CPU and RAM](../../../depl
 
 **Storage requirements**
 
-An appropriate storage class has to be specified both during YBA installation and when creating the Kubernetes provider configuration. The type of volume provisioned for YugabyteDB depends on the Kubernetes storage class being used. Consider the following recommendations when selecting or creating a storage class:
+An appropriate storage class has to be specified both during YugabyteDB Anywhere installation and when creating the Kubernetes provider configuration. The type of volume provisioned for YugabyteDB depends on the Kubernetes storage class being used. Consider the following recommendations when selecting or creating a storage class:
 
-- _Use [dynamically provisioned volumes](https://kubernetes.io/docs/concepts/storage/dynamic-provisioning/)_ for YBA and YBDB cluster pods. Set [volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) on a storage class to `WaitForFirstConsumer` for such volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
+- _Use [dynamically provisioned volumes](https://kubernetes.io/docs/concepts/storage/dynamic-provisioning/)_ for YugabyteDB Anywhere and YugabyteDB cluster pods. Set [volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) on a storage class to `WaitForFirstConsumer` for such volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
 
   Scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments. The volume may be created in a location or zone that is not accessible to the pod, causing the failure.
 

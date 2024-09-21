@@ -12,12 +12,28 @@ menu:
 type: docs
 ---
 
-The nodes that YugabyteDB Anywhere deploys for use in a YugabyteDB database cluster need to be provisioned for use with YugabyteDB. This includes the following:
+The nodes that YugabyteDB Anywhere deploys for use in a YugabyteDB database cluster need to be provisioned for use with YugabyteDB.
 
-- [Minimum hardware requirements for architecture, CPU, and disk](../server-nodes-hardware/).
+YugabyteDB is designed to run on bare-metal machines, virtual machines (VMs), and cloud provider instances.
 
-    YugabyteDB is designed to run on bare-metal machines, virtual machines (VMs), and cloud provider instances.
+Nodes that are deployed for use in a YugabyteDB cluster must be provisioned with the following:
 
-- [Minimum software requirements](../server-nodes-software/), including Linux OS and additional software and utilities.
+- a compatible Linux OS
+- other secondary agents, including the node agent, YB-Controller backup agent, and Prometheus Node Exporter for host metrics export
+- additional software and packages, such as Python.
 
-    Nodes that are deployed for use in a YugabyteDB cluster must be provisioned with a compatible Linux OS; YugabyteDB (including the YB-Master and YB-TServer services of the cluster); other secondary agents, including the node agent, YB-Controller backup agent, and Prometheus Node Exporter for host metrics export; and additional software and packages, such as Python.
+{{<index/block>}}
+
+  {{<index/item
+    title="Hardware for nodes"
+    body="CPU, disk, and RAM requirements for YugabyteDB."
+    href="../server-nodes-hardware/"
+    icon="fa-thin fa-microchip">}}
+
+  {{<index/item
+    title="Software for nodes"
+    body="Linux operating system, and additional packages."
+    href="../server-nodes-software/"
+    icon="fa-thin fa-binary">}}
+
+{{</index/block>}}
