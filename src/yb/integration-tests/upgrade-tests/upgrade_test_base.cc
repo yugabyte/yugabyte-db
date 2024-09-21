@@ -203,6 +203,9 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
+  // YB_TODO(hsunder): Enable PG15 upgrade tests.
+  GTEST_SKIP() << "Upgrade testing not yet supported in PG15";
+
   if (IsSanitizer()) {
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
