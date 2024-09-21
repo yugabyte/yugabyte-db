@@ -1069,15 +1069,6 @@
     showSection = true
     hideLink = true
 
-[[stable_yugabyte-platform]]
-  name = "Servers for nodes"
-  parent = "prepare"
-  weight = 40
-  identifier = "server-nodes"
-  [stable_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
-
 ########## Menus (in stable) for APIs
 
 # [[stable_api]]
