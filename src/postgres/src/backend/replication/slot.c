@@ -278,6 +278,12 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	{
 		int32_t max_clock_skew;
 
+		/* TODO(#24025): This must be removed once we support two_phase. */
+		if (two_phase)
+			ereport(ERROR,
+			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			  errmsg("two_phase is not supported")));
+
 		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 								 yb_consistent_snapshot_time);
 
@@ -547,6 +553,13 @@ retry:
 		s->data.catalog_xmin = yb_replication_slot->xmin;
 		s->data.restart_lsn = yb_replication_slot->restart_lsn;
 		s->data.yb_last_pub_refresh_time = yb_replication_slot->last_pub_refresh_time;
+
+		/*
+		 * TODO(#24025): two_phase is not supported in YSQL logical replication.
+		 * This must be updated once/if we start supporting them.
+		 */
+		s->data.two_phase = false;
+		s->data.two_phase_at = InvalidXLogRecPtr;
 
 		s->data.yb_initial_record_commit_time_ht =
 			yb_replication_slot->record_id_commit_time_ht;

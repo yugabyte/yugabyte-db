@@ -284,11 +284,11 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 {
 	bool		applyNoDupErr;
 	IndexUniqueCheck checkUnique;
+	bool		indexUnchanged;
 	bool		satisfiesConstraint;
 	bool		deferredCheck = false;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
-	bool		indexUnchanged;
 	Relation	heapRelation;
 	bool		isYBRelation;
 
@@ -780,7 +780,8 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	deleteSlot = ExecStoreHeapTuple(
 		oldtuple,
 		MakeSingleTupleTableSlot(
-			RelationGetDescr(resultRelInfo->ri_RelationDesc), &TTSOpsHeapTuple),
+			RelationGetDescr(resultRelInfo->ri_RelationDesc),
+			&TTSOpsHeapTuple),
 		false);
 
 	for (i = 0; i < numIndices; i++)
@@ -994,7 +995,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 									 NULL /* specConflict */,
 									 NIL /* arbiterIndexes */,
 									 true /* update */,
-									 tupleid /* tupleid */))
+									 tupleid))
 			result = lappend_oid(result, RelationGetRelid(relationDescs[index]));
 	}
 
