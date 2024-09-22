@@ -307,6 +307,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     validateRowCount(targetUniverse, table1, 1 /* expectedRows */);
     validateNotExpectedRowCount(targetUniverse, table1, 2 /* notExpectedRows */);
 
+    // Validate we are able to drop database on target universe (PITR config is dropped correctly).
+    dropDatabase(sourceUniverse, db1);
+    dropDatabase(targetUniverse, db1);
+
     insertRow(sourceUniverse, table2, Map.of("id", "12", "name", "'val12'"));
     validateRowCount(targetUniverse, table2, 2 /* expectedRows */);
 

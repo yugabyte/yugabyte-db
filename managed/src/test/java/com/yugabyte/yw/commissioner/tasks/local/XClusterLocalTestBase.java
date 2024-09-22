@@ -231,6 +231,15 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     assertTrue(ysqlResponse.isSuccess());
   }
 
+  public void dropDatabase(Universe universe, Db db) {
+    NodeDetails node = getLiveNode(universe);
+    String query = String.format("drop database %s", db.name);
+    log.debug("Universe: {}, Query: {}", universe.getName(), query);
+    ShellResponse ysqlResponse =
+        localNodeUniverseManager.runYsqlCommand(node, universe, YUGABYTE_DB, query, 20);
+    assertTrue(ysqlResponse.isSuccess());
+  }
+
   @Override
   protected Pair<Integer, Integer> getIpRange() {
     return new Pair<>(120, 150);
