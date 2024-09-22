@@ -1756,32 +1756,43 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
-    std::vector<uint64_t> expired_sessions;
-    std::lock_guard lock(mutex_);
-    while (!session_expiration_queue_.empty()) {
-      auto& top = session_expiration_queue_.top();
-      if (top.first > now) {
-        break;
-      }
-      auto id = top.second;
-      session_expiration_queue_.pop();
-      auto it = sessions_.find(id);
-      if (it != sessions_.end()) {
-        auto current_expiration = (**it).session().expiration();
-        if (current_expiration > now) {
-          session_expiration_queue_.push({current_expiration, id});
-        } else {
-          expired_sessions.push_back(id);
-          sessions_.erase(it);
+    std::vector<SessionInfoPtr> expired_sessions;
+    {
+      std::lock_guard lock(mutex_);
+      while (!session_expiration_queue_.empty()) {
+        auto& top = session_expiration_queue_.top();
+        if (top.first > now) {
+          break;
+        }
+        auto id = top.second;
+        session_expiration_queue_.pop();
+        auto it = sessions_.find(id);
+        if (it != sessions_.end()) {
+          auto current_expiration = (**it).session().expiration();
+          if (current_expiration > now) {
+            session_expiration_queue_.push({current_expiration, id});
+          } else {
+            expired_sessions.push_back(*it);
+            sessions_.erase(it);
+          }
         }
       }
+      ScheduleCheckExpiredSessions(now);
+    }
+    if (expired_sessions.empty()) {
+      return;
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
     if (cdc_service) {
-      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
+      std::vector<uint64_t> expired_session_ids;
+      expired_session_ids.reserve(expired_sessions.size());
+      for (auto& session : expired_sessions) {
+        expired_session_ids.push_back(session->id());
+      }
+      expired_sessions.clear();
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
     }
-    ScheduleCheckExpiredSessions(now);
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
