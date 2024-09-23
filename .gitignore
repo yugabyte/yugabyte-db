@@ -3,7 +3,6 @@
 /target
 *.iml
 **/*.rs.bk
-Cargo.lock
 *.parquet
 **/*.code-workspace
 *.csv
