@@ -58,6 +58,14 @@ Key-value stores are expected to be some of the fastest storage data models.
 For more information on using YugabyteDB for key-value stores, see [Key-value data model](./keyvalue).
 {{</lead>}}
 
+## Jobqueue
+
+Distributed job queues are essential for managing and processing tasks across multiple systems, enabling scalability, fault tolerance, and efficient resource utilization in modern applications.
+
+{{<lead link="./jobqueue">}}
+For more information on designing a distributed jobqueue, see [Distributed JobQueue](./jobqueue)
+{{</lead>}}
+
 ## Wide-column
 
 In a wide-column data model, the data is organized as rows and columns. Each row is identified by a row `id` or `name` and each column is identified by a column `id` or `name`. Each row can have any number of columns attached to it. You can visualize it as a table-like structure where some of the cells are empty. For example:
