@@ -112,7 +112,7 @@ To delete a PSE, enter the following command:
 ```sh
 ybm cluster network endpoint delete \
     --cluster-name <yugabytedb_cluster> \
-    --endpoint-id <endpoint_id> \
+    --endpoint-id <endpoint_id>
 ```
 
 ## Create a private endpoint in Azure
@@ -288,12 +288,12 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 
     ```sh
-    az network private-dns link vnet create 
-        --name <private_dns_zone_name>
-        --registration-enabled true
-        --resource-group <resource_group_name>
-        --virtual-network <private_endpoint_vnet_name>
-        --zone-name azure.yugabyte.cloud
+    az network private-dns link vnet create \
+        --name <private_dns_zone_name> \
+        --registration-enabled true \
+        --resource-group <resource_group_name> \
+        --virtual-network <private_endpoint_vnet_name> \
+        --zone-name azure.yugabyte.cloud \
         --tags yugabyte
     ```
 
