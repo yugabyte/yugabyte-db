@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useState } from 'react';
 import { get, cloneDeep } from 'lodash';
 import { toast } from 'react-toastify';
 import { useForm } from 'react-hook-form';
@@ -6,6 +6,7 @@ import { useMutation } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { Box, makeStyles, Typography, Link } from '@material-ui/core';
 import { YBModal, YBToggleField } from '../../../../components';
+import { AnalyzeDialog } from './AnalyzeDialog';
 import {
   getPrimaryCluster,
   createErrorMessage,
@@ -108,12 +109,16 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
   const universeName = get(primaryCluster, 'userIntent.universeName');
   const currentRF = get(primaryCluster, 'userIntent.replicationFactor');
   const isPGEnabled = primaryCluster ? isPGEnabledFromIntent(primaryCluster?.userIntent) : false;
+  const [openAnalyzeModal, setAnalyzeModal] = useState(false);
 
-  const { control, handleSubmit, watch } = useForm<PGFormValues>({
+  const { control, watch, getValues } = useForm<PGFormValues>({
     defaultValues: {
       enablePGCompatibitilty: isPGEnabled ? true : false
     }
   });
+
+  //watchers
+  const pgToggleValue = watch('enablePGCompatibitilty');
 
   const upgradePGCompatibility = useMutation(
     (values: EditGflagPayload) => {
@@ -129,10 +134,7 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
     }
   );
 
-  //watchers
-  const pgToggleValue = watch('enablePGCompatibitilty');
-
-  const handleFormSubmit = handleSubmit(async (formValues) => {
+  const handleFormSubmit = async (formValues: PGFormValues) => {
     try {
       const payload: EditGflagPayload = {
         nodePrefix,
@@ -169,7 +171,15 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
     } catch (e) {
       console.error(createErrorMessage(e));
     }
-  });
+  };
+
+  const onFormSubmit = () => {
+    if (pgToggleValue) setAnalyzeModal(true);
+    else {
+      const formValues = getValues();
+      handleFormSubmit(formValues);
+    }
+  };
 
   const canEditGFlags = hasNecessaryPerm({
     onResource: universeUUID,
@@ -183,7 +193,7 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
       submitLabel={t('common.applyChanges')}
       cancelLabel={t('common.cancel')}
       onClose={onClose}
-      onSubmit={handleFormSubmit}
+      onSubmit={onFormSubmit}
       overrideHeight={'420px'}
       overrideWidth={'600px'}
       submitTestId="EditPGCompatibilityModal-Submit"
@@ -277,6 +287,14 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
             )}
           </Box>
         )}
+        <AnalyzeDialog
+          open={openAnalyzeModal}
+          onClose={() => {
+            setAnalyzeModal(false);
+            const formValues = getValues();
+            handleFormSubmit(formValues);
+          }}
+        />
       </Box>
     </YBModal>
   );

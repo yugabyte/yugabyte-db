@@ -5,25 +5,23 @@ them to the yugabyte-db-thirdparty repo. We also only copy the relevant subdirec
 repositories. Each library is copied in its own appropriately named directory, and each library's
 directory is added separately to the list of include directories in CMakeLists.txt.
 
-We will probably create a tool to manage these dependencies automatically in the future.
+The list of inline third-party dependencies is specified in build-support/inline_thirdparty.yml.
+Each dependency has the following fields:
+- name: The name of the dependency.
+- git_url: upstream git URL, typically github, either a YugabyteDB fork of the upstream repo, or
+  the official repository.
+- tag or commit: The git tag or commit to ise.
+- src_dir: the directory within the upstream repository to copy.
+- dest_dir: the target directory to copy the upstream repository to, relative to
+  src/inline-thirdparty. This has to start with the dependency name as the first path component
+  for clarity, but could be a deeper directory.
 
-* usearch
-  * Repo: https://github.com/yugabyte/usearch
-  * Description: Similarity search for vector and text
-  * Subdirectory: include
-  * Tag: v2.11.0-yb-1
-  * License: Apache 2.0
+To update inline third-party dependencies, modify the tag or comimt in inline_thirdparty.yml,
+commit the changes, and run the following command:
 
-* fp16
-  * Repo: https://github.com/Maratyszcza/FP16/
-  * Description: Header-only library for conversion to/from half-precision floating point formats
-  * Subdirectory: include
-  * Commit: 0a92994d729ff76a58f692d3028ca1b64b145d91
-  * License: MIT
+build-support/thirdparty_tool --sync-inline-thirdparty
 
-* hnswlib
-  * Repo: https://github.com/nmslib/hnswlib
-  * Description: Header-only C++/python library for fast approximate nearest neighbors
-  * Subdirectory: hnswlib
-  * Commit: 2142dc6f4dd08e64ab727a7bbd93be7f732e80b0
-  * License: Apache 2.0
+This requires the absence of local changes in the git repository. This will create one or more
+commits for each dependency. These commits should be submitted as a Phabricator diff for review,
+tested in Jenkins, and then landed. The changes to inline-thirdparty should be pushed as
+separate commits, not squashed together.

@@ -345,4 +345,17 @@ public class DrConfig extends Model {
   public boolean isHalted() {
     return state == State.Halted;
   }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    DrConfig drConfig = (DrConfig) o;
+    return Objects.equals(uuid, drConfig.uuid);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(uuid);
+  }
 }

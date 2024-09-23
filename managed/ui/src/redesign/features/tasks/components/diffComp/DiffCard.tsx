@@ -65,7 +65,7 @@ const useStyles = makeStyles((theme) => ({
     fontSize: theme.spacing(4)
   },
   strikeOut: {
-    textDecoration: 'line-through'
+    // textDecoration: 'line-through'
   },
   strikeOutRed: {
     '&>span': {

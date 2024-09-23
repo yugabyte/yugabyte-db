@@ -193,7 +193,7 @@ class TabletPeerTest : public YBTabletTest {
     };
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
                         metadata->fs_manager()->uuid(), *tablet()->schema(),
-                        metadata->schema_version(), table_metric_entity_.get(),
+                        metadata->primary_table_schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         log_thread_pool_.get(), &log,
                         pre_log_rollover_callback, new_segment_allocation_callback));

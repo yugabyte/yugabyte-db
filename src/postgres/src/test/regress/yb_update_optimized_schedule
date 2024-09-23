@@ -6,3 +6,4 @@
 test: yb_update_optimize_base
 test: yb_update_optimize_indices
 test: yb_update_optimize_triggers
+test: yb_update_optimize_index_updates

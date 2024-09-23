@@ -48,14 +48,17 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 | Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | 2.20 | 2024.1 |
 | Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | 2024.1 | |
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.1 | | Yes |
 | Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
-| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3<br>(Planned) | |
-| Parallel query | | Planned | |
+
+| Planned Feature | Flag/Configuration Parameter | EA |
+| :--- | :--- | :--- |
+| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 |
+| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 |
+| Parallel query | | Planned |
 
 ### Released
 
-The following features are currently available.
+The following features are currently available in EPCM.
 
 #### Read committed
 
@@ -89,19 +92,13 @@ To learn more about concurrency control in YugabyteDB, see [Concurrency control]
 
 #### Batched nested loop join
 
-Configuration parameter: `yb_bnl_batch_size=1024`
+Configuration parameter: `yb_enable_batchednl=true`
 
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
 {{<lead link="../join-strategies/">}}
 To learn more about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
-
-#### Efficient communication between PostgreSQL and DocDB
-
-Configuration parameter: `pg_client_use_shared_memory=true`
-
-Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
 
 #### Default ascending indexing
 
@@ -123,6 +120,12 @@ Configuration parameter: `yb_enable_bitmapscan=true`
 
 Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
+#### Efficient communication between PostgreSQL and DocDB
+
+Configuration parameter: `pg_client_use_shared_memory=true`
+
+Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
+
 #### Parallel query
 
 Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/11/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
@@ -133,12 +136,12 @@ Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs
 
 To enable EPCM in YugabyteDB:
 
-- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../../../reference/configuration/yugabyted/) when starting your cluster.
+- Pass the `enable_pg_parity_tech_preview` flag to [yugabyted](../../../reference/configuration/yugabyted/) when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
 ```sh
-./bin/yugabyted start --enable_pg_parity_early_access
+./bin/yugabyted start --enable_pg_parity_tech_preview
 ```
 
 Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.

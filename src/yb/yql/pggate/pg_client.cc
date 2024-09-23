@@ -159,7 +159,7 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
 
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
-  ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
+  ash_metadata->set_top_level_node_id(ash_config.top_level_node_id, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
   ash_metadata->set_pid(pg_metadata->pid);
@@ -401,7 +401,7 @@ class PgClient::Impl : public BigDataFetcher {
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
     ash_config_ = *ash_config;
-    memcpy(ash_config_.yql_endpoint_tserver_uuid, tserver_shared_data_.tserver_uuid(), 16);
+    memcpy(ash_config_.top_level_node_id, tserver_shared_data_.tserver_uuid(), 16);
 
     return Status::OK();
   }
@@ -1227,6 +1227,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
+    tserver::PgServersMetricsRequestPB req;
+    tserver::PgServersMetricsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ServersMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1544,6 +1553,10 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
   return impl_->TabletsMetadata();
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
+  return impl_->ServersMetrics();
 }
 
 void PerformExchangeFuture::wait() const {

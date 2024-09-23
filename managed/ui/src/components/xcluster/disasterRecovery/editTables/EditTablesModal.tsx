@@ -16,7 +16,6 @@ import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components
 import {
   api,
   drConfigQueryKey,
-  runtimeConfigQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
@@ -24,6 +23,7 @@ import { assertUnreachableCase, handleServerError } from '../../../../utils/erro
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '../../constants';
 import {
+  formatUuidForXCluster,
   getCategorizedNeedBootstrapPerTableResponse,
   getInConfigTableUuidsToTableDetailsMap,
   getXClusterConfigTableType,
@@ -114,19 +114,19 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     universeQueryKey.namespaces(xClusterConfigQuery.data?.sourceUniverseUUID),
     () => api.fetchUniverseNamespaces(xClusterConfigQuery.data?.sourceUniverseUUID)
   );
-  const customerUuid = localStorage.getItem('customerId') ?? '';
-  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.customerScope(customerUuid), () =>
-    api.fetchRuntimeConfigs(customerUuid, true)
-  );
 
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
       const bootstrapRequiredTableUuids =
         categorizedNeedBootstrapPerTableResponse?.bootstrapTableUuids ?? [];
       return props.isDrInterface
-        ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: formValues.tableUuids
-          })
+        ? xClusterConfigQuery.data?.type === XClusterConfigType.DB_SCOPED
+          ? api.updateDbsInDr(props.drConfigUuid, {
+              dbs: formValues.namespaceUuids.map(formatUuidForXCluster)
+            })
+          : api.updateTablesInDr(props.drConfigUuid, {
+              tables: formValues.tableUuids
+            })
         : editXClusterConfigTables(xClusterConfigUuid, {
             tables: formValues.tableUuids,
             autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfigQuery.data),
@@ -192,9 +192,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
-    sourceUniverseNamespacesQuery.isIdle ||
-    runtimeConfigQuery.isLoading ||
-    runtimeConfigQuery.isIdle
+    sourceUniverseNamespacesQuery.isIdle
   ) {
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
@@ -225,8 +223,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     !targetUniverseUuid ||
     sourceUniverseQuery.isError ||
     sourceUniverseNamespacesQuery.isError ||
-    !xClusterConfigTableType ||
-    runtimeConfigQuery.isError
+    !xClusterConfigTableType
   ) {
     const errorMessage = !xClusterConfig.sourceUniverseUUID
       ? t('error.undefinedSourceUniverseUuid')
@@ -234,8 +231,6 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       ? t('error.undefinedTargetUniverseUuid')
       : !xClusterConfigTableType
       ? t('error.undefinedXClusterTableType', { keyPrefix: TRANSLATION_KEY_PREFIX_XCLUSTER })
-      : runtimeConfigQuery.isError
-      ? t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })
       : t('error.fetchSourceUniverseDetailsFailure');
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
@@ -454,7 +449,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       tableType: xClusterConfigTableType,
       targetUniverseUuid: targetUniverseUuid,
       xClusterConfigUuid: xClusterConfig.uuid,
-      isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
+      xClusterConfigType: xClusterConfig.type,
       unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
       tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
       tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget
@@ -539,6 +534,9 @@ export const classifyTablesAndNamespaces = (
         tableUuidsDroppedOnSource.add(tableUuid);
         return;
       case XClusterTableStatus.DROPPED_FROM_TARGET:
+        // We treat tables which are dropped on the target as unconfigured but preselected.
+        // This means there is no action needed from the user. We will be checking the bootstrapping requirement
+        // and just adding the table to the config (unless the user deselects the table of course).
         if (sourceTableInfo) {
           selectedTableUuids.add(getTableUuid(sourceTableInfo));
           selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);

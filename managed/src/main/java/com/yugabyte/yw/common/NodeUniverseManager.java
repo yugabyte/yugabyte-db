@@ -29,9 +29,11 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -527,7 +530,7 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
     if (!optional.isPresent()) {
       log.debug(
           "Node agent is not enabled for provider {}({})", provider.getName(), provider.getUuid());
@@ -768,17 +771,20 @@ public class NodeUniverseManager extends DevopsBase {
    * @return the list of pairs (size, name)
    */
   public List<Pair<Long, String>> getNodeFilePathsAndSize(
-      NodeDetails node, Universe universe, String remoteDirPath) {
+      NodeDetails node, Universe universe, String remoteDirPath, Date startDate, Date endDate) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
         getLocalTmpDir() + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
     String remoteTempFilePath =
         getRemoteTmpDir(node, universe) + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
 
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
     List<String> findCommandParams = new ArrayList<>();
     findCommandParams.add("get_paths_and_sizes");
     findCommandParams.add(remoteDirPath);
     findCommandParams.add(remoteTempFilePath);
+    findCommandParams.add(formatter.format(startDate));
+    findCommandParams.add(formatter.format(DateUtils.addDays(endDate, 1)));
 
     runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.

@@ -98,4 +98,16 @@ auto StableSorted(const Col& collection, const Extractor& extractor) {
   return order;
 }
 
+// Erases elements from container until predicate is satisfied.
+template<typename Container, typename Predicate>
+size_t EraseElementsUntil(Container& container, const Predicate& predicate) {
+  size_t erased = 0;
+  auto itr = container.begin();
+  while (itr != container.end() && !predicate(*itr)) {
+    itr = container.erase(itr);
+    ++erased;
+  }
+  return erased;
+}
+
 };  // namespace yb

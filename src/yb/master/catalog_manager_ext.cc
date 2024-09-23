@@ -747,6 +747,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1850,8 +1851,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
         "Only the parent table in a colocated table should be repartitioned");
     SCHECK_EQ(new_tablets.size(), 1, IllegalState, "Expected 1 new tablet after repartitioning");
     auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
-    RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
-    RETURN_NOT_OK(tablegroup_manager_->Add(table->namespace_id(), tablegroup_id, new_tablets[0]));
+    auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
+    SCHECK_NOTNULL(tablegroup);
+    tablegroup->ReplaceTablet(new_tablets[0]);
   }
   return Status::OK();
 }

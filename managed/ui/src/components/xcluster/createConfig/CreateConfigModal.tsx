@@ -456,6 +456,10 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const isTransactionalConfig = formMethods.watch('isTransactionalConfig');
   const sourceUniverse = sourceUniverseQuery.data;
   const submitLabel = getFormSubmitLabel(currentFormStep);
+
+  const xClusterConfigType = isTransactionalConfig
+    ? XClusterConfigType.TXN
+    : XClusterConfigType.BASIC;
   const isFormDisabled = formMethods.formState.isSubmitting;
   return (
     <YBModal
@@ -496,7 +500,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           tableSelectProps={{
             configAction: XClusterConfigAction.CREATE,
             isDrInterface: false,
-            isTransactionalConfig: isTransactionalConfig,
             initialNamespaceUuids: [],
             selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUuids: selectedTableUuids,
@@ -506,6 +509,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             setSelectedTableUuids: setSelectedTableUuids,
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: tableType,
+            xClusterConfigType: xClusterConfigType,
             targetUniverseUuid: targetUniverseUuid
           }}
           categorizedNeedBootstrapPerTableResponse={categorizedNeedBootstrapPerTableResponse}

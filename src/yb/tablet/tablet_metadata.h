@@ -351,8 +351,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
+  SchemaVersion primary_table_schema_version() const;
+
+  // Non-colocated tables should use primary_table_schema_version().
   [[deprecated]]
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(const TableId& table_id) const;
 
   Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
 

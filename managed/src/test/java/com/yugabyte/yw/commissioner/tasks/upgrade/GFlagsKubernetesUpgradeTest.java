@@ -38,8 +38,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,

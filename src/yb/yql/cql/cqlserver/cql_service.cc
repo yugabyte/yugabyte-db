@@ -222,7 +222,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
             ? AF_INET : AF_INET6)};
     auto uuid_res = Uuid::FromHexStringBigEndian(server_->instance_pb().permanent_uuid());
     if (uuid_res.ok()) {
-      metadata.yql_endpoint_tserver_uuid = *uuid_res;
+      metadata.top_level_node_id = *uuid_res;
     }
     wait_state->UpdateMetadata(metadata);
   }

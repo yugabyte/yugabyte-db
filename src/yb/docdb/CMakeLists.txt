@@ -81,6 +81,7 @@ set(DOCDB_SRCS
         vector_index.cc
         vector_index_read.cc
         vector_index_update.cc
+        vector_lsm.cc
         wait_queue.cc
         )
 

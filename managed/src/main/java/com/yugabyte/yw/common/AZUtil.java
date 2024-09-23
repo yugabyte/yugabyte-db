@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -279,6 +280,11 @@ public class AZUtil implements CloudUtil {
     String azureUrl = "https://" + splitLocation[0];
     String container = splitLocation.length > 1 ? splitLocation[1] : "";
     return createBlobContainerClient(azureUrl, sasToken, container);
+  }
+
+  @Override
+  public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
+    return false;
   }
 
   @Override

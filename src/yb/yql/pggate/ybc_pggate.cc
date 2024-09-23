@@ -1,4 +1,4 @@
-// Copyright (c) YugaByteDB, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -378,9 +378,9 @@ void AshCopyTServerSample(
               tserver_metadata.root_request_id().data(),
               sizeof(cb_metadata->root_request_id));
 
-  std::memcpy(cb_sample->yql_endpoint_tserver_uuid,
-              tserver_metadata.yql_endpoint_tserver_uuid().data(),
-              sizeof(cb_sample->yql_endpoint_tserver_uuid));
+  std::memcpy(cb_sample->top_level_node_id,
+              tserver_metadata.top_level_node_id().data(),
+              sizeof(cb_sample->top_level_node_id));
 
   AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
@@ -646,6 +646,7 @@ typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
 
 static void FreeSlice(Slice slice) {
   delete[] slice.data(), slice.size();
+  slice.Clear();
 }
 
 SliceSet YBCBitmapCreateSet() {
@@ -835,6 +836,11 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   const PgObjectId pg_object_id(table_id_str);
   pgapi->InvalidateTableCache(pg_object_id);
   return YBCStatusOK();
+}
+
+void YBCPgAlterTableInvalidateTableByOid(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_relfilenode_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
@@ -2355,12 +2361,13 @@ void YBCStoreTServerAshSamples(
 }
 
 YBCStatus YBCPgInitVirtualWalForCDC(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations) {
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
-    PgObjectId table_id(database_oid, relations[i]);
+    PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
   }
 
@@ -2373,12 +2380,13 @@ YBCStatus YBCPgInitVirtualWalForCDC(
 }
 
 YBCStatus YBCPgUpdatePublicationTableList(
-    const char* stream_id, const YBCPgOid database_oid, YBCPgOid* relations, size_t num_relations) {
+    const char* stream_id, const YBCPgOid database_oid, YBCPgOid* relations, YBCPgOid* relfilenodes,
+    size_t num_relations) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
-    PgObjectId table_id(database_oid, relations[i]);
+    PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
   }
 
@@ -2481,9 +2489,16 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       old_tuple_idx++;
     }
 
-    const auto table_oid = row_message_pb.has_table_id()
-                               ? PgObjectId(row_message_pb.table_id()).object_oid
-                               : kPgInvalidOid;
+    auto table_oid = kPgInvalidOid;
+    if (row_message_pb.has_table_id()) {
+      const PgObjectId table_id = PgObjectId(row_message_pb.table_id());
+      YBCPgTableDesc tableDesc = NULL;
+      Status s = pgapi->GetTableDesc(table_id, &tableDesc);
+      if (!s.ok()) {
+        return ToYBCStatus(s);
+      }
+      table_oid = tableDesc->pg_table_id();
+    }
 
     auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
@@ -2624,6 +2639,42 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
         .partition_key_start_len = tablet.partition().partition_key_start().size(),
         .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
         .partition_key_end_len = tablet.partition().partition_key_end().size(),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_t* count) {
+  const auto result = pgapi->ServersMetrics();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& servers_metrics = result.get().servers_metrics();
+  *count = servers_metrics.size();
+  if (!servers_metrics.empty()) {
+    *servers_metrics_info = static_cast<YBCPgServerMetricsInfo*>(
+        YBCPAlloc(sizeof(YBCPgServerMetricsInfo) * servers_metrics.size()));
+    YBCPgServerMetricsInfo* dest = *servers_metrics_info;
+    for (const auto& server_metrics_info : servers_metrics) {
+      size_t metrics_count = server_metrics_info.metrics().size();
+      YBCMetricsInfo* metrics =
+          static_cast<YBCMetricsInfo*>(
+              YBCPAlloc(sizeof(YBCMetricsInfo) * metrics_count));
+
+      int metrics_idx = 0;
+      for (const auto& metrics_info : server_metrics_info.metrics()) {
+        metrics[metrics_idx].name = YBCPAllocStdString(metrics_info.name());
+        metrics[metrics_idx].value = YBCPAllocStdString(metrics_info.value());
+        metrics_idx++;
+      }
+      new (dest) YBCPgServerMetricsInfo {
+        .uuid = YBCPAllocStdString(server_metrics_info.uuid()),
+        .metrics = metrics,
+        .metrics_count = metrics_count,
+        .status = YBCPAllocStdString(PgMetricsInfoStatus_Name(server_metrics_info.status())),
+        .error = YBCPAllocStdString(server_metrics_info.error()),
       };
       ++dest;
     }

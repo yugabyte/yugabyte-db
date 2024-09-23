@@ -37,8 +37,9 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
   }
 
   getDiffComponent(): React.ReactElement {
-
-    const { beforeData }: { beforeData: GFlagsDiffProps } = this.diffProps as { beforeData: GFlagsDiffProps };
+    const { beforeData }: { beforeData: GFlagsDiffProps } = this.diffProps as {
+      beforeData: GFlagsDiffProps;
+    };
 
     const cards: Record<string, React.ReactElement<typeof DiffCard>[]> = {
       masterGFlags: [],
@@ -66,30 +67,30 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
 
     beforeData?.gflags?.tserver?.forEach((diff) => {
       // tserverGFlagsDiffs[key].forEach((diff: GFlagDiff) => {
-        cards.tserverGFlags.push(
-          <DiffCard
-            ref={(ref) => this.cardRefs.push({ current: ref })}
-            attribute={{
-              title: diff.name ?? ''
-            }}
-            beforeValue={{
-              title: (diff.old as unknown) as string
-            }}
-            afterValue={{
-              title: (diff.new as unknown) as string
-            }}
-            operation={getGFlagOperation(diff)}
-          />
-        );
+      cards.tserverGFlags.push(
+        <DiffCard
+          ref={(ref) => this.cardRefs.push({ current: ref })}
+          attribute={{
+            title: diff.name ?? ''
+          }}
+          beforeValue={{
+            title: (diff.old as unknown) as string
+          }}
+          afterValue={{
+            title: (diff.new as unknown) as string
+          }}
+          operation={getGFlagOperation(diff)}
+        />
+      );
       // });
     });
     return (
       <DiffCardWrapper>
         <DiffActions
-          onExpandAll={() => {
+          onExpandAll={(flag) => {
             // Expand all the cards.
             this.cardRefs.forEach((ref) => {
-              ref?.current?.onExpand(true);
+              ref?.current?.onExpand(flag);
             });
           }}
           // Get the count of changes.

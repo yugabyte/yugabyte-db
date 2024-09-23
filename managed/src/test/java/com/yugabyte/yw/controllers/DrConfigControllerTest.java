@@ -202,12 +202,12 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` = true and db scoped parameter is passed in
-  // as true for request body.
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true and db scoped parameter is passed
+  // in as true for request body.
   public void testCreateDbScopedSuccess() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.enabled", "true");
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", true);
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -230,11 +230,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true with no parameter.
   public void testSetDatabasesSuccess() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.enabled", "true");
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -254,7 +254,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.databases = new HashSet<>(Set.of("db1", "db2"));
+    setDatabasesData.dbs = new HashSet<>(Set.of("db1", "db2"));
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     drConfig.setState(State.Replicating);
@@ -276,7 +276,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertOk(result);
 
     // Try adding a database and deleting a database.
-    setDatabasesData.databases = new HashSet<>(Set.of("db2", "db3"));
+    setDatabasesData.dbs = new HashSet<>(Set.of("db2", "db3"));
     xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
 
@@ -297,11 +297,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true with no parameter.
   public void testSetDatabasesFailureNoChange() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.enabled", "true");
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -320,7 +320,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.databases = new HashSet<>(Set.of(namespaceId));
+    setDatabasesData.dbs = new HashSet<>(Set.of(namespaceId));
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     xClusterConfig.updateStatusForNamespace(namespaceId, XClusterNamespaceConfig.Status.Running);
@@ -347,11 +347,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true with no parameter.
   public void testSetDatabasesFailureNoDbs() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.enabled", "true");
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -377,7 +377,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     drConfig.update();
 
     // Try giving an empty list.
-    setDatabasesData.databases = new HashSet<>();
+    setDatabasesData.dbs = new HashSet<>();
     xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     Exception exception =
@@ -397,12 +397,12 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` is disabled but db scoped parameter is passed in
-  // as true for request body.
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` is disabled but db scoped parameter is
+  // passed in as true for request body.
   public void testCreateDbScopedDisabledFailure() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.enabled", "false");
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "false");
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", true);
     buildTaskInfo(null, TaskType.CreateDrConfig);
 

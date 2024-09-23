@@ -978,6 +978,7 @@ class Tablet : public AbstractTablet,
   friend class ScopedReadOperation;
   friend class TabletComponent;
 
+  class RocksDbListener;
   class RegularRocksDbListener;
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);

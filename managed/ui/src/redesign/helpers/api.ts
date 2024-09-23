@@ -215,6 +215,7 @@ export interface CreateDrConfigRequest {
 
   // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks
   dryRun?: boolean;
+  dbScoped?: boolean;
 }
 
 export interface EditDrConfigRequest {
@@ -253,6 +254,10 @@ export interface UpdateTablesInDrRequest {
   tables: string[];
 
   autoIncludeIndexTables?: boolean;
+}
+
+export interface UpdateDbsInDrRequest {
+  dbs: string[];
 }
 
 export interface CreateHaConfigRequest {
@@ -519,6 +524,11 @@ class ApiService {
     return axios
       .post<YBPTask>(requestUrl, updateTablesInDrRequest)
       .then((response) => response.data);
+  };
+
+  updateDbsInDr = (drConfigUuid: string, updateDbsInDrRequest: UpdateDbsInDrRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_dbs`;
+    return axios.put<YBPTask>(requestUrl, updateDbsInDrRequest).then((response) => response.data);
   };
 
   syncDrConfig = (drConfigUuid: string) => {

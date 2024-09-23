@@ -345,6 +345,16 @@ Create a new database user, and assign the necessary user permissions.
 
 {{< /tabpane >}}
 
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+{{< note title="Connecting to Oracle instances" >}}
+You can use only one of the following arguments to connect to your Oracle instance.
+
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+{{< /note >}}
+
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
@@ -573,17 +583,9 @@ Create a new database user, and assign the necessary user permissions.
 
 {{< /tabpane >}}
 
-</div>
-
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
-
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
-{{< /note >}}
+</div>
 
 ## Prepare the target database
 
@@ -981,4 +983,4 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
-- Tables or column names having more than 30 characters are not supported.
+- For Oracle source databases, table and column names with more than 30 characters are not supported.

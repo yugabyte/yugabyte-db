@@ -12,7 +12,9 @@
 //
 
 #include "yb/master/xcluster/master_xcluster_util.h"
+
 #include "yb/common/common_types.pb.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 
@@ -43,7 +45,7 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
   }
 
   if (table.IsSequencesSystemTable()) {
-    // xCluster does not yet support replication of sequences.
+    // The sequences_data table is treated specially elsewhere.
     return false;
   }
 
@@ -64,17 +66,49 @@ std::string GetFullTableName(const TableInfo& table_info) {
   return Format("$0.$1", schema_name, table_info.name());
 }
 
-Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
-    const CatalogManager& catalog_manager, const NamespaceId& namespace_id) {
+std::string TableDesignator::ToString() const {
+  return strings::Substitute("$0.$1 [id=$2]", pgschema_name, name, id);
+}
+
+TableDesignator GetDesignatorFromTableInfo(const TableInfo& table_info) {
+  TableDesignator designator;
+  designator.id = table_info.id();
+  designator.name = table_info.name();
+  designator.pgschema_name = table_info.pgschema_name();
+  return designator;
+}
+
+Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
+    bool include_sequences_data) {
   auto table_infos = VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(namespace_id));
-  EraseIf(
-      [](const TableInfoPtr& table) { return !IsTableEligibleForXClusterReplication(*table); },
-      &table_infos);
-  return table_infos;
+
+  std::vector<TableDesignator> table_designators{};
+  for (const auto& table_info : table_infos) {
+    if (IsTableEligibleForXClusterReplication(*table_info)) {
+      table_designators.push_back(GetDesignatorFromTableInfo(*table_info));
+    }
+  }
+
+  if (include_sequences_data) {
+    auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
+    if (sequence_table_info) {
+      TableDesignator designator = GetDesignatorFromTableInfo(*sequence_table_info);
+      designator.id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
+      table_designators.push_back(designator);
+    }
+  }
+  return table_designators;
 }
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info) {
   return replication_info.has_db_scoped_info() &&
          replication_info.db_scoped_info().namespace_infos_size() > 0;
 }
+
+bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info) {
+  return replication_info.has_db_scoped_info() &&
+         replication_info.db_scoped_info().automatic_ddl_mode();
+}
+
 }  // namespace yb::master

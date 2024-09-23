@@ -43,10 +43,11 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/colocated_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -1301,7 +1302,8 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  table_name.set_table_id(table_id);
+  auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+  table_name.set_table_id(stripped_table_id);
   RPC_STATUS_RETURN_ERROR(
       client()->GetTablets(
           table_name, 0, &tablets, /* partition_list_version =*/nullptr,
@@ -1483,7 +1485,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
 
   for (const auto& table_id : table_ids) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    table_name.set_table_id(table_id);
+    auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+    table_name.set_table_id(stripped_table_id);
     Status s = client()->GetTablets(
         table_name, 0, &tablets, /* partition_list_version =*/nullptr,
         RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue);

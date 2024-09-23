@@ -204,6 +204,10 @@ void MasterTabletServer::ClearAllMetaCachesOnServer() {
   client()->ClearAllMetaCachesOnServer();
 }
 
+Status MasterTabletServer::ClearMetacache(const std::string& namespace_id) {
+  return client()->ClearMetacache(namespace_id);
+}
+
 Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const {
   LOG(FATAL) << "Unexpected call of YCQLStatementStats()";
@@ -213,6 +217,11 @@ Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStat
 Result<std::vector<tablet::TabletStatusPB>> MasterTabletServer::GetLocalTabletsMetadata() const {
   LOG(DFATAL) << "Unexpected call of GetLocalTabletsMetadata()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetLocalTabletsMetadata()");
+}
+
+Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const {
+  LOG(DFATAL) << "Unexpected call of GetMetrics()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetMetrics()");
 }
 
 } // namespace master

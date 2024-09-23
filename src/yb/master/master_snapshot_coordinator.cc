@@ -315,7 +315,7 @@ class MasterSnapshotCoordinator::Impl {
     UniqueLock lock(mutex_);
     auto it = snapshots_.find(id);
     if (it != snapshots_.end()) {
-      UpdateSnapshot(it->get(), leader_term, &GetLockForCondition(&lock));
+      UpdateSnapshot(it->get(), leader_term, &GetLockForCondition(lock));
     }
   }
 

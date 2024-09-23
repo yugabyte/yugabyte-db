@@ -41,121 +41,39 @@ const std::string kBlockSplittingFlagName = "split_respects_tablet_replica_limit
 const std::string kErrorMessageFragment = "to exceed the safe system maximum";
 }  // namespace
 
-std::string DDLToCreateNTabletTable(const std::string& name, int num_tablets = 1) {
-  return Format("CREATE TABLE $0 (key INT PRIMARY KEY, value INT) SPLIT INTO $1 TABLETS",
-                name, num_tablets);
-}
+std::string DDLToCreateNTabletTable(const std::string& name, int num_tablets = 1);
 
-Status IsTabletLimitErrorStatus(const Status& status) {
-  if (status.ok()) {
-    return STATUS(IllegalState, "Is OK status");
-  }
-  if (status.message().ToBuffer().find(kErrorMessageFragment) == std::string::npos) {
-    return STATUS_FORMAT(
-        IllegalState, "Status message doesn't contain limit exceed string, instead is: $0",
-        status.message().ToBuffer());
-  }
-  return Status::OK();
-}
+Status IsTabletLimitErrorStatus(const Status& status);
 
 using StringAssocVec = std::vector<std::pair<std::string, std::string>>;
 
 class CreateTableLimitTestBase : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:
-  void SetUp() override {
-    YBMiniClusterTestBase<ExternalMiniCluster>::SetUp();
-    cluster_ = std::make_unique<ExternalMiniCluster>(CreateMiniClusterOptions());
-    ASSERT_OK(cluster_->Start());
-  }
+  void SetUp() override;
 
   virtual ExternalMiniClusterOptions CreateMiniClusterOptions() = 0;
 
-  Result<int32_t> GetTServerTabletLiveReplicasCount() {
-    int32_t result = 0;
-    for (const auto& tserver : cluster_->tserver_daemons()) {
-      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(tserver);
-      tserver::ListTabletsForTabletServerRequestPB req;
-      tserver::ListTabletsForTabletServerResponsePB resp;
-      rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(30));
-      RETURN_NOT_OK(proxy.ListTabletsForTabletServer(req, &resp, &controller));
-      for (const auto& entry : resp.entries()) {
-        if (entry.state() == tablet::RaftGroupStatePB::RUNNING ||
-            entry.state() == tablet::RaftGroupStatePB::BOOTSTRAPPING) {
-          ++result;
-        }
-      }
-    }
-    return result;
-  }
+  Result<int32_t> GetTServerTabletLiveReplicasCount();
 
   template <typename DaemonType>
   void UpdateStartupFlags(
       const StringAssocVec& additional_flags,
-      const std::vector<DaemonType*>& daemons) {
-    for (const auto daemon : daemons) {
-      for (const auto& [name, value] : additional_flags) {
-        daemon->mutable_flags()->push_back(Format("--$0=$1", name, value));
-      }
-    }
-  }
+      const std::vector<DaemonType*>& daemons);
 
-  void UpdateStartupTServerFlags(StringAssocVec additional_flags) {
-    UpdateStartupFlags(additional_flags, cluster_->tserver_daemons());
-  }
+  Status UpdateStartupFlagsAndRestart(StringAssocVec tserver_flags,
+                                      StringAssocVec master_flags);
 
-  void UpdateStartupMasterFlags(StringAssocVec additional_flags) {
-    UpdateStartupFlags(additional_flags, cluster_->master_daemons());
-  }
+  void UpdateStartupTServerFlags(StringAssocVec additional_flags);
 
-  Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
-    auto* ts =
-        cluster_->tablet_server(RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
-    return pgwrapper::PGConnBuilder(
-               {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
-        .Connect();
-  }
+  void UpdateStartupMasterFlags(StringAssocVec additional_flags);
 
-  Status SplitTablet(const TabletId& tablet_id) {
-    master::SplitTabletRequestPB req;
-    req.set_tablet_id(tablet_id);
-    master::SplitTabletResponsePB resp;
-    rpc::RpcController controller;
-    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
-    RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &controller));
-    if (resp.has_error()) {
-      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-    }
-    return Status::OK();
-  }
+  Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string());
 
-  Result<master::GetTableLocationsResponsePB> GetTableLocations(const TableId& table_id) {
-    master::GetTableLocationsRequestPB req;
-    req.mutable_table()->set_table_id(table_id);
-    req.set_max_returned_locations(1000);
-    master::GetTableLocationsResponsePB resp;
-    rpc::RpcController controller;
-    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterClientProxy>();
-    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
-    if (resp.has_error()) {
-      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-    }
-    return resp;
-  }
+  Status SplitTablet(const TabletId& tablet_id);
 
-  Result<master::ListTablesResponsePB> ListTables(const TableName& table_name) {
-    master::ListTablesRequestPB req;
-    req.set_name_filter(table_name);
-    req.set_exclude_system_tables(true);
-    master::ListTablesResponsePB resp;
-    rpc::RpcController controller;
-    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
-    RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
-    if (resp.has_error()) {
-      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-    }
-    return resp;
-  }
+  Result<master::GetTableLocationsResponsePB> GetTableLocations(const TableId& table_id);
+
+  Result<master::ListTablesResponsePB> ListTables(const TableName& table_name);
 };
 
 class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
@@ -178,12 +96,10 @@ TEST_F(CreateTableLimitTestRF1, CoreLimit) {
   // Some system tablets are created lazily on first user table creation.
   // Create an initial table before we count tablet limits.
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
-  UpdateStartupMasterFlags(
-      {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}});
-  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
-  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */ {{kCpusFlagName, "1"}}, /* master_flags */ {
+          {kCoreLimitFlagName,
+           std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}}));
   const std::string final_table_ddl = DDLToCreateNTabletTable("t");
   conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
@@ -196,16 +112,15 @@ TEST_F(CreateTableLimitTestRF1, MemoryLimit) {
   // Some system tablets are created lazily on first user table creation.
   // Create an initial table before we count tablet limits.
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
-  UpdateStartupMasterFlags(
-      {{kMemoryLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}});
   // Apply a limit of 1 GiB for tablet overheads on the tserver by setting overall memory to 2 GiB
   // and the percentage of memory for tablet overheads to 50% of the total.
-  UpdateStartupTServerFlags(
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags*/
       {{"memory_limit_hard_bytes", std::to_string(2_GB)},
-       {"tablet_overhead_size_percentage", std::to_string(50)}});
-  // Restart cluster to apply the new memory limits.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
+       {"tablet_overhead_size_percentage", std::to_string(50)}},
+      /* master_flags*/ {
+          {kMemoryLimitFlagName,
+           std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}}));
   conn = ASSERT_RESULT(PgConnect("yugabyte"));
   const std::string final_table_ddl = DDLToCreateNTabletTable("t_final");
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
@@ -219,13 +134,11 @@ TEST_F(CreateTableLimitTestRF1, MultipleTablets) {
   // Create an initial table before we count tablet limits.
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
   // Set the limit so we can add one more tablet replica.
-  UpdateStartupMasterFlags(
-      {{kCoreLimitFlagName,
-        std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()) + 1)}});
-  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
-  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */ {{kCpusFlagName, "1"}},
+      /* master_flags */ {
+          {kCoreLimitFlagName,
+           std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()) + 1)}}));
   conn = ASSERT_RESULT(PgConnect());
   // Request 3 tablets, so 3 tablet replicas at RF1. Should fail since we only have room for one
   // more tablet replica.
@@ -240,13 +153,11 @@ TEST_F(CreateTableLimitTestRF1, DeadTServer) {
   // Some system tablets are created lazily on first user table creation.
   // Create an initial table before we count tablet limits.
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
-  UpdateStartupMasterFlags(
-      {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
-       {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
-  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */ {{kCpusFlagName, "1"}},
+      /* master_flags */ {
+          {kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
+          {"tserver_unresponsive_timeout_ms", std::to_string(3000)}}));
   const std::string final_table_ddl = DDLToCreateNTabletTable("t");
   conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
@@ -265,13 +176,11 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   // Some system tablets are created lazily on first user table creation.
   // Create an initial table before we count tablet limits.
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
-  UpdateStartupMasterFlags(
-      {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
-       {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
-  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */ {{kCpusFlagName, "1"}},
+      /* master_flags */ {
+          {kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
+          {"tserver_unresponsive_timeout_ms", std::to_string(3000)}}));
   const std::string final_table_ddl = DDLToCreateNTabletTable("t");
   conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
@@ -286,12 +195,12 @@ TEST_F(CreateTableLimitTestRF1, BlockTabletSplitting) {
   std::string table_name = "test_table";
   auto conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable(table_name)));
-  UpdateStartupMasterFlags(
-      {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
-       {kMemoryLimitFlagName, "0"},
-       {kBlockSplittingFlagName, "true"}});
-  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
-  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */ {{kCpusFlagName, "1"}},
+      /* master_flags */ {
+          {kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
+          {kMemoryLimitFlagName, "0"},
+          {kBlockSplittingFlagName, "true"}}));
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
   auto list_tables_resp = ASSERT_RESULT(ListTables(table_name));
@@ -304,6 +213,176 @@ TEST_F(CreateTableLimitTestRF1, BlockTabletSplitting) {
   ASSERT_OK(IsTabletLimitErrorStatus(status));
   ASSERT_OK(cluster_->SetFlagOnMasters(kCoreLimitFlagName, "0"));
   ASSERT_OK(SplitTablet(tablet_id));
+}
+
+TEST_F(CreateTableLimitTestRF1, CanAddColocatedTableAtLimit) {
+  auto yugabyte_conn = ASSERT_RESULT(PgConnect("yugabyte"));
+  ASSERT_OK(yugabyte_conn.Execute("CREATE DATABASE colodb with COLOCATED = true"));
+  auto conn = ASSERT_RESULT(PgConnect("colodb"));
+  // Some system tablets are created lazily on first user table creation.
+  // Create an initial table before we count tablet limits.
+  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", "warmup")));
+  // Configure flags so the tablet replica limit is equal to the number of tablet replicas currently
+  // in the universe.
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */
+      {{"memory_limit_hard_bytes", std::to_string(2_GB)},
+       {"tablet_overhead_size_percentage", std::to_string(50)}},
+      /* master_flags */ {
+          {kMemoryLimitFlagName,
+           std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}}));
+  conn = ASSERT_RESULT(PgConnect("colodb"));
+  const std::string final_table_ddl =
+      Format("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", "final_table");
+  ASSERT_OK(conn.Execute(final_table_ddl));
+}
+
+TEST_F(CreateTableLimitTestRF1, CannotCreateFirstTableInColocatedDatabaseAtLimit) {
+  auto yugabyte_conn = ASSERT_RESULT(PgConnect("yugabyte"));
+  // Some system tablets are created lazily on first user table creation.
+  // Create an initial table before we count tablet limits.
+  ASSERT_OK(yugabyte_conn.Execute(DDLToCreateNTabletTable("warmup")));
+  // Apply a limit of 1 GiB for tablet overheads on the tserver by setting overall memory to 2 GiB
+  // and the percentage of memory for tablet overheads to 50% of the total.
+  ASSERT_OK(UpdateStartupFlagsAndRestart(
+      /* tserver_flags */
+      {{"memory_limit_hard_bytes", std::to_string(2_GB)},
+       {"tablet_overhead_size_percentage", std::to_string(50)}},
+      /* master_flags */ {
+          {kMemoryLimitFlagName,
+           std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}}));
+
+  yugabyte_conn = ASSERT_RESULT(PgConnect("yugabyte"));
+  // The tablet backing all colocated tables in a database is not created at database creation time.
+  // Instead it is created lazily when the first colocated user table in the database is created.
+  // Therefore despite the fact we are at the tablet replica limit the create database DDL should
+  // succeed. It is the create table DDL that we expect to fail.
+  ASSERT_OK(yugabyte_conn.Execute("CREATE DATABASE colodb with COLOCATED = true"));
+  auto conn = ASSERT_RESULT(PgConnect("colodb"));
+  auto final_table_ddl = Format("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", "warmup");
+  auto status = conn.Execute(final_table_ddl);
+  ASSERT_OK(IsTabletLimitErrorStatus(status));
+  ASSERT_OK(cluster_->SetFlagOnMasters(kMemoryLimitFlagName, "0"));
+  ASSERT_OK(conn.Execute(final_table_ddl));
+}
+
+std::string DDLToCreateNTabletTable(const std::string& name, int num_tablets) {
+  return Format("CREATE TABLE $0 (key INT PRIMARY KEY, value INT) SPLIT INTO $1 TABLETS",
+                name, num_tablets);
+}
+
+Status IsTabletLimitErrorStatus(const Status& status) {
+  if (status.ok()) {
+    return STATUS(IllegalState, "Is OK status");
+  }
+  if (status.message().ToBuffer().find(kErrorMessageFragment) == std::string::npos) {
+    return STATUS_FORMAT(
+        IllegalState, "Status message doesn't contain limit exceed string, instead is: $0",
+        status.message().ToBuffer());
+  }
+  return Status::OK();
+}
+
+void CreateTableLimitTestBase::SetUp() {
+    YBMiniClusterTestBase<ExternalMiniCluster>::SetUp();
+    cluster_ = std::make_unique<ExternalMiniCluster>(CreateMiniClusterOptions());
+    ASSERT_OK(cluster_->Start());
+}
+
+Result<int32_t> CreateTableLimitTestBase::GetTServerTabletLiveReplicasCount() {
+    int32_t result = 0;
+    for (const auto& tserver : cluster_->tserver_daemons()) {
+    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(tserver);
+    tserver::ListTabletsForTabletServerRequestPB req;
+    tserver::ListTabletsForTabletServerResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    RETURN_NOT_OK(proxy.ListTabletsForTabletServer(req, &resp, &controller));
+    for (const auto& entry : resp.entries()) {
+      if (entry.state() == tablet::RaftGroupStatePB::RUNNING ||
+          entry.state() == tablet::RaftGroupStatePB::BOOTSTRAPPING) {
+        ++result;
+      }
+    }
+    }
+    return result;
+}
+
+template <typename DaemonType>
+void CreateTableLimitTestBase::UpdateStartupFlags(const StringAssocVec& additional_flags,
+                                                  const std::vector<DaemonType*>& daemons) {
+  for (const auto daemon : daemons) {
+    for (const auto& [name, value] : additional_flags) {
+      daemon->mutable_flags()->push_back(Format("--$0=$1", name, value));
+    }
+  }
+}
+
+Status CreateTableLimitTestBase::UpdateStartupFlagsAndRestart(
+    StringAssocVec tserver_flags, StringAssocVec master_flags) {
+  UpdateStartupTServerFlags(tserver_flags);
+  UpdateStartupMasterFlags(master_flags);
+  cluster_->Shutdown();
+  return cluster_->Restart();
+}
+
+void CreateTableLimitTestBase::UpdateStartupTServerFlags(StringAssocVec additional_flags) {
+  UpdateStartupFlags(additional_flags, cluster_->tserver_daemons());
+}
+
+void CreateTableLimitTestBase::UpdateStartupMasterFlags(StringAssocVec additional_flags) {
+  UpdateStartupFlags(additional_flags, cluster_->master_daemons());
+}
+
+Result<pgwrapper::PGConn> CreateTableLimitTestBase::PgConnect(const std::string& db_name) {
+  auto* ts =
+      cluster_->tablet_server(RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
+  return pgwrapper::PGConnBuilder(
+             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
+      .Connect();
+}
+
+Status CreateTableLimitTestBase::SplitTablet(const TabletId& tablet_id) {
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+  master::SplitTabletResponsePB resp;
+  rpc::RpcController controller;
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+  RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &controller));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
+Result<master::GetTableLocationsResponsePB> CreateTableLimitTestBase::GetTableLocations(
+    const TableId& table_id) {
+  master::GetTableLocationsRequestPB req;
+  req.mutable_table()->set_table_id(table_id);
+  req.set_max_returned_locations(1000);
+  master::GetTableLocationsResponsePB resp;
+  rpc::RpcController controller;
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterClientProxy>();
+  RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return resp;
+}
+
+Result<master::ListTablesResponsePB> CreateTableLimitTestBase::ListTables(
+    const TableName& table_name) {
+  master::ListTablesRequestPB req;
+  req.set_name_filter(table_name);
+  req.set_exclude_system_tables(true);
+  master::ListTablesResponsePB resp;
+  rpc::RpcController controller;
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return resp;
 }
 
 }  // namespace yb

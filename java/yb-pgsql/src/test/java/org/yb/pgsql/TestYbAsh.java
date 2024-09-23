@@ -37,13 +37,11 @@ import com.yugabyte.util.PSQLException;
 @RunWith(value = YBTestRunner.class)
 public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLING_INTERVAL = 1000;
-
   private static final int ASH_SAMPLE_SIZE = 500;
-
   private static final String ASH_VIEW = "yb_active_session_history";
 
   private void setAshConfigAndRestartCluster(
-      int sampling_interval, int sample_size) throws Exception {
+      int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
       flagMap.put("allowed_preview_flags_csv",
@@ -55,9 +53,16 @@ public class TestYbAsh extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_ash", "true");
     flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(sampling_interval));
     flagMap.put("ysql_yb_ash_sample_size", String.valueOf(sample_size));
-    // flagMap.put("create_initial_sys_catalog_snapshot", "true");
+    if (circular_buffer_size > 0) {
+      flagMap.put("ysql_yb_ash_circular_buffer_size", String.valueOf(circular_buffer_size));
+    }
     Map<String, String> masterFlagMap = super.getMasterFlags();
     restartClusterWithFlags(masterFlagMap, flagMap);
+  }
+
+  private void setAshConfigAndRestartCluster(
+      int sampling_interval, int sample_size) throws Exception {
+    setAshConfigAndRestartCluster(sampling_interval, sample_size, 0);
   }
 
   private void executePgSleep(Statement statement, long seconds) throws Exception {
@@ -252,10 +257,10 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testPgAuxInfo() throws Exception {
-    setAshConfigAndRestartCluster(10, ASH_SAMPLE_SIZE);
+    setAshConfigAndRestartCluster(50, ASH_SAMPLE_SIZE, 1);
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
-      for (int i = 0; i < 10000; ++i) {
+      for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
         statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
       }

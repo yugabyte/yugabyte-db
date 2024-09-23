@@ -63,9 +63,11 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			index = route->id.yb_stats_index;
 			memcpy(instance->yb_stats[index].database_name,
 				(char *)route->yb_database_entry->name,
-				DB_NAME_MAX_LEN);
-			memcpy(instance->yb_stats[index].user_name,
-				route->id.user, USER_NAME_MAX_LEN);
+				DB_NAME_MAX_LEN - 1);
+			instance->yb_stats[index].database_name[DB_NAME_MAX_LEN - 1] = '\0';
+			strncpy(instance->yb_stats[index].user_name,
+				route->id.user, USER_NAME_MAX_LEN - 1);
+			instance->yb_stats[index].user_name[USER_NAME_MAX_LEN - 1] = '\0';
 		}
 
 		if (index == -1) {

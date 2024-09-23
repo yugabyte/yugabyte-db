@@ -13,12 +13,20 @@
 
 #include "yb/common/xcluster_util.h"
 
+#include "yb/common/entity_ids.h"
+#include "yb/common/ysql_utils.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/result.h"
 
 namespace yb::xcluster {
 
 namespace {
 constexpr char kAlterReplicationGroupSuffix[] = ".ALTER";
+
+constexpr char kSequencesDataAliasTableIdMid[] = ".sequences_data_for.";
+
+// How many characters a normal TableId (e.g., no suffixes) takes up.
+constexpr int kTableIdSize = 32;
 }  // namespace
 
 ReplicationGroupId GetAlterReplicationGroupId(const ReplicationGroupId& replication_group_id) {
@@ -42,6 +50,29 @@ std::string ShortReplicationType(XClusterReplicationType type) {
   return StringReplace(
       XClusterReplicationType_Name(type), "XCLUSTER_", "",
       /*replace_all=*/false);
+}
+
+TableId GetSequencesDataAliasForNamespace(const NamespaceId& namespace_id) {
+  DCHECK(kPgSequencesDataTableId.size() == kTableIdSize);
+  return kPgSequencesDataTableId + kSequencesDataAliasTableIdMid + namespace_id;
+}
+
+bool IsSequencesDataAlias(const TableId& table_id) {
+  return table_id.find(kSequencesDataAliasTableIdMid) == kTableIdSize;
+}
+
+TableId StripSequencesDataAliasIfPresent(const TableId& table_id) {
+  if (!IsSequencesDataAlias(table_id)) {
+    return table_id;
+  }
+  return kPgSequencesDataTableId;
+}
+
+Result<NamespaceId> GetReplicationNamespaceBelongsTo(const TableId& table_id) {
+  if (!IsSequencesDataAlias(table_id)) {
+    return GetNamespaceIdFromYsqlTableId(table_id);
+  }
+  return table_id.substr(kTableIdSize + strlen(kSequencesDataAliasTableIdMid));
 }
 
 }  // namespace yb::xcluster

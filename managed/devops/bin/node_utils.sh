@@ -79,9 +79,15 @@ get_paths_and_sizes() {
   remote_dir_path=$1
   shift
   temp_file_path=$1
+  shift
+  start_date=$1
+  shift
+  end_date=$1
 
   # This displays the size in bytes ($5) and file path ($9) on a new line.
-  ls -ltp "$remote_dir_path" | awk '{print $5, $9}' > "$temp_file_path"
+  cd "$remote_dir_path"
+  find . -type f -newermt "$start_date" ! -newermt "$end_date" \
+  -exec ls -ltp {} + | awk '{print $5, $9}' > "$temp_file_path"
 }
 
 # Function takes file path list as file input. It returns 1 for file exists

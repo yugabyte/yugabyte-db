@@ -722,21 +722,20 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
-    String emailFromContext = Util.maybeGetEmailFromContext();
-    if (emailFromContext.equals("Unknown")) {
-      // When task is not created as a part of user action get email of the scheduler.
-      String emailFromSchedule = maybeGetEmailFromSchedule();
-      if (emailFromSchedule.equals("Unknown")) {
-        if (!StringUtils.isEmpty(userEmail)) {
-          th.userEmail = userEmail;
-        } else {
+    if (StringUtils.isEmpty(userEmail)) {
+      String emailFromContext = Util.maybeGetEmailFromContext();
+      if (emailFromContext.equals("Unknown")) {
+        String emailFromSchedule = maybeGetEmailFromSchedule();
+        if (emailFromSchedule.equals("Unknown")) {
           th.userEmail = "Unknown";
+        } else {
+          th.userEmail = emailFromSchedule;
         }
       } else {
-        th.userEmail = emailFromSchedule;
+        th.userEmail = emailFromContext;
       }
     } else {
-      th.userEmail = emailFromContext;
+      th.userEmail = userEmail;
     }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
     if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;

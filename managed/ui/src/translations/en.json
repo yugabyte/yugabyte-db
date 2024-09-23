@@ -41,6 +41,7 @@
       "and": "and",
       "learnMore": "Learn more",
       "clear": "Clear",
+      "reminder": "Reminder",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -250,7 +251,13 @@
         "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "disableWarning3": "May impact performance.",
         "disableWarning1RF1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong> and may impact performance.",
-        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>"
+        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
+        "analyzeModal": {
+          "msg1": "Enabling Enhanced Postgres Compatibility also enables the <strong>Cost Based Optimizer (CBO).</strong>",
+          "msg2": "You must run",
+          "msg3": "on user tables after data load for the CBO to create optimal execution plans.",
+          "learnLink": "Learn more about ANALYZE"
+        }
       },
       "connectionPooling": {
         "modalTitle": "Edit Connection Pooling",
@@ -326,7 +333,7 @@
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
         "ysqlServerRpcPort": "YSQL RPC Port",
-        "internalYsqlServerRpcPort": "YSQL Database Port",
+        "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
         "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
@@ -768,7 +775,8 @@
             "deleteConfig": "Remove Disaster Recovery",
             "editDrConfig": "Edit DR Configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
-            "editTables": "Select Database and Tables",
+            "editTables": "Select Databases and Tables",
+            "editDatabases": "Select Databases",
             "switchover": "Switchover",
             "failover": "Failover",
             "advancedSubmenu": "Advanced",
@@ -779,8 +787,8 @@
         "error": {
           "failToFetchUniverse": "Error fetching details for the universe with the UUID: {{universeUuid}}",
           "failToFetchDrConfig": "Error fetching details for the DR config with the UUID: {{drConfigUuid}}",
-          "undefinedDrPrimaryUniveresUuid": "The DR config does not have an associated DR primary universe.",
-          "undefinedDrReplicaUniveresUuid": "The DR config does not have an associated DR replica universe"
+          "undefinedDrPrimaryUniverseUuid": "The DR config does not have an associated DR primary universe.",
+          "undefinedDrReplicaUniverseUuid": "The DR config does not have an associated DR replica universe"
         },
         "backupStorageConfig": {
           "currentStorageConfigInfo": "<bold>{{storageConfigName}}</bold> will be used as the storage config for this operation. To use a different storage config, edit the DR config.",
@@ -937,6 +945,9 @@
             "estimatedDataLoss": {
               "label": "Potential data loss on failover",
               "tooltip": "If you would like to failover, this is the potential data loss measured in time. This estimated is determined by the DR replica's safe time lag at the last known safe time."
+            },
+            "schemaChangeMode": {
+              "label": "Schema changes"
             }
           },
           "participant": {
@@ -1109,13 +1120,21 @@
       "xCluster": {
         "heading": "xCluster Replication",
         "terms": {
+          "offering": {
+            "dr": "DR",
+            "xClusterReplication": "xCluster replication"
+          },
           "source": {
             "xClusterReplication": "source",
-            "dr": "DR primary"
+            "xClusterReplication_titleCase": "Source",
+            "dr": "DR primary",
+            "dr_titleCase": "DR Primary"
           },
           "target": {
             "xClusterReplication": "target",
-            "dr": "DR replica"
+            "xClusterReplication_titleCase": "Target",
+            "dr": "DR replica",
+            "dr_titleCase": "DR Replica"
           }
         },
         "actionButton": {
@@ -1127,6 +1146,21 @@
             }
           },
           "configureReplicationLagAlert": "Max acceptable lag time"
+        },
+        "schemaChangeMode": {
+          "mode": {
+            "tableLevel": "manual DDL mode",
+            "tableLevel_titleCase": "Manual DDL Mode",
+            "tableLevel_pill": "MANUAL",
+            "dbScoped": "semi-automatic DDL Mode",
+            "dbScoped_titleCase": "Semi-Automatic DDL Mode",
+            "dbScoped_pill": "SEMI-AUTOMATIC"
+          },
+          "infoPopover": {
+            "title": "Schema Change Mode",
+            "text": "To make schema changes to databases with replication enabled, follow the <ddlChangeStepsDocsLink>steps in the docs in the right sequence</ddlChangeStepsDocsLink> that corresponds to your schema change mode."
+          },
+          "upgradeAvailable": "Upgrade Available"
         },
         "config": {
           "tableStatus": {
@@ -1264,6 +1298,36 @@
               "backupStorageConfigRequired": "Required.",
               "unableToDetermineBootstrapSummary": "Unable to determine which tables require full copy creation."
             }
+          },
+          "schemaChangeModal": {
+            "title": "Schema Changes",
+            "titleDetails": "Only for databases with xCluster",
+            "universeVersion": {
+              "universeLevelLabel": "Database Version",
+              "label": "{{universeTerm}} Database Version",
+              "universeLevelTooltip": "Schema change mode is tied to the database version during xCluster setup.",
+              "tooltip": "Schema change mode is tied to the database version during {{xClusterOffering}} setup.",
+              "tooltipUpgradePrompt": "To leverage the new {{xClusterOffering}} features with streamlined table and index management, upgrade the {{targetUniverseTerm}} followed by the {{sourceUniverseTerm}}. Then remove and reconfigure your {{xClusterOffering}} setup."
+            },
+            "schemaChanges": "Schema Changes",
+            "universeLevelSchemaChangesInstructions": "To make schema changes such as creating, altering, or dropping tables or partitions to databases with xCluster Disaster Recovery or xCluster Replication enabled, you need to complete the <bold>specified steps</bold> on the <bold>source universe, target universe, and the xCluster configuration in the specified order.<bold>",
+            "schemaChangesInstructions": "To make schema changes to databases in replication for xCluster DR (such as creating, altering, or dropping tables or partitions), you need to complete the <bold>specified steps in a specific order.</bold>",
+            "universeLevelLearnMore": "Learn more about making schema changes for:",
+            "universeLevelLearnMoreDrDocsLink": "xCluster Disaster Recovery",
+            "universeLevelLearnMoreXClusterReplicationDocsLink": "xCluster Replication",
+            "learnMore": "Learn more"
+          },
+          "schemaChangesInfoPopover": {
+            "important": "IMPORTANT",
+            "title": "Schema Changes",
+            "description": "When making schema changes to databases with {{xClusterOffering}} enabled, you must complete the <bold>specified steps in a specific order.</bold>",
+            "close": "Close",
+            "learnMore": "Learn More"
+          },
+          "upgradeModal": {
+            "title": "Upgrade Available",
+            "upgradeInfo": "<paragraph>Congratulations for completing your database upgrade.</paragraph><br/><paragraph>The new database version streamlines table and index management for databases with {{xClusterOffering}} enabled, but your {{xClusterOffering}} config is still in <bold>{{schemaChangeMode}}</bold>.</paragraph><br/><paragraph>To leverage the new schema change mode, upgrade your {{xClusterOffering}} config.</paragraph>",
+            "learnMore": "Learn more"
           }
         },
         "selectTable": {
@@ -2161,7 +2225,7 @@
       "info": {
         "task": "Task",
         "type": "Type",
-        "target": "Target",
+        "target": "Performed On",
         "status": "Status",
         "startTime": "Start Time",
         "endTime": "End time",
@@ -2177,7 +2241,9 @@
         "title": "Progress",
         "complete": "{{progress}}% Completed",
         "expand": "Expand",
-        "showLog": "YugaWare Log"
+        "viewLess": "Collapse",
+        "showLog": "YugaWare Log",
+        "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
         "viewDetails": "View Details",
@@ -2190,6 +2256,7 @@
       "diffModal": {
         "title": "Universe Changes",
         "expandAll": "Expand All",
+        "collapseAll": "Collapse All",
         "diffDetailsNotFound": "Unable to find diff details",
         "alerts": {
           "inProgress": "This operation intends to modify the following {{count}} value(s). ",
@@ -2644,16 +2711,16 @@
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
-            "backupStrategy":"Backup Strategy",
+            "backupStrategy": "Backup Strategy",
             "success": "Scheduled backup policy is being updated"
           },
           "deleteModal": {
-            "deleteMsg":"Are you sure you want to delete this schedule policy?"
+            "deleteMsg": "Are you sure you want to delete this schedule policy?"
           },
           "showIntervalModal": {
             "title": "Backup Intervals",
-            "fullBackup":"Full Backup",
-            "incrementalBackup":"Incremental Backup"
+            "fullBackup": "Full Backup",
+            "incrementalBackup": "Incremental Backup"
           },
           "backupTables": "Backup Tables"
         }
@@ -2709,11 +2776,11 @@
           "parallelThreads": "Parallel threads (Optional)"
         },
         "validationErrMsg": {
-          "keyspacesAlreadyExists":"Keyspace already exists in the target Universe",
+          "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
           "pitrMillisOptions.secs": "Secs must be between 0 to 59",
           "kmsConfigRequired": "KMS Config is required",
-          "invalidKeyspaceName":"Invalid keyspace name",
-          "duplicateKeyspaceName":"Duplicate keyspace name given"
+          "invalidKeyspaceName": "Invalid keyspace name",
+          "duplicateKeyspaceName": "Duplicate keyspace name given"
         }
       }
     },

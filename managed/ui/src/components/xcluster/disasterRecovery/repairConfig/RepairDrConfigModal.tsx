@@ -266,8 +266,8 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
       ? t('failedToFetchUniverseList', { keyPrefix: 'queryError' })
       : t(
           drConfig.primaryUniverseUuid
-            ? 'undefinedDrReplicaUniveresUuid'
-            : 'undefinedDrPrimaryUniveresUuid',
+            ? 'undefinedDrReplicaUniverseUuid'
+            : 'undefinedDrPrimaryUniverseUuid',
           {
             keyPrefix: 'clusterDetail.disasterRecovery.error'
           }

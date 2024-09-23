@@ -37,7 +37,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Select the API type for the backup.
 
-1. Select the backup storage configuration. The available configurations depend on your existing backup storage configurations. For more information, see [Configure backup storage](../configure-backup-storage/).
+1. Select the storage configuration. For more information, see [Configure backup storage](../configure-backup-storage/).
 
 1. Select the database/keyspace to back up.
 

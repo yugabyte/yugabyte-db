@@ -3709,15 +3709,6 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	return tuple;
 }
 
-// TODO: Substitute the YBSetRowLockPolicy with this function
-static int
-YBCGetRowLockPolicy(LockWaitPolicy pg_wait_policy)
-{
-	int docdb_wait_policy;
-	YBSetRowLockPolicy(&docdb_wait_policy, pg_wait_policy);
-	return docdb_wait_policy;
-}
-
 /*
  * The return value of this function depends on whether we are batching or not.
  * Currently, batching is enabled if the GUC yb_explicit_row_locking_batch_size > 1
@@ -3731,7 +3722,7 @@ YBCLockTuple(
 	Relation relation, Datum ybctid, RowMarkType mode,
 	LockWaitPolicy pg_wait_policy, EState* estate)
 {
-	int docdb_wait_policy = YBCGetRowLockPolicy(pg_wait_policy);
+	const int docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy);
 	const YBCPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
 		.pg_wait_policy = pg_wait_policy,
@@ -3740,8 +3731,8 @@ YBCLockTuple(
 	const Oid relfile_oid = YbGetRelfileNodeId(relation);
 	const Oid db_oid = YBCGetDatabaseOid(relation);
 
-	if (yb_explicit_row_locking_batch_size > 1
-	    && lock_params.pg_wait_policy != LockWaitSkip)
+	if (yb_explicit_row_locking_batch_size > 1 &&
+		lock_params.pg_wait_policy != LockWaitSkip)
 	{
 		// TODO: Error message requires conversion
 		HandleYBStatus(YBCAddExplicitRowLockIntent(

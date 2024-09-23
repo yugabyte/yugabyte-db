@@ -84,9 +84,9 @@ This is a warning with a [link](https://www.yugabyte.com).
 
 You can add a link to a url with an icon using the `link` shortcode which takes url as a string argument. Internal and external links will have different icons. You can use the `:version` variable to expand to all versions.
 
-- {{<link "https://www.google.com">}} : _External link_ `{{</*link "https://www.google.com"*/>}}`
-- {{<link "../syntax-diagrams">}} : _Relative internal link_ `{{</*link "../syntax-diagrams"*/>}}`
-- {{<link "/:version/explore">}} : _Full path internal link_ `{{</*link "/:version/explore"*/>}}`
+- {{<link dest="https://www.google.com">}} : _External link_ `{{</*link "https://www.google.com"*/>}}`
+- {{<link dest="../syntax-diagrams">}} : _Relative internal link_ `{{</*link "../syntax-diagrams"*/>}}`
+- {{<link dest="/:version/explore">}} : _Full path internal link_ `{{</*link "/:version/explore"*/>}}`
 
 ## Tables
 

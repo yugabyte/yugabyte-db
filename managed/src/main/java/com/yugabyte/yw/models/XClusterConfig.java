@@ -214,7 +214,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Whether the config is txn xCluster")
+  @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
   private ConfigType type;
 
   @ApiModelProperty(value = "Whether the source is active in txn xCluster")
@@ -1018,6 +1018,16 @@ public class XClusterConfig extends Model {
   public void update() {
     this.setModifyTime(new Date());
     super.update();
+  }
+
+  @Transactional
+  @Override
+  public boolean delete() {
+    // If the dr config has no other xCluster configs, then delete the dr config as well.
+    if (this.drConfig != null && this.drConfig.getXClusterConfigs().size() == 1) {
+      this.drConfig.delete();
+    }
+    return super.delete();
   }
 
   public static XClusterConfig getValidConfigOrBadRequest(

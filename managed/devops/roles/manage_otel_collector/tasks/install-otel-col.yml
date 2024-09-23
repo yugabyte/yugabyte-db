@@ -76,6 +76,16 @@
     state: link
     force: yes
 
+- name: Configure | Update yb server ctl script
+  vars:
+    mount_paths: "{{ _mount_points | join(' ') }}"
+    yb_cores_dir: "{{ yb_home_dir }}/cores"
+  template:
+    src: "roles/configure-cluster-server/templates/yb-server-ctl.sh.j2"
+    dest: "{{ yb_home_dir }}/bin/yb-server-ctl.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
 - name: Install OpenTelemetry collector | Check logs cleanup script exists
   stat:
     path: "{{ yb_home_dir }}/bin/zip_purge_yb_logs.sh"

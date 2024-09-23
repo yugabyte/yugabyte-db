@@ -211,8 +211,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());
@@ -400,8 +400,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());

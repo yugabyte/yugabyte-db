@@ -29,7 +29,7 @@ export const getEnabledDrConfigActions = (
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
-    case DrConfigState.ERROR:
+    case DrConfigState.FAILED:
       return [DrConfigAction.DELETE];
     case DrConfigState.REPLICATING:
       return [
@@ -113,7 +113,7 @@ export const getXClusterConfig = (drConfig: DrConfig): XClusterConfig => ({
   tableType: 'YSQL',
   tables: drConfig.tables,
   targetActive: drConfig.drReplicaUniverseActive,
-  type: XClusterConfigType.TXN,
+  type: drConfig.type,
   usedForDr: true,
   uuid: drConfig.xclusterConfigUuid,
   sourceUniverseState: drConfig.primaryUniverseState,

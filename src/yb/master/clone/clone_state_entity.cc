@@ -88,4 +88,12 @@ void CloneStateInfo::SetRestorationId(const TxnSnapshotRestorationId& restoratio
   restoration_id_ = restoration_id;
 }
 
+std::shared_ptr<CountDownLatch> CloneStateInfo::NumTserversWithStaleMetacache() {
+  return num_tservers_with_stale_metacache;
+}
+
+void CloneStateInfo::SetNumTserversWithStaleMetacache(uint64_t count) {
+  num_tservers_with_stale_metacache = std::make_shared<CountDownLatch>(count);
+}
+
 }  // namespace yb::master

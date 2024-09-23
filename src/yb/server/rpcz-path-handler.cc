@@ -67,7 +67,7 @@ void MakeAshUuidsHumanReadable(rpc::RpcCallInProgressPB* pb) {
     return;
   }
   AshMetadataPB* metadata_pb = pb->mutable_wait_state()->mutable_metadata();
-  // Convert root_request_id and yql_endpoint_tserver_uuid from binary to
+  // Convert root_request_id and top_level_node_id from binary to
   // human-readable formats
   if (metadata_pb->has_root_request_id()) {
     Result<Uuid> result = Uuid::FromSlice(metadata_pb->root_request_id());
@@ -75,10 +75,10 @@ void MakeAshUuidsHumanReadable(rpc::RpcCallInProgressPB* pb) {
       metadata_pb->set_root_request_id(result.ToString());
     }
   }
-  if (metadata_pb->has_yql_endpoint_tserver_uuid()) {
-    Result<Uuid> result = Uuid::FromSlice(metadata_pb->yql_endpoint_tserver_uuid());
+  if (metadata_pb->has_top_level_node_id()) {
+    Result<Uuid> result = Uuid::FromSlice(metadata_pb->top_level_node_id());
     if (result.ok()) {
-      metadata_pb->set_yql_endpoint_tserver_uuid(result.ToString());
+      metadata_pb->set_top_level_node_id(result.ToString());
     }
   }
 }

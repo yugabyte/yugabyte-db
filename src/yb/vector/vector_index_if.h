@@ -53,23 +53,26 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
                       public VectorIndexWriterIf<Vector> {
  public:
+  using VectorType = Vector;
+  using DistanceResultType = DistanceResult;
+
+  // TODO(lsm) Implement storing and loading data to file.
+  // virtual Status AttachToFile(const std::string& output_path) = 0;
+
   virtual ~VectorIndexIf() = default;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorIndexFactory {
- public:
-  virtual ~VectorIndexFactory() = default;
+using VectorIndexIfPtr = std::shared_ptr<VectorIndexIf<Vector, DistanceResult>>;
 
-  virtual std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const = 0;
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>()>;
 
-  // TODO: generalize this to non-HNSW algorithms/libraries.
-  virtual void SetOptions(const HNSWOptions& options) {
-    hnsw_options_ = options;
-  }
-
- protected:
-  HNSWOptions hnsw_options_;
-};
+template<class Index>
+  auto CreateIndexFactory(const HNSWOptions& options) {
+  return [options]() {
+    return std::make_shared<Index>(options);
+  };
+}
 
 }  // namespace yb::vectorindex

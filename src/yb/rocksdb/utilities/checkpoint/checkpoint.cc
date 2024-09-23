@@ -174,7 +174,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   if (s.ok()) {
     if (delete_checkpoint_dir) {
       const Status s_del = DeleteRecursively(db->GetCheckpointEnv(), checkpoint_dir);
-      VLOG(1) << "Deleted dir %s -- %s", checkpoint_dir.c_str(), s_del.ToString().c_str();
+      VLOG(1) << "Deleted dir " << checkpoint_dir.c_str() << " -- " << s_del.ToString().c_str();
     }
 
     // move tmp private backup to real snapshot directory

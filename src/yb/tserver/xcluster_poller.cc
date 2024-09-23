@@ -335,7 +335,7 @@ void XClusterPoller::DoPoll() {
       auto se = ScopeExit([this]() { ANNOTATE_UNPROTECTED_WRITE(TEST_is_sleeping_) = false; });
       UniqueLock shutdown_l(shutdown_mutex_);
       if (shutdown_cv_.wait_for(
-              GetLockForCondition(&shutdown_l), delay * 1ms, [this] { return IsOffline(); })) {
+              GetLockForCondition(shutdown_l), delay * 1ms, [this] { return IsOffline(); })) {
         return;
       }
 

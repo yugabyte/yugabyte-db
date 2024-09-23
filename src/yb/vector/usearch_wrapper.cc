@@ -64,12 +64,12 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
   FATAL_INVALID_ENUM_VALUE(CoordinateKind, coordinate_kind);
 }
 
-namespace detail {
+namespace {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexImpl {
+class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
-  explicit UsearchIndexImpl(const HNSWOptions& options)
+  explicit UsearchIndex(const HNSWOptions& options)
       : dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
         metric_(dimensions_,
@@ -81,12 +81,12 @@ class UsearchIndexImpl {
     CHECK_GT(dimensions_, 0);
   }
 
-  Status Reserve(size_t num_vectors) {
+  Status Reserve(size_t num_vectors) override {
     index_.reserve(num_vectors);
     return Status::OK();
   }
 
-  Status Insert(VertexId vertex_id, const Vector& v) {
+  Status Insert(VertexId vertex_id, const Vector& v) override {
     if (!index_.add(vertex_id, v.data())) {
       return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
     }
@@ -94,7 +94,7 @@ class UsearchIndexImpl {
   }
 
   std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) {
+      const Vector& query_vector, size_t max_num_results) const override {
     auto usearch_results = index_.search(query_vector.data(), max_num_results);
     std::vector<VertexWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
@@ -105,7 +105,7 @@ class UsearchIndexImpl {
     return result_vec;
   }
 
-  Result<Vector> GetVector(VertexId vertex_id) const {
+  Result<Vector> GetVector(VertexId vertex_id) const override {
     Vector result;
     result.resize(dimensions_);
     if (index_.get(vertex_id, result.data())) {
@@ -121,16 +121,14 @@ class UsearchIndexImpl {
   index_dense_gt<VertexId> index_;
 };
 
-}  // namespace detail
+}  // namespace
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-UsearchIndex<Vector, DistanceResult>::UsearchIndex(const HNSWOptions& options)
-    : VectorIndexBase<Impl, Vector, DistanceResult>(std::make_unique<Impl>(options)) {
+template <class Vector, class DistanceResult>
+VectorIndexIfPtr<Vector, DistanceResult> UsearchIndexFactory<Vector, DistanceResult>::Create(
+    const HNSWOptions& options) {
+  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(options);
 }
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-UsearchIndex<Vector, DistanceResult>::~UsearchIndex() = default;
-
-template class UsearchIndex<FloatVector, float>;
+template class UsearchIndexFactory<FloatVector, float>;
 
 }  // namespace yb::vectorindex
