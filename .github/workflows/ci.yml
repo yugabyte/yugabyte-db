@@ -1,0 +1,151 @@
+name: CI lints and tests
+on:
+  push:
+    branches:
+      - "*"
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  RUSTC_WRAPPER: sccache
+  SCCACHE_DIR: /home/runner/.cache/sccache
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        postgres: [ 16, 17 ]
+    env:
+      PG_MAJOR: ${{ matrix.postgres }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up sccache
+        run: |
+          wget https://github.com/mozilla/sccache/releases/download/v$SCCACHE_VERSION/sccache-v$SCCACHE_VERSION-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf sccache-v$SCCACHE_VERSION-x86_64-unknown-linux-musl.tar.gz
+          sudo mv sccache-v$SCCACHE_VERSION-x86_64-unknown-linux-musl/sccache /usr/local/bin
+          chmod +x /usr/local/bin/sccache
+          echo "$SCCACHE_SHA256  /usr/local/bin/sccache" | sha256sum --check
+        env:
+          SCCACHE_VERSION: 0.8.1
+          SCCACHE_SHA256: "7203a4dcb3a67f3a0272366d50ede22e5faa3e2a798deaa4d1ea377b51c0ab0c"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.81.0
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: pg_parquet-rust-cache-${{ runner.os }}-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: pg_parquet-sccache-cache-${{ runner.os }}-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
+
+      - name: Install PostgreSQL
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config
+          sudo apt-get -y install postgresql-${{ env.PG_MAJOR }}-postgis-3 \
+                                  postgresql-server-dev-${{ env.PG_MAJOR }} \
+                                  postgresql-client-${{ env.PG_MAJOR }} \
+                                  libpq-dev
+
+      - name: Install MinIO
+        run: |
+          # Download and install MinIO server and client
+          wget https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x minio
+          mv minio /usr/local/bin/minio
+
+          # Download and install MinIO admin
+          wget https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          mv mc /usr/local/bin/mc
+
+      - name: Install and configure pgrx
+        run: |
+          cargo install --locked cargo-pgrx@0.12.5
+          cargo pgrx init --pg${{ env.PG_MAJOR }} $(which pg_config)
+
+      - name: Install cargo-llvm-cov for coverage report
+        run: cargo install --locked cargo-llvm-cov@0.6.12
+
+      - name: Format and lint
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --features "pg${{ env.PG_MAJOR }}, pg_test" --no-default-features -- -D warnings
+
+      - name: Run tests
+        run: |
+          # Set up permissions so that the current user below can create extensions
+          sudo chmod a+rwx $(pg_config --pkglibdir) \
+            $(pg_config --sharedir)/extension \
+            /var/run/postgresql/
+
+          # pgrx tests with runas argument ignores environment variables, so
+          # we read env vars from .env file in tests (https://github.com/pgcentralfoundation/pgrx/pull/1674)
+          touch /tmp/.env
+          echo AWS_ACCESS_KEY_ID=${{ env.AWS_ACCESS_KEY_ID }} >> /tmp/.env
+          echo AWS_SECRET_ACCESS_KEY=${{ env.AWS_SECRET_ACCESS_KEY }} >> /tmp/.env
+          echo AWS_S3_TEST_BUCKET=${{ env.AWS_S3_TEST_BUCKET }} >> /tmp/.env
+          echo AWS_REGION=${{ env.AWS_REGION }} >> /tmp/.env
+          echo PG_PARQUET_TEST=${{ env.PG_PARQUET_TEST }} >> /tmp/.env
+
+          # Start MinIO server
+          export MINIO_ROOT_USER=${{ env.AWS_ACCESS_KEY_ID }}
+          export MINIO_ROOT_PASSWORD=${{ env.AWS_SECRET_ACCESS_KEY }}
+          minio server /tmp/minio-storage > /dev/null 2>&1 &
+
+          # Set access key and create test bucket 
+          mc alias set local http://localhost:9000 ${{ env.AWS_ACCESS_KEY_ID }} ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws --endpoint-url http://localhost:9000 s3 mb s3://${{ env.AWS_S3_TEST_BUCKET }}
+
+          # Run tests with coverage tool
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean
+          cargo build --features "pg${{ env.PG_MAJOR }}, pg_test" --no-default-features
+          cargo pgrx test pg${{ env.PG_MAJOR }} --no-default-features
+          cargo llvm-cov report --lcov > lcov.info
+
+          # Stop MinIO server
+          pkill -9 minio
+        env:
+          RUST_TEST_THREADS: 1
+          AWS_ACCESS_KEY_ID: test_secret_access_key
+          AWS_SECRET_ACCESS_KEY: test_access_key_id
+          AWS_REGION: us-east-1
+          AWS_S3_TEST_BUCKET: testbucket
+          PG_PARQUET_TEST: true
+
+      - name: Upload coverage report to Codecov
+        if: ${{ env.PG_MAJOR }} == 17
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false
+          files: ./lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
