@@ -4,6 +4,7 @@ use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry};
 
 mod arrow_parquet;
 mod parquet_copy_hook;
+mod parquet_udfs;
 mod pgrx_utils;
 mod type_compat;
 
