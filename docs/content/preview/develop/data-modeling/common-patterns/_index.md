@@ -58,12 +58,12 @@ Key-value stores are expected to be some of the fastest storage data models.
 For more information on using YugabyteDB for key-value stores, see [Key-value data model](./keyvalue).
 {{</lead>}}
 
-## Jobqueue
+## Job queue
 
-Distributed job queues are essential for managing and processing tasks across multiple systems, enabling scalability, fault tolerance, and efficient resource utilization in modern applications.
+Distributed job queues are essential for managing and processing tasks across multiple systems, enabling scalability, fault tolerance, and efficient resource use in modern applications.
 
 {{<lead link="./jobqueue">}}
-For more information on designing a distributed jobqueue, see [Distributed JobQueue](./jobqueue)
+For more information on designing a distributed job queue, see [Distributed job queue](./jobqueue).
 {{</lead>}}
 
 ## Wide-column
