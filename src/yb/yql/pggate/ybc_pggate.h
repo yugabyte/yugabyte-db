@@ -332,6 +332,9 @@ YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
 
+void YBCPgAlterTableInvalidateTableByOid(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
+
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
                             YBCPgOid table_relfilenode_oid,
                             bool if_exist,

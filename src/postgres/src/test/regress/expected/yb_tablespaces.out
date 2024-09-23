@@ -355,12 +355,7 @@ lsm, for table "testschema.test_default_tab"
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
--- YB_TODO: Update output after GH #23825 is fixed.
 SELECT * FROM testschema.test_default_tab;
- id
-----
-(0 rows)
-
  id
 ----
   1
