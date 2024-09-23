@@ -61,11 +61,11 @@ The following example shows the required and common properties:
         "tasks.max": "1",
         "publication.autocreate.mode": "filtered",
         "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
-        "database.dbname": "yugabyte",
+        "database.dbname": "<database-name>",
         "database.hostname": "<cluster-hostname>",
         "database.port": "5433",
-        "database.user": "admin",
-        "database.password": "P@ssw0rd",
+        "database.user": "<username>",
+        "database.password": "<password>",
         "database.sslmode": "require",
         "topic.prefix": "yb",
         "snapshot.mode": "initial",
@@ -81,17 +81,26 @@ The following example shows the required and common properties:
 }
 ```
 
-- `connector.class` - set to `io.debezium.connector.postgresql.YugabyteDBConnector`.
-- `database.dbname` - the name of the YSQL database you want to monitor.
-- `database.hostname` - the cluster hostname is displayed on the cluster **Settings** tab under **Connection Parameters**.
-- `database.port` - the port to use; by default YugabyteDB uses port 5433 for YSQL.
-- `database.user` - the username of a cluster admin.
-- `database.password` - the user password.
-- `database.sslmode` - the SSL mode to use; set to `require`.
-- `slot.name` - the name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two).
-- `publication.name` - provide a publication name if you have a publication already created.
-- `snapshot.mode` - can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot=false` setting.
-- `table.include.list` - the names of the tables to monitor, comma-separated, in format `schema.table-name`.
+| Parameter | Description |
+| :--- | :--- |
+| `tasks.max` | Set to 1. The YugabyteDB connector always uses a single task. |
+| `publication.autocreate.mode` | Set to filtered. In this mode, if a publication exists, the connector uses it. If no publication exists, the connector creates a new publication for tables that match the current filter configuration. |
+| `connector.class` | Set to `io.debezium.connector.postgresql.YugabyteDBConnector`. |
+| `database.dbname` | The name of the YSQL database you want to monitor. |
+| `database.hostname` | The cluster hostname is displayed on the cluster **Settings** tab under **Connection Parameters**. |
+| `database.port` | The port to use; by default YugabyteDB uses 5433 for YSQL. |
+| `database.user` | The username of a cluster admin. |
+| `database.password` | The user password. |
+| `database.sslmode` | The SSL mode to use; set to `require`. |
+| `topic.prefix` | Set to yb. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
+| `snapshot.mode` | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot` to be set to false. |
+| `yb.consistent.snapshot` | Set to false for Initial snapshot mode. |
+| `table.include.list` | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
+| `plugin.name` | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
+| `slot.name` | The name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two). |
+| `value.converter` | provide a publication name if you have a publication already created. |
+| `key.converter` | provide a publication name if you have a publication already created. |
+| `publication.name` | provide a publication name if you have a publication already created. |
 
 For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 

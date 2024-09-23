@@ -655,7 +655,7 @@ Controls the name of the topic to which the connector sends heartbeat messages. 
 
 `topic.heartbeat.prefix.topic.prefix`
 
-For example, if the topic prefix is `fulfillment`, the default topic name is `__debezium-heartbeat.fulfillment.`
+For example, if the topic prefix is `fulfillment`, the default topic name is `__debezium-heartbeat.fulfillment`.
 
 Default: `__debezium-heartbeat`
 
