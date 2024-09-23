@@ -63,7 +63,7 @@ To create or edit a PSE, do the following:
 
 The endpoints are displayed with the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.ybdb.io`.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.yugabyte.cloud`.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this name when creating the private endpoint in Azure.
 
 ### Use ybm CLI
@@ -104,7 +104,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.ybdb.io`.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.yugabyte.cloud`.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
 To delete a PSE, enter the following command:
@@ -179,7 +179,7 @@ To create a private DNS zone:
 
     - **Subscription** - select your subscription.
     - **Resource group** - select the resource group in which the private endpoint was created.
-    - **Instance details** - enter a DNS zone name of `azure.ybdb.io`.
+    - **Instance details** - enter a DNS zone name of `azure.yugabyte.cloud`.
 
 1. Click **Next: Tags**, and **Next Review create >**.
 
@@ -191,7 +191,7 @@ To create a private DNS zone:
 
 #### Configure a VNet link in the private DNS zone
 
-1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.ybdb.io private DNS zone you created.
+1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.yugabyte.cloud private DNS zone you created.
 
 1. Under **Settings**, select **Virtual network links** and click **+ Add**.
 
@@ -209,7 +209,7 @@ The link is listed in the Virtual network links list.
 
 #### Configure a private DNS name
 
-1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.ybdb.io private DNS zone you created.
+1. Navigate to **Private DNS zones** under the **Azure services** heading and select the azure.yugabyte.cloud private DNS zone you created.
 
 1. Select **Overview** and click **+ Record set**.
 
@@ -217,12 +217,12 @@ The link is listed in the Virtual network links list.
 
 1. Under **Add record set**, set the following values:
 
-    - **Name** - enter the _first part_ only of the **Host** name of the cluster PSE (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)). This consists of the text _before_ .azure.ybdb.io.
+    - **Name** - enter the _first part_ only of the **Host** name of the cluster PSE (noted when you [created the PSE](#create-a-pse-in-yugabytedb-managed)). This consists of the text _before_ .azure.yugabyte.cloud.
 
         For example, for the host
 
         ```sh
-        pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io
+        pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.yugabyte.cloud
         ```
 
         you would enter only
@@ -238,7 +238,7 @@ The link is listed in the Virtual network links list.
 
 1. Click **OK**.
 
-You can now connect to your cluster from your application in Azure using your cluster PSE host address (for example, `pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.ybdb.io`).
+You can now connect to your cluster from your application in Azure using your cluster PSE host address (for example, `pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a.azure.yugabyte.cloud`).
 
 ### Use Azure CLI
 
@@ -275,7 +275,7 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
 
     ```sh
     az network private-dns zone create \
-        --name azure.ybdb.io \
+        --name azure.yugabyte.cloud \
         --resource-group <resource_group_name>
     ```
 
@@ -283,7 +283,7 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
 
     - `resource_group_name` - the resource group in which the private endpoint was created.
 
-    All private DNS zones for endpoints that are used with YugabyteDB Aeon are named `azure.ybdb.io`.
+    All private DNS zones for endpoints that are used with YugabyteDB Aeon are named `azure.yugabyte.cloud`.
 
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 
@@ -293,7 +293,7 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
         --registration-enabled true
         --resource-group <resource_group_name>
         --virtual-network <private_endpoint_vnet_name>
-        --zone-name azure.ybdb.io
+        --zone-name azure.yugabyte.cloud
         --tags yugabyte
     ```
 
@@ -335,7 +335,7 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
         --ipv4-address <private_endpoint_ipv4_address> \
         --record-set-name <record_set_name> \
         --resource-group <resource_group_name> \
-        --zone-name azure.ybdb.io
+        --zone-name azure.yugabyte.cloud
     ```
 
     Replace values as follows:
