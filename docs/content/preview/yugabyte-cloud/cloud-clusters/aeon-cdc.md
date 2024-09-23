@@ -83,24 +83,26 @@ The following example shows the required and common properties:
 
 | Parameter | Description |
 | :--- | :--- |
-| `tasks.max` | Set to 1. The YugabyteDB connector always uses a single task. |
-| `publication.autocreate.mode` | Set to filtered. In this mode, if a publication exists, the connector uses it. If no publication exists, the connector creates a new publication for tables that match the current filter configuration. |
-| `connector.class` | Set to `io.debezium.connector.postgresql.YugabyteDBConnector`. |
-| `database.dbname` | The name of the YSQL database you want to monitor. |
-| `database.hostname` | The cluster hostname is displayed on the cluster **Settings** tab under **Connection Parameters**. |
-| `database.port` | The port to use; by default YugabyteDB uses 5433 for YSQL. |
-| `database.user` | The username of a cluster admin. |
-| `database.password` | The user password. |
-| `database.sslmode` | The SSL mode to use; set to `require`. |
-| `topic.prefix` | Set to yb. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
-| `snapshot.mode` | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot` to be set to false. |
-| `yb.consistent.snapshot` | Set to false for Initial snapshot mode. |
-| `table.include.list` | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
-| `plugin.name` | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
-| `slot.name` | The name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two). |
-| `value.converter` | provide a publication name if you have a publication already created. |
-| `key.converter` | provide a publication name if you have a publication already created. |
-| `publication.name` | provide a publication name if you have a publication already created. |
+| tasks.max | Set to 1. The YugabyteDB connector always uses a single task. |
+| publication.autocreate.mode | Set to filtered. In this mode, if a publication exists, the connector uses it. If no publication exists, the connector creates a new publication for tables that match the current filter configuration. |
+| connector.class | Set to `io.debezium.connector.postgresql.YugabyteDBConnector`. |
+| database.dbname | The name of the YSQL database you want to monitor. |
+| database.hostname | The cluster hostname is displayed on the cluster **Settings** tab under **Connection Parameters**. |
+| database.port | The port to use; by default YugabyteDB uses 5433 for YSQL. |
+| database.user | The username of a cluster admin. |
+| database.password | The user password. |
+| database.sslmode | The SSL mode to use; set to `require`. |
+| topic.prefix | Set to `yb`. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
+| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot` to be set to false. |
+| yb.consistent.snapshot | Must be set to false for to use Initial snapshot mode. |
+| table.include.list | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
+| plugin.name | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
+| slot.name | The name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two). |
+| value.converter | Controls the format of the values in messages written to or read from Kafka. Set to org.apache.kafka.connect.json.JsonConverter to use JSON. |
+| key.converter | Controls the format of the keys in messages written to or read from Kafka. Set to org.apache.kafka.connect.json.JsonConverter to use JSON. |
+| value.converter.schemas.enable | Set to true to use schemas with JSON data format. |
+| key.converter.schemas.enable | Set to true to use schemas with JSON data format. |
+| publication.name | Provide a publication name if you have a publication already created. |
 
 For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 
@@ -112,7 +114,7 @@ For more details on deploying and configuring the connector, refer to the [Yugab
   <li>
     <a href="#confluent" class="nav-link active" id="confluent-tab" data-bs-toggle="tab"
       role="tab" aria-controls="confluent" aria-selected="true">
-      <i class="icon-confluent" aria-hidden="true"></i>
+      <img src="/images/section_icons/develop/ecosystem/confluent-cloud.jpg" alt="Confluent Cloud Icon">
       Confluent Cloud
     </a>
   </li>
@@ -126,7 +128,7 @@ For more details on deploying and configuring the connector, refer to the [Yugab
   <li >
     <a href="#self" class="nav-link" id="self-tab" data-bs-toggle="tab"
       role="tab" aria-controls="self" aria-selected="false">
-      <i class="icon-kafka" aria-hidden="true"></i>
+      <img src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png" alt="Kafka Icon">
       Self managed
     </a>
   </li>
@@ -163,16 +165,35 @@ AWS MSK instructions
   </div>
   <div id="self" class="tab-pane fade" role="tabpanel" aria-labelledby="self-tab">
 
-AWS MSK instructions
+For information on using the YugabyteDB Connector with a self-manged Kafka Cluster, refer to:
+
+- [Get started with YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/get-started/)
+- [YugabyteDB Connector reference documentation](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/)
 
   </div>
+
 </div>
 
 ## Monitor
 
-- Service side - YBM - new charts and views explore/change-data-capture/using-logical-replication/monitor/
+YugabyteDB change data capture provides a set of views and metrics you can use to monitor replication.
 
-Add queries for views - esp pg_publication_tables + pg_replication_slots
+For more information, refer to [Monitor](../../../explore/change-data-capture/using-logical-replication/monitor/).
+
+If you are using a managed Kafka service, you can also monitor from the connector side. Consult your Kafka service documentation.
+
+### Views
+
+Use the following views to monitor replication.
+
+| View | Description |
+| :--- | :--- |
+| pg_publication | Contains all publication objects contained in the database. |
+| pg_publication_rel | Contains mapping between publications and tables. This is a many-to-many mapping. |
+| pg_publication_tables | Provides a list of all replication tables. |
+| pg_replication_slots | Provides a list of all replication slots that currently exist on the database cluster, along with their metadata. |
+
+For example, to list the publication slots, use the following query:
 
 ```sh
 yugabyte=> select * from pg_replication_slots;
@@ -185,18 +206,22 @@ yugabyte=> select * from pg_replication_slots;
 (1 row)
 ```
 
-If you are using a managed Kafka service, you can also monitor from the connector side.
+### Charts
+
+On the cluster **Metrics** tab, you can view the following metrics:
+
+| Metric | Description |
+| :--- | :--- |
+| cdcsdk_change_event_count | The number of records sent by the CDC Service. |
+| cdcsdk_traffic_sent | Total traffic sent, in bytes. |
+| cdcsdk_event_lag_micros | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
+| cdcsdk_expiry_time_ms | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
 ## Manage CDC
 
 - connector upgrades
 
-## Remove CDC
-
-## FAQ
-
-
-## Establish a replication connection to the database
+### Establish a replication connection to the database
 
 To be able to send [replication commands](https://www.postgresql.org/docs/11/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
 
@@ -210,3 +235,7 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
     sslrootcert=root.crt \
     replication=database"
 ```
+
+## Remove CDC
+
+## FAQ
