@@ -646,7 +646,6 @@ typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
 
 static void FreeSlice(Slice slice) {
   delete[] slice.data(), slice.size();
-  slice.Clear();
 }
 
 SliceSet YBCBitmapCreateSet() {
@@ -686,8 +685,13 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   auto iterb = b->begin();
   for (auto itera = a->begin(); itera != a->end();) {
     if ((iterb = b->find(*itera)) == b->end()) {
-      FreeSlice(*itera);
+      // We cannot modify the slice while it is in the set because
+      // std::unordered_set stores const Slices. Since the slice contains
+      // malloc'd memory, we grab a reference to it to delete the memory after
+      // removing it from the set.
+      auto data = itera->data();
       itera = a->erase(itera);
+      delete[] data;
     } else {
       ++itera;
     }
