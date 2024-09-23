@@ -2495,13 +2495,13 @@ YBCStatus YBCPgGetCDCConsistentChanges(
 
     auto table_oid = kPgInvalidOid;
     if (row_message_pb.has_table_id()) {
-      const PgObjectId table_id = PgObjectId(row_message_pb.table_id());
-      YBCPgTableDesc tableDesc = NULL;
-      Status s = pgapi->GetTableDesc(table_id, &tableDesc);
+      const PgObjectId table_id(row_message_pb.table_id());
+      YBCPgTableDesc tableDesc = nullptr;
+      auto s = pgapi->GetTableDesc(table_id, &tableDesc);
       if (!s.ok()) {
         return ToYBCStatus(s);
       }
-      table_oid = tableDesc->pg_table_id();
+      table_oid = tableDesc->pg_table_id().object_oid;
     }
 
     auto col_count = narrow_cast<int>(col_name_idx_map.size());
