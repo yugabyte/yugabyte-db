@@ -8,6 +8,8 @@ menu:
     parent: integrations-other
     weight: 571
 type: docs
+showRightNav: false
+
 ---
 
 [Apache Hudi](https://hudi.apache.org/) is a powerful data management framework that simplifies incremental data processing and storage, making it a valuable component for integrating with YugabyteDB to achieve real-time analytics, and seamless data consistency across distributed environments.
@@ -161,7 +163,9 @@ Launch the Confluent Control Center and verify the schema details and messages i
       --table-type MERGE_ON_READ \
       --source-class org.apache.hudi.utilities.sources.debezium.PostgresDebeziumSource \
       --payload-class org.apache.hudi.common.model.debezium.PostgresDebeziumAvroPayload \
+      # Adjust the target base path for the Hudi table as per your setup
       --target-base-path file:///tmp/hoodie/dbs-cdctest \
+      # Adjust the Hudi table name as per your setup
       --target-table dbs_cdctest \
       --source-ordering-field _event_origin_ts_ms \
       --continuous \
@@ -173,11 +177,16 @@ Launch the Confluent Control Center and verify the schema details and messages i
       --hoodie-conf hoodie.deltastreamer.source.kafka.value.deserializer.class=io.confluent.kafka.serializers.    KafkaAvroDeserializer \
       --hoodie-conf hoodie.deltastreamer.source.kafka.topic=dbs.public.cdctest \
       --hoodie-conf auto.offset.reset=earliest \
+      # Adjust the recordkey file as per your setup
       --hoodie-conf hoodie.datasource.write.recordkey.field=sno \
+      # Adjust the partition name as per your setup
       --hoodie-conf hoodie.datasource.write.partitionpath.field=name \
       --hoodie-conf hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator \
+      # Adjust the path for the Spark configuration file as per your setup
       --props /your_folder/spark-config.properties
     ```
+
+     Adjust paths and filenames as per your environment setup.
 
 ## Query the Hudi table
 
@@ -270,7 +279,7 @@ To use Apache Hudi, ensure that you have the following:
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
 
-- Apache Spark (version 3.4, 3.3, or 3.2). Verify installation using `spark-submit` and `spark-shell` commands.
+- Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
 
 ## Install Apache Hudi
 
@@ -294,24 +303,48 @@ To use Apache Hudi, ensure that you have the following:
 
 1. Create Hudi table properties (hudi_tbl.props) as follows:
 
-      ```properties
-      hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator
-      hoodie.datasource.write.recordkey.field=id
-      hoodie.datasource.write.partitionpath.field=created_at
-      hoodie.datasource.write.precombine.field=update_at
-      hoodie.streamer.jdbc.url=jdbc:postgresql://<YB_DB_IP>:5433/yugabyte
-      hoodie.streamer.jdbc.user=yugabyte
-      hoodie.streamer.jdbc.password=xxxxx
-      hoodie.streamer.jdbc.driver.class=org.postgresql.Driver
-      hoodie.streamer.jdbc.table.name=hudi_test_table
-      hoodie.streamer.jdbc.table.incr.column.name=update_at
-      hoodie.streamer.jdbc.incr.pull=true
-      hoodie.streamer.jdbc.incr.fallback.to.full.fetch=true
-      ```
+    ```properties
+    hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator
+
+    # hoodie.datasource.write.recordkey.field - Primary key of hudi_test_table of YugabyteDB
+    hoodie.datasource.write.recordkey.field=id
+
+    # hoodie.datasource.write.partitionpath.field - PartitionPath field is created_at
+    hoodie.datasource.write.partitionpath.field=created_at
+
+    # hoodie.datasource.write.precombine.field - Precombine field is updated_at
+    hoodie.datasource.write.precombine.field=update_at
+
+    # hoodie.streamer.jdbc.url - YugabyteDB DB Node IP address is mentioned with DB Name (yugabyte)
+    hoodie.streamer.jdbc.url=jdbc:postgresql://10.12.22.168:5433/yugabyte
+
+    # hoodie.streamer.jdbc.user - DB User is yugabyte
+    hoodie.streamer.jdbc.user=yugabyte
+
+    # hoodie.streamer.jdbc.password - Password as per your configuration
+    hoodie.streamer.jdbc.password=xxxxx
+
+    # hoodie.streamer.jdbc.driver.class - Here postgresql driver is used to connect YugabyteDB
+    hoodie.streamer.jdbc.driver.class=org.postgresql.Driver
+
+    # hoodie.streamer.jdbc.table.name - YugabyteDB table name is hudi_test_table
+    hoodie.streamer.jdbc.table.name=hudi_test_table
+
+    # hoodie.streamer.jdbc.incr.column.name - This is incremental column; based on this value, data will be loaded into Hudi using this column.
+
+    # Delta streamer compares Old checkpoint=(Option{val=2023-12-21 00:00:00}). New Checkpoint=(2023-12-21 00:00:00) and loads the fresh data.
+    hoodie.streamer.jdbc.table.incr.column.name=update_at
+
+    # hoodie.streamer.jdbc.incr.pull - JDBC connection performs an incremental pull if it is TRUE
+    hoodie.streamer.jdbc.incr.pull=true
+
+    # hoodie.streamer.jdbc.incr.fallback.to.full.fetch - When set to true, it will attempt incremental fetch, and if there are errors, it will fallback to a full fetch.
+    hoodie.streamer.jdbc.incr.fallback.to.full.fetch=true
+    ```
 
 1. Run the Spark job as follows:
 
-    ```spark
+    ```sh
     spark-submit \
       --class org.apache.hudi.utilities.streamer.HoodieStreamer \
       --packages org.apache.hudi:hudi-spark3.4-bundle_2.12:0.14.0,org.postgresql:postgresql:42.5.4 \
@@ -322,7 +355,9 @@ To use Apache Hudi, ensure that you have the following:
       --op UPSERT \
       --source-ordering-field update_at \
       --source-class org.apache.hudi.utilities.sources.JdbcSource \
+      # Adjust the target base path for the Hudi table as per your setup
       --target-base-path file:///tmp/path/to/hudidb/ \
+       # Adjust the Hudi table name as per your setup
       --target-table hudi_test_table \
       --props hudi_tbl.props
     ```
