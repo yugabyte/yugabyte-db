@@ -4,3 +4,14 @@
 *.iml
 **/*.rs.bk
 Cargo.lock
+*.parquet
+**/*.code-workspace
+*.csv
+*.profraw
+*.profdata
+*.gcov
+*.lcov
+*.xml
+lcov.info
+.env
+playground.rs
