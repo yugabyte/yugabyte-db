@@ -122,7 +122,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCPgAshConfig* ash_config);
+            const YBCPgAshConfig& ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -836,6 +836,10 @@ class PgApiImpl {
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
+  YBCPgCallbacks pg_callbacks_;
+
+  const WaitEventWatcher wait_event_watcher_;
+
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
 
@@ -843,8 +847,6 @@ class PgApiImpl {
 
   // Local tablet-server shared memory segment handle.
   tserver::TServerSharedObject tserver_shared_object_;
-
-  YBCPgCallbacks pg_callbacks_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 

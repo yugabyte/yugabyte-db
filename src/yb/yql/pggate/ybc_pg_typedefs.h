@@ -355,6 +355,16 @@ typedef struct PgAttrValueDescriptor {
   int collation_id;
 } YBCPgAttrValueDescriptor;
 
+typedef struct WaitEventInfo {
+  uint32_t wait_event;
+  uint16_t rpc_code;
+} YBCWaitEventInfo;
+
+typedef struct WaitEventInfoPtr {
+  uint32_t* wait_event;
+  uint16_t* rpc_code;
+} YBCWaitEventInfoPtr;
+
 typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
@@ -365,7 +375,7 @@ typedef struct PgCallbacks {
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
   /* pgstat.h */
-  uint32_t (*PgstatReportWaitStart)(uint32_t);
+  YBCWaitEventInfo (*PgstatReportWaitStart)(YBCWaitEventInfo);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {

@@ -43,6 +43,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -104,6 +105,7 @@ class PerformExchangeFuture {
 };
 
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
+using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
@@ -114,14 +116,14 @@ PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
-  PgClient();
+  PgClient(const YBCPgAshConfig& ash_config,
+           std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id,
-               const YBCPgAshConfig* ash_config);
+               std::optional<uint64_t> session_id);
 
   void Shutdown();
 
@@ -172,7 +174,7 @@ class PgClient {
       SubTransactionId id, tserver::PgPerformOptionsPB* options);
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
-  Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+  Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 

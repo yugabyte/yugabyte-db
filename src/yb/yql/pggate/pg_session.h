@@ -41,7 +41,6 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -65,7 +64,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState& stats_state,
       YbctidReader&& ybctid_reader,
-      bool is_pg_binary_upgrade);
+      bool is_pg_binary_upgrade,
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   virtual ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -357,6 +357,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;
+
+  const WaitEventWatcher& wait_event_watcher_;
 };
 
 }  // namespace yb::pggate

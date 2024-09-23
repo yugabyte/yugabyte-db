@@ -247,8 +247,11 @@ static inline void pgstat_report_wait_start(uint32 wait_event_info);
 static inline void pgstat_report_wait_end(void);
 extern void pgstat_set_wait_event_storage(uint32 *wait_event_info);
 extern void pgstat_reset_wait_event_storage(void);
+extern void yb_pgstat_set_wait_event_storage(PGPROC *proc);
+extern void yb_pgstat_reset_wait_event_storage(void);
 
 extern PGDLLIMPORT uint32 *my_wait_event_info;
+extern PGDLLIMPORT YBCWaitEventInfoPtr yb_my_wait_event_info;
 
 
 /* ----------
@@ -303,21 +306,27 @@ pgstat_report_wait_end(void)
  * initialized.
  * ----------
  */
-static inline uint32
-yb_pgstat_report_wait_start(uint32 wait_event_info)
+static inline YBCWaitEventInfo
+yb_pgstat_report_wait_start(YBCWaitEventInfo info)
 {
-	/* If ASH is disabled, do nothing */
-	if (!yb_enable_ash)
-		return wait_event_info;
+	YBCWaitEventInfo prev_wait_event_info = info;
 
-	uint32 prev_wait_event_info = 0;
+	if (yb_enable_ash)
+	{
+		/*
+		 * Since this is a four-byte field which is always read and written as
+		 * four-bytes, updates are atomic.
+		 * The reader copy_pgproc_sample_fields() is aware if it's reading
+		 * inconsistent data and will retry to read the values.
+		 */
+		prev_wait_event_info = (YBCWaitEventInfo){
+			*yb_my_wait_event_info.wait_event,
+			*yb_my_wait_event_info.rpc_code };
 
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	prev_wait_event_info = *my_wait_event_info;
-	*(volatile uint32 *) my_wait_event_info = wait_event_info;
+		*(volatile uint32 *) yb_my_wait_event_info.wait_event = info.wait_event;
+		*(volatile uint16 *) yb_my_wait_event_info.rpc_code = info.rpc_code;
+	}
+
 	return prev_wait_event_info;
 }
 

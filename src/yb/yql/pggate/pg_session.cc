@@ -395,7 +395,8 @@ PgSession::PgSession(
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState& stats_state,
     YbctidReader&& ybctid_reader,
-    bool is_pg_binary_upgrade)
+    bool is_pg_binary_upgrade,
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
@@ -409,7 +410,8 @@ PgSession::PgSession(
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
           metrics_, buffering_settings_),
-      is_major_pg_version_upgrade_(is_pg_binary_upgrade) {
+      is_major_pg_version_upgrade_(is_pg_binary_upgrade),
+      wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
 }
 
@@ -1059,7 +1061,8 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
+  DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

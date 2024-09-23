@@ -41,6 +41,11 @@ static const char *pgstat_get_wait_io(WaitEventIO w);
 static uint32 local_my_wait_event_info;
 uint32	   *my_wait_event_info = &local_my_wait_event_info;
 
+static YBCWaitEventInfo yb_local_my_wait_event_info;
+YBCWaitEventInfoPtr yb_my_wait_event_info = {
+	&yb_local_my_wait_event_info.wait_event,
+	&yb_local_my_wait_event_info.rpc_code};
+
 
 /*
  * Configure wait event reporting to report wait events to *wait_event_info.
@@ -65,6 +70,42 @@ pgstat_set_wait_event_storage(uint32 *wait_event_info)
 void
 pgstat_reset_wait_event_storage(void)
 {
+	my_wait_event_info = &local_my_wait_event_info;
+}
+
+/*
+ * Configure wait event reporting to report wait events to MyProc->wait_event_info,
+ * and Pggate RPC enum reporting to report Pggate RPC enums to MyProc->yb_rpc_code
+ * MyProc->wait_event_info and MyProc->yb_rpc_code needs to be valid until
+ * yb_pgstat_reset_wait_event_storage() is called.
+ *
+ * Expected to be called during backend startup, to point my_wait_event_info
+ * into shared memory.
+ */
+void
+yb_pgstat_set_wait_event_storage(PGPROC *proc)
+{
+	yb_my_wait_event_info = (YBCWaitEventInfoPtr){
+		&proc->wait_event_info,
+		&proc->yb_rpc_code};
+
+	/* pgstat_report_wait_start updates my_wait_event_info */
+	my_wait_event_info = &proc->wait_event_info;
+}
+
+/*
+ * Reset RPC enum storage location.
+ *
+ * Expected to be called during backend shutdown, before the location set up
+ * yb_pgstat_set_wait_event_storage() becomes invalid.
+ */
+void
+yb_pgstat_reset_wait_event_storage(void)
+{
+	yb_my_wait_event_info = (YBCWaitEventInfoPtr){
+		&yb_local_my_wait_event_info.wait_event,
+		&yb_local_my_wait_event_info.rpc_code};
+
 	my_wait_event_info = &local_my_wait_event_info;
 }
 

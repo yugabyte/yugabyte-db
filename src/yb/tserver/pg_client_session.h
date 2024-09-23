@@ -29,6 +29,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/range/iterator_range.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -338,5 +340,36 @@ class PgClientSession {
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 };
+
+template <class Pb>
+concept PbWith_AshMetadataPB = requires (const Pb& t) {
+  t.ash_metadata();
+}; // NOLINT
+
+template <PbWith_AshMetadataPB Pb>
+void TryUpdateAshWaitState(const Pb& req) {
+  if (req.has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+  }
+}
+
+// Overloads for RPCs which intentionally doesn't have the ash_metadata
+// field, either because they are deprecated, or they are async RPCs, or
+// they are called before ASH is able to sample them as of 08-10-2024
+//
+// NOTE: New sync RPCs should have ASH metadata along with it, and it shouldn't
+// be overloaded here. PG background workers RPCs should also be overloaded
+// until #23901 is done
+inline void TryUpdateAshWaitState(const PgHeartbeatRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgActiveSessionHistoryRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgFetchDataRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgGetCatalogMasterVersionRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgGetReplicationSlotStatusRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgSetActiveSubTransactionRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgCronSetLastMinuteRequestPB&) {}
+inline void TryUpdateAshWaitState(const PgCronGetLastMinuteRequestPB&) {}
 
 }  // namespace yb::tserver

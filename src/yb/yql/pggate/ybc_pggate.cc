@@ -231,8 +231,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
   return WithMaskedYsqlSignals(
     [data_type_table, count, &pg_callbacks, opt_session_id, &ash_config] {
-    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id,
-                    ash_config);
+    YBCInitPgGateEx(
+        data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id, ash_config);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -490,10 +490,10 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   pgapi_shutdown_done.exchange(false);
   if (context) {
     pgapi = new pggate::PgApiImpl(
-      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_config);
+        std::move(*context), data_type_table, count, pg_callbacks, session_id, *ash_config);
   } else {
-    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id,
-                                  ash_config);
+    pgapi = new pggate::PgApiImpl(
+        PgApiContext(), data_type_table, count, pg_callbacks, session_id, *ash_config);
   }
 
   VLOG(1) << "PgGate open";
