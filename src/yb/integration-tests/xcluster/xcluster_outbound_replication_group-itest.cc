@@ -16,6 +16,7 @@
 
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/consensus/log.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
@@ -28,8 +29,6 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 namespace yb {
 namespace master {
@@ -44,11 +43,6 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
  public:
   XClusterOutboundReplicationGroupTest() {}
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-        UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
-        UseAutomaticMode();
-
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
@@ -61,21 +55,6 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     epoch_ = catalog_manager_->GetLeaderEpochInternal();
 
     namespace_id_ = ASSERT_RESULT(CreateYsqlNamespace(kNamespaceName));
-  }
-
-  virtual bool UseAutomaticMode() {
-    // Except for parameterized tests, we currently default to semi-automatic mode.
-    return false;
-  }
-
-  // How many extra streams/tables a namespace has
-  int OverheadStreamsCount() {
-    if (!UseAutomaticMode()) {
-      return 0;
-    }
-    // So far automatic mode has one extra stream for each namespace: sequences_data.
-    // TODO(jhe): increment this when you add the DDL queue table
-    return 1;
   }
 
   Result<NamespaceId> CreateYsqlNamespace(const NamespaceName& ns_name) {
@@ -121,11 +100,11 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
       } else if (table_info.table_name() == kTableName2) {
         ASSERT_EQ(table_info.table_id(), table_id2);
       } else if (table_info.table_name() == "sequences_data") {
-        ASSERT_EQ(table_info.table_id(), kPgSequencesDataTableId);
+        ASSERT_TRUE(xcluster::IsSequencesDataAlias(table_info.table_id()));
       } else {
         FAIL() << "Unexpected table name: " << table_info.table_name();
       }
-      if (table_info.table_id() != kPgSequencesDataTableId) {
+      if (!xcluster::IsSequencesDataAlias(table_info.table_id())) {
         if (skip_schema_name_check) {
           // Make sure it is not empty.
           ASSERT_FALSE(table_info.pg_schema_name().empty());
@@ -787,11 +766,12 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestGetStreamByTableId) {
   ASSERT_EQ(ns_info.table_infos(1).table_id(), table_id_2);
 
   if (UseAutomaticMode()) {
-    // Verify that we can request sequences_data by its table id.
+    // Verify that we can request sequences_data by its table id alias.
+    TableId sequence_table_alias_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id_);
     auto ns_info = ASSERT_RESULT(
-        GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {kPgSequencesDataTableId}));
+        GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {sequence_table_alias_id}));
     ASSERT_EQ(ns_info.table_infos_size(), 1);
-    ASSERT_EQ(ns_info.table_infos(0).table_id(), kPgSequencesDataTableId);
+    ASSERT_EQ(ns_info.table_infos(0).table_id(), sequence_table_alias_id);
   }
 
   // Verify that we can request a table that does not exist.

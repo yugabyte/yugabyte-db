@@ -49,4 +49,15 @@ TEST(WriteBufferTest, AppendPerformance) {
   });
 }
 
+TEST(WriteBufferTest, MoveCtor) {
+  std::string text("Hello");
+  WriteBuffer original(0x10);
+  original.Append(text.c_str(), text.size());
+  alignas(alignof(WriteBuffer)) char buffer[sizeof(WriteBuffer)];
+  std::fill_n(buffer, sizeof (buffer), 0x40);
+  auto* moved = new (buffer) WriteBuffer(std::move(original));
+  ASSERT_EQ(moved->ToBuffer(), text);
+  moved->~WriteBuffer();
+}
+
 }  // namespace yb

@@ -131,6 +131,14 @@ public class ConfigHelper {
     loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
   }
 
+  public UUID getYugawareUUID() {
+    Object ywUUID = getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("yugaware_uuid");
+    if (ywUUID != null) {
+      return UUID.fromString(ywUUID.toString());
+    }
+    return null;
+  }
+
   public void loadConfigsToDB(Environment environment) {
 
     LoaderOptions loaderOptions = new LoaderOptions();

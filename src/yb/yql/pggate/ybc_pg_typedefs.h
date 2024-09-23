@@ -404,6 +404,7 @@ typedef struct YbTablePropertiesData {
   YBCPgOid tablegroup_oid; /* InvalidOid if none */
   YBCPgOid colocation_id; /* 0 if not colocated */
   size_t num_range_key_columns;
+  char *tablegroup_name;
 } YbTablePropertiesData;
 
 typedef struct YbTablePropertiesData* YbTableProperties;
@@ -774,6 +775,19 @@ typedef struct PgTabletsDescriptor {
   const char* partition_key_end;
   size_t partition_key_end_len;
 } YBCPgTabletsDescriptor;
+
+typedef struct MetricsInfo {
+  const char* name;
+  const char* value;
+} YBCMetricsInfo;
+
+typedef struct PgServerMetricsInfo {
+  const char* uuid;
+  YBCMetricsInfo* metrics;
+  const size_t metrics_count;
+  const char* status;
+  const char* error;
+} YBCPgServerMetricsInfo;
 
 typedef struct PgExplicitRowLockParams {
   int rowmark;

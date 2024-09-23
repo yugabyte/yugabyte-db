@@ -173,8 +173,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -203,8 +203,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,

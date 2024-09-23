@@ -2068,7 +2068,8 @@ static struct config_bool ConfigureNamesBool[] =
 					"Enable this with high caution. It was added to avoid disruption for users who were "
 					"already using advisory locks but seeing success messages without the lock really being "
 					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks."),
+					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+					"for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -2636,6 +2637,19 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_ash,
 		false,
 		yb_enable_ash_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_update_optimization_infra", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables optimizations of YSQL UPDATE queries. This includes "
+						 "(but not limited to) skipping redundant secondary index updates "
+						 "and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_update_optimization_options.is_enabled,
+		false,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -4123,7 +4137,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,
-		0, 0, INT_MAX,
+		50, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5636,6 +5650,7 @@ static const char *const map_old_guc_names[] = {
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
 };
 
 

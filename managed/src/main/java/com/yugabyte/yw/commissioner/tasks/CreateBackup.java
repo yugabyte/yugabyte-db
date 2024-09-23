@@ -175,7 +175,7 @@ public class CreateBackup extends UniverseTaskBase {
                   bkp.setCompletionTime(new Date());
                   bkp.save();
                 });
-        unlockUniverseForUpdate(false);
+        unlockUniverseForUpdate();
         isUniverseLocked = false;
         isAbort = true;
         throw ce;

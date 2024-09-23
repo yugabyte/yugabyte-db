@@ -70,6 +70,7 @@
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
@@ -217,7 +218,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   };
 
  public:
-  explicit CatalogManager(Master *master);
+  explicit CatalogManager(Master *master, SysCatalogTable* sys_catalog);
   virtual ~CatalogManager();
 
   Status Init();
@@ -406,11 +407,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      const LeaderEpoch& epoch);
 
   void AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
-      rpc::RpcContext rpc);
+      LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB* req,
+      tserver::AcquireObjectLockResponsePB* resp, rpc::RpcContext rpc);
   void ReleaseObjectLocks(
-      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
-      rpc::RpcContext rpc);
+      LeaderEpoch epoch, const tserver::ReleaseObjectLockRequestPB* req,
+      tserver::ReleaseObjectLockResponsePB* resp, rpc::RpcContext rpc);
+  void ExportObjectLockInfo(tserver::DdlLockEntriesPB* resp);
 
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -613,7 +615,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Register the tablet server with the ts manager using the Raft config. This is called for
   // servers that are part of the Raft config but haven't registered as yet.
-  Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
+  Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer, const LeaderEpoch& epoch);
 
   // Create a new Namespace with the specified attributes.
   //
@@ -768,7 +770,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp);
 
-  SysCatalogTable* sys_catalog() override { return sys_catalog_.get(); }
+  SysCatalogTable* sys_catalog() override { return sys_catalog_; }
 
   // Tablet peer for the sys catalog tablet's peer.
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
@@ -1684,6 +1686,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTargetTask;
   friend class VerifyDdlTransactionTask;
+  friend class ObjectLockLoader;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -2289,7 +2292,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Master* const master_;
   Atomic32 closing_;
 
-  std::unique_ptr<SysCatalogTable> sys_catalog_;
+  SysCatalogTable* sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
@@ -2392,6 +2395,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
       GUARDED_BY(mutex_);
+
+  std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
@@ -2932,7 +2937,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::unordered_set<TableId>& tables_in_stream_metadata);
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
-      const CDCStreamInfoPtr stream, const TableId table_id);
+      const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

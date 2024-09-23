@@ -2,3 +2,4 @@
 
 test: yb_pg_init
 test: yb_pg_pg_hint_plan
+test: yb_hint_table

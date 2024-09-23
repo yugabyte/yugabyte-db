@@ -87,9 +87,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   List<TaskType> DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
           TaskType.XClusterConfigSetStatus,
           TaskType.DeleteReplication,
           TaskType.DeleteBootstrapIds,
@@ -382,7 +380,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertNotNull(subtaskGroup);
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
-    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
+    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to delete replication for XClusterConfig(%s): %s",

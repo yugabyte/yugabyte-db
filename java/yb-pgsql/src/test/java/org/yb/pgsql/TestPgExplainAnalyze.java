@@ -753,6 +753,12 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testExplainAnalyzeOptions() throws Exception {
+    if (isTestRunningWithConnectionManager()) {
+        // (DB-12674) Allow tests to run in round-robin allocation mode when
+        // using a pool of warmed up connections to allow for deterministic results.
+        setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+        setUp();
+    }
     String query = String.format("SELECT * FROM %s", TABLE_NAME);
     try (Statement stmt = connection.createStatement()) {
         setHideNonDeterministicFields(stmt, true);

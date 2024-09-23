@@ -24,10 +24,6 @@ const (
 
 	restoreUUIDHeader    = "Restore UUID"
 	sourceUniverseHeader = "Source Universe"
-	backupTypeHeader     = "Backup Type"
-	stateHeader          = "State"
-	createTimeHeader     = "Create Time"
-	completionTimeHeader = "Completion Time"
 )
 
 // Context for restore outputs
@@ -116,10 +112,10 @@ func NewRestoreContext() *Context {
 		"RestoreUUID":    restoreUUIDHeader,
 		"Universe":       backup.UniverseHeader,
 		"SourceUniverse": sourceUniverseHeader,
-		"BackupType":     backupTypeHeader,
-		"State":          stateHeader,
-		"CreateTime":     createTimeHeader,
-		"CompletionTime": completionTimeHeader,
+		"BackupType":     backup.BackupTypeHeader,
+		"State":          backup.StateHeader,
+		"CreateTime":     backup.CreateTimeHeader,
+		"CompletionTime": backup.CompletionTimeHeader,
 	}
 	return &restoreCtx
 }

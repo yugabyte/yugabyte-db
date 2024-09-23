@@ -22,6 +22,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -32,6 +33,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/ts_descriptor.h"
@@ -57,6 +59,7 @@ DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
+DECLARE_bool(TEST_persist_tserver_registry);
 
 namespace yb::integration_tests {
 
@@ -99,6 +102,29 @@ master::TabletReportPB MakeTabletReportPBWithNewLeader(
   *new_peer->mutable_last_known_broadcast_addr() =
       ts_info.registration().common().broadcast_addresses();
   *new_peer->mutable_cloud_info() = ts_info.registration().common().cloud_info();
+  tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
+  tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  return report;
+}
+
+master::TabletReportPB MakeTabletReportPBWithNewPeer(
+    const std::string& uuid_to_add, const master::TSInformationPB& ts_info_to_add,
+    master::TabletInfo* tablet, bool incremental, int32_t report_seqno) {
+  master::TabletReportPB report;
+  report.set_is_incremental(incremental);
+  report.set_sequence_number(report_seqno);
+  auto* tablet_report = report.add_updated_tablets();
+  tablet_report->set_tablet_id(tablet->id());
+  auto* consensus = tablet_report->mutable_committed_consensus_state();
+  *consensus = tablet->LockForRead()->pb.committed_consensus_state();
+  auto* new_peer = consensus->mutable_config()->add_peers();
+  new_peer->set_permanent_uuid(uuid_to_add);
+  new_peer->set_member_type(consensus::PeerMemberType::VOTER);
+  *new_peer->mutable_last_known_private_addr() =
+      ts_info_to_add.registration().common().private_rpc_addresses();
+  *new_peer->mutable_last_known_broadcast_addr() =
+      ts_info_to_add.registration().common().broadcast_addresses();
+  *new_peer->mutable_cloud_info() = ts_info_to_add.registration().common().cloud_info();
   tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
   tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
   return report;
@@ -215,7 +241,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
       });
   ASSERT_TRUE(extra_ts_id_it != ts_descs.cend());
   auto ts = *extra_ts_id_it;
-  // send fake heartbeats to show this tserver bootstrapping the tablet and becoming leader, but out
+  // Send fake heartbeats to show this tserver bootstrapping the tablet and becoming leader, but out
   // of order.
   master::MasterHeartbeatProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
@@ -367,6 +393,67 @@ TEST_F(MasterHeartbeatITest, PopulateHeartbeatResponseWhenRegistrationRequired) 
   ASSERT_TRUE(hb_resp.needs_reregister());
   ASSERT_GT(hb_resp.snapshots_info().schedules_size(), 0);
   ASSERT_EQ(hb_resp.snapshots_info().schedules(0).id(), resp.snapshot_schedule_id());
+}
+
+TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  CreateTable();
+  // Stop all tservers so real heartbeats don't interfere with our fake ones.
+  ShutdownAllTServers(mini_cluster_.get());
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+  auto reporting_ts = ASSERT_RESULT(tablet->GetLeader());
+
+  const std::string kNewUUID = "new_uuid";
+  const auto new_report_seqno = reporting_ts->latest_report_seqno() + 1;
+  master::TSInformationPB ts_info;
+  *ts_info.mutable_registration()->mutable_common()->add_private_rpc_addresses() =
+      MakeHostPortPB("localhost", 1000);
+  *ts_info.mutable_registration()->mutable_common()->add_broadcast_addresses() =
+      MakeHostPortPB("localhost", 2000);
+  *ts_info.mutable_registration()->mutable_common()->mutable_cloud_info() =
+      MakeCloudInfoPB("clouda", "regiona", "zonea");
+
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(reporting_ts, reporting_ts->latest_seqno());
+  req.set_universe_uuid(cluster_config.universe_uuid());
+
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewPeer(
+      kNewUUID, ts_info, tablet.get(),
+      /* incremental */ true, new_report_seqno);
+  master::TSHeartbeatResponsePB resp;
+  auto rpc = rpc::RpcController();
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+
+  ShutdownAllMasters(mini_cluster_.get());
+  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
+
+  master::MasterClusterClient cluster_client(master::MasterClusterProxy(
+      proxy_cache_.get(), ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr()));
+  auto all_tservers_resp = ASSERT_RESULT(cluster_client.ListTabletServers());
+  auto ts_it = std::find_if(
+      all_tservers_resp.servers().begin(), all_tservers_resp.servers().end(),
+      [&kNewUUID](const auto& server_entry) {
+        return server_entry.instance_id().permanent_uuid() == kNewUUID;
+      });
+  ASSERT_FALSE(ts_it == all_tservers_resp.servers().end())
+      << "Couldn't find ts registered through raft config after restart";
+
+  auto live_tservers_resp = ASSERT_RESULT(cluster_client.ListLiveTabletServers());
+  auto live_ts_it = std::find_if(
+      live_tservers_resp.servers().begin(), live_tservers_resp.servers().end(),
+      [&kNewUUID](const auto& server_entry) {
+        return server_entry.instance_id().permanent_uuid() == kNewUUID;
+      });
+  ASSERT_TRUE(live_ts_it == live_tservers_resp.servers().end())
+      << "TS registered through raft config should be unresponsive, not live";
 }
 
 class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {

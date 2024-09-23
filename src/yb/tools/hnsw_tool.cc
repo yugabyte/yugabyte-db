@@ -256,6 +256,10 @@ std::unique_ptr<FloatVectorSource> CreateRandomFloatVectorSource(
   return CreateUniformRandomVectorSource(num_vectors, dimensions, 0.0f, 1.0f);
 }
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using PreVectorIndexFactory = std::function<VectorIndexFactory<Vector, DistanceResult>(
+    const HNSWOptions& options)>;
+
 // We instantiate this template as soon as we determine what coordinate type and distance result
 // type we are working with.
 //
@@ -269,7 +273,7 @@ class BenchmarkTool {
  public:
   explicit BenchmarkTool(
       const BenchmarkArguments& args,
-      std::unique_ptr<VectorIndexFactory<IndexedVector, IndexedDistanceResult>> index_factory)
+      PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_factory)
       : args_(args),
         index_factory_(std::move(index_factory)) {
   }
@@ -311,13 +315,16 @@ class BenchmarkTool {
     PrintConfiguration();
 
     if (args_.num_index_shards > 1) {
-      index_factory_ =
-          std::make_unique<ShardedVectorIndexFactory<IndexedVector, IndexedDistanceResult>>(
-              args_.num_index_shards, std::move(index_factory_));
+      index_factory_ = [pre_factory = index_factory_, num_shards = args_.num_index_shards](
+          const HNSWOptions& options) {
+        return [factory = pre_factory(options), num_shards]() {
+          return std::make_unique<ShardedVectorIndex<IndexedVector, IndexedDistanceResult>>(
+              factory, num_shards);
+        };
+      };
     }
 
-    index_factory_->SetOptions(hnsw_options());
-    vector_index_ = index_factory_->Create();
+    vector_index_ = index_factory_(hnsw_options())();
 
     RETURN_NOT_OK(BuildIndex());
 
@@ -598,7 +605,6 @@ class BenchmarkTool {
   }
 
   Status BuildIndex() {
-    RETURN_NOT_OK(vector_index_->Reserve(num_points_to_insert()));
     return InsertVectors();
   }
 
@@ -644,8 +650,8 @@ class BenchmarkTool {
   // Source for vectors to run validation queries on.
   std::unique_ptr<VectorSource<InputVector>> query_vector_source_;
 
-  std::unique_ptr<VectorIndexFactory<IndexedVector, IndexedDistanceResult>> index_factory_;
-  std::unique_ptr<VectorIndexIf<IndexedVector, IndexedDistanceResult>> vector_index_;
+  PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_factory_;
+  VectorIndexIfPtr<IndexedVector, IndexedDistanceResult> vector_index_;
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
@@ -673,12 +679,14 @@ std::optional<Status> BenchmarkExecuteHelper(
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
-    using IndexFactory = typename ANNMethodTraits<ann_method_kind>::template IndexFactory<
+    using IndexType = typename ANNMethodTraits<ann_method_kind>::template IndexType<
         IndexedVector,
         typename DistanceTraits<IndexedVector, distance_kind>::Result>;
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args,
-        std::make_unique<IndexFactory>()
+        [](const HNSWOptions& options) {
+          return CreateIndexFactory<IndexType>(options);
+        }
     ).Execute();
   }
   return std::nullopt;
@@ -698,20 +706,20 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
   // method has to use in case the ANN method doesn't support the input vector type. To avoid
   // error-prone code duplication, we use a macro that expands to a bunch of if statements.
 
-#define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES      \
-    /* method, distance,   input type, indexed type */  \
-    /* Euclidean distance */                           \
-    ((Usearch, L2Squared,    float,      float  ))     \
-    ((Usearch, L2Squared,    uint8_t,    float  ))     \
-    ((Hnswlib, L2Squared,    float,      float  ))     \
-    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))     \
-    /* Cosine similarity */                            \
-    ((Usearch, Cosine,       float,      float  ))     \
-    ((Usearch, Cosine,       uint8_t,    float  ))     \
-    /* Inner product */                                \
-    ((Usearch, InnerProduct, float,      float  ))     \
-    ((Usearch, InnerProduct, uint8_t,    float  ))     \
-    ((Hnswlib, InnerProduct, float,      float  ))     \
+#define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES         \
+    /* method, distance,     input type, indexed type */  \
+    /* Euclidean distance */                              \
+    ((Usearch, L2Squared,    float,      float  ))        \
+    ((Usearch, L2Squared,    uint8_t,    float  ))        \
+    ((Hnswlib, L2Squared,    float,      float  ))        \
+    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))        \
+    /* Cosine similarity */                               \
+    ((Usearch, Cosine,       float,      float  ))        \
+    ((Usearch, Cosine,       uint8_t,    float  ))        \
+    /* Inner product */                                   \
+    ((Usearch, InnerProduct, float,      float  ))        \
+    ((Usearch, InnerProduct, uint8_t,    float  ))        \
+    ((Hnswlib, InnerProduct, float,      float  ))        \
     ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
