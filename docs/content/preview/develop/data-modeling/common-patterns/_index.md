@@ -60,7 +60,7 @@ For more information on using YugabyteDB for key-value stores, see [Key-value da
 
 ## Job queue
 
-Distributed job queues are essential for managing and processing tasks across multiple systems, enabling scalability, fault tolerance, and efficient resource use in modern applications.
+Use distributed job queues to manage and process tasks across multiple systems. A distributed job queue enhances scalability and fault tolerance, and maximizes resource use in modern applications.
 
 {{<lead link="./jobqueue">}}
 For more information on designing a distributed job queue, see [Distributed job queue](./jobqueue).
