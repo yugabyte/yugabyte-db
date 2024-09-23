@@ -62,6 +62,8 @@ inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
 struct ConsumerTabletInfo {
   std::string tablet_id;
   TableId table_id;
+
+  std::string ToString() const;
 };
 
 struct XClusterTabletInfo {

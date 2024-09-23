@@ -480,7 +480,8 @@ class XClusterColocatedNonTransactionalIndexTest : public XClusterColocatedIndex
  public:
   Transactional IsTransactional() override { return Transactional::kFalse; }
 
-  Status WaitForSafeTimeToAdvanceToNow() override {
+  Status WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names) override {
+    CHECK(namespace_names.empty());
     // There is no SafeTime in Non-transactional xCluster so instead wait for replication drain.
     return WaitForReplicationDrain(
         /* expected_num_nondrained */ 0, /* timeout_secs */ kRpcTimeout,
