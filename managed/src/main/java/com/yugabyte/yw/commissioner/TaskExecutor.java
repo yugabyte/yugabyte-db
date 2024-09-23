@@ -533,8 +533,13 @@ public class TaskExecutor {
         () -> new IllegalStateException(String.format("Task(%s) is not present", taskUUID)));
   }
 
-  // Optionally returns the task runnable with the given task UUID.
-  private Optional<RunnableTask> maybeGetRunnableTask(UUID taskUUID) {
+  /**
+   * Returns an optional of the RunnableTask instance for the given task UUID if present.
+   *
+   * @param taskUUID the task UUID.
+   * @return optional of the RunnableTask.
+   */
+  public Optional<RunnableTask> maybeGetRunnableTask(UUID taskUUID) {
     return Optional.ofNullable(runnableTasks.get(taskUUID));
   }
 
