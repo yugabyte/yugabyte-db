@@ -1,5 +1,6 @@
 use pgrx::prelude::*;
 
+mod arrow_parquet;
 mod pgrx_utils;
 mod type_compat;
 
