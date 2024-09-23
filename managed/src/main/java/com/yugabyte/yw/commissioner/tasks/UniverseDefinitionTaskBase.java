@@ -1124,7 +1124,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     checkAndCreateReadWriteTestTableTask(primaryCluster);
 
     // Create consistency check table tasks.
-    checkAndCreateConsistencyCheckTableTask(primaryCluster);
+    if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.enableConsistencyCheck)) {
+      checkAndCreateConsistencyCheckTableTask(primaryCluster);
+    }
 
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
