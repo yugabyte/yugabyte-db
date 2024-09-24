@@ -71,6 +71,7 @@
 #include "utils/syscache.h"
 
 /* YB includes. */
+#include "catalog/binary_upgrade.h"
 #include "catalog/pg_database.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
@@ -1012,9 +1013,9 @@ DefineIndex(Oid relationId,
 			is_colocated_via_database && !MyColocatedDatabaseLegacy)
 		{
 			char *tablegroup_name = NULL;
-		
-			if (OidIsValid(tablespaceId)) 
-		{
+
+			if (OidIsValid(tablespaceId))
+			{
 				/*
 				 * We look in pg_shdepend rather than directly use the derived name,
 				 * as later we might need to associate an existing implicit tablegroup to a tablespace
@@ -1028,9 +1029,31 @@ DefineIndex(Oid relationId,
 				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) : 
 					get_implicit_tablegroup_name(tablespaceId);
 
-			} 
-		else 
-		{
+			}
+			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
+			{
+				/*
+				 * In yb_binary_restore if tablespaceId is not valid but
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
+				 * restoring without tablespace information.
+				 * In this case all tables are restored to default tablespace,
+				 * while maintaining the colocation properties, and tablegroup's name
+				 * will be colocation_restore_tablegroupId, while default tablegroup's
+				 * name would still be default.
+				 */
+				tablegroup_name = binary_upgrade_next_tablegroup_default ?
+									DEFAULT_TABLEGROUP_NAME :
+									get_restore_tablegroup_name(
+										binary_upgrade_next_tablegroup_oid);
+				binary_upgrade_next_tablegroup_default = false;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
+			else if (yb_binary_restore && OidIsValid(tablegroupId))
+			{
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else
+			{
 				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
 				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 			}

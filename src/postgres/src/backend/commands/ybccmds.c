@@ -76,6 +76,7 @@
 #include "parser/parse_utilcmd.h"
 
 /* Yugabyte includes */
+#include "catalog/binary_upgrade.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "optimizer/clauses.h"
 
@@ -502,7 +503,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 	}
 }
 
-/* 
+/*
  * The fields pgTableId and oldRelfileNodeId are used during table rewrite.
  * During table rewrite, pgTableId is used to relay to DocDB the pg table OID,
  * so that DocDB has a mapping from the table to the correct pg table OID.
@@ -515,7 +516,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
  * However, during table rewrites, stmt->relation points to the new transient
  * PG relation (named pg_temp_xxxx), but we want to create a DocDB table with
  * the same name as the original PG relation.
- */ 
+ */
 void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
@@ -702,6 +703,26 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			tablegroup_name = OidIsValid(tablegroupId) ?
 								  get_tablegroup_name(tablegroupId) :
 								  get_implicit_tablegroup_name(tablespaceId);
+		}
+		else if (yb_binary_restore &&
+				 is_colocated_tables_with_tablespace_enabled &&
+				 OidIsValid(binary_upgrade_next_tablegroup_oid))
+		{
+			/*
+			 * In yb_binary_restore if tablespaceId is not valid but
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
+			 * restoring without tablespace information.
+			 * In this case all tables are restored to default tablespace,
+			 * while maintaining the colocation properties, and tablegroup's name
+			 * will be colocation_restore_tablegroupId, while default tablegroup's
+			 * name would still be default.
+			 */
+			tablegroup_name = binary_upgrade_next_tablegroup_default ?
+								DEFAULT_TABLEGROUP_NAME :
+								get_restore_tablegroup_name(
+									binary_upgrade_next_tablegroup_oid);
+			binary_upgrade_next_tablegroup_default = false;
+			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 		}
 		else
 		{
