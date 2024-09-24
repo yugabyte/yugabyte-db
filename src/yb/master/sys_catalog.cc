@@ -145,6 +145,7 @@ METRIC_DEFINE_counter(
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_bool(TEST_check_catalog_version_overflow);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
@@ -1053,12 +1054,19 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
     }
     if (versions) {
       // When 'versions' is set we read all rows.
+      const uint32_t db_oid = db_oid_value->uint32_value();
       const uint64_t current_version =
         static_cast<uint64_t>(version_col_value->int64_value());
       const uint64_t last_breaking_version =
         static_cast<uint64_t>(last_breaking_version_col_value->int64_value());
+      if (FLAGS_TEST_check_catalog_version_overflow) {
+        CHECK_GE(static_cast<int64_t>(current_version), 0)
+            << current_version << " db_oid: " << db_oid;
+        CHECK_GE(static_cast<int64_t>(last_breaking_version), 0)
+            << last_breaking_version << " db_oid: " << db_oid;
+      }
       auto insert_result = versions->insert(
-        std::make_pair(db_oid_value->uint32_value(), PgCatalogVersion{
+        std::make_pair(db_oid, PgCatalogVersion{
             .current_version = current_version,
             .last_breaking_version = last_breaking_version}));
       // There should not be any duplicate db_oid because it is a primary key.

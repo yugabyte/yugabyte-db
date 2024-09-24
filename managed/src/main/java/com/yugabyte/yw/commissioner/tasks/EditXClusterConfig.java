@@ -112,7 +112,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, databaseIdsToAdd);
           }
           if (!databaseIdsToRemove.isEmpty()) {
-            addSubtasksToRemoveDatabasesFromXClusterConfig(xClusterConfig, databaseIdsToRemove);
+            addSubtasksToRemoveDatabasesFromXClusterConfig(
+                xClusterConfig, databaseIdsToRemove, false /* keepEntry */);
           }
 
         } else {
@@ -461,11 +462,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
   }
 
   protected void addSubtasksToRemoveDatabasesFromXClusterConfig(
-      XClusterConfig xClusterConfig, Set<String> databases) {
+      XClusterConfig xClusterConfig, Set<String> databases, boolean keepEntry) {
 
     for (String dbId : databases) {
       createXClusterRemoveNamespaceFromTargetUniverseTask(xClusterConfig, dbId);
-      createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(xClusterConfig, dbId);
+      createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(
+          xClusterConfig, dbId, keepEntry);
     }
 
     if (xClusterConfig.isUsedForDr()) {

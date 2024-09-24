@@ -326,6 +326,12 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
       .dbname = dbname
     }).Connect();
   }
+
+  Status WaitForPostgresToStart(MonoDelta timeout) {
+    return WaitFor([this]() -> Result<bool> {
+      return ResultToStatus(RunPsqlCommand("SELECT 1")).ok();
+    }, timeout, "Postgres has started");
+  }
 };
 
 TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
@@ -358,6 +364,7 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
   ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
   ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+  ASSERT_OK(WaitForPostgresToStart(timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts->Shutdown();
@@ -374,6 +381,7 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
 
   ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+  ASSERT_OK(WaitForPostgresToStart(timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts->Shutdown();
@@ -390,6 +398,7 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
 
   ASSERT_OK(pg_ts->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+  ASSERT_OK(WaitForPostgresToStart(timeout));
 }
 
 class PgWrapperSingleNodeLongTxnTest : public PgWrapperOneNodeClusterTest {

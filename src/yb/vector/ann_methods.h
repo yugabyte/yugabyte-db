@@ -39,13 +39,13 @@ struct ANNMethodTraits {
 template<>
 struct ANNMethodTraits<ANNMethodKind::kUsearch> {
   template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-  using IndexType = UsearchIndex<Vector, DistanceResult>;
+  using FactoryType = UsearchIndexFactory<Vector, DistanceResult>;
 };
 
 template<>
 struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
   template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-  using IndexType = HnswlibIndex<Vector, DistanceResult>;
+  using FactoryType = HnswlibIndexFactory<Vector, DistanceResult>;
 };
 
 }  // namespace yb::vectorindex

@@ -239,7 +239,8 @@ export const getFormData = (
       communicationPorts,
       customizePort: false, //** */
       ybcPackagePath: null, //** */,
-      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent)
+      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -251,10 +252,6 @@ export const getFormData = (
     universeOverrides: userIntent.universeOverrides,
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
-
-  if (!_.isEmpty(userIntent?.enableConnectionPooling)) {
-    data.advancedConfig.enableConnectionPooling = userIntent.enableConnectionPooling;
-  }
 
   if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
@@ -319,6 +316,7 @@ export const getUserIntent = (
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
     useSystemd: advancedConfig.useSystemd,
+    enableConnectionPooling: _.get(advancedConfig, 'enableConnectionPooling', false),
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
@@ -354,9 +352,6 @@ export const getUserIntent = (
   if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
-  if (!_.isEmpty(advancedConfig?.enableConnectionPooling)) {
-    intent.enableConnectionPooling = advancedConfig.enableConnectionPooling;
-  }
 
   if (
     cloudConfig.provider?.code === CloudType.kubernetes &&

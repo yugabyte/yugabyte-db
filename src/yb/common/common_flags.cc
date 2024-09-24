@@ -143,6 +143,9 @@ DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
 DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
     "The cloud availability zone in which this instance is started.");
 
+DEFINE_test_flag(bool, check_catalog_version_overflow, false,
+                 "Check whether received catalog version is unreasonably too big");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

@@ -172,15 +172,24 @@ class SharedExchangeHeader {
 
   Status SendRequest(bool failed_previous_request, size_t size) {
     auto state = state_.load(std::memory_order_acquire);
-    if (!ReadyToSend(failed_previous_request)) {
+    if (!ReadyToSend(state, failed_previous_request)) {
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
     }
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_pg_client_crash_on_shared_memory_send)) {
       LOG(FATAL) << "For test: crashing while sending request";
     }
-    state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(state, SharedExchangeState::kRequestSent));
     data_size_ = size;
     return request_semaphore_.Post();
+  }
+
+  Status TransferState(SharedExchangeState old_state, SharedExchangeState new_state) {
+    SharedExchangeState actual_state = old_state;
+    if (state_.compare_exchange_strong(actual_state, new_state, std::memory_order_acq_rel)) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(
+        IllegalState, "Wrong state, $0 expected, but $1 found", old_state, actual_state);
   }
 
   bool ResponseReady() {
@@ -189,7 +198,7 @@ class SharedExchangeHeader {
 
   Result<size_t> FetchResponse(std::chrono::system_clock::time_point deadline) {
     RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
-    state_.store(SharedExchangeState::kIdle, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(SharedExchangeState::kResponseSent, SharedExchangeState::kIdle));
     return data_size_;
   }
 
@@ -202,7 +211,9 @@ class SharedExchangeHeader {
     }
 
     data_size_ = size;
-    state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
+    WARN_NOT_OK(
+        TransferState(SharedExchangeState::kRequestSent, SharedExchangeState::kResponseSent),
+        "Transfer state failed");
     WARN_NOT_OK(response_semaphore_.Post(), "Respond failed");
   }
 

@@ -16,7 +16,7 @@
 dependencies:
   - name: usearch
     git_url: https://github.com/unum-cloud/usearch
-    commit: 4fbb56e02aa928a011abdedb66adfef128123e5f
+    commit: 240fe9c298100f9e37a2d7377b1595be6ba1f412
     src_dir: include
     dest_dir: usearch
 

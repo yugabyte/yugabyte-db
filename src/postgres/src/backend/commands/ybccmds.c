@@ -2024,14 +2024,32 @@ YBCDropReplicationSlot(const char *slot_name)
 		YBCPgExecDropReplicationSlot(handle), error_message);
 }
 
+/*
+ * Returns an of relfilenodes corresponding to input table_oids array.
+ */
+static Oid *
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+{
+	Oid			*relfilenodes;
+
+	relfilenodes = palloc(sizeof(Oid) * num_relations);
+	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
+		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
+
+	return relfilenodes;
+}
+
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations)
 {
 	Assert(MyDatabaseId);
 
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
-											 numrelations));
+											 relfilenodes, numrelations));
 }
 
 void
@@ -2040,7 +2058,11 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 {
 	Assert(MyDatabaseId);
 
-	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId, relations,
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
+	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
+												   relations, relfilenodes,
 												   numrelations));
 }
 

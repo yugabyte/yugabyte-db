@@ -123,7 +123,7 @@ The following is a list of default ports along with the network access required 
 
   - 7000 for viewing the YB-Master Admin UI.
 
-- To use the database from the app, the following ports need to be accessible from the app or CLI:
+- To access the database from applications or clients, the following ports need to be accessible from the applications or CLI:
 
   - 5433 for YSQL
   - 9042 for YCQL

@@ -102,8 +102,7 @@ def get_latest_commit_explanation(
 
 def add_comment_to_file(
         file_path: str,
-        dep: InlineDependency,
-        latest_commit_in_subdir: str) -> None:
+        dep: InlineDependency) -> None:
     """Adds a comment to the include file indicating what version of the dependcy is being used."""
     if not file_path.endswith(FILE_EXTENSIONS_SUPPORTING_CPP_COMMENTS):
         logging.info("Cannot add comment to file %s", file_path)
@@ -117,11 +116,10 @@ def add_comment_to_file(
         f"// This file is part of the {dep.name} inline third-party dependency of YugabyteDB.",
         f"// Git repo: {dep.git_url}",
         f"// Git tag: {dep.tag}" if dep.tag else f"// Git commit: {dep.commit}",
-        f"// {get_latest_commit_explanation(dep, latest_commit_in_subdir, cpp_comment=True)}",
         "//",
         "// See also src/inline-thirdparty/README.md.",
     ])
-    file_util.write_file(comment + '\n\n' + content, file_path)
+    file_util.write_file(content.rstrip() + '\n\n' + comment + '\n', file_path)
 
 
 def validate_dir(dep: InlineDependency, dir_type: str) -> None:
@@ -204,7 +202,7 @@ def clone_and_copy_subtrees(dependencies: List[InlineDependency]) -> None:
             for root, dirs_unused, files in os.walk(dest_subtree):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    add_comment_to_file(file_path, dep, latest_commit_in_subdir)
+                    add_comment_to_file(file_path, dep)
 
             # Commit the changes in the current repository
             make_commit(dep, latest_commit_in_subdir, resolved_commit)

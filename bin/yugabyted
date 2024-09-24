@@ -8283,8 +8283,8 @@ class Diagnostics(object):
         payload = {
             "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
             "num_cpus": multiprocessing.cpu_count(),
-            "master_flags": self.configs.saved_data.get("master_flags"),
-            "tserver_flags": self.configs.saved_data.get("tserver_flags"),
+            # "master_flags": self.configs.saved_data.get("master_flags"),
+            # "tserver_flags": self.configs.saved_data.get("tserver_flags"),
             "is_docker" : str(os.path.exists("/.dockerenv"))
         }
         if Diagnostics.first_install is not None:

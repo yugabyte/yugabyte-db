@@ -234,11 +234,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
-  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data);
+  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
+      EXCLUDES(lock_);
 
   void get_ysql_catalog_version(uint64_t* current_version,
-                                uint64_t* last_breaking_version) const override {
+                                uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
     std::lock_guard l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
@@ -248,9 +249,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  void get_ysql_db_catalog_version(uint32_t db_oid,
-                                   uint64_t* current_version,
-                                   uint64_t* last_breaking_version) const override {
+  void get_ysql_db_catalog_version(
+      uint32_t db_oid,
+      uint64_t* current_version,
+      uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
     std::lock_guard l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
@@ -267,14 +269,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  std::optional<bool> catalog_version_table_in_perdb_mode() const {
+  std::optional<bool> catalog_version_table_in_perdb_mode() const EXCLUDES(lock_) {
     std::lock_guard l(lock_);
     return catalog_version_table_in_perdb_mode_;
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -466,7 +468,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
-  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
   // See same variable comments in CatalogManager.
   std::optional<bool> catalog_version_table_in_perdb_mode_{std::nullopt};
 

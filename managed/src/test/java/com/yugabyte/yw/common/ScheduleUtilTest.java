@@ -86,6 +86,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-1");
     backupRequestParams.incrementalBackupFrequency = 120000L;
@@ -96,6 +97,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-2");
     backupRequestParams.incrementalBackupFrequency = 150000L;
@@ -120,6 +122,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-1");
     backupRequestParams.incrementalBackupFrequency = 120000L;
@@ -130,6 +133,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-2");
     backupRequestParams.incrementalBackupFrequency = 110000L;
@@ -154,6 +158,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-1");
     backupRequestParams.incrementalBackupFrequency = 120000L;
@@ -164,6 +169,7 @@ public class ScheduleUtilTest extends FakeDBApplication {
         TaskType.CreateBackup,
         500000L,
         null,
+        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "test-2");
     backupRequestParams.incrementalBackupFrequency = 150000L;
