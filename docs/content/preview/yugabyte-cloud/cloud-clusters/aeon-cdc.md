@@ -12,24 +12,27 @@ menu:
 type: docs
 ---
 
-You can use change data capture with YugabyteDB Aeon clusters to capture changes made to data in the database and stream those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB Aeon database to downstream consumers based on its Write-Ahead Log (WAL). CDC captures row-level changes resulting from INSERT, UPDATE, and DELETE operations, and publishes them to be consumed by downstream applications.
+Use change data capture with YugabyteDB Aeon clusters to capture and stream changes made to data in the database to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB Aeon database to downstream consumers based on its Write-Ahead Log (WAL). CDC captures row-level changes resulting from INSERT, UPDATE, and DELETE operations, and publishes them to be consumed by downstream applications.
 
 ## Overview
 
-YugabyteDB Aeon uses the [YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/), which uses the [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html) protocol, for change data capture. Logical replication uses a publish and subscribe model with one or more subscribers subscribing to one or more publications on a publisher node. Subscribers pull data from the publications they subscribe to and may subsequently re-publish data to allow cascading replication or more complex configurations.
+YugabyteDB Aeon change data capture uses the [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html) protocol. Logical replication uses a publish and subscribe model with one or more subscribers subscribing to one or more publications on a publisher node. Subscribers pull data from the publications they subscribe to and may subsequently re-publish data to allow cascading replication or more complex configurations.
 
-Logical replication of a table starts with taking a snapshot of the data on the publisher database and copying that to the subscriber. After that is done, the changes on the publisher are sent to the subscriber as they occur in real-time. The subscriber applies the data in the same order as the publisher so that transactional consistency is guaranteed for publications within a single subscription. This method of data replication is sometimes referred to as transactional replication.
+It works as follows:
 
-A publication is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database. Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications only contain tables. Tables are added explicitly, except when a publication is created for ALL TABLES. Every publication can have multiple subscribers.
+1. Create Publications in the YugabyteDB cluster as you would in PostgreSQL.
+1. Deploy the [YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/) in your preferred Kafka Connect environment.
+1. The connector uses replication slots to capture change events and publishes them directly to a Kafka topic.
 
-A subscription is the downstream side of logical replication. The node where a subscription is defined is referred to as the subscriber. A subscription defines the connection to another database and set of publications (one or more) to which it wants to subscribe. Each subscription receives changes via one replication slot.
+A _publication_ is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database. Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications only contain tables. Tables are added explicitly, except when a publication is created for ALL TABLES. Every publication can have multiple subscribers.
 
-A replication slot represents a stream of changes that can be replayed to a client in the order they were made on the origin server. Each slot streams a sequence of changes from a single database. You can initially create two replication slots per YugabyteDB Aeon cluster.
+A _subscription_ is the downstream side of logical replication. The node where a subscription is defined is referred to as the subscriber. A subscription defines the connection to another database and set of publications (one or more) to which it wants to subscribe. Each subscription receives changes via one replication slot.
+
+A _replication slot_ represents a stream of changes that can be replayed to a client in the order they were made on the origin server. Each slot streams a sequence of changes from a single database. You can initially create two replication slots per YugabyteDB Aeon cluster.
+
+Logical replication of a table starts with taking a snapshot of the data on the publisher database and copying that to the subscriber. After that is done, the changes on the publisher are sent to the subscriber as they occur in real-time. The subscriber applies the data in the same order as the publisher so that transactional consistency is guaranteed for publications in a single subscription. This method of data replication is sometimes referred to as transactional replication.
 
 For more information, refer to [Key concepts](../../../explore/change-data-capture/using-logical-replication/key-concepts/)
-
-- monitor views explore/change-data-capture/using-logical-replication/monitor/
-    CDC Service metrics - export from YBM/ Metrics tab
 
 ## Prerequisites
 
