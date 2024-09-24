@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
@@ -511,34 +512,7 @@ public class NodeAgentClient {
 
   /* Passing universe allows more specific check for the universe. */
   public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
-    boolean clientEnabled =
-        confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
-    if (!clientEnabled) {
-      log.debug("Node agent client is disabled for provider {}", provider.getUuid());
-      return false;
-    }
-    if (!nodeAgentEnablerProvider.get().isEnabled()) {
-      log.debug("Node agent client is disabled for old provider {}", provider.getUuid());
-      return provider.getDetails().isEnableNodeAgent();
-    }
-    return universe == null || isClientEnabled(universe);
-  }
-
-  public boolean isClientEnabled(Universe universe) {
-    // Check this first before the universe field to allow the change to be reflected immediately.
-    Optional<Boolean> optional = nodeAgentEnablerProvider.get().isNodeAgentEnabled(universe);
-    if (optional.isPresent() && !optional.get()) {
-      log.debug("Node agent client is disabled for universe {}", universe.getUniverseUUID());
-      return false;
-    }
-    if (nodeAgentEnablerProvider.get().isEnabled()
-        && universe.getUniverseDetails().disableNodeAgent) {
-      log.debug(
-          "Node agent client is disabled for universe {} pending background installation",
-          universe.getUniverseUUID());
-      return false;
-    }
-    return true;
+    return nodeAgentEnablerProvider.get().isNodeAgentClientEnabled(provider, universe);
   }
 
   public boolean isAnsibleOffloadingEnabled(
@@ -599,9 +573,10 @@ public class NodeAgentClient {
     while (true) {
       try {
         PingResponse response = ping(nodeAgent);
-        nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
+        nodeAgent.updateServerInfo(response.getServerInfo());
         return response;
       } catch (StatusRuntimeException e) {
+        nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
           log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());

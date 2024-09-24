@@ -1115,7 +1115,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
+  public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag to enable db scoped xCluster replication creation",
+          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1370,6 +1377,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Test handling of pending consistency check update",
           "YBA will shutdown immediately after updating the DB sequence number but before saving to"
               + " local universe details",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowNodeAgentClientMixMode =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.allow_mix_mode",
+          ScopeType.UNIVERSE,
+          "Allow Mix Mode Operations in Universe",
+          "Allow node agent and SSH communications to nodes at the same time for the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

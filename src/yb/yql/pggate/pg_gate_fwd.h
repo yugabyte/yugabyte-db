@@ -46,7 +46,7 @@ class PgsqlOp;
 class PgsqlReadOp;
 class PgsqlWriteOp;
 
-struct BufferableOperations;
+class BufferableOperations;
 struct PerformResult;
 
 using PgTableDescPtr = scoped_refptr<PgTableDesc>;

@@ -78,6 +78,8 @@ public class GFlagsValidation {
 
   private static final String GLIBC_VERSION_FIELD_NAME = "glibc_v";
 
+  private static final String YSQL_MAJOR_VERSION_FIELD_NAME = "ysql_major_version";
+
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
       ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
@@ -471,6 +473,30 @@ public class GFlagsValidation {
   }
 
   public Optional<Double> getGlibcVersion(String version) throws IOException {
+    File file = getDBMetadataFile(version);
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
+      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
+      return Optional.of(Double.parseDouble(glibc));
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  public Optional<String> getYsqlMajorVersion(String version) throws IOException {
+    File file = getDBMetadataFile(version);
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(YSQL_MAJOR_VERSION_FIELD_NAME)) {
+      String ysqlMajorVersion = jsonNode.get(YSQL_MAJOR_VERSION_FIELD_NAME).asText();
+      return Optional.of(ysqlMajorVersion);
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  private File getDBMetadataFile(String version) {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     String filePath =
         String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
@@ -488,13 +514,33 @@ public class GFlagsValidation {
             INTERNAL_SERVER_ERROR, "Error in extracting version metadata form DB package");
       }
     }
-    ObjectMapper objectMapper = new ObjectMapper();
-    JsonNode jsonNode = objectMapper.readTree(file);
-    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
-      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
-      return Optional.of(Double.parseDouble(glibc));
-    } else {
-      return Optional.empty();
+    return file;
+  }
+
+  public boolean ysqlMajorVersionUpgrade(String oldVersion, String newVersion) {
+    try {
+      Optional<String> newVersionYsqlVersion = getYsqlMajorVersion(newVersion);
+      Optional<String> oldVersionYsqlVersion = getYsqlMajorVersion(oldVersion);
+
+      // We assume that old db version that does not contains ysql major version are on pg-11.
+      if (!newVersionYsqlVersion.isPresent()) {
+        return false;
+      }
+      if (newVersionYsqlVersion.get().equals("15")) {
+        if (oldVersionYsqlVersion.isPresent()) {
+          if (newVersionYsqlVersion.get().equals(oldVersionYsqlVersion.get())) {
+            return false;
+          } else {
+            return true;
+          }
+        } else {
+          return true;
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      LOG.error("failed to get ysql major version", e);
+      throw new RuntimeException(e);
     }
   }
 

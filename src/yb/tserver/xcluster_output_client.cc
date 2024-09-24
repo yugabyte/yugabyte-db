@@ -87,7 +87,7 @@ namespace tserver {
 XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
-    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver,
+    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
     rocksdb::RateLimiter* rate_limiter)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       xcluster_poller_(xcluster_poller),
@@ -95,6 +95,7 @@ XClusterOutputClient::XClusterOutputClient(
       producer_tablet_info_(producer_tablet_info),
       local_client_(local_client),
       use_local_tserver_(use_local_tserver),
+      is_automatic_mode_(is_automatic_mode),
       all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
       rate_limiter_(rate_limiter) {}
 
@@ -701,11 +702,11 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
-    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver,
+    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
     rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_poller, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
-      use_local_tserver, rate_limiter);
+      use_local_tserver, is_automatic_mode, rate_limiter);
 }
 
 }  // namespace tserver
