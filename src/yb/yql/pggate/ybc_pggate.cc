@@ -646,7 +646,6 @@ typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
 
 static void FreeSlice(Slice slice) {
   delete[] slice.data(), slice.size();
-  slice.Clear();
 }
 
 SliceSet YBCBitmapCreateSet() {
@@ -686,8 +685,13 @@ SliceSet YBCBitmapIntersectSet(SliceSet sa, SliceSet sb) {
   auto iterb = b->begin();
   for (auto itera = a->begin(); itera != a->end();) {
     if ((iterb = b->find(*itera)) == b->end()) {
-      FreeSlice(*itera);
+      // We cannot modify the slice while it is in the set because
+      // std::unordered_set stores const Slices. Since the slice contains
+      // malloc'd memory, we grab a reference to it to delete the memory after
+      // removing it from the set.
+      auto data = itera->data();
       itera = a->erase(itera);
+      delete[] data;
     } else {
       ++itera;
     }
@@ -2488,13 +2492,13 @@ YBCStatus YBCPgGetCDCConsistentChanges(
 
     auto table_oid = kPgInvalidOid;
     if (row_message_pb.has_table_id()) {
-      const PgObjectId table_id = PgObjectId(row_message_pb.table_id());
-      YBCPgTableDesc tableDesc = NULL;
-      Status s = pgapi->GetTableDesc(table_id, &tableDesc);
+      const PgObjectId table_id(row_message_pb.table_id());
+      YBCPgTableDesc tableDesc = nullptr;
+      auto s = pgapi->GetTableDesc(table_id, &tableDesc);
       if (!s.ok()) {
         return ToYBCStatus(s);
       }
-      table_oid = tableDesc->pg_table_id();
+      table_oid = tableDesc->pg_table_id().object_oid;
     }
 
     auto col_count = narrow_cast<int>(col_name_idx_map.size());

@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 198,
+    "id" : 199,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 199
+    "id" : 200
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 200
+    "id" : 201
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -796,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 201
+    "id" : 202
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2582,7 +2582,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 202
+    "id" : 203
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -4306,7 +4306,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 203
+    "id" : 204
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -6617,7 +6617,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Node Metrics",
-    "id" : 204
+    "id" : 205
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8448,7 +8448,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Otel Collector",
-    "id" : 205
+    "id" : 206
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8921,7 +8921,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Per-process Metrics",
-    "id" : 206
+    "id" : 207
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -9870,7 +9870,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "RocksDB",
-    "id" : 207
+    "id" : 208
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -12089,7 +12089,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Tablet Server",
-    "id" : 208
+    "id" : 209
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -15636,7 +15636,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 209
+    "id" : 210
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -16786,7 +16786,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 210
+    "id" : 211
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -19161,7 +19161,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL",
-    "id" : 211
+    "id" : 212
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -19266,7 +19266,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 212
+    "id" : 213
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -19345,18 +19345,28 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Total YSQL Connections",
+    "title" : "Connection Pooling - Client Connections",
     "id" : 192,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_connection_total\"}[300s])) by (saved_name)",
+      "legendFormat" : "Idle/Pending",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_idle_or_pending_clients\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Active",
-      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_active_connection_total\"}[300s])) by (saved_name)",
+      "legendFormat" : "Queued",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_queued_clients\"}[300s])) by (saved_name)",
       "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Active",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_active_clients\"}[300s])) by (saved_name)",
+      "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_clients_total\"}[300s])) by (saved_name)",
+      "refId" : "D"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -19442,17 +19452,17 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Total YSQL Connections / Sec",
+    "title" : "Total YSQL Connections",
     "id" : 193,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Rejected",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_connection_over_limit_total\"}[300s])) by (saved_name)",
+      "legendFormat" : "Total",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_connection_total\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "New",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_new_connection_total\"}[300s])) by (saved_name)",
+      "legendFormat" : "Active",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_active_connection_total\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -19539,33 +19549,18 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Total YSQL Ops / Sec",
+    "title" : "Total YSQL Connections / Sec",
     "id" : 194,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Begin",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "Rejected",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_connection_over_limit_total\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Rollback",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "New",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", export_type=\"ysql_export\", saved_name=\"yb_ysqlserver_new_connection_total\"}[300s])) by (saved_name)",
       "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Commit",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method)",
-      "refId" : "C"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Transactions",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method)",
-      "refId" : "D"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Others",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method)",
-      "refId" : "E"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -19655,24 +19650,29 @@
     "id" : 195,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Insert",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "Begin",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Select",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "Rollback",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "Update",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "Commit",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
-      "legendFormat" : "Delete",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\"}[300s])) by (service_method)",
+      "legendFormat" : "Transactions",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method)",
       "refId" : "D"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Others",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method)",
+      "refId" : "E"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -19745,7 +19745,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : ""
     }, {
       "format" : "short",
       "label" : null,
@@ -19758,33 +19758,28 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "YSQL Advanced Op Latency (Avg)",
+    "title" : "Total YSQL Ops / Sec",
     "id" : 196,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Rollback",
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method))",
+      "legendFormat" : "Insert",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Begin",
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method))",
+      "legendFormat" : "Select",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "Transactions",
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method))",
+      "legendFormat" : "Update",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
-      "legendFormat" : "Commit",
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method))",
+      "legendFormat" : "Delete",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\"}[300s])) by (service_method)",
       "refId" : "D"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Others",
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method))",
-      "refId" : "E"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -19870,8 +19865,120 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "YSQL Op Latency (Avg)",
+    "title" : "YSQL Advanced Op Latency (Avg)",
     "id" : 197,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Rollback",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"RollbackStmt\"}[300s])) by (service_method))",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Begin",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"BeginStmt\"}[300s])) by (service_method))",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Transactions",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"Transactions\"}[300s])) by (service_method))",
+      "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Commit",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"CommitStmt\"}[300s])) by (service_method))",
+      "refId" : "D"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Others",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method)) / (avg(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"OtherStmts\"}[300s])) by (service_method))",
+      "refId" : "E"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 895
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YSQL Op Latency (Avg)",
+    "id" : 198,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -19896,7 +20003,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 895
     }
   } ]

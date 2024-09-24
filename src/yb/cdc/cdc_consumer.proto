@@ -88,6 +88,8 @@ message ProducerEntryPB {
   bool disable_stream = 4; // [default = false] implicit in proto3
   uint32 compatible_auto_flag_config_version = 5; // [default = 0] implicit in proto3
   uint32 validated_auto_flags_config_version = 6; // [default = 0] implicit in proto3
+  // Whether automatic ddl mode is enabled for all streams in this replication group.
+  bool automatic_ddl_mode = 7;
 }
 
 // NOTE: Deprecated

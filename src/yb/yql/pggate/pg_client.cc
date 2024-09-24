@@ -706,9 +706,8 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  PerformResultFuture PerformAsync(
-      tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
-    auto& arena = operations->front()->arena();
+  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+    auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     AshMetadataToPB(ash_config_, options);
     req.set_session_id(session_id_);
@@ -720,7 +719,7 @@ class PgClient::Impl : public BigDataFetcher {
       promise->set_value(result);
     };
 
-    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
+    auto data = std::make_shared<PerformData>(&arena, std::move(operations), callback);
     if (exchange_ && exchange_->ReadyToSend()) {
       constexpr size_t kHeaderSize = sizeof(uint64_t);
       auto out = exchange_->Obtain(kHeaderSize + req.SerializedSize());
@@ -778,9 +777,9 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
-  void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
+  void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
     auto& ops = *req->mutable_ops();
-    for (auto& op : *operations) {
+    for (const auto& op : operations) {
       auto& union_op = ops.emplace_back();
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
@@ -1453,8 +1452,8 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
 }
 
 PerformResultFuture PgClient::PerformAsync(
-    tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
-  return impl_->PerformAsync(options, operations);
+    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+  return impl_->PerformAsync(options, std::move(operations));
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

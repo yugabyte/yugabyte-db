@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
@@ -234,16 +235,26 @@ public class NodeAgentPoller {
         Instant expiryDate =
             Instant.now().minus(param.getLifetime().toMinutes(), ChronoUnit.MINUTES);
         if (expiryDate.isAfter(nodeAgent.getUpdatedAt().toInstant())) {
-          // Purge the node agent record and its certs.
+          Customer customer = Customer.getOrBadRequest(nodeAgent.getCustomerUuid());
           Set<String> nodeIps =
-              NodeInstance.getAll().stream()
+              NodeInstance.listByCustomer(customer.getUuid()).stream()
                   .map(node -> node.getDetails().ip)
                   .collect(Collectors.toSet());
+          customer.getUniverses().stream()
+              .flatMap(u -> u.getNodes().stream())
+              .filter(
+                  n ->
+                      n.cloudInfo != null
+                          && n.cloudInfo.private_ip != null
+                          && !nodeIps.contains(n.cloudInfo.private_ip))
+              .map(n -> n.cloudInfo.private_ip)
+              .forEach(nodeIps::add);
           if (!nodeIps.contains(nodeAgent.getIp())) {
             log.info(
                 "Purging node agent {} because connection failed. Error: {}",
                 nodeAgent.getUuid(),
                 e.getMessage());
+            // Purge the node agent record and its certs.
             nodeAgentManager.purge(nodeAgent);
           }
         }

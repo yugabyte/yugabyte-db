@@ -57,6 +57,7 @@ export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => 
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
           queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
         };

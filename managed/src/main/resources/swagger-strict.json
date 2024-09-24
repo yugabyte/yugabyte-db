@@ -7752,6 +7752,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "lastError" : {
+          "$ref" : "#/definitions/YBAError",
+          "description" : "WARNING: This is a preview API that could change. Last error of node agent.",
+          "readOnly" : true
+        },
         "name" : {
           "description" : "Node agent name",
           "readOnly" : true,
@@ -7908,6 +7913,11 @@
           "description" : "Node agent server IP",
           "readOnly" : true,
           "type" : "string"
+        },
+        "lastError" : {
+          "$ref" : "#/definitions/YBAError",
+          "description" : "WARNING: This is a preview API that could change. Last error of node agent.",
+          "readOnly" : true
         },
         "name" : {
           "description" : "Node agent name",
@@ -12515,7 +12525,7 @@
         },
         "errorCode" : {
           "description" : "WARNING: This is a preview API that could change. Subtask error code",
-          "enum" : [ "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED" ],
+          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
           "type" : "string"
         },
         "errorString" : {
@@ -16410,6 +16420,19 @@
         }
       },
       "required" : [ "backupUuid", "restoreUuid" ],
+      "type" : "object"
+    },
+    "YBAError" : {
+      "properties" : {
+        "code" : {
+          "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
+          "type" : "string"
+        },
+        "message" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "message" ],
       "type" : "object"
     },
     "YBPCreateSuccess" : {
