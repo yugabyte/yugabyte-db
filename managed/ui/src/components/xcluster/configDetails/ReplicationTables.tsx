@@ -81,7 +81,8 @@ import styles from './ReplicationTables.module.scss';
 
 interface CommonReplicationTablesProps {
   xClusterConfig: XClusterConfig;
-
+  isTableInfoLoading: boolean;
+  isTableInfoError: boolean;
   // isActive determines whether the component will make periodic
   // queries for metrics.
   isActive?: boolean;
@@ -94,7 +95,7 @@ type ReplicationTablesProps =
 const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables(props: ReplicationTablesProps) {
-  const { xClusterConfig, isActive = true } = props;
+  const { xClusterConfig, isTableInfoLoading, isTableInfoError, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
@@ -212,15 +213,18 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle
+    sourceUniverseQuery.isIdle ||
+    isTableInfoLoading
   ) {
     return <YBLoading />;
   }
-  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
+  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError || isTableInfoError) {
     const sourceUniverseTerm = props.isDrInterface ? 'DR primary universe' : 'source universe';
     const errorMessage = sourceUniverseTablesQuery.isError
       ? `Failed to fetch ${sourceUniverseTerm} table details.`
-      : `Failed to fetch ${sourceUniverseTerm} details.`;
+      : sourceUniverseQuery.isError
+      ? `Failed to fetch ${sourceUniverseTerm} details.`
+      : 'Failed to fetch table details.';
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 

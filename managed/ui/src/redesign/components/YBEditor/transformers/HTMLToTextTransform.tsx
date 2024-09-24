@@ -7,13 +7,15 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { BR_TAG, NEW_LINE } from "../plugins";
+
 // Convert html document to text.
 
 const ALLOWED_MARKUP_TAGS = ['STRONG', 'EM', 'U', 'S'];
 
-export const convertHTMLToText = (HTMLstr: string) => {
+export const convertHTMLToText = (HTMLstr: string, useNewLineInsteadOfBR = false) => {
   const htmlDoc = new DOMParser().parseFromString(HTMLstr, 'text/html');
-  return normalizeHTMLTags(htmlDoc.body).join('\n');
+  return normalizeHTMLTags(htmlDoc.body).join(useNewLineInsteadOfBR ? NEW_LINE : BR_TAG);
 };
 
 const normalizeHTMLTags = (el: Element): string[] => {
@@ -32,6 +34,10 @@ const normalizeHTMLTags = (el: Element): string[] => {
 
   if (!el.tagName) {
     return [el.textContent ?? ''];
+  }
+
+  if(el.tagName === 'BR'){
+    return ['<br/>'];
   }
 
   if (el.tagName === 'P') {

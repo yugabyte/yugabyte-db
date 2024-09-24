@@ -18,6 +18,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 namespace yb {
@@ -40,7 +41,7 @@ class XClusterOutboundReplicationGroup
     const std::function<Status()> create_sequences_data_table_func;
     const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>
         get_namespace_func;
-    const std::function<Result<std::vector<TableInfoPtr>>(
+    const std::function<Result<std::vector<TableDesignator>>(
         const NamespaceId&, bool include_sequences_data)>
         get_tables_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(

@@ -63,8 +63,6 @@ namespace yb {
 
 METRIC_DEFINE_entity(test_entity);
 
-static const string kTableId = "table_id";
-
 class MetricsTest : public YBTest {
  public:
   void SetUp() override {

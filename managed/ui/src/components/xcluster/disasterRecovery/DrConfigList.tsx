@@ -48,14 +48,16 @@ export const DrConfigList = ({ currentUniverseUuid }: DrConfigListProps) => {
   );
 
   const { sourceDrConfigUuids, targetDrConfigUuids } = getDrConfigUuids(currentUniverseQuery.data);
-  const universeDrConfigUuids = [...sourceDrConfigUuids, ...targetDrConfigUuids];
+  const universeDrConfigUuids = Array.from(
+    new Set([...sourceDrConfigUuids, ...targetDrConfigUuids])
+  );
 
   // The unsafe cast is needed due to issue with useQueries typing
   // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   const drConfigQueries = useQueries(
     universeDrConfigUuids.map((drConfigUuid: string) => ({
-      queryKey: drConfigQueryKey.detail(drConfigUuid),
-      queryFn: () => api.fetchDrConfig(drConfigUuid),
+      queryKey: drConfigQueryKey.detail(drConfigUuid, false /* syncWithDb */),
+      queryFn: () => api.fetchDrConfig(drConfigUuid, false /* syncWithDb */),
       enabled: currentUniverseQuery.data !== undefined
     }))
   ) as UseQueryResult<DrConfig>[];

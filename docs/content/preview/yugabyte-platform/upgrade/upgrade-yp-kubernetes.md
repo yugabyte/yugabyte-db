@@ -67,7 +67,7 @@ The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-opera
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:

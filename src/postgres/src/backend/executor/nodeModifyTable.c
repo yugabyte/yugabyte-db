@@ -1506,7 +1506,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (!estate->yb_es_is_single_row_modify_txn)
 		{
 			YbComputeModifiedColumnsAndSkippableEntities(
-				plan, estate, oldtuple, tuple, &cols_marked_for_update,
+				mtstate, estate, oldtuple, tuple, &cols_marked_for_update,
 				beforeRowUpdateTriggerFired);
 		}
 
@@ -2486,9 +2486,10 @@ tupconv_map_for_subplan(ModifyTableState *mtstate, int whichplan)
  * needed for inserting the tuple is supplied in the query.
  */
 static bool
-YBCHasWholeRowJunkAttr(ResultRelInfo *resultRelInfo, CmdType operation)
+YBCHasWholeRowJunkAttr(ModifyTableState *mtstate, ResultRelInfo *resultRelInfo)
 {
-	if (operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled())
+	CmdType operation = mtstate->operation;
+	if (operation == CMD_UPDATE && mtstate->yb_is_update_optimization_enabled)
 		return true;
 
 	if (operation == CMD_UPDATE || operation == CMD_DELETE)
@@ -2677,7 +2678,7 @@ ExecModifyTable(PlanState *pstate)
 				 *    trigger execution.
 				 */
 				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-					YBCHasWholeRowJunkAttr(resultRelInfo, operation))
+					YBCHasWholeRowJunkAttr(node, resultRelInfo))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
 					datum = ExecGetJunkAttribute(slot, resno, &isNull);
@@ -2875,6 +2876,19 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate->mt_plans = (PlanState **) palloc0(sizeof(PlanState *) * nplans);
 	mtstate->resultRelInfo = estate->es_result_relations + node->resultRelIndex;
 	mtstate->yb_fetch_target_tuple = !YbCanSkipFetchingTargetTupleForModifyTable(node);
+
+	/*
+	 * Check if the planner has passed down any optimization info for UPDATEs.
+	 * There are two scenarios where this may be NULL:
+	 * - There is nothing to optimize.
+	 * - Optimization(s) have been disabled.
+	 * Additionally, lookup the relevant GUCs. The GUCs may have been disabled
+	 * after the query plan was generated (prepared statements for example).
+	 * It is be safe to ignore the planned optimization in such cases.
+	 */
+	mtstate->yb_is_update_optimization_enabled =
+		(node->yb_update_affected_entities != NULL &&
+		 operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled());
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)

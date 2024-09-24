@@ -19,7 +19,7 @@ const (
 		"\t{{.FirewallTags}}"
 
 	// Region provides header for GCP Region Cloud Info
-	Region = "table {{.InstanceTemplate}}\t{{.YbImage}}"
+	Region = "table {{.InstanceTemplate}}"
 
 	// EAR1 for EAR listing
 	EAR1 = "table {{.LocationID}}\t{{.ProtectionLevel}}"
@@ -34,7 +34,6 @@ const (
 	vpcTypeHeader          = "VPC Type"
 	ybFirewallTagsHeader   = "YB Firewall Tags"
 	instanceTemplateHeader = "Instance Template"
-	ybImageHeader          = "YB Image"
 	gcpConfigHeader        = "GCP Config"
 	locationIDHeader       = "Location ID"
 	protectionLevelHeader  = "Protection Level"
@@ -113,7 +112,6 @@ func NewRegionContext() *RegionContext {
 	gcpRegionCtx := RegionContext{}
 	gcpRegionCtx.Header = formatter.SubHeaderContext{
 		"InstanceTemplate": instanceTemplateHeader,
-		"YbImage":          ybImageHeader,
 	}
 	return &gcpRegionCtx
 }
@@ -155,11 +153,6 @@ func (c *ProviderContext) MarshalJSON() ([]byte, error) {
 // InstanceTemplate fetches the instance template
 func (c *RegionContext) InstanceTemplate() string {
 	return c.Region.GetInstanceTemplate()
-}
-
-// YbImage fetches the YB image
-func (c *RegionContext) YbImage() string {
-	return c.Region.GetYbImage()
 }
 
 // MarshalJSON function

@@ -77,6 +77,8 @@
 
 #include "yb/util/file_system_posix.h"
 
+DECLARE_int32(min_thread_stack_size_bytes);
+
 namespace rocksdb {
 
 namespace {
@@ -804,8 +806,17 @@ void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
   StartThreadState* state = new StartThreadState;
   state->user_function = function;
   state->arg = arg;
+
+  pthread_attr_t attr;
+  ThreadPool::PthreadCall("init thread attributes struct", pthread_attr_init(&attr));
+  if (FLAGS_min_thread_stack_size_bytes > 0) {
+    ThreadPool::PthreadCall(
+        "set min thread stack size",
+        pthread_attr_setstacksize(&attr, FLAGS_min_thread_stack_size_bytes));
+  }
   ThreadPool::PthreadCall(
-      "start thread", pthread_create(&t, nullptr, &StartThreadWrapper, state));
+      "start thread", pthread_create(&t, &attr, &StartThreadWrapper, state));
+
   ThreadPool::PthreadCall("lock", pthread_mutex_lock(&mu_));
   threads_to_join_.push_back(t);
   ThreadPool::PthreadCall("unlock", pthread_mutex_unlock(&mu_));

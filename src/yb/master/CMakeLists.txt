@@ -114,7 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
-  object_lock.cc
+  object_lock_info_manager.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -234,8 +234,9 @@ ADD_YB_LIBRARY(master_util
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
-  master-test_base.cc
   master-test-util.cc
+  master-test_base.cc
+  master_cluster_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common

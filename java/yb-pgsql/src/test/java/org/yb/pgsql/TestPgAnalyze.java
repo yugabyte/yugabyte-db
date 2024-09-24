@@ -128,7 +128,76 @@ public class TestPgAnalyze extends BasePgSQLTest {
       // The row sizes range uniformly from 3 to 15.
       assertTrue(ERROR_MESSAGE, 8 <= actual.getInt(2) && actual.getInt(2) <= 10);
       assertEquals(ERROR_MESSAGE, actual.getFloat(3), new Float(5));
+
+      assertNoHistogram(stmt, "t_small", "h");
+      assertNoHistogram(stmt, "t_small", "r1");
+      assertNoHistogram(stmt, "t_small", "r2");
+      assertAccurateHistogram(stmt, "t_small", "v1");
+      assertNoHistogram(stmt, "t_small", "v2");
     }
+  }
+
+  private void assertNoHistogram(Statement stmt, String tablename, String attname)
+      throws Exception {
+    // Check that the histogram bounds are not set for the given attribute.
+    // These cases can happen where all the distinct values are fit inside the
+    // MCV (most common values) structures.
+    String query_string = "SELECT histogram_bounds FROM pg_stats WHERE tablename = '%s'" +
+    " AND attname = '%s'";
+    ResultSet rs = stmt.executeQuery(String.format(query_string, tablename,
+        attname));
+    assertTrue(rs.next());
+    assertNull(rs.getString(1));
+  }
+
+  private void assertAccurateHistogram(Statement stmt, String tablename, String attname)
+      throws Exception {
+    // Checks the histogram's accuracy by comparing each bucket width with the
+    // "ideal" bucket width of (number of distinct histogram elements) / (number of buckets).
+    // Take the perfect bucket width as P. We compute the maximum relative
+    // error of a histogram as max(b_j - P) / P over all bucket widths b_j.
+    // PG models its histogram error from this error metric based on the paper
+    // "Random sampling for histogram construction: how much is enough?"
+    // by Surajit Chaudhuri, Rajeev Motwani and Vivek Narasayya.
+    // Unfortunately that error metric assumes that the analyzed column only
+    // consists of distinct values. In order to account for that, we take
+    // maximum multiplicity of the histogram bounds into account and loosen
+    // the error bounds accordingly.
+    // If the analyzed column is distinct the relative error according to PG should be below 0.5.
+
+    String multiplicity_format =
+      "select count(*) from (select unnest(histogram_bounds::text::int[]) as m " +
+      "from pg_stats where tablename='%s' and attname='%s') p join " +
+      "%s on %s = p.m group by p.m order by 1 desc limit 1;";
+    String multiplicity_query =
+      String.format(multiplicity_format, tablename, attname, tablename, attname);
+
+    ResultSet rs = stmt.executeQuery(multiplicity_query);
+
+    // Fail if histograms don't exist.
+    assertTrue(rs.next());
+    double max_multiplicity = rs.getDouble(1);
+
+    String error_calc_format =
+      "/*+Set(random_page_cost 1e42)*/WITH bucket_info(w, c) AS (" +
+        "select width_bucket(%s, p.bounds_array) as w, count(%s) from %s, " +
+            "(select histogram_bounds::text::int[] as bounds_array, " +
+              "most_common_vals::text::int[] as m " +
+              "from pg_stats where tablename='%s' and attname='%s') p " +
+            "where %s is not null and %s not in (select * from unnest(m)) and " +
+            "width_bucket(%s, p.bounds_array) between 1 and 100 group by w)" +
+        " SELECT q.*, p.perfect_size from (select avg(c) as perfect_size from bucket_info) p " +
+        "left join lateral (select max(abs(c - perfect_size))/perfect_size from bucket_info) q " +
+        "on true;";
+    String error_calc_query =
+      String.format(error_calc_format, attname, attname, tablename, tablename, attname, attname,
+                    attname, attname);
+    rs = stmt.executeQuery(error_calc_query);
+
+    assertTrue(rs.next());
+    double perfect_size = rs.getDouble(2);
+
+    assertLessThan(rs.getDouble(1), 0.5 + (max_multiplicity - 1) / perfect_size);
   }
 
   @Test
@@ -152,5 +221,16 @@ public class TestPgAnalyze extends BasePgSQLTest {
     extra_tserver_flags.put("ysql_scan_deadline_margin_ms", "99990");
     restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
     ensureUniformRandomSampling();
+  }
+
+  @Test
+  public void testSimpleOrderedUniqueColumn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE sample(r int, primary key(r asc))");
+      stmt.execute("INSERT INTO sample SELECT generate_series(1,100000)");
+      stmt.execute("ANALYZE sample");
+
+      assertAccurateHistogram(stmt, "sample", "r");
+    }
   }
 }

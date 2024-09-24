@@ -36,8 +36,11 @@ class WriteBuffer {
   explicit WriteBuffer(size_t block_size, ScopedTrackedConsumption* consumption = nullptr)
       : block_size_(block_size), consumption_(consumption) {}
 
-  WriteBuffer(WriteBuffer&& rhs) : block_size_(rhs.block_size_) {
+  WriteBuffer(WriteBuffer&& rhs) : block_size_(rhs.block_size_), consumption_(nullptr) {
+    auto consumption = rhs.consumption_;
+    rhs.consumption_ = nullptr;
     Take(&rhs);
+    consumption_ = consumption;
   }
 
   void operator=(WriteBuffer&& rhs) {

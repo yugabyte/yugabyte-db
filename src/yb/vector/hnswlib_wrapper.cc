@@ -37,19 +37,20 @@
 
 namespace yb::vectorindex {
 
-namespace detail {
+namespace {
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndexImpl {
+class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
   using Scalar = typename Vector::value_type;
 
   using HNSWImpl = typename hnswlib::HierarchicalNSW<DistanceResult>;
 
-  explicit HnswlibIndexImpl(const HNSWOptions& options)
+  explicit HnswlibIndex(const HNSWOptions& options)
       : options_(options) {
   }
 
-  Status Reserve(size_t num_vectors) {
+  Status Reserve(size_t num_vectors) override {
     if (hnsw_) {
       return STATUS_FORMAT(
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
@@ -64,13 +65,13 @@ class HnswlibIndexImpl {
     return Status::OK();
   }
 
-  Status Insert(VertexId vertex_id, const Vector& v) {
+  Status Insert(VertexId vertex_id, const Vector& v) override {
     hnsw_->addPoint(v.data(), vertex_id);
     return Status::OK();
   }
 
   std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) {
+      const Vector& query_vector, size_t max_num_results) const override {
     std::vector<VertexWithDistance<DistanceResult>> result;
     auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), max_num_results);
     result.reserve(tmp_result.size());
@@ -87,7 +88,7 @@ class HnswlibIndexImpl {
     return result;
   }
 
-  Result<Vector> GetVector(VertexId vertex_id) const {
+  Result<Vector> GetVector(VertexId vertex_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
@@ -121,17 +122,15 @@ class HnswlibIndexImpl {
   std::unique_ptr<HNSWImpl> hnsw_;
 };
 
-}  // namespace detail
+}  // namespace
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-HnswlibIndex<Vector, DistanceResult>::HnswlibIndex(const HNSWOptions& options)
-    : VectorIndexBase<Impl, Vector, DistanceResult>(std::make_unique<Impl>(options)) {
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
+    const HNSWOptions& options) {
+  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(options);
 }
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-HnswlibIndex<Vector, DistanceResult>::~HnswlibIndex() = default;
-
-template class HnswlibIndex<FloatVector, float>;
-template class HnswlibIndex<UInt8Vector, int32_t>;
+template class HnswlibIndexFactory<FloatVector, float>;
+template class HnswlibIndexFactory<UInt8Vector, int32_t>;
 
 }  // namespace yb::vectorindex
