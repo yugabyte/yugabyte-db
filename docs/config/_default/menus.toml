@@ -197,16 +197,6 @@
     excludeVersion = true
 
 [[main]]
-  name = "Tech Advisories"
-  weight = 5
-  identifier = "tech-advisories-menu"
-  parent = "releases"
-  url = "/preview/releases/techadvisories/"
-  [main.params]
-    excludeVersion = true
-    imageUrl = "/icons/triangle-exclamation-thin.svg"
-
-[[main]]
   name = "YugabyteDB"
   weight = 1
   identifier = "yugabytedb-releases"
@@ -255,6 +245,16 @@
   [main.params]
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
+
+[[main]]
+  name = "Tech Advisories"
+  weight = 6
+  identifier = "tech-advisories-menu"
+  parent = "releases"
+  url = "/preview/releases/techadvisories/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/triangle-exclamation-thin.svg"
 
 ########## Bottom menu for left navigation
 
