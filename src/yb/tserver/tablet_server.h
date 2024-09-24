@@ -411,6 +411,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.

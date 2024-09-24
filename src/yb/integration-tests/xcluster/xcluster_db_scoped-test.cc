@@ -72,19 +72,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   }
 };
 
-class XClusterDBScopedParameterized
-    : public XClusterDBScopedTest,
-      public ::testing::WithParamInterface<bool> {
- public:
-  bool UseAutomaticMode() override { return GetParam(); }
-};
-
-INSTANTIATE_TEST_CASE_P(
-    AutoMode, XClusterDBScopedParameterized, ::testing::Values(true));
-INSTANTIATE_TEST_CASE_P(
-    SemiMode, XClusterDBScopedParameterized, ::testing::Values(false));
-
-TEST_P(XClusterDBScopedParameterized, TestCreateWithCheckpoint) {
+TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   SetupParams param;
   param.num_producer_tablets = {};
   param.num_consumer_tablets = {};
@@ -254,7 +242,7 @@ TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
 }
 
 // Test dropping all tables and then creating new tables.
-TEST_P(XClusterDBScopedParameterized, DropAllTables) {
+TEST_F(XClusterDBScopedTest, DropAllTables) {
   // Drop bg task timer to speed up test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   // Setup replication with one table
@@ -474,26 +462,16 @@ class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
     return Status::OK();
   }
 
+  void TestAddRemoveNamespace();
+
   const NamespaceName namespace_name2_ = "db2";
   const TableName namespace2_table_name_ = "test_table";
   NamespaceId source_namespace2_id_, target_namespace2_id_;
   std::shared_ptr<client::YBTable> source_namespace2_table_, target_namespace2_table_;
 };
 
-class XClusterDBScopedTestWithTwoDBsParameterized
-    : public XClusterDBScopedTestWithTwoDBs,
-      public ::testing::WithParamInterface<bool> {
- public:
-  bool UseAutomaticMode() override { return GetParam(); }
-};
-
-INSTANTIATE_TEST_CASE_P(
-    AutoMode, XClusterDBScopedTestWithTwoDBsParameterized, ::testing::Values(true));
-INSTANTIATE_TEST_CASE_P(
-    SemiMode, XClusterDBScopedTestWithTwoDBsParameterized, ::testing::Values(false));
-
 // Testing adding and removing namespaces to replication.
-TEST_P(XClusterDBScopedTestWithTwoDBsParameterized, AddRemoveNamespace) {
+void XClusterDBScopedTestWithTwoDBs::TestAddRemoveNamespace() {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
@@ -568,6 +546,19 @@ TEST_P(XClusterDBScopedTestWithTwoDBsParameterized, AddRemoveNamespace) {
   bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_namespace2_id_));
   ASSERT_TRUE(bootstrap_required) << "Bootstrap should be required";
+}
+
+TEST_F(XClusterDBScopedTestWithTwoDBs, AddRemoveNamespace) {
+  ASSERT_NO_FATALS(TestAddRemoveNamespace());
+}
+
+class XClusterDBScopedTestWithTwoDBsAutomaticDDLMode : public XClusterDBScopedTestWithTwoDBs {
+ public:
+  bool UseAutomaticMode() override { return true; }
+};
+
+TEST_F(XClusterDBScopedTestWithTwoDBsAutomaticDDLMode, AddRemoveNamespace) {
+  ASSERT_NO_FATALS(TestAddRemoveNamespace());
 }
 
 // Remove a namespaces from replication when the target side is down.
@@ -789,128 +780,130 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
   ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
 }
 
-// Validate that we can only have one inbound replication group per database.
-TEST_F(XClusterDBScopedTest, MultipleInboundReplications) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
-  ASSERT_OK(CreateReplicationFromCheckpoint());
+  // Validate that we can only have one inbound replication group per database.
+  TEST_F(XClusterDBScopedTest, MultipleInboundReplications) {
+    ASSERT_OK(SetUpClusters());
+    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(CreateReplicationFromCheckpoint());
 
-  auto group2 = xcluster::ReplicationGroupId("group2");
+    auto group2 = xcluster::ReplicationGroupId("group2");
 
-  ASSERT_OK(CheckpointReplicationGroup(group2));
-  ASSERT_NOK_STR_CONTAINS(
-      CreateReplicationFromCheckpoint(/*target_master_addresses=*/"", group2),
-      "already included in replication group");
-}
+    ASSERT_OK(CheckpointReplicationGroup(group2));
+    ASSERT_NOK_STR_CONTAINS(
+        CreateReplicationFromCheckpoint(/*target_master_addresses=*/"", group2),
+        "already included in replication group");
+  }
 
-TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
-  // TODO: replace this once there is a way to use automatic mode with ybadmin.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_automatic_ddl_replication_mode) = UseAutomaticMode();
+  TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
+    // TODO: replace this once there is a way to use automatic mode with ybadmin.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_automatic_ddl_replication_mode) =
+        UseAutomaticMode();
 
-  ASSERT_OK(SetUpClusters());
+    ASSERT_OK(SetUpClusters());
 
-  // Create replication with 1 db.
-  auto result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+    // Create replication with 1 db.
+    auto result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
 
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "is_xcluster_bootstrap_required", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "is_xcluster_bootstrap_required", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
 
-  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
-      target_master_address));
+    const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
+        target_master_address));
 
-  result =
-      ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  const auto source_namespace_id = producer_table_->name().namespace_id();
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "list_xcluster_outbound_replication_groups", source_namespace_id));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "get_xcluster_outbound_replication_group_info",
-      kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, source_namespace_id);
-  ASSERT_STR_CONTAINS(result, producer_table_->id());
-  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
-  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
+    result =
+        ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    const auto source_namespace_id = producer_table_->name().namespace_id();
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "list_xcluster_outbound_replication_groups", source_namespace_id));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "get_xcluster_outbound_replication_group_info",
+        kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, source_namespace_id);
+    ASSERT_STR_CONTAINS(result, producer_table_->id());
+    ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
+    ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
 
-  // Test target side commands.
-  const auto target_namespace_id = consumer_table_->name().namespace_id();
-  result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "na"));
-  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(
-      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace2_id_));
-  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(
-      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace_id));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(CallAdmin(
-      consumer_cluster(), "get_universe_replication_info", kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_DB_SCOPED));
-  ASSERT_STR_CONTAINS(result, namespace_name);
-  ASSERT_STR_CONTAINS(result, target_namespace_id);
-  ASSERT_STR_CONTAINS(result, source_namespace_id);
-  ASSERT_STR_NOT_CONTAINS(result, target_namespace2_id_);
+    // Test target side commands.
+    const auto target_namespace_id = consumer_table_->name().namespace_id();
+    result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "na"));
+    ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(
+        CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace2_id_));
+    ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(
+        CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace_id));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(CallAdmin(
+        consumer_cluster(), "get_universe_replication_info", kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_DB_SCOPED));
+    ASSERT_STR_CONTAINS(result, namespace_name);
+    ASSERT_STR_CONTAINS(result, target_namespace_id);
+    ASSERT_STR_CONTAINS(result, source_namespace_id);
+    ASSERT_STR_NOT_CONTAINS(result, target_namespace2_id_);
 
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
-  ASSERT_OK(InsertRowsInProducer(0, 10));
-  ASSERT_OK(VerifyWrittenRecords());
+    ASSERT_OK(InsertRowsInProducer(0, 10));
+    ASSERT_OK(VerifyWrittenRecords());
 
-  // Add second db to replication.
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
-      namespace_name2_));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+    // Add second db to replication.
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
+        namespace_name2_));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
 
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
 
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "get_xcluster_outbound_replication_group_info",
-      kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, namespace_name);
-  ASSERT_STR_CONTAINS(result, producer_table_->id());
-  ASSERT_STR_CONTAINS(result, namespace_name2_);
-  ASSERT_STR_CONTAINS(result, source_namespace2_table_->id());
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "get_xcluster_outbound_replication_group_info",
+        kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, namespace_name);
+    ASSERT_STR_CONTAINS(result, producer_table_->id());
+    ASSERT_STR_CONTAINS(result, namespace_name2_);
+    ASSERT_STR_CONTAINS(result, source_namespace2_table_->id());
 
-  // Remove database from both sides with one command.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
+    // Remove database from both sides with one command.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
 
-  // Remove database from replication from each cluster individually.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
-      namespace_name2_));
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
-  ASSERT_OK(CallAdmin(
-      consumer_cluster(), "alter_universe_replication", kReplicationGroupId, "remove_namespace",
-      namespace_name2_));
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
-      namespace_name2_));
+    // Remove database from replication from each cluster individually.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
+        namespace_name2_));
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
+    ASSERT_OK(CallAdmin(
+        consumer_cluster(), "alter_universe_replication", kReplicationGroupId, "remove_namespace",
+        namespace_name2_));
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
+        namespace_name2_));
 
-  // Drop replication on both sides.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "drop_xcluster_replication", kReplicationGroupId, target_master_address));
+    // Drop replication on both sides.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "drop_xcluster_replication", kReplicationGroupId,
+        target_master_address));
 
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_NOK_STR_CONTAINS(
-      VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_NOK_STR_CONTAINS(
+        VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
 
-  ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
+    ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
 
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is required");
-}
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is required");
+  }
 
 }  // namespace yb
