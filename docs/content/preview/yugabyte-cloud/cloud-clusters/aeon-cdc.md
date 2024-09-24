@@ -104,8 +104,8 @@ The following example shows the required and common properties:
 | database.password | The user password. |
 | database.sslmode | The SSL mode to use; set to `require`. |
 | topic.prefix | Set to `yb`. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
-| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot` to be set to false. |
-| yb.consistent.snapshot | Set to false. Required for using CDC with YugabyteDB Aeon clusters. to use Initial snapshot mode. |
+| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires `yb.consistent.snapshot` to be set to false. |
+| yb.consistent.snapshot | If you are using CDC with YugabyteDB Aeon clusters in Initial snapshot mode, this property is required and must be set to false. |
 | table.include.list | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
 | plugin.name | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
 | slot.name | The name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two). |
@@ -147,7 +147,7 @@ For more details on deploying and configuring the connector, refer to the [Yugab
 <div class="tab-content">
   <div id="confluent" class="tab-pane fade show active" role="tabpanel" aria-labelledby="confluent-tab">
 
-To stream data change events from YugabyteDB databases, register the YugabyteDB connector with Confluent Cloud as follows:
+To stream data change events from YugabyteDB databases, first create a plugin in Confluent Cloud, then register the YugabyteDB connector with the plugin you created.
 
 To create a plugin:
 
@@ -176,9 +176,9 @@ AWS MSK instructions
   </div>
   <div id="self" class="tab-pane fade" role="tabpanel" aria-labelledby="self-tab">
 
-For information on using the YugabyteDB Connector with a self-manged Kafka Cluster, refer to:
+For information on using the YugabyteDB Connector with a self-managed Kafka cluster, refer to:
 
-- [Get started with YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/get-started/)
+- [Get started with YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector)
 - [YugabyteDB Connector reference documentation](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/)
 
   </div>
@@ -197,12 +197,12 @@ If you are using a managed Kafka service, you can also monitor from the connecto
 
 Use the following views to monitor replication.
 
-| View | Description |
-| :--- | :--- |
-| pg_publication | Contains all publication objects contained in the database. |
-| pg_publication_rel | Contains mapping between publications and tables. This is a many-to-many mapping. |
+| View                  | Description |
+| :-------------------- | :--- |
+| pg_publication        | Contains all publication objects contained in the database. |
+| pg_publication_rel    | Contains mapping between publications and tables. This is a many-to-many mapping. |
 | pg_publication_tables | Provides a list of all replication tables. |
-| pg_replication_slots | Provides a list of all replication slots that currently exist on the database cluster, along with their metadata. |
+| pg_replication_slots  | Provides a list of all replication slots that currently exist on the database cluster, along with their metadata. |
 
 For example, to list the publication slots, use the following query:
 
@@ -221,12 +221,12 @@ yugabyte=> select * from pg_replication_slots;
 
 On the cluster **Metrics** tab, you can view the following metrics:
 
-| Metric | Description |
-| :--- | :--- |
+| Metric                    | Description |
+| :------------------------ | :--- |
 | cdcsdk_change_event_count | The number of records sent by the CDC Service. |
-| cdcsdk_traffic_sent | Total traffic sent, in bytes. |
-| cdcsdk_event_lag_micros | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
-| cdcsdk_expiry_time_ms | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
+| cdcsdk_traffic_sent       | Total traffic sent, in bytes. |
+| cdcsdk_event_lag_micros   | Lag, calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the connector. |
+| cdcsdk_expiry_time_ms     | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
 ## Manage CDC
 
