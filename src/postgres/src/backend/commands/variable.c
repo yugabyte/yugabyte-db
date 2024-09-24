@@ -490,7 +490,7 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	if (*newval == false && XactReadOnly && IsTransactionState() && !InitializingParallelWorker)
 	{
 		/* Can't go to r/w mode inside a r/o transaction */
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("cannot set transaction read-write mode inside a read-only transaction");
@@ -578,20 +578,7 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 		}
 
 		/* We ignore a subtransaction setting it to the existing value. */
-		/*
-		 * YB: For READ COMMITTED isolation in YB, IsSubTransaction() is true even if SET TRANSACTION
-		 * ISOLATION LEVEL is called before any other query because of the fact that every statement
-		 * starts a new sub transaction in YSQL's READ COMMITTED isolation level. Each statement is
-		 * executed after registering an internal savepoint so that if the statement faces serialization
-		 * or read restart errors, the statement can be retried after cleaning up any work it has done
-		 * (the cleanup is done by rolling back to the internal savepoint). But we still need to block
-		 * SET TRANSACTION ISOLATION LEVEL if a non-internal subtransaction has been started by a user
-		 * savepoint.
-		 *
-		 * To acheive this, we don't error out if there are only sub transactions which have
-		 * ybIsInternalRcSubTransaction=true.
-		 */
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction");
@@ -708,7 +695,7 @@ check_follower_reads(bool *newval, void **extra, GucSource source) {
 			GUC_check_errmsg("SET yb_read_from_followers must be called before any query");
 			return false;
 		}
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET yb_read_from_followers must not be called in a subtransaction");
@@ -758,7 +745,7 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 			GUC_check_errmsg("SET yb_follower_read_staleness_ms must be called before any query");
 			return false;
 		}
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET yb_follower_read_staleness_ms must not be called in a subtransaction");
@@ -792,7 +779,7 @@ void assign_follower_read_staleness_ms(int32_t newval, void *extra)
 bool
 check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 {
-	if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+	if (IsSubTransaction())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("SET TRANSACTION [NOT] DEFERRABLE cannot be called within a subtransaction");

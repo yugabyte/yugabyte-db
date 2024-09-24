@@ -204,8 +204,6 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
 									 		 * within a certain transaction (e.g. TEMP
 									 		 * TABLES/WITH HOLD CURSORS)*/
-	bool		ybIsInternalRcSubTransaction; /* Whether this sub transaction was started internally for
-																				* READ COMMITTED isolation */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -241,7 +239,6 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* ybDataSentForCurrQuery */
 	false,						/* isYBTxnWithPostgresRel */
 	NULL,						/* YBPostponedDdlOps */
-	false,					/* ybIsInternalRcSubTransaction */
 };
 
 /*
@@ -2921,11 +2918,12 @@ CleanupTransaction(void)
 }
 
 /*
- *	StartTransactionCommandInternal
+ *	YBStartTransactionCommandInternal
  */
-static void
-StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
+void
+YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint)
 {
+	elog(DEBUG2, "YBStartTransactionCommandInternal");
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -2969,7 +2967,7 @@ StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 			 * Read restart retries are handled transparently for every statement in the txn in
 			 * yb_attempt_to_restart_on_error().
 			 */
-			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_handling)
+			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_internal_savepoint)
 			{
 				/*
 				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
@@ -2994,7 +2992,7 @@ StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 				 * BeginInternalSubTransaction() again, but it is simpler and less error-prone to just copy
 				 * the minimal required logic.
 				 */
-				BeginInternalSubTransactionForReadCommittedStatement();
+				YbBeginInternalSubTransactionForReadCommittedStatement();
 			}
 
 			break;
@@ -3046,7 +3044,7 @@ void
 StartTransactionCommand(void)
 {
 	elog(DEBUG2, "StartTransactionCommand");
-	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
+	YBStartTransactionCommandInternal(false /* yb_skip_read_committed_internal_savepoint */);
 }
 
 void
@@ -4600,11 +4598,11 @@ BeginInternalSubTransaction(const char *name)
 
 	CommitTransactionCommand();
 
-	StartTransactionCommandInternal(true /* yb_skip_read_committed_handling */);
+	YBStartTransactionCommandInternal(true /* yb_skip_read_committed_internal_savepoint */);
 }
 
 /*
- * BeginInternalSubTransactionForReadCommittedStatement
+ * YbBeginInternalSubTransactionForReadCommittedStatement
  *		This is similar to BeginInternalSubTransaction() but doesn't call CommitTransactionCommand()
  *    and StartTransactionCommand(). It is okay to not call those since this method is called only
  *    in 2 specific cases (i.e., when starting a new statement in an already existing txn in
@@ -4614,7 +4612,8 @@ BeginInternalSubTransaction(const char *name)
  *			TBLOCK_SUBINPROGRESS.
  */
 void
-BeginInternalSubTransactionForReadCommittedStatement() {
+YbBeginInternalSubTransactionForReadCommittedStatement()
+{
 
 	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
@@ -4637,7 +4636,6 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 
 	StartSubTransaction();
 	s->blockState = TBLOCK_SUBINPROGRESS;
-	s->ybIsInternalRcSubTransaction = true;
 }
 
 /*
@@ -6355,16 +6353,3 @@ void decrement_sticky_object_count()
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
 }
 
-/*
- * Check if all sub transactions are internal ones started before each statement for READ COMMITTED
- * isolation level.
- */
-bool YbHasOnlyInternalRcSubTransactions()
-{
-	for (TransactionState s = CurrentTransactionState; s != NULL; s = s->parent)
-	{
-		if (s->nestingLevel >= 2 && !s->ybIsInternalRcSubTransaction)
-			return false;
-	}
-	return true;
-}

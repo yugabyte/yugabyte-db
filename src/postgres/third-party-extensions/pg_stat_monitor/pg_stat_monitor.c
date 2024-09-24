@@ -1221,6 +1221,7 @@ pgss_store(uint64 queryid,
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
 	const char      *redacted_query;
+	const char *command_tag;
 
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
@@ -1228,7 +1229,8 @@ pgss_store(uint64 queryid,
 
 	Assert(query != NULL);
 
-	redacted_query = RedactPasswordIfExists(query);
+  command_tag = YbParseCommandTag(query);
+	redacted_query = YbRedactPasswordIfExists(query, command_tag);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])

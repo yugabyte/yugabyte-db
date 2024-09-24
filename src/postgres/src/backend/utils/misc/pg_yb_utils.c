@@ -5255,8 +5255,11 @@ void
 YbGetRedactedQueryString(const char* query, int query_len,
 						 const char** redacted_query, int* redacted_query_len)
 {
+	const char *command_tag;
+
 	*redacted_query = pnstrdup(query, query_len);
-	*redacted_query = RedactPasswordIfExists(*redacted_query);
+	command_tag = YbParseCommandTag(*redacted_query);
+	*redacted_query = YbRedactPasswordIfExists(*redacted_query, command_tag);
 	*redacted_query_len = strlen(*redacted_query);
 }
 

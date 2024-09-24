@@ -488,7 +488,8 @@ static void log_audit_event(AuditEventStackItem *stackItem) {
         case T_AlterRoleStmt:
 
           if (stackItem->auditEvent.commandText != NULL) {
-            stackItem->auditEvent.commandText = RedactPasswordIfExists(stackItem->auditEvent.commandText);
+            const char *command_tag = YbParseCommandTag(stackItem->auditEvent.commandText);
+            stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText, command_tag);
           }
           switch_fallthrough();
         /* Classify role statements */

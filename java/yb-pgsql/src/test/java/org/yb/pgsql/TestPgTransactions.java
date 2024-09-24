@@ -1114,4 +1114,181 @@ public class TestPgTransactions extends BasePgSQLTest {
     verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (3, 3)", 1);
     statement.execute("DROP TABLE test_id_non_pk");
   }
+
+  public void statementExecutorHelper(List<String> queries, Connection conn, Statement stmt,
+      boolean auto_commit_mode, boolean batched) throws Exception {
+    conn.setAutoCommit(auto_commit_mode);
+    for (String query: queries) {
+      if (batched) {
+        stmt.addBatch(query);
+      } else {
+        stmt.execute(query);
+      }
+    }
+    if (batched) {
+      stmt.executeBatch();
+    }
+  }
+
+  @Test
+  public void testSetTransactionIsolationInRC() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+
+    Connection simple_query_conn = getConnectionBuilder().withPreferQueryMode("simple").connect();
+    Statement simple_query_stmt = simple_query_conn.createStatement();
+
+    Connection extended_query_conn =
+      getConnectionBuilder().withPreferQueryMode("extended").connect();
+    Statement extended_query_stmt = extended_query_conn.createStatement();
+
+    simple_query_stmt.execute("SET log_statement='all'");
+    extended_query_stmt.execute("SET log_statement='all'");
+
+    // Case 1: Simple query mode, auto commit on
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, true /* batched */
+    );
+
+    // Case 2: Simple query mode, auto commit on, multi-statement query
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; SELECT 1; ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    // Case 3: Extended query mode, auto commit on
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      extended_query_conn, extended_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      extended_query_conn, extended_query_stmt, true /* auto_commit_mode */, true /* batched */
+    );
+
+    // Case 4: Extended query mode, auto commit on, multi-statement query
+    // (multi-statement query not possible in extended mode)
+
+    // Case 5: Simple query mode, auto commit off
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      simple_query_conn, simple_query_stmt, false /* auto_commit_mode */, false /* batched */
+    );
+
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      simple_query_conn, simple_query_stmt, false /* auto_commit_mode */, true /* batched */
+    );
+
+    // Case 6: Simple query mode, auto commit mode off, multi-statement query
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; SELECT 1; ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, false /* auto_commit_mode */, false /* batched */
+    );
+
+    // Case 7: Extended query mode, auto commit mode off
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      extended_query_conn, extended_query_stmt, false /* auto_commit_mode */, false /* batched */
+    );
+
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1",
+          "ROLLBACK")),
+      extended_query_conn, extended_query_stmt, false /* auto_commit_mode */, true /* batched */
+    );
+
+    // Case 8: Extended query mode, auto commit off, multi-statement query
+    // (multi-statement query not possible in extended mode)
+
+    // Case 9: Simple query mode, auto commit off, multi-statement query, no BEGIN;
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; SELECT 1; ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, false /* auto_commit_mode */, false /* batched */
+    );
+
+    // Cosmetic test cases
+    // Case 10: Lower/ mixed case SET statement
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN;",
+          "set TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+          "SELECT 1;",
+          "ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN;",
+          "sEt TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+          "SELECT 1;",
+          "ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    // Case 11: Leading spaces before SET statement
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN;",
+          "    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+          "SELECT 1;",
+          "ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    // Case 12: Test with DEFERRABLE
+    statementExecutorHelper(
+      new ArrayList<String>(Arrays.asList(
+          "BEGIN;",
+          "SET TRANSACTION DEFERRABLE READ ONLY;",
+          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          "SELECT 1;",
+          "ROLLBACK;")),
+      simple_query_conn, simple_query_stmt, true /* auto_commit_mode */, false /* batched */
+    );
+
+    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
 }
