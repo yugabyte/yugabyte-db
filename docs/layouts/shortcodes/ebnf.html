@@ -37,11 +37,7 @@
 {{ else }}
 {{/* set the ts value to the lastmod ts of the base ebnf file to use cache unless the file is changed */}}
 {{$f := ""}}
-{{ if eq $version "preview" }}
-{{ $f = os.Stat (printf "content/%s/%s/syntax_resources/%s_grammar.ebnf" $version $api $api) }}
-{{else}}
 {{ $f = os.Stat (printf "content/%s/api/%s/syntax_resources/%s_grammar.ebnf" $version $api $api) }}
-{{end}}
 {{ $url = printf "%s&ts=%d" $url $f.ModTime.Unix }}
 {{ end }}
 

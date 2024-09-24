@@ -495,7 +495,7 @@
   name = "YSQL"
   weight = 12
   identifier = "api-ysql"
-  url = "/preview/ysql/"
+  url = "/preview/api/ysql/"
   [preview.params]
     showSection = true
 
