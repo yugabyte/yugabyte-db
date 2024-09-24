@@ -36,6 +36,8 @@
 #include <unordered_set>
 #include <vector>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/trim.hpp>
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
@@ -280,6 +282,7 @@ string GetStaticProgramName() {
 namespace flags_internal {
 Status ValidateFlagValue(const CommandLineFlagInfo& flag_info, const std::string& value);
 std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
+bool IsStringFlagAllowed(const std::string& flag_name);
 }  // namespace flags_internal
 
 namespace {
@@ -595,6 +598,57 @@ void UpdateVmodule() {
   }
 }
 
+// Read the flags text file and return the list of flag names.
+// Each line in the file should contain a single flag name.
+// Empty lines and lines starting with // are ignored.
+Result<std::unordered_set<std::string>> GetFlagNamesFromTxtFile(const std::string& flag_file_name) {
+  std::unordered_set<std::string> flag_names;
+
+  std::string build_path = yb::env_util::GetRootDir("bin");
+
+  auto full_path = JoinPathSegments(build_path, flag_file_name);
+  std::ifstream txt_file(full_path, std::ios_base::in);
+  SCHECK(txt_file, IOError, Format("Could not open text file $0: $1", full_path, strerror(errno)));
+
+  std::string line;
+  while (std::getline(txt_file, line)) {
+    boost::trim(line);
+    if (line.empty() || line.starts_with("//")) {
+      continue;
+    }
+
+    static std::regex valid_flag_re(R"#(^\s*([\w\d]+)\s*$)#");
+
+    std::smatch match;
+    SCHECK(
+        std::regex_search(line, match, valid_flag_re), Corruption,
+        "Invalid flag name '$0' in flag file $1", line, full_path);
+
+    flag_names.insert(match.str());
+  }
+
+  return flag_names;
+}
+
+std::mutex public_string_flags_mutex;
+std::unordered_set<std::string> public_string_flags GUARDED_BY(public_string_flags_mutex);
+
+Status LoadFlagsAllowlist() {
+  auto flags = VERIFY_RESULT(GetFlagNamesFromTxtFile("gflag_allowlist.txt"));
+
+  for (const auto& flag_name : flags) {
+    unordered_set<FlagTag> tags;
+    GetFlagTags(flag_name, &tags);
+    SCHECK_FORMAT(
+        !tags.contains(FlagTag::kSensitive_info), Corruption,
+        "Sensitive flag '$0' cannot be added to the allow list", flag_name);
+  }
+
+  std::lock_guard l(public_string_flags_mutex);
+  public_string_flags.swap(flags);
+  return Status::OK();
+}
+
 }  // anonymous namespace
 
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
@@ -608,6 +662,8 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     flags_callback_internal::RegisterGlobalFlagUpdateCallback(
         &FLAGS_vmodule, "ValidateAndUpdateVmodule", &UpdateVmodule);
   });
+
+  CHECK_OK(LoadFlagsAllowlist());
 
   {
     std::vector<google::CommandLineFlagInfo> flag_infos;
@@ -753,6 +809,14 @@ bool IsFlagSensitive(const std::string& flag_name) {
   unordered_set<FlagTag> tags;
   GetFlagTags(flag_name, &tags);
   return IsFlagSensitive(tags);
+}
+
+bool IsFlagPrivate(const CommandLineFlagInfo& flag_info) {
+  if (flag_info.type != "string") {
+    return false;
+  }
+  std::lock_guard l(public_string_flags_mutex);
+  return !public_string_flags.contains(flag_info.name);
 }
 
 std::string GetMaskedValueIfSensitive(
@@ -1007,7 +1071,7 @@ Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::strin
 std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
     std::function<bool(const std::string&)> auto_flags_filter,
     std::function<bool(const std::string&)> default_flags_filter,
-    const std::map<std::string, std::string>& custom_varz) {
+    const std::map<std::string, std::string>& custom_varz, bool mask_value_if_private) {
   const std::set<string> node_info_flags{
       "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
       "placement_cloud", "placement_region",   "placement_zone"};
@@ -1021,6 +1085,9 @@ std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
     FlagInfo flag_info;
     flag_info.name = flag.name;
     flag_info.value = flags_internal::GetMaskedValueIfSensitive(flag_tags, flag.current_value);
+    if (mask_value_if_private && flags_internal::IsFlagPrivate(flag)) {
+      flag_info.value = flags_internal::kMaskedFlagValue;
+    }
 
     auto type = FlagType::kDefault;
     if (node_info_flags.contains(flag.name)) {
