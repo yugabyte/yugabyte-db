@@ -1,14 +1,14 @@
 ---
 title: The YugabyteDB SQL language [YSQL]
 headerTitle: The YugabyteDB SQL language
-linkTitle: The SQL language
+linkTitle: Language internals
 description: The YugabyteDB SQL language—DDL; DML; DCL; TCL; session and system control; performance control
 image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: the-sql-language
     parent: api-ysql
-    weight: 10
+    weight: 50
 aliases:
   - /preview/api/ysql/with-clause/
 type: indexpage

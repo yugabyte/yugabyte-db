@@ -5,7 +5,7 @@ linkTitle: DROP KEYSPACE
 description: Use the DROP KEYSPACE statement to remove a keyspace from the system.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1260
 aliases:
   - /preview/api/cassandra/ddl_drop_keyspace

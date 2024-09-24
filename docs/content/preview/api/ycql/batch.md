@@ -6,7 +6,7 @@ summary: Execute multiple DML in 1 request
 description: Use batch to update multiple rows in 1 request.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 19991
 type: docs
 ---

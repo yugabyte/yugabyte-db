@@ -5,7 +5,7 @@ linkTitle: INET
 description: Use the INET data type to specify columns for data of IP addresses.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1410
 aliases:
   - /preview/api/cassandra/type_inet

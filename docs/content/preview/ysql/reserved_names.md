@@ -7,7 +7,7 @@ summary: List of reserved names
 menu:
   preview:
     identifier: api-ysql-reserved-names
-    parent: api-ysql
+    parent: the-sql-language
     weight: 100
 aliases:
   - /preview/api/ysql/reserved_names

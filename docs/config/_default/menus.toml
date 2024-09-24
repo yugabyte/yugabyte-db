@@ -492,7 +492,7 @@
     showSection = true
 
 [[preview]]
-  name = "YSQL API"
+  name = "YSQL"
   weight = 12
   identifier = "api-ysql"
   url = "/preview/ysql/"
@@ -500,8 +500,40 @@
     showSection = true
 
 [[preview]]
-  name = "Reference"
+  name = "YCQL"
   weight = 13
+  identifier = "api-cassandra"
+  url = "/preview/api/ycql/"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Statements"
+  weight = 14
+  parent = "api-cassandra"
+  identifier = "ycql-statements"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Data Types"
+  weight = 15
+  parent = "api-cassandra"
+  identifier = "ycql-datatypes"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Functions & Expressions"
+  weight = 16
+  parent = "api-cassandra"
+  identifier = "ycql-expressions"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Reference"
+  weight = 20
   identifier = "reference"
   [preview.params]
     showSection = true
@@ -513,7 +545,7 @@
 
 [[preview]]
   name = "Contribute"
-  weight = 14
+  weight = 30
   identifier = "contribute"
   url = "/preview/contribute/"
   [preview.params]

@@ -5,7 +5,7 @@ linkTitle: USE
 description: Use the USE statement to specify a default keyspace for the current client session.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1290
 aliases:
   - /preview/api/cassandra/ddl_use

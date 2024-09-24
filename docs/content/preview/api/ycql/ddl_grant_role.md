@@ -5,7 +5,7 @@ linkTitle: GRANT ROLE
 description: Use the GRANT ROLE statement to grant a role's permissions and SUPERUSER status to another role.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1282
 aliases:
   - /preview/api/cassandra/ddl_grant_role

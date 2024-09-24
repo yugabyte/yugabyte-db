@@ -1,14 +1,14 @@
 ---
 title: SQL statements [YSQL]
 headerTitle: Categorized list of SQL statements
-linkTitle: SQL statements
+linkTitle: Statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
 image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: statements
-    parent: the-sql-language
-    weight: 100
+    parent: api-ysql
+    weight: 5
 aliases:
   - /preview/api/ysql/commands/
 type: indexpage

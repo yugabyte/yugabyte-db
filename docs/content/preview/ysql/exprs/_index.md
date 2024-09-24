@@ -1,14 +1,14 @@
 ---
 title: Built-in functions and operators [YSQL]
 headerTitle: Built-in functions and operators
-linkTitle: Built-in functions and operators
+linkTitle: Functions and operators
 description: YSQL supports all PostgreSQL-compatible built-in functions and operators.
 image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: api-ysql-exprs
     parent: api-ysql
-    weight: 60
+    weight: 30
 aliases:
   - /preview/api/ysql/exprs/
 type: indexpage
@@ -18,9 +18,7 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 
 | Statement | Description |
 |-----------|-------------|
-| [nextval()](func_nextval) | Returns the next value for the specified sequence in the current session |
-| [currval()](func_currval) | Returns the value returned by the most recent call to _nextval()_ for the specified sequence in the current session |
-| [lastval()](func_lastval) | Returns the value returned by the most recent call to _nextval()_ for _any_ sequence in the current session |
+| [Sequence related functions](sequences) | Functions operating on sequences |
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
 | [Geo-partitioning helper functions](./geo_partitioning_helper_functions/) | Detailed list of geo-partitioning helper functions |
 | [JSON functions and operators](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |

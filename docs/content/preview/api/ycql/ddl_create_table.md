@@ -5,7 +5,7 @@ linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1240
 aliases:
   - /preview/api/ycql/ddl_create_table

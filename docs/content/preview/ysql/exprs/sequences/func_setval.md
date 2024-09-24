@@ -6,7 +6,7 @@ description: Set and return the value for the specified sequence.
 menu:
   preview:
     identifier: api-ysql-exprs-setval
-    parent: api-ysql-exprs
+    parent: api-ysql-sequences
 type: docs
 ---
 

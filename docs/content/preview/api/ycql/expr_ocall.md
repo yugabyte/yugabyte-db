@@ -5,7 +5,7 @@ linkTitle: Operators
 description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-expressions
     weight: 1360
 aliases:
   - /preview/api/cassandra/expr_ocall

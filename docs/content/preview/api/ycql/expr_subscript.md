@@ -5,7 +5,7 @@ linkTitle: Subscripted expressions
 description: Use subscripted expressions to access elements in a multi-element value, such as a map collection by using the [] operator.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-expressions
     weight: 1340
 aliases:
   - /preview/api/cassandra/expr_subscript

@@ -5,7 +5,7 @@ linkTitle: BOOLEAN
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1380
 aliases:
   - /preview/api/cassandra/type_bool

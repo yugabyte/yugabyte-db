@@ -5,7 +5,7 @@ linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1330
 aliases:
   - /preview/api/cassandra/ddl_delete

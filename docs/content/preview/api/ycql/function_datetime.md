@@ -5,7 +5,7 @@ linkTitle: Date and time
 description: Use date and time functions to work on date and time data types.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-expressions
     weight: 1560
 aliases:
   - /preview/api/cassandra/function_datetime

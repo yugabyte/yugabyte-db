@@ -5,7 +5,7 @@ linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1300
 aliases:
   - /preview/api/cassandra/dml_insert
