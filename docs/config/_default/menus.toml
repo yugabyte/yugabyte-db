@@ -241,8 +241,9 @@
   weight = 5
   identifier = "yugabytedb-client-releases"
   parent = "releases"
-  url = "/preview/ybclients/"
+  url = "/preview/yugabyte-clients/"
   [main.params]
+    classes = "separator"
     excludeVersion = true
     imageUrl = "/icons/api.svg"
 
@@ -504,8 +505,8 @@
 [[preview]]
   name = "YugabyteDB Clients"
   weight = 11
-  identifier = "ybclients"
-  url = "/preview/ybclients/"
+  identifier = "yugabyte-clients"
+  url = "/preview/yugabyte-clients/"
   [preview.params]
     showSection = true
 
@@ -824,7 +825,7 @@
   name = "YugabyteDB Clients"
   weight = 9
   identifier = "yb-clients"
-  url = "/preview/ybclients/"
+  url = "/preview/yugabyte-clients/"
   [preview_releases.params]
     showSection = true
 

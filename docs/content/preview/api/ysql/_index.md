@@ -10,8 +10,6 @@ menu:
     parent: api
     identifier: api-ysql
     weight: 10
-aliases:
-  - /preview/api/ysql/
 type: indexpage
 showRightNav: true
 ---

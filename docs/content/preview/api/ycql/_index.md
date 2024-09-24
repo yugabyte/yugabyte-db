@@ -13,8 +13,6 @@ menu:
     weight: 10
     params:
       classes: separator
-aliases:
-  - /preview/api/ycql/
 showRightNav: true
 type: indexpage
 ---

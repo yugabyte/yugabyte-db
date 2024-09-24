@@ -11,7 +11,7 @@ aliases:
 menu:
   preview:
     identifier: ysqlsh
-    parent: ybclients
+    parent: yugabyte-clients
     weight: 10
 type: docs
 ---

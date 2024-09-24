@@ -11,7 +11,7 @@ aliases:
 menu:
   preview:
     identifier: ycqlsh
-    parent: ybclients
+    parent: yugabyte-clients
     weight: 20
 rightNav:
   hideH4: true
