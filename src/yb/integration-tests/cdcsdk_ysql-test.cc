@@ -8899,8 +8899,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
   auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
   ASSERT_OK(leader_master->Restart());
   LOG(INFO) << "Master Restarted";
-  ASSERT_OK(ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster())
-                ->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
 
   TEST_SYNC_POINT("DropIndex::Start");
   // Drop the index.
