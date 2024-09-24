@@ -16,6 +16,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
@@ -207,9 +209,7 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  PerformResultFuture PerformAsync(
-      tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations);
+  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations);
 
   Result<bool> CheckIfPitrActive();
 

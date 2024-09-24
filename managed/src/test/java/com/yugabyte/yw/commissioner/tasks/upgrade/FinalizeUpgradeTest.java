@@ -9,12 +9,14 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -34,7 +36,9 @@ import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.UpgradeYsqlResponse;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
 @RunWith(JUnitParamsRunner.class)
 public class FinalizeUpgradeTest extends UpgradeTaskTest {
@@ -54,6 +58,12 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
       IsInitDbDoneResponse mockIsInitDbDoneResponse =
           new IsInitDbDoneResponse(1000, "", true, true, null, null);
       when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+      when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      when(mockGFlagsValidation.ysqlMajorVersionUpgrade(anyString(), anyString()))
+          .thenReturn(false);
     } catch (Exception ignored) {
       fail();
     }
@@ -61,6 +71,16 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     factory
         .forUniverse(defaultUniverse)
         .setValue(RunYsqlUpgrade.USE_SINGLE_CONNECTION_PARAM, "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion("2.21.0.0-b1");
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, "2.21.0.0-b2");
     TestHelper.updateUniverseSoftwareUpgradeState(
         defaultUniverse, UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize);
   }
@@ -83,8 +103,8 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -126,6 +146,8 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testFinalizeRetries() {
+    System.out.println(
+        "*****defaultUniverse: " + defaultUniverse.getUniverseDetails().softwareUpgradeState);
     FinalizeUpgradeParams taskParams = new FinalizeUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;

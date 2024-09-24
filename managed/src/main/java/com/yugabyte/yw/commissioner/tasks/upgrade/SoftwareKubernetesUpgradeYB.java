@@ -74,6 +74,16 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
 
+          Universe universe = getUniverse();
+          boolean ysqlMajorVersionUpgrade =
+              gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+
+          if (ysqlMajorVersionUpgrade) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
+          }
+
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),

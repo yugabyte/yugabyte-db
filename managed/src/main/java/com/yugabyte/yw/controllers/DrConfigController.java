@@ -183,16 +183,8 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
-            || createForm.dbScoped;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
-        && createForm.dbScoped) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
-              + "by setting yb.xcluster.db_scoped.creationEnabled to true in the application.conf");
-    }
-
+        confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled);
     if (isDbScoped) {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }

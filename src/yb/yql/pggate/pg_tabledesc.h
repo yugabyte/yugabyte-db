@@ -50,8 +50,9 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return relfilenode_id_;
   }
 
-  PgOid pg_table_id() const {
-    return pg_table_id_ != kInvalidOid ? pg_table_id_ : relfilenode_id_.object_oid;
+  PgObjectId pg_table_id() const {
+    return pg_table_id_ == kInvalidOid
+        ? relfilenode_id_ : PgObjectId(relfilenode_id_.database_oid, pg_table_id_);
   }
 
   const client::YBTableName& table_name() const;

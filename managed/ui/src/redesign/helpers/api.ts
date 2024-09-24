@@ -130,7 +130,11 @@ export const suggestedKubernetesConfigQueryKey = {
 
 export const xClusterQueryKey = {
   ALL: ['xCluster'],
-  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid],
+  detail: (xClusterConfigUuid: string, syncWithDb?: boolean) => [
+    ...xClusterQueryKey.ALL,
+    xClusterConfigUuid,
+    syncWithDb
+  ],
   needBootstrap: (requestParams: {
     sourceUniverseUuid?: string;
     targetUniverseUuid?: string;
@@ -142,7 +146,11 @@ export const xClusterQueryKey = {
 
 export const drConfigQueryKey = {
   ALL: ['drConfig'],
-  detail: (drConfigUuid: string | undefined) => [...drConfigQueryKey.ALL, drConfigUuid],
+  detail: (drConfigUuid: string | undefined, syncWithDb?: boolean) => [
+    ...drConfigQueryKey.ALL,
+    drConfigUuid,
+    syncWithDb
+  ],
   safetimes: (drConfigUuid: string) => [...drConfigQueryKey.detail(drConfigUuid), 'safetimes']
 };
 
@@ -455,10 +463,12 @@ class ApiService {
     return axios.post(requestUrl, createDRConfigRequest).then((response) => response.data);
   };
 
-  fetchDrConfig = (drConfigUuid: string | undefined): Promise<DrConfig> => {
+  fetchDrConfig = (drConfigUuid: string | undefined, syncWithDb?: boolean): Promise<DrConfig> => {
     if (drConfigUuid) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-      return axios.get<DrConfig>(requestUrl).then((response) => response.data);
+      return axios
+        .get<DrConfig>(requestUrl, { params: { syncWithDB: syncWithDb } })
+        .then((response) => response.data);
     } else {
       return Promise.reject('Failed to fetch DR config. No DR config UUID provided.');
     }

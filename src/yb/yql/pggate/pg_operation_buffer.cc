@@ -44,7 +44,6 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb::pggate {
-
 namespace {
 
 dockv::KeyEntryValue NullValue(SortingType sorting) {
@@ -213,32 +212,37 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 
 } // namespace
 
-void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
-  operations.push_back(std::move(op));
-  relations.push_back(relation);
+void BufferableOperations::Add(PgsqlOpPtr&& op, const PgTableDesc& table) {
+  operations_.push_back(std::move(op));
+  relations_.push_back(table.pg_table_id());
 }
 
 void BufferableOperations::Swap(BufferableOperations* rhs) {
-  operations.swap(rhs->operations);
-  relations.swap(rhs->relations);
+  operations_.swap(rhs->operations_);
+  relations_.swap(rhs->relations_);
 }
 
 void BufferableOperations::Clear() {
-  operations.clear();
-  relations.clear();
+  operations_.clear();
+  relations_.clear();
 }
 
 void BufferableOperations::Reserve(size_t capacity) {
-  operations.reserve(capacity);
-  relations.reserve(capacity);
+  operations_.reserve(capacity);
+  relations_.reserve(capacity);
 }
 
-bool BufferableOperations::empty() const {
-  return operations.empty();
+bool BufferableOperations::Empty() const {
+  return operations_.empty();
 }
 
-size_t BufferableOperations::size() const {
-  return operations.size();
+size_t BufferableOperations::Size() const {
+  return operations_.size();
+}
+
+void BufferableOperations::MoveTo(PgsqlOps& operations, PgObjectIds& relations) && {
+  operations = std::move(operations_);
+  relations = std::move(relations_);
 }
 
 class PgOperationBuffer::Impl {
@@ -300,20 +304,21 @@ class PgOperationBuffer::Impl {
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
     auto& target = transactional ? txn_ops_ : ops_;
-    if (target.empty()) {
+    if (target.Empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
 
     const auto& write_request = op->write_request();
     const auto& packed_rows = write_request.packed_rows();
+    const auto& table_relfilenode_id = table.relfilenode_id();
     if (!packed_rows.empty()) {
       // Optimistically assume that we don't have conflicts with existing operations.
       bool has_conflict = false;
       for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second)) {
+        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second)) {
           while (it != packed_rows.begin()) {
             it -= 2;
-            keys_.erase(RowIdentifier(table.relfilenode_id(), *it));
+            keys_.erase(RowIdentifier(table_relfilenode_id, *it));
           }
           // Have to flush because already have operations for the same key.
           has_conflict = true;
@@ -323,12 +328,12 @@ class PgOperationBuffer::Impl {
       if (has_conflict) {
         RETURN_NOT_OK(Flush());
         for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-          SCHECK(keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second, IllegalState,
+          SCHECK(keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second, IllegalState,
                  "Unable to insert key: $0", packed_rows);
         }
       }
     } else {
-      RowIdentifier row_id(table.relfilenode_id(), table.schema(), write_request);
+      RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
       if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
         RETURN_NOT_OK(Flush());
         keys_.insert(row_id);
@@ -342,10 +347,8 @@ class PgOperationBuffer::Impl {
         }
       }
     }
-    target.Add(std::move(op), table.relfilenode_id());
-    return keys_.size() >= buffering_settings_.max_batch_size
-      ? SendBuffer()
-      : Status::OK();
+    target.Add(std::move(op), table);
+    return keys_.size() >= buffering_settings_.max_batch_size ? SendBuffer() : Status::OK();
   }
 
   Status DoFlush() {
@@ -429,7 +432,7 @@ class PgOperationBuffer::Impl {
                               BufferableOperations ops,
                               bool transactional,
                               size_t ops_count) {
-    if (!ops.empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
+    if (!ops.Empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
       // In case max_in_flight_operations < max_batch_size, the number of in-flight operations will
       // be equal to max_batch_size after sending single buffer. So use max of these values for

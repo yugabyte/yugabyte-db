@@ -3,20 +3,27 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +37,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
+import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -106,6 +114,90 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         nodes,
         upgradeContext,
         false);
+  }
+
+  protected void createMasterUpgradeFlowTasks(
+      Universe universe,
+      List<NodeDetails> masterNodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean activeRole) {
+    switch (taskParams().upgradeOption) {
+      case ROLLING_UPGRADE:
+        createRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            masterNodes,
+            ServerType.MASTER,
+            upgradeContext,
+            activeRole,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_ROLLING_UPGRADE:
+        createNonRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            masterNodes,
+            ServerType.MASTER,
+            upgradeContext,
+            activeRole,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_RESTART_UPGRADE:
+        throw new UnsupportedOperationException(
+            "Non-restart upgrade is not supported for software upgrade");
+      default:
+        break;
+    }
+  }
+
+  protected void createTServerUpgradeFlowTasks(
+      Universe universe,
+      List<NodeDetails> tserverNodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean reProvision) {
+    switch (taskParams().upgradeOption) {
+      case ROLLING_UPGRADE:
+        createRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              if (reProvision) {
+                createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+              }
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            tserverNodes,
+            ServerType.TSERVER,
+            upgradeContext,
+            true /* activeRole */,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_ROLLING_UPGRADE:
+        createNonRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              if (reProvision) {
+                createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+              }
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            tserverNodes,
+            ServerType.TSERVER,
+            upgradeContext,
+            true /* activeRole */,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_RESTART_UPGRADE:
+        throw new UnsupportedOperationException(
+            "Non-restart upgrade is not supported for software upgrade");
+      default:
+        break;
+    }
   }
 
   protected void createYbcInstallTask(
@@ -223,6 +315,27 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
   protected void createPrecheckTasks(Universe universe, String newVersion) {
     super.createPrecheckTasks(universe);
+
+    boolean ysqlMajorVersionUpgrade =
+        gFlagsValidation.ysqlMajorVersionUpgrade(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                newVersion)
+            && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+
+    if (ysqlMajorVersionUpgrade) {
+      // This is a temp check and it will be removed once we have solution from DB team.
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth) {
+        throw new PlatformServiceException(
+            Status.INTERNAL_SERVER_ERROR, "YSQL Auth is not supported with PG15 upgrade");
+      }
+
+      // This is a temp check and it will be removed once we have solution from DB team.
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
+        throw new PlatformServiceException(
+            Status.INTERNAL_SERVER_ERROR, "Dedicated nodes is not supported with PG15 upgrade");
+      }
+    }
+
     MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
     Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
@@ -319,5 +432,88 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
     }
     return false;
+  }
+
+  /**
+   * This is temp function to set enable_expression_pushdown=false flag on all tservers which are
+   * missing this flag. This dependency will be removed in sometime hence, this function will be
+   * removed completely.
+   */
+  protected void createGFlagsUpgradeTaskForYsqlMajorUpgrade(
+      Universe universe, MastersAndTservers mastersAndTservers, boolean upgradeFinalize) {
+    createUpgradeTaskFlow(
+        (nodes, processTypes) -> {
+          String subGroupDescription =
+              String.format(
+                  "AnsibleConfigureServers (%s) for: %s",
+                  SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+
+          TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+          List<Cluster> clusters = universe.getUniverseDetails().clusters;
+
+          for (NodeDetails node : nodes) {
+            Cluster cluster = findCluster(clusters, node.placementUuid);
+            UserIntent userIntent = cluster.userIntent;
+            ServerType processType = getSingle(processTypes);
+            Map<String, String> flags =
+                GFlagsUtil.getGFlagsForNode(node, processType, cluster, clusters);
+            subTaskGroup.addSubTask(
+                getServerConfUpdateTaskForPGUpgrade(
+                    userIntent, node, processType, flags, upgradeFinalize));
+          }
+          subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+          getRunnableTask().addSubTaskGroup(subTaskGroup);
+        },
+        mastersAndTservers,
+        RUN_BEFORE_STOPPING,
+        taskParams().isYbcInstalled());
+  }
+
+  private AnsibleConfigureServers getServerConfUpdateTaskForPGUpgrade(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      Map<String, String> gFlags,
+      boolean upgradeFinalize) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
+
+    if (!upgradeFinalize) {
+      String pgUpgradeExpressionPushdownFlag = "yb_enable_expression_pushdown=false";
+      if (gFlags.containsKey(GFlagsUtil.YSQL_PG_CONF_CSV)) {
+        gFlags.put(
+            GFlagsUtil.YSQL_PG_CONF_CSV,
+            GFlagsUtil.mergeCSVs(
+                pgUpgradeExpressionPushdownFlag, gFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV), true));
+      } else {
+        gFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, pgUpgradeExpressionPushdownFlag);
+      }
+    } else {
+      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.FINALIZE;
+    }
+    params.gflags = gFlags;
+    params.gflagsToRemove = new HashSet<>();
+
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    return task;
+  }
+
+  private Cluster findCluster(List<Cluster> clusters, UUID placementUuid) {
+    return clusters.stream()
+        .filter(cluster -> cluster.uuid.equals(placementUuid))
+        .findFirst()
+        .orElse(null);
+  }
+
+  protected Runnable getFinalizeYSQLMajorUpgradeTask(Universe universe) {
+    return () -> {
+      createGFlagsUpgradeTaskForYsqlMajorUpgrade(
+          universe,
+          new MastersAndTservers(universe.getMasters(), universe.getTServers()),
+          true /* upgradeFinalize */);
+    };
   }
 }

@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -115,6 +116,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       }
       return masterAddresses;
     }
+
+    public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState = null;
   }
 
   @Override
@@ -143,6 +146,21 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
       }
     }
+
+    if (universe.getUniverseDetails().isSoftwareRollbackAllowed
+        && universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+      String currentVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+      if (gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion)
+          && taskParams().ysqlMajorVersionUpgradeState == null) {
+        log.debug(
+            "Setting ysqlMajorVersionUpgradeState to Pre_finalize for universe {}",
+            universe.getUniverseUUID());
+        taskParams().ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
+      }
+    }
+
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,
