@@ -120,8 +120,6 @@ The following example shows the required and common properties:
 
 For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 
-For more details on deploying and configuring the connector, refer to the [YugabyteDB Connector documentation](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/).
-
 ### Configure provider
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">

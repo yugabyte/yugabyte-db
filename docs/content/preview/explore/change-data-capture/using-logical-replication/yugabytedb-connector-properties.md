@@ -41,7 +41,7 @@ The name of the YugabyteDB [logical decoding plugin](../key-concepts/#output-plu
 
 Supported values are `yboutput`, and `pgoutput`.
 
-Default: decoderbufs
+Default: `decoderbufs`
 
 ##### slot.name
 
@@ -49,7 +49,7 @@ The name of the YugabyteDB logical decoding slot that was created for streaming 
 
 Slot names can contain lower-case letters, numbers, and the underscore character.
 
-Default: debezium
+Default: `debezium`
 
 ##### slot.drop.on.stop
 
@@ -61,13 +61,13 @@ Default: false
 
 ##### publication.name
 
-The name of the YugabyteDB publication created for streaming changes when using pgoutput.
+The name of the YugabyteDB publication created for streaming changes when using `pgoutput`.
 
 This publication is created at start-up if it does not already exist and it includes all tables. Debezium then applies its own include/exclude list filtering, if configured, to limit the publication to change events for the specific tables of interest. The connector user must have superuser permissions to create this publication, so it is usually preferable to create the publication before starting the connector for the first time.
 
 If the publication already exists, either for all tables or configured with a subset of tables, Debezium uses the publication as it is defined.
 
-Default: dbz_publication
+Default: `dbz_publication`
 
 ##### database.hostname
 
@@ -563,7 +563,7 @@ Specify the conditions that trigger a refresh of the in-memory schema for a tabl
 
 This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table.
 
-Default: columns_diff
+Default: `columns_diff`
 
 ##### snapshot.delay.ms
 
@@ -599,7 +599,7 @@ Default: 10000 (10 seconds)
 
 Specifies the constant that the connector provides to indicate that the original value is a toasted value that is not provided by the database. If the setting of `unavailable.value.placeholder` starts with the `hex:` prefix it is expected that the rest of the string represents hexadecimally encoded octets.
 
-Default: __debezium_unavailable_value
+Default: `__debezium_unavailable_value`
 
 ##### provide.transaction.metadata
 
