@@ -12,18 +12,9 @@ type: indexpage
 YugabyteDB ships with command line interface (CLI) shells for interacting with each YugabyteDB API:
 
 - [ysqlsh](./ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../api/ysql/).
-- [ycqlsh](./ycqlsh/) - The YCQL shell for interacting with YugabyteDB using [YCQL](../api/ycql/).
+- [ycqlsh](./ycqlsh/) - The CQL shell for interacting with YugabyteDB using [YCQL](../api/ycql/).
 
 For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
-
-{{<tip title="Specifying values that have a hypen">}}
-For all the command line tools, when passing in an argument with a value that starts with a hyphen (for example, `-1`), add a double hyphen (`--`) at the end of other arguments followed by the argument name and value. This tells the binary to treat those arguments as positional. For example, to specify `set_flag ysql_select_parallelism -1`, you need to do the following:
-
-```bash
-yb-ts-cli [other arguments] -- set_flag ysql_select_parallelism -1
-```
-
-{{</tip>}}
 
 ### Installation
 
