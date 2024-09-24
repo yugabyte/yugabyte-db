@@ -153,7 +153,7 @@ You now have a mechanism to fetch jobs from the queue in a distributed, correct,
 
 To do this, want to pick the first item in the queue and quickly mark it as selected so that other workers accessing the queue won't process that particular item.
 
-In YugabyteDB, individual statements are transactional, so you just need to select one item, mark it as Running in one statement, and return the selected id. For this we can use the following:
+In YugabyteDB, individual statements are transactional, so you just need to select one item, mark it as Running in one statement, and return the selected id. For this, you can use the following:
 
 ```plpgsql
 UPDATE Jobs SET status = 'Running'
