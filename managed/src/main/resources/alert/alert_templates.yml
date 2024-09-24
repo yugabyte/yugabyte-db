@@ -1921,7 +1921,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
         (yb_node_clock_drift_check_ms{universe_uuid='{{ $labels.universe_uuid }}'})
-        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Clock drift is high for universe '{{ $labels.source_name }}'.
