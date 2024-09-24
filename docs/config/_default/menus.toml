@@ -244,7 +244,7 @@
   url = "/preview/ybclients/"
   [main.params]
     excludeVersion = true
-    imageUrl = "/images/migrate/migration-icon.svg"
+    imageUrl = "/icons/api.svg"
 
 [[main]]
   name = "Tech Advisories"
