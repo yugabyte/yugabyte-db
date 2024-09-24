@@ -39,6 +39,7 @@
 
 #include <gtest/gtest.h>
 
+// #include "yb/common/common_net.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -93,6 +94,7 @@ DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -2723,6 +2725,76 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
   ASSERT_OK(mini_master->Start());
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
   ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterTest, TestGetClosestLiveTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  auto& catalog_manager = mini_master_->catalog_manager();
+  auto result = catalog_manager.GetClosestLiveTserver();
+  // No valid tservers.
+  ASSERT_NOK(result);
+
+  uint32 tserver_idx = 1;
+  auto add_tserver = [this, &tserver_idx](
+                         const std::string& uuid, std::string&& cloud, std::string&& region,
+                         std::string&& zone, std::string&& host) -> Status {
+    TSToMasterCommonPB common;
+    TSRegistrationPB registration;
+    common.mutable_ts_instance()->set_permanent_uuid(Format(uuid));
+    common.mutable_ts_instance()->set_instance_seqno(0);
+    auto* add_broadcast_addresses = registration.mutable_common()->add_broadcast_addresses();
+    MakeHostPortPB(std::move(host), 1000 + tserver_idx++, add_broadcast_addresses);
+    *registration.mutable_common()->add_private_rpc_addresses() = *add_broadcast_addresses;
+    *registration.mutable_common()->mutable_cloud_info() =
+        MakeCloudInfoPB(std::move(cloud), std::move(region), std::move(zone));
+    RETURN_NOT_OK(SendHeartbeat(common, registration));
+    return Status::OK();
+  };
+
+  // Default placement is cloud1, rack1, zone.
+  // Add tserver in different cloud.
+  {
+    const auto tserver1_uuid = "uuid-1";
+    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
+  }
+
+  // Add tserver in same cloud, different region.
+  {
+    const auto tserver2_uuid = "uuid-2";
+    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
+  }
+
+  // Add tserver in same cloud, same region, different zone.
+  {
+    const auto tserver3_uuid = "uuid-3";
+    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
+  }
+
+  // Add tserver in same cloud, same region, same zone, different host.
+  {
+    const auto tserver4_uuid = "uuid-4";
+    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
+  }
+
+  // Add tserver in same host as master.
+  {
+    ServerRegistrationPB master_registration;
+    ASSERT_OK(mini_master_->master()->GetMasterRegistration(&master_registration));
+    auto master_host = master_registration.private_rpc_addresses().begin()->host();
+    const auto tserver5_uuid = "uuid-5";
+    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
+  }
 }
 
 } // namespace master

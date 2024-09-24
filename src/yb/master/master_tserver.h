@@ -108,6 +108,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
  private:
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;
 };

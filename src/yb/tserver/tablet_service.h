@@ -227,6 +227,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void AdminExecutePgsql(
+      const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

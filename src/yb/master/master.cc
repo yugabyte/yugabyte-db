@@ -56,6 +56,7 @@
 #include "yb/master/master_cluster_handler.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
