@@ -226,7 +226,7 @@ Default: prefer
 
 ##### database.sslcert
 
-The path to the file that contains the SSL certificate for the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html). |
+The path to the file that contains the SSL certificate for the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/static/libpq-connect.html).
 
 No default.
 
@@ -561,19 +561,19 @@ Specify the conditions that trigger a refresh of the in-memory schema for a tabl
 
 `columns_diff_exclude_unchanged_toast` instructs the connector to refresh the in-memory schema cache if there is a discrepancy with the schema derived from the incoming message, unless unchanged TOASTable data fully accounts for the discrepancy.
 
-This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table. |
+This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table.
 
 Default: columns_diff
 
 ##### snapshot.delay.ms
 
-An interval in milliseconds that the connector should wait before performing a snapshot when the connector starts. If you are starting multiple connectors in a cluster, this property is useful for avoiding snapshot interruptions, which might cause re-balancing of connectors. |
+An interval in milliseconds that the connector should wait before performing a snapshot when the connector starts. If you are starting multiple connectors in a cluster, this property is useful for avoiding snapshot interruptions, which might cause re-balancing of connectors.
 
 No default
 
 ##### snapshot.fetch.size
 
-During a snapshot, the connector reads table content in batches of rows. This property specifies the maximum number of rows in a batch. |
+During a snapshot, the connector reads table content in batches of rows. This property specifies the maximum number of rows in a batch.
 
 Default: 10240
 
