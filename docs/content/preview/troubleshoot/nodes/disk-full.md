@@ -55,7 +55,7 @@ During YB-TServer startup, the FSManager (File System Manager) module checks the
 
 **Option 1**: Check if any files (like older YB-TServer logs) on the `log_dir` drive can be removed/deleted to help the YB-TServer process to bootstrap successfully.
 
-**Option 2**: Starting with {{<release "2.18.1.0">}}, you can prevent repeated WAL file allocation in a crash loop by using the [--reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
+**Option 2**: In {{<release "2.18.1.0">}} and later, you can prevent repeated WAL file allocation in a crash loop by using the [--reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
 
 If a tablet's last WAL file size is less than or equal to this threshold value, the bootstrap process will reuse the last WAL file rather than create a new one. To set the flag so that the last WAL file is always reused, you can set the flag to the current maximum WAL file size (64MB), as follows:
 
