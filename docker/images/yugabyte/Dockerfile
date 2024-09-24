@@ -65,6 +65,11 @@ EOR
   fi
 EOF
 
+# Install hostname for ubi8 images.
+RUN if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8/ubi"* ]]; then \
+  dnf install hostname; \
+  fi
+
 # Ensure our base system is fully up to date
 RUN set -x; \
   $yum_upgrade -y \
