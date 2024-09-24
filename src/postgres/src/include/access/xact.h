@@ -481,7 +481,6 @@ extern void ReleaseSavepoint(const char *name);
 extern void DefineSavepoint(const char *name);
 extern void RollbackToSavepoint(const char *name);
 extern void BeginInternalSubTransaction(const char *name);
-extern void BeginInternalSubTransactionForReadCommittedStatement();
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
@@ -540,6 +539,8 @@ extern void EnterParallelMode(void);
 extern void ExitParallelMode(void);
 extern bool IsInParallelMode(void);
 
+extern void YbBeginInternalSubTransactionForReadCommittedStatement();
+extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);
@@ -568,6 +569,5 @@ extern void YBClearDdlHandles(void);
  * Utility for clearing transaction ID.
 */
 extern void YbClearCurrentTransactionId(void);
-extern bool YbHasOnlyInternalRcSubTransactions(void);
 extern void YbClearParallelContexts(void);
 #endif							/* XACT_H */
