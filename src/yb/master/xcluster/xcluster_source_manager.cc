@@ -474,8 +474,8 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
   for (const auto& table_id : table_ids) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
     auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(stripped_table_id));
-    SCHECK(
-        table_info->LockForRead()->visible_to_client(), NotFound, "Table does not exist",
+    SCHECK_FORMAT(
+        table_info->LockForRead()->visible_to_client(), NotFound, "Table $0 does not exist",
         stripped_table_id);
 
     VLOG(1) << "Creating xcluster streams for table: " << table_id;

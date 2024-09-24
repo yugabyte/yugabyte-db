@@ -238,19 +238,28 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         "Table $0 already exists in namespace $1", table_id, namespace_id);
 
     auto table_info = TableInfoPtr(new TableInfo(table_id, /*colocated=*/false));
-    auto l = table_info->LockForWrite();
-    auto& pb = l.mutable_data()->pb;
-    pb.set_name(table_name);
-    pb.set_namespace_id(namespace_id);
-    pb.mutable_schema()->set_pgschema_name(pg_schema_name);
-    pb.set_table_type(PGSQL_TABLE_TYPE);
-    l.Commit();
+    {
+      auto l = table_info->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      pb.set_state(master::SysTablesEntryPB::PREPARING);
+      pb.set_name(table_name);
+      pb.set_namespace_id(namespace_id);
+      pb.mutable_schema()->set_pgschema_name(pg_schema_name);
+      pb.set_table_type(PGSQL_TABLE_TYPE);
+      l.Commit();
+    }
 
     std::lock_guard l2(mutex_);
     namespace_tables[namespace_id].push_back(table_info);
 
     if (IsTableEligibleForXClusterReplication(*table_info)) {
       RETURN_NOT_OK(AddTableToXClusterSourceTask(*table_info));
+    }
+
+    {
+      auto l = table_info->LockForWrite();
+      l.mutable_data()->pb.set_state(master::SysTablesEntryPB::RUNNING);
+      l.Commit();
     }
 
     return table_info;
