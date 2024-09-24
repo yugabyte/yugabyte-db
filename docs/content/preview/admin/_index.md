@@ -20,6 +20,8 @@ YugabyteDB ships with a variety of tools to interact with, manage, and configure
 
 {{<note title="Note">}}
 For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+
+For information about YugabyteDB API clients (YSQL shell and YCQL shell), refer to [YugabyteDB Clients](../yugabyte-clients/).
 {{</note>}}
 
 {{<tip title="Specifying values that have a hypen">}}
@@ -34,18 +36,6 @@ yb-ts-cli [other arguments] -- set_flag ysql_select_parallelism -1
 ## Tools
 
 {{<index/block>}}
-
-  {{<index/item
-    title="ysqlsh"
-    body="Interact with YugabyteDB, including querying data, creating and modifying database objects, and executing SQL commands and scripts using YSQL."
-    href="ysqlsh/"
-    icon="fa-solid fa-terminal">}}
-
-  {{<index/item
-    title="ycqlsh"
-    body="Interact with YugabyteDB, including querying data, creating and modifying database objects, and executing CQL commands and scripts using YCQL."
-    href="ycqlsh/"
-    icon="fa-solid fa-terminal">}}
 
   {{<index/item
     title="yb-admin"
