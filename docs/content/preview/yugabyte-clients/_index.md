@@ -11,8 +11,8 @@ type: indexpage
 
 YugabyteDB ships with command line interface (CLI) shells for interacting with each YugabyteDB API:
 
-- [ysqlsh](./ysqlsh/)
-- [ycqlsh](./ycqlsh/)
+- [ysqlsh](./ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../api/ysql/).
+- [ycqlsh](./ycqlsh/) - The YCQL shell for interacting with YugabyteDB using [YCQL](../api/ycql/).
 
 For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 
