@@ -7,7 +7,8 @@ pghost3=127.0.0.$((ip_start + 2))
 
 # TEST_always_return_consensus_info_for_succeeded_rpc=false is needed to upgrade a release build to
 # debug.
-common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false"
+# On MacOS, pg_client_use_shared_memory harms initdb performance significantly.
+common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false,pg_client_use_shared_memory=false"
 # yb_enable_expression_pushdown=false is needed because the expression pushdown rewriter is not yet
 # implemented.
 common_tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
