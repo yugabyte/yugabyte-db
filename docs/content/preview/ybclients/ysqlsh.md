@@ -7,10 +7,11 @@ headcontent: Shell for interacting with the YugabyteDB YSQL API
 aliases:
   - /develop/tools/ysqlsh/
   - /preview/develop/tools/ysqlsh/
+  - /preview/admin/ysqlsh/
 menu:
   preview:
     identifier: ysqlsh
-    parent: admin
+    parent: ybclients
     weight: 10
 type: docs
 ---
@@ -22,38 +23,6 @@ The YugabyteDB SQL shell ysqlsh provides a CLI for interacting with YugabyteDB u
 - interactively enter SQL queries and see the query results
 - input from a file or the command line
 - use [meta-commands](../ysqlsh-meta-commands/) for scripting and administration
-
-### Installation
-
-ysqlsh is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
-
-If you prefer, you can install a standalone version using any of the following methods:
-
-- Using Docker:
-
-    ```sh
-    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-    ```
-
-- Using Homebrew:
-
-    ```sh
-    brew tap yugabyte/tap
-    brew install yugabytedb-client
-    ysqlsh
-    ```
-
-- Using a shell script:
-
-    ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-    ```
-
-    If you have `wget`, you can use the following:
-
-    ```sh
-    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-    ```
 
 ysqlsh works best with servers of the same or an older major version. [Meta-commands](../ysqlsh-meta-commands/) are particularly likely to fail if the server is a newer version than ysqlsh itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
 

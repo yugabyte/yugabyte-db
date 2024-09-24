@@ -238,10 +238,20 @@
 
 [[main]]
   name = "YugabyteDB Voyager"
-  weight = 3
+  weight = 4
   identifier = "yugabytedb-voyager-releases"
   parent = "releases"
   url = "/preview/yugabyte-voyager/release-notes/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/images/migrate/migration-icon.svg"
+
+[[main]]
+  name = "YugabyteDB Clients"
+  weight = 5
+  identifier = "yugabytedb-client-releases"
+  parent = "releases"
+  url = "/preview/ybclients/"
   [main.params]
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
@@ -488,6 +498,14 @@
   weight = 10
   identifier = "benchmark"
   url = "/preview/benchmark/"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "YugabyteDB Clients"
+  weight = 11
+  identifier = "ybclients"
+  url = "/preview/ybclients/"
   [preview.params]
     showSection = true
 
@@ -799,6 +817,14 @@
   weight = 8
   identifier = "voy-releases"
   url = "/preview/yugabyte-voyager/release-notes/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Clients"
+  weight = 9
+  identifier = "yb-clients"
+  url = "/preview/ybclients/"
   [preview_releases.params]
     showSection = true
 
