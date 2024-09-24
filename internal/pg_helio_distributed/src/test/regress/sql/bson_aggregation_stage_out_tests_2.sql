@@ -15,11 +15,6 @@ SELECT helio_api.insert('db', '{"insert":"source", "documents":[
    { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
 ]}');
 
--- simple test without GUC enable
-SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : "target"} ], "cursor": { "batchSize": 1 } }', 4294967294);
-
--- Let's enable GUC
-SET helio_api.enableOutStage TO ON;
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : "target"} ], "cursor": { "batchSize": 1 } }', 4294967294);
 SELECT document FROM helio_api.collection('db', 'target');
