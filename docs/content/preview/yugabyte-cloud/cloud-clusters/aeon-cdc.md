@@ -16,7 +16,18 @@ You can use change data capture with YugabyteDB Aeon clusters to capture changes
 
 ## Overview
 
-- key concepts explore/change-data-capture/using-logical-replication/key-concepts/
+YugabyteDB Aeon uses the [YugabyteDB Connector](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/), which uses the [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html) protocol, for change data capture. Logical replication uses a publish and subscribe model with one or more subscribers subscribing to one or more publications on a publisher node. Subscribers pull data from the publications they subscribe to and may subsequently re-publish data to allow cascading replication or more complex configurations.
+
+Logical replication of a table starts with taking a snapshot of the data on the publisher database and copying that to the subscriber. After that is done, the changes on the publisher are sent to the subscriber as they occur in real-time. The subscriber applies the data in the same order as the publisher so that transactional consistency is guaranteed for publications within a single subscription. This method of data replication is sometimes referred to as transactional replication.
+
+A publication is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database. Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications only contain tables. Tables are added explicitly, except when a publication is created for ALL TABLES. Every publication can have multiple subscribers.
+
+A subscription is the downstream side of logical replication. The node where a subscription is defined is referred to as the subscriber. A subscription defines the connection to another database and set of publications (one or more) to which it wants to subscribe. Each subscription receives changes via one replication slot.
+
+A replication slot represents a stream of changes that can be replayed to a client in the order they were made on the origin server. Each slot streams a sequence of changes from a single database. You can initially create two replication slots per YugabyteDB Aeon cluster.
+
+For more information, refer to [Key concepts](../../../explore/change-data-capture/using-logical-replication/key-concepts/)
+
 - monitor views explore/change-data-capture/using-logical-replication/monitor/
     CDC Service metrics - export from YBM/ Metrics tab
 
@@ -26,26 +37,26 @@ You can use change data capture with YugabyteDB Aeon clusters to capture changes
 
 - Customer Kafka environment
 
-  - [Self-managed Kafka](explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as Confluent Cloud or AWS MSK Connect.
+  - [Self-managed Kafka](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as Confluent Cloud or AWS MSK Connect.
 
-- [YugabyteDB Connector v2.5.2](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1)
+- YugabyteDB Connector v2.5.2
 
   - Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
 
 ## Limitations
 
-By default, you have a maximum of two active replication slots. If you need more slots, contact YugabyteDB Support.
+By default, you have a maximum of two active replication slots. If you need more slots, contact {{% support-cloud %}}.
 
 ## Configure change data capture
 
-YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, first configure the YugabyteDB connector settings using a JSON file containing the connector configuration properties, including the connection parameters for your YugabyteDB Aeon cluster.
+YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, first configure the YugabyteDB connector settings using a JSON file containing the connector configuration properties. This includes the connection parameters for your YugabyteDB Aeon cluster.
 
 ### Create Kafka topics
 
-If auto creation of topics is not enabled in the Kafka Connect cluster then you need to create the following topics in Kafka manually:
+If auto creation of topics is not enabled in the Kafka Connect cluster, then you need to create the following topics in Kafka manually:
 
-- Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`.
-- Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The `topic.heartbeat.prefix` has a default value of `__debezium-heartbeat`.
+- Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`. See [topic.prefix](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-prefix).
+- Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The `topic.heartbeat.prefix` has a default value of `__debezium-heartbeat`. See [topic.heartbeat.prefix](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/#topic-heartbeat-prefix).
 
 ### Configure the connector
 
@@ -94,12 +105,12 @@ The following example shows the required and common properties:
 | database.sslmode | The SSL mode to use; set to `require`. |
 | topic.prefix | Set to `yb`. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
 | snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires the `yb.consistent.snapshot` to be set to false. |
-| yb.consistent.snapshot | Must be set to false for to use Initial snapshot mode. |
+| yb.consistent.snapshot | Set to false. Required for using CDC with YugabyteDB Aeon clusters. to use Initial snapshot mode. |
 | table.include.list | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
 | plugin.name | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
 | slot.name | The name for the replication slot. If a slot with the same name does not already exist, YugabyteDB Aeon creates it (to a maximum of two). |
-| value.converter | Controls the format of the values in messages written to or read from Kafka. Set to org.apache.kafka.connect.json.JsonConverter to use JSON. |
-| key.converter | Controls the format of the keys in messages written to or read from Kafka. Set to org.apache.kafka.connect.json.JsonConverter to use JSON. |
+| value.converter | Controls the format of the values in messages written to or read from Kafka. Set to `org.apache.kafka.connect.json.JsonConverter` to use JSON. |
+| key.converter | Controls the format of the keys in messages written to or read from Kafka. Set to `org.apache.kafka.connect.json.JsonConverter` to use JSON. |
 | value.converter.schemas.enable | Set to true to use schemas with JSON data format. |
 | key.converter.schemas.enable | Set to true to use schemas with JSON data format. |
 | publication.name | Provide a publication name if you have a publication already created. |

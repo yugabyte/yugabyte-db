@@ -653,7 +653,7 @@ Default: 10000
 
 Controls the name of the topic to which the connector sends heartbeat messages. The topic name has this pattern:
 
-`topic.heartbeat.prefix.topic.prefix`
+`<topic.heartbeat.prefix>.<topic.prefix>`
 
 For example, if the topic prefix is `fulfillment`, the default topic name is `__debezium-heartbeat.fulfillment`.
 
