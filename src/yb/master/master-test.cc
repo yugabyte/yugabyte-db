@@ -163,7 +163,7 @@ TEST_F(MasterTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
-      webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
+      webserver_dir, {"masters", "tservers", "tables"}, mini_master_->master());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
