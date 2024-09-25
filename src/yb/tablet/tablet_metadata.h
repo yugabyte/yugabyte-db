@@ -45,6 +45,7 @@
 #include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/dockv/partition.h"
@@ -67,6 +68,7 @@ namespace yb {
 namespace tablet {
 
 using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+using docdb::SkipTableTombstoneCheck;
 
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
@@ -78,7 +80,6 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
 YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
-YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct TableInfo {
  private:
