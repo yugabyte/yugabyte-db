@@ -380,6 +380,12 @@ void MonoTime::MakeAtLeast(MonoTime rhs) {
   }
 }
 
+void MonoTime::MakeAtMost(MonoTime rhs) {
+  if (rhs.Initialized() && (!Initialized() || value_ > rhs.value_)) {
+    value_ = rhs.value_;
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other) {
