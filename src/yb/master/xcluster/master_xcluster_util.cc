@@ -17,10 +17,18 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 
 namespace yb::master {
 
+static const auto kXClusterDDLExtensionName = xcluster::kDDLQueuePgSchemaName;
+
 bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
+  if (!table.LockForRead()->visible_to_client()) {
+    // Ignore dropped tables.
+    return false;
+  }
+
   if (table.GetTableType() != PGSQL_TABLE_TYPE || table.is_system()) {
     // DB Scoped replication Limited to ysql databases.
     // System tables are not replicated. DDLs statements will be replicated and executed on the
@@ -66,16 +74,28 @@ std::string GetFullTableName(const TableInfo& table_info) {
   return Format("$0.$1", schema_name, table_info.name());
 }
 
-std::string TableDesignator::ToString() const {
-  return strings::Substitute("$0.$1 [id=$2]", pgschema_name, name, id);
+TableDesignator::TableDesignator(TableInfoPtr table_info)
+    : id(table_info->id()), table_info(std::move(table_info)) {
+  DCHECK(!this->table_info->IsSequencesSystemTable());
 }
 
-TableDesignator GetDesignatorFromTableInfo(const TableInfo& table_info) {
-  TableDesignator designator;
-  designator.id = table_info.id();
-  designator.name = table_info.name();
-  designator.pgschema_name = table_info.pgschema_name();
-  return designator;
+TableDesignator::TableDesignator(TableInfoPtr sequence_table_info, const NamespaceId& namespace_id)
+    : id(xcluster::GetSequencesDataAliasForNamespace(namespace_id)),
+      table_info(std::move(sequence_table_info)) {
+  DCHECK(table_info->IsSequencesSystemTable());
+}
+
+TableDesignator TableDesignator::CreateSequenceTableDesignator(
+    TableInfoPtr sequence_table_info, const NamespaceId& namespace_id) {
+  return TableDesignator(sequence_table_info, namespace_id);
+}
+
+std::string TableDesignator::name() const { return table_info->name(); }
+
+std::string TableDesignator::pgschema_name() const { return table_info->pgschema_name(); }
+
+std::string TableDesignator::ToString() const {
+  return strings::Substitute("$0.$1 [id=$2]", pgschema_name(), name(), id);
 }
 
 Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
@@ -86,16 +106,15 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
   std::vector<TableDesignator> table_designators{};
   for (const auto& table_info : table_infos) {
     if (IsTableEligibleForXClusterReplication(*table_info)) {
-      table_designators.push_back(GetDesignatorFromTableInfo(*table_info));
+      table_designators.emplace_back(table_info);
     }
   }
 
   if (include_sequences_data) {
     auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
     if (sequence_table_info) {
-      TableDesignator designator = GetDesignatorFromTableInfo(*sequence_table_info);
-      designator.id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
-      table_designators.push_back(designator);
+      table_designators.emplace_back(
+          TableDesignator::CreateSequenceTableDesignator(sequence_table_info, namespace_id));
     }
   }
   return table_designators;
@@ -109,6 +128,29 @@ bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info) {
 bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info) {
   return replication_info.has_db_scoped_info() &&
          replication_info.db_scoped_info().automatic_ddl_mode();
+}
+
+Status SetupDDLReplicationExtension(
+    CatalogManagerIf& catalog_manager, const std::string& database_name,
+    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback) {
+  std::vector<std::string> statements;
+  if (role == XClusterDDLReplicationRole::kSource) {
+    // In 1:N replication the source universe will already have the extension created.
+    statements.push_back(Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName));
+  } else {
+    // We could have older data in the table due to a backup restore from the source universe.
+    // So, we drop the extension and recreate it so that we start with empty tables.
+    statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
+    statements.push_back(Format("CREATE EXTENSION $0", kXClusterDDLExtensionName));
+  }
+
+  statements.push_back(Format(
+      "ALTER DATABASE \"$0\" SET $1.replication_role = $2", database_name,
+      kXClusterDDLExtensionName,
+      role == XClusterDDLReplicationRole::kSource ? "SOURCE" : "TARGET"));
+
+  return ExecutePgsqlStatements(
+      database_name, statements, catalog_manager, deadline, std::move(callback));
 }
 
 }  // namespace yb::master

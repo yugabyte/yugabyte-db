@@ -81,6 +81,7 @@ static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
 
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
+TimestampTz *yb_pgss_last_reset_time;
 
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
@@ -95,8 +96,7 @@ static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
 static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo);
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
 static void FormatParams(StringInfo buf, const ParamListInfo params);
-static bool DumpToFile(const char *path, const char *file_name, const char *data,
-					   int *status, char *description);
+static int DumpToFile(const char *path, const char *file_name, const char *data, char *description);
 static void RemoveExpiredEntries();
 static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
 									const double totaltime_ms, const ParamListInfo params);
@@ -109,7 +109,7 @@ static int YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
 static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
 static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
-static void InsertCompletedBundleInfo(YbQueryDiagnosticsMetadata *metadata, int status,
+static void InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
 							 		  const char *description);
 static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
 			 			 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
@@ -119,7 +119,7 @@ static inline int CircularBufferMaxEntries(void);
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
 static void AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *result);
-static void AppendToErrorDescription(char *description, const char *format, ...);
+static void RemoveBundleInfo(int64 query_id, int status, const char *description);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -159,6 +159,7 @@ YbQueryDiagnosticsShmemSize(void)
 	size = add_size(size, hash_estimate_size(QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
 													sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
+	size = add_size(size, sizeof(TimestampTz));
 
 	return size;
 }
@@ -182,7 +183,6 @@ YbQueryDiagnosticsShmemInit(void)
 	ctl.entrysize = sizeof(YbQueryDiagnosticsEntry);
 
 	/* Create the hash table in shared memory */
-	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 	bundles_in_progress_lock = (LWLock *)ShmemInitStruct("YbQueryDiagnostics Lock",
 														  sizeof(LWLock), &found);
 
@@ -200,8 +200,6 @@ YbQueryDiagnosticsShmemInit(void)
 											  QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
 											  &ctl,
 											  HASH_ELEM | HASH_BLOBS);
-
-	LWLockRelease(AddinShmemInitLock);
 
 	bundles_completed =
 		(YbQueryDiagnosticsBundles *) ShmemInitStruct("YbQueryDiagnostics Status",
@@ -221,6 +219,9 @@ YbQueryDiagnosticsShmemInit(void)
 		LWLockInitialize(&bundles_completed->lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
 	}
+
+	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
+	(*yb_pgss_last_reset_time) = 0;
 }
 
 static inline int
@@ -234,7 +235,7 @@ CircularBufferMaxEntries(void)
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
-InsertCompletedBundleInfo(YbQueryDiagnosticsMetadata *metadata, int status,
+InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
 						  const char *description)
 {
 	BundleInfo *sample;
@@ -827,20 +828,19 @@ BundleEndTime(const YbQueryDiagnosticsEntry *entry)
 		   (entry->metadata.params.diagnostics_interval_sec * USECS_PER_SEC);
 }
 
-static void
-AppendToErrorDescription(char *description, const char *format, ...)
+void
+AppendToDescription(char *description, const char *format, ...)
 {
 	int			current_len = strlen(description);
-	int			remaining_len = YB_QD_DESCRIPTION_LEN - current_len - 1; /* -1 for '\0' */
-	char		msg[YB_QD_DESCRIPTION_LEN];
 	va_list		args;
+	int			remaining_len = YB_QD_DESCRIPTION_LEN - current_len - 1; /* -1 for '\0' */
+
+	if (remaining_len <= 0)
+		return;
 
 	va_start(args, format);
-	vsnprintf(msg, YB_QD_DESCRIPTION_LEN, format, args);
+	vsnprintf(description + current_len, remaining_len, format, args);
 	va_end(args);
-
-	if (remaining_len > 0)
-		strncat(description, msg, remaining_len);
 }
 
 static void
@@ -891,49 +891,71 @@ RemoveExpiredEntries()
 			{
 				snprintf(description, YB_QD_DESCRIPTION_LEN,
 						 "Failed to create query diagnostics directory, %s;", strerror(errno));
+
 				status = DIAGNOSTICS_ERROR;
+				goto remove_entry;
 			}
 			else
 			{
-				bool		has_data_to_dump = false;
+				/* No queries were executed that needed to be bundled */
+				if (pgss_copy.query_len == 0)
+				{
+					AppendToDescription(description, "No query executed;");
+					goto remove_entry;
+				}
 
 				/* Dump bind variables */
-				has_data_to_dump |= DumpToFile(metadata_copy.path, BIND_VAR_FILE,
-											   bind_var_copy, &status, description);
+				status = DumpToFile(metadata_copy.path, BIND_VAR_FILE,
+									bind_var_copy, description);
 
 				if (status == DIAGNOSTICS_ERROR)
-					goto removeEntry;
+					goto remove_entry;
 
 				/* Get pgss normalized query string */
-				char query_str[pgss_copy.query_len];
+				char query_str[pgss_copy.query_len + 1];
 				query_str[0] = '\0';
 
-				if (yb_get_normalized_query)
+				/*
+				 * Ensure that pg_stat_statements was not reset in the bundle duration
+				 *
+				 * Note that there are separate checks for pg_stat_statements reset and
+				 * pgss_copy.query_len == 0. This is because resetting pgss does not automatically
+				 * set pgss_copy.query_len to 0. The query_len is only updated when a new query
+				 * is executed. Therefore, even after a pgss reset, pgss_copy.query_len
+				 * may still hold a non-zero garbage value until a new query is run
+				 * and query_len is updated.
+				 */
+				if (*yb_pgss_last_reset_time >= metadata_copy.start_time)
+					AppendToDescription(description, "pg_stat_statements was reset, " \
+															 "query string not available;");
+				else
 				{
-					/* Extract query string from pgss_query_texts.stat file */
-					yb_get_normalized_query(pgss_copy.query_offset, pgss_copy.query_len, query_str);
+					if (yb_get_normalized_query)
+					{
+						/* Extract query string from pgss_query_texts.stat file */
+						yb_get_normalized_query(pgss_copy.query_offset, pgss_copy.query_len, query_str);
 
-					if (query_str[0] == '\0')
-						ereport(LOG,
-								(errmsg("Error fetching queryString for %ld", entry->metadata.params.query_id)));
+						if (query_str[0] == '\0')
+							AppendToDescription(description, "Error fetching pg_stat_statements normalized query string;");
+					}
 				}
 
 				char		pgss_str[YB_QD_MAX_PGSS_LEN];
 				PgssToString(entry->metadata.params.query_id, pgss_str, pgss_copy, query_str);
 
 				/* Dump pg_stat_statements */
-				has_data_to_dump |= DumpToFile(entry->metadata.path, PGSS_FILE,
-											   pgss_str, &status, description);
+				status = DumpToFile(metadata_copy.path, PGSS_FILE,
+									pgss_str, description);
 
 				if (status == DIAGNOSTICS_ERROR)
-					goto removeEntry;
+					goto remove_entry;
 
 				/* Dump explain plan */
-				has_data_to_dump |= DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
-											   explain_plan_copy, &status, description);
+				status = DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
+									explain_plan_copy, description);
 
 				if (status == DIAGNOSTICS_ERROR)
-					goto removeEntry;
+					goto remove_entry;
 
 				/* Dump ASH */
 				if (yb_ash_enable_infra)
@@ -947,40 +969,43 @@ RemoveExpiredEntries()
 														metadata_copy.params.query_id,
 														&ash_buffer, description);
 
-					has_data_to_dump |= DumpToFile(metadata_copy.path, ASH_FILE,
-												   ash_buffer.data, &status, description);
+					status = DumpToFile(metadata_copy.path, ASH_FILE,
+										ash_buffer.data, description);
 
 					pfree(ash_buffer.data);
 				}
-
-				if (!has_data_to_dump)
-					AppendToErrorDescription(description, "No data to dump;");
 			}
 
-removeEntry:
+remove_entry:
 			InsertCompletedBundleInfo(&metadata_copy, status, description);
-
-			LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
-
-			hash_search(bundles_in_progress, &metadata_copy.params.query_id,
-						HASH_REMOVE, NULL);
-
-			LWLockRelease(bundles_in_progress_lock);
+			RemoveBundleInfo(metadata_copy.params.query_id, status, description);
 			LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 		}
 	}
 	LWLockRelease(bundles_in_progress_lock);
 }
 
+static void
+RemoveBundleInfo(int64 query_id, int status, const char *description)
+{
+	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+	hash_search(bundles_in_progress, &query_id,
+				HASH_REMOVE, NULL);
+
+	LWLockRelease(bundles_in_progress_lock);
+}
+
 /*
  * DumpToFile
  *		Creates the file (/path/file_name) and writes the data to it.
+ * Returns:
+ *		DIAGNOSTICS_SUCCESS if the file was successfully written, DIAGNOSTICS_ERROR otherwise.
  */
-static bool
-DumpToFile(const char *path, const char *file_name, const char *data,
-		   int *status, char *description)
+static int
+DumpToFile(const char *path, const char *file_name, const char *data, char *description)
 {
-	bool		has_data_to_dump = false;
+	bool		ok = false;
 	File		file = 0;
 	const int	file_path_len = MAXPGPATH + strlen(file_name) + 1;
 	char		file_path[file_path_len];
@@ -1011,7 +1036,7 @@ DumpToFile(const char *path, const char *file_name, const char *data,
 			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %m");
 
 		else
-			has_data_to_dump = true;
+			ok = true;
 	}
 	PG_CATCH();
 	{
@@ -1030,7 +1055,7 @@ DumpToFile(const char *path, const char *file_name, const char *data,
 	if (file > 0)
 		FileClose(file);
 
-	return has_data_to_dump;
+	return ok ? DIAGNOSTICS_SUCCESS : DIAGNOSTICS_ERROR;
 }
 
 /*
@@ -1101,7 +1126,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 static void
 ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	int rand_num = DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
+	int		rand_num = DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
 										   sizeof(metadata->start_time)));
 #ifdef WIN32
 	const char *format = "%s\\%s\\%ld\\%d\\";

@@ -16,15 +16,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/logging.h"
+#include "yb/common/entity_ids.h"
 
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/ts_descriptor.h"
+
+#include "yb/util/status_callback.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
@@ -255,6 +254,10 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
 
 const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
+
+Status ExecutePgsqlStatements(
+    const std::string& database_name, const std::vector<std::string>& statements,
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback);
 
 } // namespace master
 } // namespace yb

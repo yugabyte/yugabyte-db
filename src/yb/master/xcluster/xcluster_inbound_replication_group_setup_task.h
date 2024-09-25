@@ -204,7 +204,9 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   Status RegisterTask() override;
   void UnregisterTask() override;
 
-  Status FirstStep() override EXCLUDES(mutex_);
+  Status FirstStep() override;
+  Status SetupDDLReplicationExtension();
+  Status CreateTableTasks();
 
   void TaskCompleted(const Status& status) override EXCLUDES(done_result_mutex_);
 

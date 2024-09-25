@@ -1598,4 +1598,11 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
   SharedObject().SetCronLeaderLease(cron_leader_lease_end);
 }
 
+Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
+    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+  return pgwrapper::CreateInternalPGConnBuilder(
+             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+      .Connect();
+}
+
 }  // namespace yb::tserver

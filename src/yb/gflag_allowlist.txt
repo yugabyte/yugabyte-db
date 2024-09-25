@@ -1,0 +1,64 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+
+// This file contains the list of string gFlags that do not contain sensitive or PII data.
+// Each line should contain a single flag name.
+// Flags tagged as sensitive_info are not allowed.
+// If the flag does not exist, then it will be safely ignored.
+
+allowed_preview_flags_csv
+callhome_collection_level
+callhome_tag
+callhome_url
+cipher_list
+ciphersuites
+compression_type
+fromenv
+metric_node_name
+metrics_snapshotter_table_metrics_whitelist
+metrics_snapshotter_tserver_metrics_whitelist
+minicluster_daemon_id
+net_address_filter
+pg_mem_tracker_tcmalloc_gc_release_bytes
+pg_mem_tracker_update_consumption_interval_us
+placement_cloud
+placement_region
+placement_uuid
+placement_zone
+redis_passwords_separator
+ref_counted_debug_type_name_regex
+regular_tablets_data_block_key_value_encoding
+rocksdb_compact_flush_rate_limit_sharing_mode
+ssl_protocols
+trace_to_console
+tryfromenv
+undefok
+use_private_ip
+vmodule
+yb_backend_oom_score_adj
+yb_test_name
+yb_webserver_oom_score_adj
+ycql_audit_log_level
+ysql_datestyle
+ysql_default_transaction_isolation
+ysql_log_min_messages
+ysql_log_statement
+ysql_pg_conf
+ysql_pg_conf_csv
+ysql_sequence_cache_method
+ysql_timezone
+ysql_yb_default_replica_identity
+ysql_yb_read_after_commit_visibility
+ysql_yb_test_block_index_phase
+ysql_yb_xcluster_consistency_level

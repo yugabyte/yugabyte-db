@@ -1492,7 +1492,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " create a service in each Availability zone, whereas 'Namespaced' will create one"
               + " service per Namespace",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> numCloudYbaBackupsRetention =
       new ConfKeyInfo<>(
           "yb.auto_yba_backups.num_cloud_retention",
