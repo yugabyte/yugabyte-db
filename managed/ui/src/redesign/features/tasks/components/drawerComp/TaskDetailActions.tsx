@@ -45,8 +45,8 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const dispatch = useDispatch();
 
   // we should refresh the universe info after retrying the task, else the old task banner will be shown
-  const refreshUniverse = ()=> {
-    return dispatch(fetchUniverseInfo(currentTask.targetUUID) as any).then((response:any) => {
+  const refreshUniverse = () => {
+    return dispatch(fetchUniverseInfo(currentTask.targetUUID) as any).then((response: any) => {
       return dispatch(fetchUniverseInfoResponse(response.payload));
     });
   };

@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
+import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -109,6 +110,20 @@ public interface CloudUtil extends StorageUtil {
 
   default UUID getRandomUUID() {
     return UUID.randomUUID();
+  }
+
+  public default boolean uploadYbaBackup(
+      CustomerConfigData configData, File backup, String backupDir) {
+    return false;
+  }
+
+  public default boolean cleanupUploadedBackups(CustomerConfigData configData, String backupDir) {
+    return false;
+  }
+
+  public default File downloadYbaBackup(
+      CustomerConfigData configData, String backupDir, Path localDir) {
+    return null;
   }
 
   public default RestorePreflightResponse

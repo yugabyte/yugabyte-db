@@ -70,6 +70,7 @@ class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 3;
     options->extra_master_flags.emplace_back(
         "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
     options->extra_master_flags.emplace_back(
@@ -1036,7 +1037,7 @@ TEST_F(
   SetDbName(backup_db_name);
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY)"));
 
   for (int i = 0; i < 3; ++i) {
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
@@ -1080,8 +1081,7 @@ TEST_F(
     --------+---------+-----------+----------+---------
      a      | integer |           | not null |
     Indexes:
-        "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
-    Tablespace: "tsp1"
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
     Colocation: true
   )#");
 }
@@ -1109,9 +1109,47 @@ TEST_F(
       ]
     }'
   )#";
+  ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+    {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack2"}));
+  const std::string placement_info_2 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack2",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
 
+  ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+    {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack3"}));
+  const std::string placement_info_3 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack3",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
   ASSERT_NO_FATALS(RunPsqlCommand(
       "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+      "CREATE TABLESPACE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp2 WITH (replica_placement=" + placement_info_2 + ")",
+      "CREATE TABLESPACE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp3 WITH (replica_placement=" + placement_info_3 + ")",
       "CREATE TABLESPACE"));
 
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -1119,7 +1157,10 @@ TEST_F(
   SetDbName(backup_db_name);
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp2"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t3 (a INT PRIMARY KEY) TABLESPACE tsp3"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t4 (a INT PRIMARY KEY)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t5 (a INT PRIMARY KEY) TABLESPACE tsp1"));
 
   for (int i = 0; i < 3; ++i) {
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
@@ -1164,6 +1205,48 @@ TEST_F(
     Indexes:
         "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
     Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t3",
+  R"#(
+                    Table "public.t3"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t3_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t4",
+  R"#(
+                    Table "public.t4"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t4_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t5",
+  R"#(
+                    Table "public.t5"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t5_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\dgrt",
+  R"#(
+                  List of tablegroup tables
+          Group Name        | Group Owner | Name | Type  |  Owner
+  --------------------------+-------------+------+-------+----------
+   colocation_restore_16387 | postgres    | t1   | table | yugabyte
+   colocation_restore_16387 | postgres    | t5   | table | yugabyte
+   colocation_restore_16393 | postgres    | t2   | table | yugabyte
+   colocation_restore_16399 | postgres    | t3   | table | yugabyte
+   default                  | postgres    | t4   | table | yugabyte
+  (5 rows)
   )#");
 }
 

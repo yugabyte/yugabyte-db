@@ -5,4 +5,3 @@
 ####################################################################################################
 test: yb_analyze
 test: yb_analyze_system_tables
-test: yb_reset_analyze

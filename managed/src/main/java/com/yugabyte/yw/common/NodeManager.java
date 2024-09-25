@@ -138,7 +138,6 @@ public class NodeManager extends DevopsBase {
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
   public static final String POSTGRES_RR_MAX_MEM_MB = "yb.dbmem.postgres.rr_max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
-  public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
@@ -471,7 +470,7 @@ public class NodeManager extends DevopsBase {
               && ((ManageOtelCollector.Params) params).installOtelCollector;
       if (provider.getCloudCode() == CloudType.onprem
           && providerDetails.skipProvisioning
-          && getNodeAgentClient().isClientEnabled(provider)
+          && getNodeAgentClient().isClientEnabled(provider, null /* Universe */)
           && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
@@ -977,11 +976,6 @@ public class NodeManager extends DevopsBase {
       ybcDir = "ybc" + matcher.group(1);
       ybcFlags =
           GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config, taskParam.ybcGflags);
-      boolean enableVerbose =
-          confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
-      if (enableVerbose) {
-        ybcFlags.put("v", "1");
-      }
       String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
       ybcFlags.put("nfs_dirs", nfsDirs);
     }
@@ -1606,7 +1600,7 @@ public class NodeManager extends DevopsBase {
     NodeInstanceData instanceData = nodeInstance.getDetails();
     if (StringUtils.isNotBlank(instanceData.ip)) {
       getNodeAgentClient()
-          .maybeGetNodeAgent(instanceData.ip, provider)
+          .maybeGetNodeAgent(instanceData.ip, provider, null /* universe */)
           .ifPresent(
               nodeAgent -> {
                 if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
@@ -1749,7 +1743,7 @@ public class NodeManager extends DevopsBase {
     if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       getNodeAgentClient()
-          .maybeGetNodeAgent(nodeIp, provider)
+          .maybeGetNodeAgent(nodeIp, provider, universe)
           .ifPresent(
               nodeAgent -> {
                 if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
@@ -1757,7 +1751,8 @@ public class NodeManager extends DevopsBase {
                 }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                if (getNodeAgentClient().isAnsibleOffloadingEnabled(nodeAgent, provider)) {
+                if (getNodeAgentClient()
+                    .isAnsibleOffloadingEnabled(nodeAgent, provider, universe)) {
                   commandArgs.add("--offload_ansible");
                 }
                 nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
@@ -2197,6 +2192,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
           }
+
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(Integer.toString(taskParam.cgroupSize));
           break;
         }
       case List:

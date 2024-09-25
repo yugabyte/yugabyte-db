@@ -88,7 +88,9 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 
 	// Ignore temporary tables and primary indexes (same as main table).
 	if (!IsYBBackedRelation(rel) ||
-		(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary))
+		((rel->rd_rel->relkind == RELKIND_INDEX ||
+		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		 rel->rd_index->indisprimary))
 	{
 		RelationClose(rel);
 		return false;

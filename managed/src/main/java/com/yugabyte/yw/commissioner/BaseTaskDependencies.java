@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
@@ -60,4 +61,5 @@ public class BaseTaskDependencies {
   private final ImageBundleUtil imageBundleUtil;
   private final ReleaseManager releaseManager;
   private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final GFlagsValidation gFlagsValidation;
 }

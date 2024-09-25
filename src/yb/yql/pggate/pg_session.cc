@@ -17,11 +17,8 @@
 
 #include <algorithm>
 #include <future>
-#include <memory>
 #include <optional>
 #include <utility>
-
-#include <boost/functional/hash.hpp>
 
 #include "yb/client/table_info.h"
 
@@ -42,7 +39,6 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
@@ -284,7 +280,7 @@ class PgSession::RunHelper {
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
-    if (operations_.empty() && pg_session_.buffering_enabled_ &&
+    if (operations_.Empty() && pg_session_.buffering_enabled_ &&
         !force_non_bufferable_ && op->is_write()) {
         if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
           LOG_WITH_PREFIX(INFO) << "Buffering operation: " << op->ToString();
@@ -296,7 +292,7 @@ class PgSession::RunHelper {
     bool read_only = op->is_read();
     // Flush all buffered operations (if any) before performing non-bufferable operation
     if (!Empty(buffer)) {
-      SCHECK(operations_.empty(),
+      SCHECK(operations_.Empty(),
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
       // Buffered write operations can't be combined within a single RPC with non-bufferable read
@@ -319,7 +315,7 @@ class PgSession::RunHelper {
         RETURN_NOT_OK(buffer.Flush());
       } else {
         operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
-        read_only = read_only && operations_.empty();
+        read_only = read_only && operations_.Empty();
       }
     }
 
@@ -329,7 +325,7 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
 
-    operations_.Add(std::move(op), table.relfilenode_id());
+    operations_.Add(std::move(op), table);
 
     if (!IsTransactional()) {
       return Status::OK();
@@ -345,14 +341,14 @@ class PgSession::RunHelper {
   }
 
   Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
-    if (operations_.empty()) {
+    if (operations_.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
       LOG_WITH_PREFIX(INFO) << "Flushing collected operations, using session type: "
-                            << ToString(session_type_) << " num ops: " << operations_.size();
+                            << ToString(session_type_) << " num ops: " << operations_.Size();
     }
 
     return pg_session_.Perform(
@@ -387,80 +383,6 @@ class PgSession::RunHelper {
   const ForceNonBufferable force_non_bufferable_;
   const ForceFlushBeforeNonBufferableOp force_flush_before_non_bufferable_op_;
 };
-
-//--------------------------------------------------------------------------------------------------
-// Class TableYbctidHasher
-//--------------------------------------------------------------------------------------------------
-
-size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const {
-  size_t hash = 0;
-  boost::hash_combine(hash, value.table_id);
-  boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
-  return hash;
-}
-
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(
-    TableYbctidVectorProvider& ybctid_container_provider,
-    std::reference_wrapper<const YbctidReader> ybctid_reader)
-    : ybctid_container_provider_(ybctid_container_provider), ybctid_reader_(ybctid_reader) {
-}
-
-Status ExplicitRowLockBuffer::Add(
-    Info&& info, const LightweightTableYbctid& key, bool is_region_local) {
-  if (info_ && *info_ != info) {
-    RETURN_NOT_OK(DoFlush());
-  }
-  if (!info_) {
-    info_.emplace(std::move(info));
-  } else if (intents_.contains(key)) {
-    return Status::OK();
-  }
-
-  if (is_region_local) {
-    region_local_tables_.insert(key.table_id);
-  }
-  DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
-  intents_.emplace(key.table_id, std::string(key.ybctid));
-  return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-      ? DoFlush() : Status::OK();
-}
-
-Status ExplicitRowLockBuffer::Flush() {
-  return IsEmpty() ? Status::OK() : DoFlush();
-}
-
-Status ExplicitRowLockBuffer::DoFlush() {
-  DCHECK(!IsEmpty());
-  auto scope = ScopeExit([this] { Clear(); });
-  auto ybctids = ybctid_container_provider_.Get();
-  auto initial_intents_size = intents_.size();
-  ybctids->reserve(initial_intents_size);
-  for (auto it = intents_.begin(); it != intents_.end();) {
-    auto node = intents_.extract(it++);
-    ybctids->push_back(std::move(node.value()));
-  }
-  RETURN_NOT_OK(ybctid_reader_(
-      info_->database_id, ybctids, region_local_tables_,
-      make_lw_function(
-          [&info = *info_](PgExecParameters& params) {
-            params.rowmark = info.rowmark;
-            params.pg_wait_policy = info.pg_wait_policy;
-            params.docdb_wait_policy = info.docdb_wait_policy;
-          })));
-  SCHECK(initial_intents_size == ybctids->size(), NotFound,
-        "Some of the requested ybctids are missing");
-  return Status::OK();
-}
-
-void ExplicitRowLockBuffer::Clear() {
-  intents_.clear();
-  info_.reset();
-  region_local_tables_.clear();
-}
-
-bool ExplicitRowLockBuffer::IsEmpty() const {
-  return !info_;
-}
 
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
@@ -735,7 +657,7 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG_WITH_PREFIX(INFO) << "Flushing buffered operations, using "
                           << (transactional ? "transactional" : "non-transactional")
-                          << " session (num ops: " << ops.size() << ")";
+                          << " session (num ops: " << ops.Size() << ")";
   }
 
   if (transactional) {
@@ -763,7 +685,7 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
-  DCHECK(!ops.empty());
+  DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
   if (ops_options.use_catalog_session) {
     if (catalog_read_time_) {
@@ -775,16 +697,17 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
-    auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations));
+    auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
     if (ops_read_time) {
       RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }
   }
-  bool global_transaction = yb_force_global_transaction;
-  for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
-    global_transaction = !(*i)->is_region_local();
-  }
-  options.set_force_global_transaction(global_transaction);
+
+  options.set_force_global_transaction(
+      yb_force_global_transaction ||
+      std::any_of(
+          ops.operations().begin(), ops.operations().end(),
+          [](const auto& op) { return !op->is_region_local(); }));
 
   // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
   // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
@@ -807,9 +730,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   // If all operations belong to the same database then set the namespace.
   // System database template1 is ignored as we may read global system catalog like tablespaces
   // in the same batch.
-  if (!ops.relations.empty()) {
-    PgOid database_oid = kPgInvalidOid;
-    for (const auto& relation : ops.relations) {
+  if (!ops.Empty()) {
+    auto database_oid = kPgInvalidOid;
+    for (const auto& relation : ops.relations()) {
       if (relation.database_oid == kTemplate1Oid) {
         continue;
       }
@@ -857,8 +780,11 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-  auto future = pg_client_.PerformAsync(&options, &ops.operations);
-  return PerformFuture(std::move(future), std::move(ops.relations));
+  PgsqlOps operations;
+  PgObjectIds relations;
+  std::move(ops).MoveTo(operations, relations);
+  return PerformFuture(
+      pg_client_.PerformAsync(&options, std::move(operations)), std::move(relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(
@@ -1130,6 +1056,10 @@ const std::string PgSession::LogPrefix() const {
 
 Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
   return pg_client_.TabletsMetadata();
+}
+
+Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
+  return pg_client_.ServersMetrics();
 }
 
 }  // namespace yb::pggate

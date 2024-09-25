@@ -13,13 +13,14 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/common/xcluster_util.h"
+
 #include "yb/gutil/strings/util.h"
-#include "yb/master/catalog_entity_info.pb.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-
-#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
@@ -28,6 +29,7 @@
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
@@ -338,7 +340,8 @@ Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpo
   {
     SharedLock table_stream_l(table_stream_ids_map_mutex_);
     for (const auto& [table_id, _] : table_stream_ids_map_) {
-      auto table_info = catalog_manager_.GetTableInfo(table_id);
+      auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+      auto table_info = catalog_manager_.GetTableInfo(stripped_table_id);
       if (!table_info || !table_info->LockForRead()->visible_to_client()) {
         tables_to_remove.insert(table_id);
         continue;
@@ -446,6 +449,11 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
 
   if (IsDbScoped(replication_info_pb)) {
     result.replication_type = XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED;
+    result.automatic_ddl_mode = replication_info_pb.db_scoped_info().automatic_ddl_mode();
+
+    result.db_scoped_info += Format(
+        "ddl_mode: $0",
+        replication_info_pb.db_scoped_info().automatic_ddl_mode() ? "automatic" : "semi-automatic");
     for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
       result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
           namespace_info.producer_namespace_id();
@@ -484,7 +492,9 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
         if (stream_info) {
           table_status.target_table_id = stream_info->consumer_table_id();
 
-          auto table_info_res = catalog_manager_.GetTableById(table_status.target_table_id);
+          auto stripped_target_table_id =
+              xcluster::StripSequencesDataAliasIfPresent(table_status.target_table_id);
+          auto table_info_res = catalog_manager_.GetTableById(stripped_target_table_id);
           if (table_info_res) {
             const auto& table_info = table_info_res.get();
             namespace_name = table_info->namespace_name();

@@ -133,6 +133,10 @@ class ColumnSchema {
     return a.order_ == b.order_;
   }
 
+  static bool CompMarkedForDeletion(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.marked_for_deletion_ == b.marked_for_deletion_;
+  }
+
   // Combined comparators.
   static bool CompareType(const ColumnSchema &a, const ColumnSchema &b) {
     return CompNullable(a, b) && CompKind(a, b) && CompTypeInfo(a, b);
@@ -140,6 +144,10 @@ class ColumnSchema {
 
   static bool CompareByDefault(const ColumnSchema &a, const ColumnSchema &b) {
     return CompareType(a, b) && CompName(a, b);
+  }
+
+  static bool CompareDdlAtomicity(const ColumnSchema &a, const ColumnSchema &b) {
+    return CompareByDefault(a, b) && CompMarkedForDeletion(a, b);
   }
 
   // name: column name
@@ -507,8 +515,6 @@ class TableProperties {
   // This is optional since its a ysql only field
   std::optional<PgReplicaIdentity> ysql_replica_identity_;
 };
-
-using PgSchemaName = std::string;
 
 // Provides missing, i.e. default, value for specified column if present.
 class MissingValueProvider {

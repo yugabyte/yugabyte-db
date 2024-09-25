@@ -42,6 +42,21 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup");
 
+DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
+    "Timeout for YSQL statements executed during xCluster operations.");
+
+// This flag will be converted to a PREVIEW, and then a kExternal Auto flag as the feature matures.
+DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
+    "Enables xCluster automatic DDL replication.");
+
+DEFINE_test_flag(bool, xcluster_enable_sequence_replication, false,
+    "Enable xCluster automatic replication of sequences (requires automatic DB-scoped "
+    "replication).");
+
+DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
+    "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
+    "xCluster replication mode.");
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -280,15 +295,21 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
   SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
-  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
-  SCHECK(!req->namespace_ids().empty(), InvalidArgument, "Missing Namespace Ids");
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_ids);
+  bool automatic_ddl_mode =
+      req->automatic_ddl_mode() || FLAGS_TEST_force_automatic_ddl_replication_mode;
+  SCHECK(
+      !automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_id : req->namespace_ids()) {
     namespace_ids.emplace_back(namespace_id);
   }
+
   RETURN_NOT_OK(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids, epoch));
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids,
+      automatic_ddl_mode, epoch));
 
   return Status::OK();
 }
@@ -526,7 +547,9 @@ Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
   auto group_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
-  for (const auto& [namespace_id, table_streams] : group_info) {
+  resp->set_automatic_ddl_mode(group_info.automatic_ddl_mode);
+
+  for (const auto& [namespace_id, table_streams] : group_info.namespace_table_map) {
     auto* ns_info = resp->add_namespace_infos();
     ns_info->set_namespace_id(namespace_id);
     for (const auto& [table_id, stream_id] : table_streams) {
@@ -725,6 +748,9 @@ Status XClusterManager::SetupUniverseReplication(
     const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
+  SCHECK(
+      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
 }

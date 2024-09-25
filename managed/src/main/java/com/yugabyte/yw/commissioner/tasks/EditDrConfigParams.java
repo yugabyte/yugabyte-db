@@ -59,14 +59,6 @@ public class EditDrConfigParams extends XClusterConfigTaskBase {
         {
           try {
 
-            createSetDrStatesTask(
-                    xClusterConfig,
-                    State.Updating,
-                    null /* sourceUniverseState */,
-                    null /* targetUniverseState */,
-                    null /* keyspacePending */)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-
             createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Updating);
 
             if (taskParams().getPitrParams() != null) {
@@ -128,18 +120,7 @@ public class EditDrConfigParams extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-
       xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
-
-      // Prevent all other DR tasks except delete from running.
-      log.info(
-          "Setting the dr config state of xCluster config {} to {} from {}",
-          xClusterConfig.getUuid(),
-          State.Error,
-          drConfig.getState());
-      drConfig.setState(State.Error);
-      drConfig.update();
-
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.

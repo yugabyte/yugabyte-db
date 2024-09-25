@@ -261,6 +261,9 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
             totalNodes: Number(cluster?.userIntent.numNodes),
             replicationFactor: Number(cluster?.userIntent.replicationFactor)
           };
+          // When user clicks 'Reset Config' we need to reset the Replication Factor
+          // and Total Nodes based on universe configure response
+          setValue(REPLICATION_FACTOR_FIELD, Number(cluster?.userIntent.replicationFactor));
           setValue(TOTAL_NODES_FIELD, Number(cluster?.userIntent.numNodes));
           setValue(RESET_AZ_FIELD, false);
         }

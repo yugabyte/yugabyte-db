@@ -2895,6 +2895,14 @@ get_current_hint_string(ParseState *pstate, Query *query)
 
 		query_str = get_query_string(pstate, query, &jumblequery);
 
+		/*
+		 * YB note: don't assume it is the top-level query when pstate is NULL
+		 * and the query tree does not have the source location.
+		 */
+		if (!pstate && query->stmt_location <= 0 && query->stmt_len <= 0 &&
+			query_str == debug_query_string)
+			query_str = NULL;
+
 		/* If this query is not for hint, just return */
 		if (!query_str)
 			return;

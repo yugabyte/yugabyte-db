@@ -28,8 +28,8 @@ var HashicorpVaultEITCmd = &cobra.Command{
 func init() {
 	HashicorpVaultEITCmd.Flags().SortFlags = false
 
-	// HashicorpVaultEITCmd.AddCommand(createHashicorpVaultEITCmd)
-	// HashicorpVaultEITCmd.AddCommand(updateHashicorpVaultEITCmd)
+	HashicorpVaultEITCmd.AddCommand(createHashicorpVaultEITCmd)
+	HashicorpVaultEITCmd.AddCommand(updateHashicorpVaultEITCmd)
 	HashicorpVaultEITCmd.AddCommand(listHashicorpVaultEITCmd)
 	HashicorpVaultEITCmd.AddCommand(describeHashicorpVaultEITCmd)
 	HashicorpVaultEITCmd.AddCommand(deleteHashicorpVaultEITCmd)

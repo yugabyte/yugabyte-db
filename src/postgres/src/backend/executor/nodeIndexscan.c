@@ -178,8 +178,8 @@ IndexNext(IndexScanState *node)
 				{
 					scandesc->yb_exec_params->rowmark = erm->markType;
 					scandesc->yb_exec_params->pg_wait_policy = erm->waitPolicy;
-					YBSetRowLockPolicy(&scandesc->yb_exec_params->docdb_wait_policy,
-									   erm->waitPolicy);
+					scandesc->yb_exec_params->docdb_wait_policy =
+						YBGetDocDBWaitPolicy(erm->waitPolicy);
 				}
 				break;
 			}

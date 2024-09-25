@@ -19,12 +19,14 @@ import java.io.Serializable;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Entity
 @IdClass(XClusterNamespaceConfig.XClusterNamespaceConfigPK.class)
+@NoArgsConstructor
 @Getter
 @Setter
 public class XClusterNamespaceConfig {

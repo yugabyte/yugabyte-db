@@ -124,7 +124,7 @@ void TableMutationCountSender::RunThread() {
       UniqueLock lock(mutex_);
       VLOG(5) << "Next send after "
               << GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) << "ms";
-      cond_.wait_for(GetLockForCondition(&lock),
+      cond_.wait_for(GetLockForCondition(lock),
                      GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) * 1ms);
 
       if (stopped_) {

@@ -434,8 +434,7 @@ class ClusterAdminClient {
       const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
       const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
-      bool remove_table_ignore_errors = false);
+      const NamespaceId& source_namespace_to_remove, bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);

@@ -100,7 +100,7 @@
     <jsr305.version>3.0.1</jsr305.version>
 
     <junit.groupId>junit</junit.groupId>
-    <junit.version>4.12</junit.version>
+    <junit.version>4.13</junit.version>
 
     <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>

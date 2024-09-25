@@ -10,12 +10,28 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ear"
 )
+
+// CreateEARValidation validates the delete config command
+func CreateEARValidation(cmd *cobra.Command) {
+	configNameFlag, err := cmd.Flags().GetString("name")
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	if len(strings.TrimSpace(configNameFlag)) == 0 {
+		cmd.Help()
+		logrus.Fatalln(
+			formatter.Colorize(
+				"No encryption at rest config name found to create\n",
+				formatter.RedColor))
+	}
+}
 
 // WaitForCreateEARTask is a util task for create ear
 func WaitForCreateEARTask(

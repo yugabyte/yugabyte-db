@@ -93,7 +93,8 @@ class XClusterSourceManager {
 
   Status CreateOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch);
+      const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode,
+      const LeaderEpoch& epoch);
 
   Status AddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
@@ -160,8 +161,14 @@ class XClusterSourceManager {
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
       NamespaceId namespace_filter);
 
-  Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
-  GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
+  struct XClusterOutboundReplicationGroupUserInfo {
+    std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>
+        namespace_table_map;
+    bool automatic_ddl_mode;
+  };
+
+  Result<XClusterOutboundReplicationGroupUserInfo> GetXClusterOutboundReplicationGroupInfo(
+      const xcluster::ReplicationGroupId& replication_group_id);
 
   bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
 
@@ -234,6 +241,9 @@ class XClusterSourceManager {
 
   bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
       EXCLUDES(tables_to_stream_map_mutex_);
+
+  Status SetupDDLReplicationExtension(
+      const NamespaceId& namespace_id, StdStatusCallback callback) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

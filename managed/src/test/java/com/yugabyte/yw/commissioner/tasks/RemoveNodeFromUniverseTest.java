@@ -173,8 +173,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -201,8 +201,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -271,8 +271,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,

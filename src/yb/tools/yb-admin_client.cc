@@ -4095,8 +4095,7 @@ Status ClusterAdminClient::AlterUniverseReplication(
     const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
-    bool remove_table_ignore_errors) {
+    const NamespaceId& source_namespace_to_remove, bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_replication_group_id(replication_group_id);
@@ -4139,10 +4138,6 @@ Status ClusterAdminClient::AlterUniverseReplication(
         for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
         }
-  }
-
-  if (!new_replication_group_id.empty()) {
-    req.set_new_replication_group_id(new_replication_group_id);
   }
 
   if (!source_namespace_to_remove.empty()) {

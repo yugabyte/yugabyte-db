@@ -167,7 +167,7 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
       const google::protobuf::RepeatedPtrField<HostPortPB>& source_masters,
       std::vector<TableId>&& source_table_ids, std::vector<xrepl::StreamId>&& stream_ids,
       bool transactional, std::vector<NamespaceId>&& source_namespace_ids,
-      std::vector<NamespaceId>&& target_namespace_ids);
+      std::vector<NamespaceId>&& target_namespace_ids, bool automatic_ddl_mode);
 
   ~XClusterInboundReplicationGroupSetupTask() = default;
 
@@ -204,7 +204,9 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   Status RegisterTask() override;
   void UnregisterTask() override;
 
-  Status FirstStep() override EXCLUDES(mutex_);
+  Status FirstStep() override;
+  Status SetupDDLReplicationExtension();
+  Status CreateTableTasks();
 
   void TaskCompleted(const Status& status) override EXCLUDES(done_result_mutex_);
 
@@ -233,6 +235,8 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
       REQUIRES(mutex_);
   void PopulateUniverseReplication(SysUniverseReplicationEntryPB& universe_pb) REQUIRES(mutex_);
 
+  Result<NamespaceId> ConvertSourceToTargetNamespace(const NamespaceId& source_namespace);
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -241,15 +245,18 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
 
   const xcluster::ReplicationGroupId replication_group_id_;
   const google::protobuf::RepeatedPtrField<HostPortPB> source_masters_;
-  const bool transactional_;
   // The following lists are preserved in the same order they were provided.
   const std::vector<TableId> source_table_ids_;
   const std::vector<xrepl::StreamId> stream_ids_;
   const std::vector<NamespaceId> source_namespace_ids_;
   const std::vector<NamespaceId> target_namespace_ids_;
+
   const bool is_alter_replication_;
-  const bool is_db_scoped_;
   const bool stream_ids_provided_;
+  const bool transactional_;  // Not used in ALTER.
+  bool is_db_scoped_;  // Computed in ValidateInputArguments.
+  const bool automatic_ddl_mode_;
+
   std::string log_prefix_;
 
   std::shared_ptr<client::XClusterRemoteClientHolder> remote_client_;

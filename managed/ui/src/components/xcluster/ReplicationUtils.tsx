@@ -19,7 +19,10 @@ import {
   I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS,
   UNCONFIGURED_XCLUSTER_TABLE_STATUSES,
   DROPPED_XCLUSTER_TABLE_STATUSES,
-  BootstrapCategory
+  BootstrapCategory,
+  XClusterSchemaChangeMode,
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -31,7 +34,11 @@ import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
-import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
+import {
+  compareYBSoftwareVersions,
+  compareYBSoftwareVersionsWithReleaseTrack,
+  getPrimaryCluster
+} from '../../utils/universeUtilsTyped';
 
 import {
   Metrics,
@@ -459,7 +466,7 @@ export const getEnabledConfigActions = (
   isXClusterConfigAllBidirectional: boolean,
   drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
-  if (drConfigState === DrConfigState.ERROR) {
+  if (drConfigState === DrConfigState.FAILED) {
     // When DR config is in error state, we only allow the DR config delete operation.
     return [];
   }
@@ -480,6 +487,7 @@ export const getEnabledConfigActions = (
     switch (status) {
       case XClusterConfigStatus.INITIALIZED:
       case XClusterConfigStatus.UPDATING:
+      case XClusterConfigStatus.DRAINED_DATA:
         return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
       case XClusterConfigStatus.RUNNING:
         return [
@@ -500,12 +508,15 @@ export const getEnabledConfigActions = (
     }
   };
 
+  const restrictedActions = new Set<XClusterConfigAction>();
+  if (isXClusterConfigAllBidirectional) {
+    restrictedActions.add(XClusterConfigAction.RESTART);
+  }
+
   const enabledActions = getEnabledConfigActionsBasedOnStatus(replication.status);
 
-  // Remove `RESTART` action if all tables in the config are in bidirectional replication.
-  return isXClusterConfigAllBidirectional
-    ? enabledActions.filter((action) => action !== XClusterConfigAction.RESTART)
-    : enabledActions;
+  // Filter out the actions which have been restricted due to select circumstances.
+  return enabledActions.filter((action) => !restrictedActions.has(action));
 };
 
 /**
@@ -514,6 +525,14 @@ export const getEnabledConfigActions = (
 export const getXClusterConfigUuids = (universe: Universe | undefined) => ({
   sourceXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [],
   targetXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? []
+});
+
+/*
+ * Returns the UUIDs for all xCluster DR configs associated with the provided universe.
+ */
+export const getDrConfigUuids = (universe: Universe | undefined) => ({
+  sourceDrConfigUuids: universe?.drConfigUuidsAsSource ?? [],
+  targetDrConfigUuids: universe?.drConfigUuidsAsTarget ?? []
 });
 
 export const hasLinkedXClusterConfig = (universes: Universe[]) =>
@@ -646,26 +665,39 @@ export const isTableToggleable = (
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
   xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
 
-export const getIsTransactionalAtomicityEnabled = (
+/**
+ * If targetUniverse is undefined, then we just consider whether the source universe supports
+ * txn atomicity. If both source and target universes are defined, then we will consider both.
+ */
+export const getIsTransactionalAtomicitySupported = (
   sourceUniverse: Universe,
   targetUniverse?: Universe
 ) => {
-  const ybSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
-    .ybSoftwareVersion;
-  const participatingUniverses = targetUniverse
-    ? [sourceUniverse, targetUniverse]
-    : [sourceUniverse];
-  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig(participatingUniverses);
+  const sourceYbSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const targetYbSoftwareVersion = targetUniverse
+    ? getPrimaryCluster(targetUniverse.universeDetails.clusters)?.userIntent.ybSoftwareVersion
+    : '';
+
   return (
-    !!ybSoftwareVersion &&
+    !!sourceYbSoftwareVersion &&
     compareYBSoftwareVersions({
       versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-      versionB: ybSoftwareVersion,
+      versionB: sourceYbSoftwareVersion,
       options: {
         suppressFormatError: true
       }
     }) < 0 &&
-    !participantsHaveLinkedXClusterConfig
+    (!targetUniverse ||
+      (targetUniverse &&
+        !!targetYbSoftwareVersion &&
+        compareYBSoftwareVersions({
+          versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+          versionB: targetYbSoftwareVersion,
+          options: {
+            suppressFormatError: true
+          }
+        }) < 0))
   );
 };
 
@@ -726,6 +758,37 @@ export const getIsXClusterConfigAllBidirectional = (
   ).every(([_, needBootstrapDetails]) =>
     needBootstrapDetails.reasons.includes(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION)
   );
+};
+
+export const getSchemaChangeMode = (xClusterConfig: XClusterConfig) => {
+  switch (xClusterConfig.type) {
+    case XClusterConfigType.BASIC:
+    case XClusterConfigType.TXN:
+      return XClusterSchemaChangeMode.TABLE_LEVEL;
+    case XClusterConfigType.DB_SCOPED:
+      return XClusterSchemaChangeMode.DB_SCOPED;
+  }
+};
+
+export const checkIsDbScopedXClusterSupported = (ybSoftwareVersion: string) =>
+  compareYBSoftwareVersionsWithReleaseTrack({
+    version: ybSoftwareVersion,
+    stableVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
+    previewVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+    options: { suppressFormatError: true }
+  });
+
+export const getLatestSchemaChangeModeSupported = (
+  sourceUniverseVersion: string,
+  targetUniverseVersion: string
+): XClusterSchemaChangeMode => {
+  if (
+    checkIsDbScopedXClusterSupported(sourceUniverseVersion) &&
+    checkIsDbScopedXClusterSupported(targetUniverseVersion)
+  ) {
+    return XClusterSchemaChangeMode.DB_SCOPED;
+  }
+  return XClusterSchemaChangeMode.TABLE_LEVEL;
 };
 
 const updateTableStatusWithReplicationLag = (

@@ -1,7 +1,7 @@
 import { FC } from 'react';
 import _ from 'lodash';
 import { useEffectOnce } from 'react-use';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { Controller, useWatch, useFormContext } from 'react-hook-form';
 import { Box, Grid, makeStyles, Typography } from '@material-ui/core';
 import { YBInput, YBToggleField, YBLabel, YBTooltip } from '../../../../../../components';
@@ -84,8 +84,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
     {
       id: 'yqlServerRpcPort',
       visible: ycqlEnabled,
-      disabled: isEditMode,
-      tooltip: t('universeForm.advancedConfig.dbRPCPortTooltip')
+      disabled: isEditMode
     }
   ].filter((ports) => ports.visible);
 
@@ -95,13 +94,23 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
       id: 'ysqlServerRpcPort',
       visible: ysqlEnabled,
       disabled: isEditMode,
-      tooltip: t('universeForm.advancedConfig.dbRPCPortTooltip')
+      tooltip: (
+        <Trans
+          i18nKey={'universeForm.advancedConfig.dbRPCPortTooltip'}
+          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+        />
+      )
     },
     {
       id: 'internalYsqlServerRpcPort',
       visible: ysqlEnabled && connectionPoolingEnabled,
       disabled: isEditMode,
-      tooltip: t('universeForm.advancedConfig.ysqlConPortTooltip')
+      tooltip: (
+        <Trans
+          i18nKey={'universeForm.advancedConfig.ysqlConPortTooltip'}
+          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+        />
+      )
     }
   ].filter((ports) => ports.visible);
 

@@ -54,8 +54,8 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   const xClusterConfigQueries = useQueries(
     universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: xClusterQueryKey.detail(uuid),
-      queryFn: () => fetchXClusterConfig(uuid),
+      queryKey: xClusterQueryKey.detail(uuid, false /* syncWithDb */),
+      queryFn: () => fetchXClusterConfig(uuid, false /* syncWithDb */),
       enabled: universeQuery.data?.universeDetails !== undefined
     }))
   ) as UseQueryResult<XClusterConfig>[];
@@ -63,7 +63,6 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
-        !xClusterConfig.data?.usedForDr &&
         xClusterConfig.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
@@ -103,6 +102,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   const shownXClusterConfigQueries = shouldShowDrXClusterConfigs
     ? xClusterConfigQueries
     : xClusterConfigQueries.filter((xClusterConfigQuery) => !xClusterConfigQuery.data?.usedForDr);
+
   return (
     <>
       <ul className={styles.listContainer}>

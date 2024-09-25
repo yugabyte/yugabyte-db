@@ -109,18 +109,20 @@ func (feit *FullEITContext) Write() error {
 	feit.PostFormat(tmpl, NewEITContext())
 	feit.Output.Write([]byte("\n"))
 
-	// Section 2: EIT Details subSection 2
-	tmpl, err = feit.startSubsection(eitDetails2)
-	if err != nil {
-		logrus.Errorf("%s", err.Error())
-		return err
+	if feit.eit.GetCertType() != util.HashicorpVaultCertificateType {
+		// Section 2: EIT Details subSection 2
+		tmpl, err = feit.startSubsection(eitDetails2)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := feit.ContextFormat(tmpl, feitc.EIT); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		feit.PostFormat(tmpl, NewEITContext())
+		feit.Output.Write([]byte("\n"))
 	}
-	if err := feit.ContextFormat(tmpl, feitc.EIT); err != nil {
-		logrus.Errorf("%s", err.Error())
-		return err
-	}
-	feit.PostFormat(tmpl, NewEITContext())
-	feit.Output.Write([]byte("\n"))
 
 	certType := feit.eit.GetCertType()
 	switch certType {

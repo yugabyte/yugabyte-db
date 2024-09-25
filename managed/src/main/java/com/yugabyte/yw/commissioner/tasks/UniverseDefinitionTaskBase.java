@@ -44,6 +44,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -88,6 +89,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -994,15 +997,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createConfigureUniverseTasks(
-      Cluster primaryCluster, @Nullable Collection<NodeDetails> masterNodes) {
+      Cluster primaryCluster,
+      @Nullable Collection<NodeDetails> masterNodes,
+      @Nullable Runnable gflagsUpgradeSubtasks) {
     // Wait for a Master Leader to be elected.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+    // Update the gflags to set master_join_existing_universe to true.
     if (CollectionUtils.isNotEmpty(masterNodes)
         && primaryCluster.userIntent.providerType != CloudType.kubernetes) {
-      // Update the gflags to set master_join_existing_universe to false.
-      // It is not set for k8s universe because this restarts the pods.
       createGFlagsOverrideTasks(masterNodes, ServerType.MASTER, null /* param customizer */);
+    } else if (gflagsUpgradeSubtasks != null) {
+      gflagsUpgradeSubtasks.run();
     }
 
     // Persist the placement info into the YB master leader.
@@ -1456,6 +1462,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   universe.getUniverseDetails().clusters);
         }
       }
+      params.cgroupSize = getCGroupSize(node);
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
@@ -1642,6 +1649,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new IllegalArgumentException(
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
+      }
+    }
+    // Validate kubernetes overrides
+    if (universeDetails.getPrimaryCluster().userIntent.providerType == CloudType.kubernetes) {
+      try {
+        KubernetesUtil.validateServiceEndpoints(taskParams(), universe.getConfig());
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
       }
     }
   }
@@ -2803,12 +2818,31 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String ybcSoftwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
+    UserIntent userIntent =
+        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     if (softwareVersion == null) {
-      UserIntent userIntent =
-          getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
+      if (processType == ServerType.MASTER || processType == ServerType.TSERVER) {
+        // GFlags groups may depend on software version, so need to calculate them using fresh one.
+        Universe universe = getUniverse();
+        universe
+            .getUniverseDetails()
+            .clusters
+            .forEach(cluster -> cluster.userIntent.ybSoftwareVersion = softwareVersion);
+        params.gflags =
+            GFlagsUtil.getGFlagsForNode(
+                node,
+                processType,
+                universe.getCluster(node.placementUuid),
+                universe.getUniverseDetails().clusters);
+      }
+    }
+    if (gFlagsValidation.ysqlMajorVersionUpgrade(
+        userIntent.ybSoftwareVersion, params.ybSoftwareVersion)) {
+      // As this task is used for software upgrade, we need to set pg upgrade flag to true.
+      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.IN_PROGRESS;
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
@@ -2881,7 +2915,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     params.gflags = gflags;
-
     return params;
   }
 

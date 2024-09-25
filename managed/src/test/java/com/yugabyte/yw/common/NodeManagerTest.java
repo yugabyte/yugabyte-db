@@ -530,11 +530,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
-    when(nodeAgentClient.maybeGetNodeAgent(any(), any())).thenReturn(Optional.empty());
+    when(nodeAgentClient.maybeGetNodeAgent(any(), any(), any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.ybcEnableVervbose)))
-        .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
         .thenReturn("/tmp/nfs,/nfs");
     when(mockConfGetter.getConfForScope(
@@ -1286,6 +1283,10 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
+    }
+    if (type == NodeManager.NodeCommandType.Configure) {
+      expectedCommand.add("--pg_max_mem_mb");
+      expectedCommand.add("0");
     }
     expectedCommand.add("--remote_tmp_dir");
     expectedCommand.add("/tmp");
@@ -2064,7 +2065,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 9, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))

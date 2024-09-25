@@ -611,7 +611,10 @@ class ClientTestForceMasterLookup :
 
 
   void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
-    for (int i = 0; i < kNumIterations; i++) {
+    // With the cache disabled and tsan enabled, each lookup is extremely slow. So we greatly
+    // decrease the number of iterations.
+    int adjusted_num_iterations = yb::IsTsan() ? 10 : kNumIterations;
+    for (int i = 0; i < adjusted_num_iterations; i++) {
       if (point_lookup) {
           auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
           ASSERT_NOTNULL(key_rt);
@@ -639,7 +642,6 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
       PerformManyLookups(table, true /* point_lookup */)); });
   auto t2 = std::thread([&]() { ASSERT_NO_FATALS(
       PerformManyLookups(table, false /* point_lookup */)); });
-
   t1.join();
   t2.join();
 }
@@ -1585,7 +1587,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
   }
 
   {
@@ -1595,7 +1597,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
               ->RenameTo(kRenamedTableName)
               ->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->primary_table_schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
     const auto tables = ASSERT_RESULT(client_->ListTables());
@@ -1918,11 +1920,11 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   {
     auto tablet_peer = ASSERT_RESULT(
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
-    auto old_version = tablet_peer->tablet()->metadata()->schema_version();
+    auto old_version = tablet_peer->tablet()->metadata()->primary_table_schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
     table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
-    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
   }
 }
 

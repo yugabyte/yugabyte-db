@@ -99,10 +99,11 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   );
 
   // Looking up storage config name for DR UI only.
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName = props.isDrInterface
     ? storageConfigs?.find((storageConfig) => storageConfig.configUUID === props.storageConfigUuid)
@@ -122,7 +123,7 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
     targetTableMissing
   } = categorizedNeedBootstrapPerTableResponse;
   const skipBootstrap = watch('skipBootstrap');
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
 
   const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
     (config: any) =>
@@ -148,6 +149,10 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   const isPossibleDataInconsistencyPresent =
     (bootstrapTableUuids.length > 0 && skipBootstrap) ||
     numTablesRequiringBootstrapInBidirectionalDb > 0;
+  const noBootstrapPlannedTableCount = noBootstrapPlannedCategories.reduce(
+    (tableCount, category) => tableCount + category.tableCount,
+    0
+  );
 
   // Defining user facing product terms here.
   const sourceUniverseTerm = t(`source.${props.isDrInterface ? 'dr' : 'xClusterReplication'}`, {
@@ -213,7 +218,7 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
         </>
       )}
       <Box marginTop={3} display="flex" gridGap={theme.spacing(3)}>
-        <div>
+        {noBootstrapPlannedTableCount > 0 && (
           <div className={classes.bootstrapCategoryGroup}>
             <Typography variant="body1">{t('categoryGroup.noBootstrapPlanned')}</Typography>
             <div className={classes.bootstrapCategoryCardContainer}>
@@ -230,7 +235,7 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
               ))}
             </div>
           </div>
-        </div>
+        )}
         {bootstrapTableUuids.length > 0 && !skipBootstrap && (
           <div className={classes.bootstrapCategoryGroup}>
             <Typography variant="body1">{t('categoryGroup.bootstrapPlanned')}</Typography>

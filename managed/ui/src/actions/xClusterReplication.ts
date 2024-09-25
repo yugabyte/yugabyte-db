@@ -123,11 +123,12 @@ export function isBootstrapRequired<TIncludeDetails extends boolean>(
     .then((response) => response.data);
 }
 
-export function fetchXClusterConfig(xClusterConfigUUID: string) {
+export function fetchXClusterConfig(xClusterConfigUUID: string, syncWithDb?: boolean) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .get<XClusterConfig>(
-      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`,
+      { params: { syncWithDB: syncWithDb } }
     )
     .then((response) => response.data);
 }
@@ -335,7 +336,7 @@ export function fetchTaskUntilItCompletes(
       }
       if (status === 'Failed' || status === 'Failure') {
         onTaskCompletion(true, resp);
-      } else if (percent === 100) {
+      } else if (percent === 100 && status === 'Success') {
         onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);

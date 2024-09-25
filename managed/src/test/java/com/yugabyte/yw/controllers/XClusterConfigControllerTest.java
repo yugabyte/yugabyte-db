@@ -270,7 +270,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
-        .query(anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   public void setupMetricValues() {
@@ -817,7 +817,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     String fakeErrMsg = "failed to fetch metric data";
     doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
         .when(mockMetricQueryHelper)
-        .query(any(), any(), any());
+        .query(any(), anyList(), anyMap(), anyMap());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 

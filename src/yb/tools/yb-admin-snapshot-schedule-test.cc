@@ -201,7 +201,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return restoration_id;
   }
 
-  Status RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+  virtual Status RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
     return WaitRestorationDone(
         VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, restore_at)),
         40s * kTimeMultiplier);
@@ -263,7 +263,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
           CallJsonAdmin("list_clones", source_namespace_id, seq_no));
       const auto entries = out.GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
-      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||
@@ -538,6 +538,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     return LoggedWaitFor([&]() -> Result<bool> {
       auto res = conn->FetchRow<std::string>(query);
       if (!res.ok()) {
+        LOG(INFO) << "Fetch row failed. Status: " << res.status();
         return false;
       }
       LOG(INFO) << "Got value: " << *res << ", expected: " << expectation;
@@ -593,6 +594,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   }
 
   void TestPgsqlDropDefault();
+  void TestTransactionDuringPITR();
 };
 
 class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
@@ -1112,13 +1114,27 @@ TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsTestMigration) {
   LOG(INFO) << "Restoration: " << restorations[0];
 }
 
-// This class simplifies the way to run PITR tests against (not) colocated database.
-// After setting proper callback functions, calling RunTestWithColocatedParam performs the test.
-// You can also write tests inherit from this class without using this framework.
+YB_DEFINE_ENUM(RestoreType, (kPITR)(kClone));
+using ScheduleRestoreTestParams = std::tuple<YsqlColocationConfig, RestoreType>;
+
+// This class simplifies the way to run PITR and DB clone tests against colocated & non-colocated
+// databases. After setting the callback functions, calling RunTestWithColocatedParam performs the
+// test.
+// This class should not be instantiated directly. Instead, use the classes that specify
+// which combinations to run.
 class YbAdminSnapshotScheduleTestWithYsqlParam
     : public YbAdminSnapshotScheduleTestWithYsql,
-      public ::testing::WithParamInterface<YsqlColocationConfig> {
+      public ::testing::WithParamInterface<ScheduleRestoreTestParams> {
  public:
+  void SetUp() override {
+    if (GetRestoreType() == RestoreType::kClone && IsAsan()) {
+      LOG(INFO) << "This test is disabled in ASAN as ysql_dump fails due to memory leaks inherited "
+                << "from pg_dump.";
+      GTEST_SKIP();
+    }
+    YbAdminSnapshotScheduleTestWithYsql::SetUp();
+  }
+
   using StepCallback = std::function<void(const std::string&, const std::string&)>;
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
@@ -1126,7 +1142,47 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
     opts->extra_tserver_flags.emplace_back("--ysql_beta_feature_tablegroup=true");
   }
 
-  Result<std::string> PreparePgWithColocatedParam() { return PreparePg(GetParam()); }
+  virtual std::vector<std::string> ExtraTSFlags() override {
+    auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraTSFlags();
+    flags.push_back("--ysql_hba_conf_csv=local all yugabyte trust, host all all all trust");
+    // Needed to eliminate the role of sequence cache when creating new connections to the DB
+    flags.push_back("--ysql_sequence_cache_minval=1");
+    return flags;
+  }
+
+  virtual std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraMasterFlags();
+    flags.push_back("--allowed_preview_flags_csv=enable_db_clone");
+    flags.push_back("--enable_db_clone=true");
+    return flags;
+  }
+
+  YsqlColocationConfig GetColocationParam() { return std::get<0>(GetParam()); }
+  RestoreType GetRestoreType() { return std::get<1>(GetParam()); }
+
+  Result<std::string> PreparePgWithColocatedParam() { return PreparePg(GetColocationParam()); }
+
+  std::string GetRestoredDbName() {
+    return GetRestoreType() == RestoreType::kClone ?
+           "clone_target_db" :
+           kTableName.namespace_name();
+  }
+
+  Result<pgwrapper::PGConn> ConnectToRestoredDb() {
+    return PgConnect(GetRestoredDbName());
+  }
+
+  virtual Status RestoreSnapshotSchedule(
+      const std::string& schedule_id, Timestamp restore_at) override {
+    if (GetRestoreType() == RestoreType::kClone) {
+      RETURN_NOT_OK(CloneAndWait(
+          "ysql." + kTableName.namespace_name(), GetRestoredDbName(), 2min /* timeout */,
+          restore_at.ToFormattedString()));
+      return Status::OK();
+    } else {
+      return YbAdminSnapshotScheduleTest::RestoreSnapshotSchedule(schedule_id, restore_at);
+    }
+  }
 
   void ExecuteOnTables(std::string non_colo_prefix,
                        std::string non_colo_option,
@@ -1137,7 +1193,7 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
       return;
     }
 
-    if (GetParam() != YsqlColocationConfig::kNotColocated) {
+    if (GetColocationParam() != YsqlColocationConfig::kNotColocated) {
       for (const auto& colo_prefix : colo_prefixes) {
         step(colo_prefix, colo_option);
       }
@@ -1150,7 +1206,9 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   void RunTestWithColocatedParam(std::string schedule_id) {
     std::vector<std::string> colocated_prefixes = {"colocated", "colocated2"};
     std::string colocated_option =
-        GetParam() == YsqlColocationConfig::kTablegroup ? "TABLEGROUP " + kTablegroupName : "";
+        GetColocationParam() == YsqlColocationConfig::kTablegroup ?
+                                "TABLEGROUP " + kTablegroupName :
+                                "";
     std::string not_colocated_prefix = "not_colocated";
     std::string not_colocated_option = "WITH (COLOCATION = FALSE)";
 
@@ -1176,12 +1234,28 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   StepCallback CheckAfterPITR;
 };
 
-INSTANTIATE_TEST_CASE_P(Colocation, YbAdminSnapshotScheduleTestWithYsqlParam,
-                        ::testing::Values(YsqlColocationConfig::kNotColocated,
-                                          YsqlColocationConfig::kDBColocated,
-                                          YsqlColocationConfig::kTablegroup));
+// Test for PITR against colocated and non-colocated databases.
+class YbAdminSnapshotScheduleTestWithYsqlColocationParam:
+    public YbAdminSnapshotScheduleTestWithYsqlParam {};
+INSTANTIATE_TEST_CASE_P(
+    Colocation, YbAdminSnapshotScheduleTestWithYsqlColocationParam, ::testing::Values(
+        ScheduleRestoreTestParams(YsqlColocationConfig::kNotColocated, RestoreType::kPITR),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kPITR),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kTablegroup, RestoreType::kPITR)));
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
+// Test for PITR and DB clone against colocated and non-colocated databases.
+class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
+    public YbAdminSnapshotScheduleTestWithYsqlParam {};
+INSTANTIATE_TEST_CASE_P(
+    ColocationAndRestoreType, YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    ::testing::Values(
+        ScheduleRestoreTestParams(YsqlColocationConfig::kNotColocated, RestoreType::kPITR),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kPITR),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kTablegroup, RestoreType::kPITR),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kNotColocated, RestoreType::kClone),
+        ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kClone)));
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, Pgsql) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1193,12 +1267,13 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   auto res = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM test_table"));
   ASSERT_EQ(res, "before");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropDatabaseAndSchedule) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect());
 
@@ -1211,7 +1286,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
   ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
+// TODO(asrivastava): This test sometimes fails to delete the table on PITR if we refresh the PG
+// connection after the restore.
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlCreateTable) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1266,7 +1343,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropTable) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1284,7 +1361,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
     ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
   };
 
-  CheckAfterPITR = [&conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     auto res = ASSERT_RESULT(conn.FetchRow<std::string>(Format(
@@ -1299,7 +1377,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, FailAfterMigration) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1322,7 +1400,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
       restore_status.message().ToBuffer(), "Unable to restore as YSQL upgrade was performed");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlCreateIndex) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1347,7 +1425,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
     ASSERT_TRUE(is_index_scan);
   };
 
-  CheckAfterPITR = [&conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto table_idx_name = prefix + "_table_idx";
 
@@ -1380,7 +1459,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropIndex) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1407,7 +1486,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
     ASSERT_FALSE(is_index_scan);
   };
 
-  CheckAfterPITR = [&conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto table_idx_name = prefix + "_table_idx";
 
@@ -1437,7 +1517,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAddColumn) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1462,7 +1542,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
     ASSERT_EQ(res, "now2");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Select data from the table after restore";
@@ -1485,7 +1566,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDeleteColumn) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1519,7 +1600,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
     ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Select data from the table after restore";
@@ -1535,7 +1617,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumnWithMissingDefault) {
+// TODO(asrivastava): Fails with DB cloning.
+TEST_P( YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDeleteColumnWithMissingDefault) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1572,7 +1655,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumnWithMissingDef
     ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Select data from the table after restore";
@@ -1592,7 +1676,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumnWithMissingDef
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameTable) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1615,6 +1699,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
   ASSERT_FALSE(result_with_old_name.ok());
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Select data from table after restore";
   // There might be a transient period when we get stale data before
@@ -1634,7 +1719,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumn) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1658,6 +1743,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
   ASSERT_EQ(select_res, "before");
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Select data from table after restore";
   std::string query = "SELECT value FROM test_table";
@@ -1673,7 +1759,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSetDefault) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1697,6 +1783,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Insert a new row and verify that the default clause is no longer present";
   // There might be a transient period when we get stale data before
@@ -1710,7 +1797,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
   ASSERT_NOK(conn.FetchRow<std::string>("SELECT * FROM test_table where key=2"));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropDefault) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1742,7 +1829,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
     ASSERT_EQ(res2, std::nullopt);
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Insert a row and verify that the default clause is still present";
@@ -1913,7 +2001,7 @@ void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
   ASSERT_FALSE(result_status.ok());
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSetNotNull) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1935,6 +2023,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Insert rows with null values and verify it goes through successfully";
   // There might be a transient period of time when constraint exists since
@@ -1947,7 +2036,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
   ASSERT_EQ(res3, std::nullopt);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropNotNull) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1972,6 +2061,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Verify failure on null insertion since the drop is restored via PITR";
   // There might be a transient period of time when constraint does not exist
@@ -1980,7 +2070,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
   ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAlterTableAddPK) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2009,7 +2099,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
     ASSERT_STR_CONTAINS(insert_res.ToString(), "violates not-null constraint");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Verify primary key constraint no longer exists";
@@ -2026,7 +2117,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAlterTableAddFK) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2055,7 +2146,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
     ASSERT_STR_CONTAINS(insert_res.ToString(), "violates foreign key constraint");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto table_name_2 = prefix + "_table_2";
 
@@ -2072,7 +2164,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAlterTableSetOwner) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2106,6 +2198,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   // Wait for the tservers to refresh their cache.
   // We wait for 4 cycles of Heartbeats.
@@ -2125,7 +2218,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlTestTruncate) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlTestTruncate) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2153,7 +2246,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlTestTruncate) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'after')", table_name));
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Select data from the table after restore";
@@ -2175,7 +2269,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlTestTruncate) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAlterTableWithRewrite) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2194,12 +2288,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
 
     LOG(INFO) << "Perform some table rewrite operations on the table";
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-    // Set the yb_ddl_rollback_enabled GUC var so that we can perform an
-    // ADD COLUMN ... PRIMARY KEY operation.
-    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = ON"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ADD COLUMN newcol INT PRIMARY KEY DEFAULT 2", table_name));
-    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = OFF"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ALTER COLUMN value TYPE int USING length(value)", table_name));
     // Verify that we can't insert duplicate values into the pkey column (newcol).
@@ -2214,7 +2304,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 7, 3)", table_name));
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Select data from the table after restore";
@@ -2240,7 +2331,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAddUniqueConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2266,7 +2357,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
     ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Verify unique constraint is no longer present";
@@ -2279,7 +2371,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
+// TODO(asrivastava): Fails for DB cloning with colocated databases.
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropUniqueConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2313,7 +2406,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'ABC')", table_name));
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
 
     LOG(INFO) << "Verify that the unique constraint is present and drop is restored";
@@ -2332,7 +2426,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAddCheckConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2354,6 +2448,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Verify check constraint is removed post PITR";
   // There might be a transient period of time when constraint exists since
@@ -2362,7 +2457,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
   ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropCheckConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2382,6 +2477,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
 
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
 
   LOG(INFO) << "Verify drop constraint is undone post PITR";
   // There might be a transient period of time when constraint does not exist
@@ -2397,7 +2493,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
   ASSERT_FALSE(result_status.ok());
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoDeletedData) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2423,6 +2519,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_OK(restore_status);
 
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+
   LOG(INFO) << "Select data from 'test_table' after restore";
   res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM test_table where key=3"));
   LOG(INFO) << "Select result " << res;
@@ -2434,7 +2532,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
   ASSERT_EQ(res, 16);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoInsertedData) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2464,6 +2562,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) 
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_OK(restore_status);
 
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
   LOG(INFO) << "Select row from 'test_table' after restore";
   auto result_status = conn.FetchRow<int32_t>("SELECT value FROM test_table where key=4");
   ASSERT_EQ(result_status.ok(), false);
@@ -2479,7 +2578,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) 
   ASSERT_EQ(res, 21);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoCreateSequence) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2503,7 +2602,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
         "INSERT INTO $0 VALUES (2, nextval('$1'))", table_name, sequence_name));
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto sequence_name = prefix + "_value_seq";
 
@@ -2530,7 +2630,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDropSequence) {
+// TODO(yamen): Fails for DB cloning with colocated databases.
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDropSequence) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2569,7 +2670,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDropSequence) 
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceVerifyPartialRestore) {
+// TODO(yamen): Fails for DB cloning with colocated databases.
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceVerifyPartialRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.
@@ -2681,7 +2783,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceVerifyPartialResto
   RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequencePartialCleanupAfterRestore) {
+// TODO(yamen): Fails for DB cloning with colocated databases.
+TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequencePartialCleanupAfterRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.
@@ -2943,8 +3047,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestPerDbCatalogVersion,
   ASSERT_TRUE(found_my_ns);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreDroppedTablegroup,
-          YbAdminSnapshotScheduleTestWithYsqlParam) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, RestoreDroppedTablegroup) {
   auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kTablegroup));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2995,8 +3098,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreDroppedTablegroup,
   ASSERT_OK(conn.Execute("INSERT INTO test_table_2 VALUES (1, 'after')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, DropTablegroupWithRestoredTable,
-          YbAdminSnapshotScheduleTestWithYsqlParam) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, DropTablegroupWithRestoredTable) {
   // Verify when a tablegroup child table is HIDDEN in both current and restoring time, then PITR
   // should NOT unhide it accidently.
   auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kTablegroup));
@@ -3034,8 +3136,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, DropTablegroupWithRestoredTable,
   ASSERT_OK(conn.ExecuteFormat("DROP TABLEGROUP $0", kTablegroupName));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreWithTwoTablegroups,
-          YbAdminSnapshotScheduleTestWithYsqlParam) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, RestoreWithTwoTablegroups) {
   // Verify PITR restore does HIDE the current tablegroup which didn't exist in the restoring time
   // and recover the one exists in the restoring time.
   auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kTablegroup));
@@ -3071,8 +3172,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreWithTwoTablegroups,
   ASSERT_NOK(conn.ExecuteFormat(query, "test_tg"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, TablegroupGCAfterRestore,
-          YbAdminSnapshotScheduleTestWithYsqlParam) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, TablegroupGCAfterRestore) {
   // Verify the tablegroup gets cleaned up if it is marked as HIDDEN after PITR restore and
   // goes out of retention period.
   auto schedule_id = ASSERT_RESULT(PreparePg(
@@ -3238,8 +3338,7 @@ TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
   ASSERT_OK(conn.Execute("DROP TABLE test_table"));
 
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_OK(restore_status);
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 
   auto res = ASSERT_RESULT(conn.FetchRow<std::string>(
       "SELECT value FROM test_table WHERE key = 1"));
@@ -3297,6 +3396,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
   ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (3, 'value')"));
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
   ASSERT_NOK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (5, 'value')"));
 
@@ -5418,7 +5518,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, CreateDuplicateSchedules,
     "already exists for the given keyspace ysql." + kTableName.namespace_name());
 }
 
-TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+void YbAdminSnapshotScheduleTestWithYsql::TestTransactionDuringPITR() {
   ASSERT_OK(PrepareCommon());
   std::string db_name = "test_db_name";
   std::string table_name = "test_table";
@@ -5439,6 +5539,25 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
   auto row_value = ASSERT_RESULT(
       conn.FetchRow<int32_t>(Format("SELECT value from $0 where key = 3", table_name)));
   ASSERT_EQ(row_value, 3);
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
+  TestTransactionDuringPITR();
+}
+
+class YbAdminSnapshotScheduleTestWithYsqlRepro23399 : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraTSFlags() override {
+    return {
+        "--TEST_stopactivetxns_sleep_in_abort_cb_ms=500"
+        };
+  }
+};
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITRRepro23399,
+    YbAdminSnapshotScheduleTestWithYsqlRepro23399) {
+  TestTransactionDuringPITR();
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL

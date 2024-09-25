@@ -90,7 +90,7 @@ public class CommonUtils {
           "API",
           "POLICY",
           "HC_VAULT_TOKEN",
-          "vaultToken",
+          "VAULTTOKEN",
           "SAS_TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
@@ -810,7 +810,7 @@ public class CommonUtils {
               .toList();
       NodeDetails sameRegionTServer;
       if (useToBeRemoved) {
-        sameRegionTServer = getARandomLiveOrRemovedTServer(sameRegionNodes);
+        sameRegionTServer = getARandomLiveOrToBeRemovedTServer(sameRegionNodes);
       } else {
         sameRegionTServer = getARandomLiveTServer(sameRegionNodes);
       }
@@ -820,7 +820,7 @@ public class CommonUtils {
       }
     }
     if (useToBeRemoved) {
-      return getARandomLiveOrRemovedTServer(universe);
+      return getARandomLiveOrToBeRemovedTServer(universe);
     }
     return getARandomLiveTServer(universe);
   }
@@ -837,9 +837,9 @@ public class CommonUtils {
     return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
   }
 
-  public static NodeDetails getARandomLiveOrRemovedTServer(Universe universe) {
+  public static NodeDetails getARandomLiveOrToBeRemovedTServer(Universe universe) {
     NodeDetails randomLiveOrRemovedTServer =
-        getARandomLiveOrRemovedTServer(universe.getTServersInPrimaryCluster());
+        getARandomLiveOrToBeRemovedTServer(universe.getTServersInPrimaryCluster());
     if (randomLiveOrRemovedTServer == null) {
       throw new IllegalStateException(
           "No live or toBeRemoved TServers found for Universe UUID: " + universe.getUniverseUUID());
@@ -847,7 +847,7 @@ public class CommonUtils {
     return randomLiveOrRemovedTServer;
   }
 
-  private static NodeDetails getARandomLiveOrRemovedTServer(Collection<NodeDetails> nodes) {
+  private static NodeDetails getARandomLiveOrToBeRemovedTServer(Collection<NodeDetails> nodes) {
     List<NodeDetails> tserverLiveNodes =
         nodes.stream()
             .filter(nodeDetails -> nodeDetails.isTserver)

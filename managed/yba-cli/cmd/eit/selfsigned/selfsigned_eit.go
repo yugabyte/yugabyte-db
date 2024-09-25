@@ -27,8 +27,7 @@ var SelfSignedEITCmd = &cobra.Command{
 func init() {
 	SelfSignedEITCmd.Flags().SortFlags = false
 
-	// SelfSignedEITCmd.AddCommand(createSelfSignedEITCmd)
-	// SelfSignedEITCmd.AddCommand(updateSelfSignedEITCmd)
+	SelfSignedEITCmd.AddCommand(createSelfSignedEITCmd)
 	SelfSignedEITCmd.AddCommand(listSelfSignedEITCmd)
 	SelfSignedEITCmd.AddCommand(describeSelfSignedEITCmd)
 	SelfSignedEITCmd.AddCommand(deleteSelfSignedEITCmd)

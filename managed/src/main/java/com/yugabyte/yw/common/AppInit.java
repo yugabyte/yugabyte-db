@@ -215,19 +215,24 @@ public class AppInit {
                   }
                 });
         // Background thread to query for latest ARM release version.
-        Thread armReleaseThread =
-            new Thread(
-                () -> {
-                  try {
-                    log.info("Attempting to query latest ARM release link.");
-                    releaseManager.findLatestArmRelease(
-                        ConfigHelper.getCurrentVersion(environment));
-                    log.info("Imported ARM release download link.");
-                  } catch (Exception e) {
-                    log.warn("Error importing ARM release download link", e);
-                  }
-                });
-        armReleaseThread.start();
+        // Only run for non-cloud deployments, as YBM will add any necessary releases on their own.
+        if (!config.getBoolean("yb.cloud.enabled")) {
+          Thread armReleaseThread =
+              new Thread(
+                  () -> {
+                    try {
+                      log.info("Attempting to query latest ARM release link.");
+                      releaseManager.findLatestArmRelease(
+                          ConfigHelper.getCurrentVersion(environment));
+                      log.info("Imported ARM release download link.");
+                    } catch (Exception e) {
+                      log.warn("Error importing ARM release download link", e);
+                    }
+                  });
+          armReleaseThread.start();
+        } else {
+          log.debug("skipping fetch latest arm build for cloud enabled deployment");
+        }
 
         // initialize prometheus exports
         DefaultExports.initialize();

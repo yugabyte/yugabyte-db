@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
-import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -27,6 +26,7 @@ import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -57,9 +57,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -112,11 +112,9 @@ public class CustomerTaskManager {
   // Invoked if the task is in incomplete state.
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
-    TaskError taskError = taskInfo.getTaskError();
+    YBAError taskError = taskInfo.getTaskError();
     if (taskError == null) {
-      taskError = new TaskError();
-      taskError.setCode(TaskErrorCode.PLATFORM_RESTARTED);
-      taskError.setMessage("Platform restarted.");
+      taskError = new YBAError(Code.PLATFORM_RESTARTED, "Platform restarted.");
       taskInfo.setTaskError(taskError);
     }
   }
@@ -656,6 +654,15 @@ public class CustomerTaskManager {
       case ReadOnlyClusterDelete:
         taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
         break;
+      case FailoverDrConfig:
+      case SwitchoverDrConfig:
+        taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
+        DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
+        drConfigTaskParams.refreshIfExists();
+        // Todo: we need to recompute other task param fields here to handle changes in the database
+        //  at the YBDB level, e.g., the user creates a table after the task has filed and before it
+        //  is retried.
+        break;
       default:
         String errMsg =
             String.format(
@@ -729,7 +736,7 @@ public class CustomerTaskManager {
         Universe universe = Universe.getOrBadRequest(pending.getUniverse().getUniverseUUID());
         ConsistencyInfoResp response = ysqlQueryExecutor.getConsistencyInfo(universe);
         if (response != null) {
-          UUID dbTaskUuid = response.getTaskUuid();
+          UUID dbTaskUuid = response.getTaskUUID();
           int dbSeqNum = response.getSeqNum();
           if (dbTaskUuid.equals(pending.getTaskUuid())) {
             // Updated on DB side before crash, set ourselves to whatever is in the DB

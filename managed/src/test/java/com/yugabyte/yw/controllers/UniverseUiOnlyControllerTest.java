@@ -98,6 +98,12 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Override
+  public Result sendCreateRequestWithNodeDetailsSet(ObjectNode bodyJson) {
+    return doRequestWithAuthTokenAndBody(
+        "POST", "/api/customers/" + customer.getUuid() + "/universes", authToken, bodyJson);
+  }
+
+  @Override
   public Result sendPrimaryCreateConfigureRequest(ObjectNode bodyJson) {
     bodyJson.put("currentClusterType", "PRIMARY");
     bodyJson.put("clusterOperation", "CREATE");
@@ -346,7 +352,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primaryCluster = editTestUTD.getPrimaryCluster();
     primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
-    primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
+    primaryCluster.placementInfo = ModelFactory.constructPlacementInfoObject(azUuidToNumNodes);
 
     ObjectNode editJson = (ObjectNode) Json.toJson(editTestUTD);
     Result result = sendPrimaryEditConfigureRequest(editJson);

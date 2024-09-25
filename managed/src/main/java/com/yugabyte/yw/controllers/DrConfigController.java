@@ -7,7 +7,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -37,6 +36,7 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
@@ -76,6 +76,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -182,14 +183,8 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
-              + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
-    }
-
+        confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled);
     if (isDbScoped) {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
@@ -363,7 +358,6 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
 
     DrConfigEditForm editForm = parseEditForm(request);
     validateEditForm(editForm, customer.getUuid(), drConfig);
@@ -437,7 +431,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
+    verifyTaskAllowed(drConfig, TaskType.SetTablesDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigSetTablesForm setTablesForm = parseSetTablesForm(customerUUID, request);
     if (setTablesForm.bootstrapParams == null) {
@@ -536,10 +530,12 @@ public class DrConfigController extends AuthenticatedController {
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info("Received restart drConfig request");
 
+    // Todo: restart does not trigger bootstrapping. It does not remove extra xCluster configs.
+
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
+    verifyTaskAllowed(drConfig, TaskType.RestartDrConfig);
 
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigRestartForm restartForm = parseRestartForm(customerUUID, request);
@@ -663,7 +659,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
+    verifyTaskAllowed(drConfig, TaskType.EditDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -841,8 +837,20 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigSwitchoverForm switchoverForm = parseSwitchoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    verifyTaskAllowed(drConfig, TaskType.SwitchoverDrConfig);
+    Optional<XClusterConfig> xClusterConfigOptional =
+        drConfig.getActiveXClusterConfig(
+            switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid);
+    if (xClusterConfigOptional.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The underlying xCluster config with source universe %s and target universe %s does"
+                  + " not exist; possibly due to a previous switchover operation that has failed;"
+                  + " you may retry that failed operation, or roll back.",
+              switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid));
+    }
+    XClusterConfig xClusterConfig = xClusterConfigOptional.get();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
@@ -909,6 +917,8 @@ public class DrConfigController extends AuthenticatedController {
             xClusterConfig.getTargetUniverseUUID(),
             xClusterConfig.getSourceUniverseUUID(),
             xClusterConfig.getType());
+    switchoverXClusterConfig.setSecondary(true);
+    switchoverXClusterConfig.update();
 
     // Todo: PLAT-10130, handle cases where the planned failover task fails.
     DrConfigTaskParams taskParams;
@@ -992,11 +1002,9 @@ public class DrConfigController extends AuthenticatedController {
               Collections.emptyMap());
     }
 
-    switchoverXClusterConfig.setSecondary(true);
     switchoverXClusterConfig.update();
 
     // Submit task to set up xCluster config.
-
     UUID taskUUID = commissioner.submit(TaskType.SwitchoverDrConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -1066,17 +1074,33 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigFailoverForm failoverForm = parseFailoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    verifyTaskAllowed(drConfig, TaskType.FailoverDrConfig);
+    Optional<XClusterConfig> xClusterConfigOptional =
+        drConfig.getActiveXClusterConfig(
+            failoverForm.drReplicaUniverseUuid, failoverForm.primaryUniverseUuid);
+    if (xClusterConfigOptional.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The underlying xCluster config with source universe %s and target universe %s does"
+                  + " not exist; possibly due to a previous failover operation that has failed; you"
+                  + " may retry that failed operation.",
+              failoverForm.drReplicaUniverseUuid, failoverForm.primaryUniverseUuid));
+    }
+    XClusterConfig xClusterConfig = xClusterConfigOptional.get();
+    // The following will be the new dr universe.
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    // The following will be the new primary universe.
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    // Todo: Add pre-checks for user's input safetime. Get the safetime here, and make sure the
+    //  user's requested safetime is before/equal to that.
 
     DrConfigTaskParams taskParams;
     Set<String> namespaceIdsWithSafetime = failoverForm.namespaceIdSafetimeEpochUsMap.keySet();
     Set<String> namespaceIdsWithoutSafetime;
-    // Todo: Add pre-checks for user's input safetime.
     XClusterConfig failoverXClusterConfig =
         drConfig.addXClusterConfig(
             xClusterConfig.getTargetUniverseUUID(),
@@ -1088,45 +1112,21 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.
         Map<String, String> sourceTableIdTargetTableIdMap =
             xClusterUniverseService.getSourceTableIdTargetTableIdMap(
                 targetUniverse, xClusterConfig.getReplicationGroupName());
 
-        // All tables must have corresponding tables on the target universe.
-        Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
-            sourceTableIdTargetTableIdMap.entrySet().stream()
-                .filter(entry -> Objects.isNull(entry.getValue()))
-                .map(Entry::getKey)
-                .collect(Collectors.toSet());
-        if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "The following tables are in replication with no corresponding table on the"
-                      + " target universe: %s. This can happen if the table is dropped without"
-                      + " being removed from replication first. You may fix this issue by running"
-                      + " `Reconcile config with DB` from UI",
-                  sourceTableIdsWithNoTableOnTargetUniverse));
-        }
-
         // Use table IDs on the target universe for failover xCluster.
         Set<String> tableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
             XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
 
-        drSwitchoverFailoverPreChecks(
-            ybService,
-            CustomerTask.TaskType.Failover,
-            requestedTableInfoList,
-            targetTableInfoList,
-            targetUniverse,
-            sourceTableInfoList,
-            sourceUniverse);
+        // Todo: Add the following prechecks:
+        //  1. XCluster controlller create and add table: if a table is part of a DR config, it
+        //   cannot be part of an xCluster config.
+        //  2. Run certsForCdcDirGFlagCheck when creating the DR config on both directions.
         Map<String, List<String>> mainTableIndexTablesMap =
             XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
 
@@ -1310,6 +1310,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    verifyTaskAllowed(drConfig, TaskType.SyncDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
 
     XClusterConfigSyncFormData formData = new XClusterConfigSyncFormData();
@@ -1377,6 +1378,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    verifyTaskAllowed(drConfig, TaskType.DeleteDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.DeleteXClusterConfig);
     Universe sourceUniverse = null;
@@ -1428,6 +1430,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
+    verifyTaskAllowed(drConfig, TaskType.EditXClusterConfig);
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = taskType == CustomerTask.TaskType.Resume ? "Running" : "Paused";
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
@@ -1609,7 +1612,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    disallowActionOnErrorState(drConfig);
+    verifyTaskAllowed(drConfig, TaskType.SetDatabasesDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -1620,7 +1623,7 @@ public class DrConfigController extends AuthenticatedController {
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
     Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
-    Set<String> newDatabaseIds = setDatabasesForm.databases;
+    Set<String> newDatabaseIds = setDatabasesForm.dbs;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
     if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
@@ -1706,11 +1709,13 @@ public class DrConfigController extends AuthenticatedController {
     if (formData.pitrParams != null) {
       changeInParams = true;
       validatePitrParams(formData.pitrParams);
-      long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
-      long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
+      Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
+      Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
 
-      if (oldRetentionPeriodSec == formData.pitrParams.retentionPeriodSec
-          && oldSnapshotIntervalSec == formData.pitrParams.snapshotIntervalSec) {
+      if (oldRetentionPeriodSec != null
+          && oldRetentionPeriodSec.equals(formData.pitrParams.retentionPeriodSec)
+          && oldSnapshotIntervalSec != null
+          && oldSnapshotIntervalSec.equals(formData.pitrParams.snapshotIntervalSec)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -1742,7 +1747,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSetDatabasesForm formData =
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), DrConfigSetDatabasesForm.class);
-    formData.databases = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.databases);
+    formData.dbs = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.dbs);
     return formData;
   }
 
@@ -1922,15 +1927,6 @@ public class DrConfigController extends AuthenticatedController {
     }
   }
 
-  private void disallowActionOnErrorState(DrConfig drConfig) {
-    if (drConfig.getState() == State.Error) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "DR config: %s is in error state and cannot run current action", drConfig.getName()));
-    }
-  }
-
   private double getEstimatedDataLossMs(
       Universe targetUniverse, NamespaceSafeTimePB namespaceSafeTimePB) {
     // -1 means could not find it from Prometheus.
@@ -1997,6 +1993,28 @@ public class DrConfigController extends AuthenticatedController {
     if (pitrParams.retentionPeriodSec <= pitrParams.snapshotIntervalSec) {
       throw new PlatformServiceException(
           BAD_REQUEST, "pitr retentionPeriodSec must be greater than snapshotIntervalSec");
+    }
+  }
+
+  private List<TableInfoResp> convertTableInfoListToTableInfoRespList(
+      Universe universe,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList) {
+    return tableHandler.getTableInfoRespFromTableInfo(
+        universe,
+        requestedTableInfoList,
+        false /* includeParentTableInfo */,
+        false /* excludeColocatedTables */,
+        true /* includeColocatedParentTables */,
+        false /* xClusterSupportedOnly */);
+  }
+
+  public static void verifyTaskAllowed(DrConfig drConfig, TaskType taskType) {
+    if (!XClusterConfigTaskBase.isTaskAllowed(drConfig, taskType)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s task is not allowed; with state `%s`, the allowed tasks are %s",
+              taskType, drConfig.getState(), XClusterConfigTaskBase.getAllowedTasks(drConfig)));
     }
   }
 }

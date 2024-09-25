@@ -83,7 +83,7 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. Refer to [Manage tables and indexes](./xcluster-replication-ddl/).
+- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. In addition, xCluster does not support truncate operations. Refer to [Manage tables and indexes](./xcluster-replication-ddl/).
 
 - xCluster Replication setup (and other operations that require making a [full copy](xcluster-replication-setup/#full-copy-during-xcluster-setup) from source to target) forcefully drop the tables on the target if they exist before performing the restore.
 
@@ -99,4 +99,4 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 - xCluster Replication is not supported for [materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views).
 
-For more information, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).

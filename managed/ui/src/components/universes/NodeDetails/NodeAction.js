@@ -388,7 +388,7 @@ export default class NodeAction extends Component {
                   label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
                   clusterType={clusterType}
                   universeUUID={universeUUID}
-                  disabled={accessKey === undefined}
+                  disabled={accessKey === undefined && isOnPremManuallyProvisioned}
                 />
               )}
               {isNonEmptyArray(nodeAllowedActions) ? (

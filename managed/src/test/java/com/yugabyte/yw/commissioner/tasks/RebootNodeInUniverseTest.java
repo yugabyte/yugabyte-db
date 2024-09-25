@@ -108,8 +108,8 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<TaskType> rebootNodeTaskSequence(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
-        TaskType.FreezeUniverse,
         TaskType.UpdateConsistencyCheck,
+        TaskType.FreezeUniverse,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         isHardReboot ? TaskType.HardRebootServer : TaskType.RebootServer,
@@ -139,8 +139,8 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<TaskType> rebootNodeWithMaster(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
-        TaskType.FreezeUniverse,
         TaskType.UpdateConsistencyCheck,
+        TaskType.FreezeUniverse,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         TaskType.AnsibleClusterServerCtl,
@@ -180,8 +180,8 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<TaskType> rebootNodeWithOnlyMaster(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
-        TaskType.FreezeUniverse,
         TaskType.UpdateConsistencyCheck,
+        TaskType.FreezeUniverse,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         TaskType.WaitForMasterLeader,

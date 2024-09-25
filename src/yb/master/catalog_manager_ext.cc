@@ -460,6 +460,14 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
       // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
       // in different schema have same name.
       if (entry.type() == SysRowEntryType::TABLE) {
+        // Skip repacking the special table sequences_data as sequences are backed up in ysql_dump
+        if (entry.id() == kPgSequencesDataTableId) {
+          snapshot.mutable_backup_entries()->RemoveLast();
+          // Keep track of table so we skip its tablets as well. Note, since tablets always
+          // follow their table in sys_entry, we don't need to check previous tablet entries.
+          tables_to_skip.insert(entry.id());
+          continue;
+        }
         TRACE("Looking up table");
         scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
         if (table_info == nullptr) {
@@ -747,6 +755,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1850,8 +1859,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
         "Only the parent table in a colocated table should be repartitioned");
     SCHECK_EQ(new_tablets.size(), 1, IllegalState, "Expected 1 new tablet after repartitioning");
     auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
-    RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
-    RETURN_NOT_OK(tablegroup_manager_->Add(table->namespace_id(), tablegroup_id, new_tablets[0]));
+    auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
+    SCHECK_NOTNULL(tablegroup);
+    tablegroup->ReplaceTablet(new_tablets[0]);
   }
   return Status::OK();
 }

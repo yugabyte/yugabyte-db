@@ -17,10 +17,48 @@ import { ROOT_URL } from '../../../../../config';
  * @param payload - The backup information.
  * @returns A promise that resolves to the taskUUID of the backup schedule creation.
  */
-export const createScheduledBackup = (payload: IBackupSchedule['backupInfo']) => {
+export const createScheduledBackupPolicy = (payload: IBackupSchedule['backupInfo']) => {
   const customerUUID = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/create_backup_schedule_async`, {
     ...payload,
     customerUUID
   });
+};
+
+// toggle on/off scheduled backup policy
+export const toggleScheduledBackupPolicy = (
+  universeUUID: string,
+  values: Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>
+) => {
+  const customerUUID = localStorage.getItem('customerId');
+
+  if (values['cronExpression']) {
+    delete values['frequency'];
+  }
+
+  return axios.put<IBackupSchedule>(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/schedules/${values['scheduleUUID']}/pause_resume`,
+    values
+  );
+};
+
+// delete scheduled backup policy
+export const deleteSchedulePolicy = (universeUUID: string, scheduledPolicyUUID: string) => {
+  const customerUUID = localStorage.getItem('customerId');
+
+  return axios.delete<IBackupSchedule>(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/schedules/${scheduledPolicyUUID}/delete_backup_schedule_async`
+  );
+};
+
+// edit scheduled backup policy
+export const editScheduledBackupPolicy = (
+  universeUUID: string,
+  values: Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>
+) => {
+  const customerUUID = localStorage.getItem('customerId');
+  return axios.put<IBackupSchedule>(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/schedules/${values['scheduleUUID']}/edit_backup_schedule_async`,
+    values
+  );
 };

@@ -23,17 +23,7 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 	Short:   "Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration",
 	Long:    "Create a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		configNameFlag, err := cmd.Flags().GetString("name")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
-			cmd.Help()
-			logrus.Fatalln(
-				formatter.Colorize(
-					"No encryption at rest config name found to create\n",
-					formatter.RedColor))
-		}
+		earutil.CreateEARValidation(cmd)
 		token, err := cmd.Flags().GetString("token")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

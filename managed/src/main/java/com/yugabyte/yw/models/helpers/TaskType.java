@@ -649,6 +649,8 @@ public enum TaskType {
 
   ChangeAdminPassword(com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword.class),
 
+  DropTable(com.yugabyte.yw.commissioner.tasks.subtasks.DropTable.class),
+
   CreateTable(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable.class),
 
   DeleteNode(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode.class),
@@ -698,6 +700,9 @@ public enum TaskType {
 
   UpdateAndPersistKubernetesOverrides(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides.class),
+
+  HandleKubernetesNamespacedServices(
+      com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedServices.class),
 
   UpdatePlacementInfo(com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.class),
 
@@ -975,6 +980,15 @@ public enum TaskType {
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  PGUpgradeTServerCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  RunYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
+
+  RollbackYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),

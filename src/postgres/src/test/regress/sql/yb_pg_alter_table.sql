@@ -297,6 +297,64 @@ CREATE TABLE like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
 
+-- FOREIGN KEY CONSTRAINT adding TEST
+
+CREATE TABLE attmp2 (a int primary key);
+
+CREATE TABLE attmp3 (a int, b int);
+
+CREATE TABLE attmp4 (a int, b int, unique(a,b));
+
+CREATE TABLE attmp5 (a int, b int);
+
+-- Insert rows into attmp2 (pktable)
+INSERT INTO attmp2 values (1);
+INSERT INTO attmp2 values (2);
+INSERT INTO attmp2 values (3);
+INSERT INTO attmp2 values (4);
+
+-- Insert rows into attmp3
+INSERT INTO attmp3 values (1,10);
+INSERT INTO attmp3 values (1,20);
+INSERT INTO attmp3 values (5,50);
+
+-- Try (and fail) to add constraint due to invalid source columns
+ALTER TABLE attmp3 add constraint attmpconstr foreign key(c) references attmp2 match full;
+
+-- Try (and fail) to add constraint due to invalid destination columns explicitly given
+ALTER TABLE attmp3 add constraint attmpconstr foreign key(a) references attmp2(b) match full;
+
+-- Try (and fail) to add constraint due to invalid data
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full;
+
+-- Delete failing row
+DELETE FROM attmp3 where a=5;
+
+-- Try (and succeed)
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full;
+ALTER TABLE attmp3 drop constraint attmpconstr;
+
+INSERT INTO attmp3 values (5,50);
+
+-- Try NOT VALID and then VALIDATE CONSTRAINT, but fails. Delete failure then re-validate
+ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full NOT VALID;
+ALTER TABLE attmp3 validate constraint attmpconstr;
+
+-- Delete failing row
+DELETE FROM attmp3 where a=5;
+
+-- Try (and succeed) and repeat to show it works on already valid constraint
+ALTER TABLE attmp3 validate constraint attmpconstr;
+ALTER TABLE attmp3 validate constraint attmpconstr;
+
+-- Try a non-verified CHECK constraint
+ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10); -- fail
+ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID; -- succeeds
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- fails
+DELETE FROM attmp3 WHERE NOT b > 10;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+
 -- test inheritance
 
 create table renameColumn (a int);

@@ -134,9 +134,9 @@ s3://user_bucket
 
 | Component | Description |
 | :-------- | :---------- |
-| Storage address | The name of the bucket as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
+| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. |
 | Sub-directories | The path of the sub-folders (if any) in a bucket. |
-| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder or any of its contents. |
+| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder, or any of its contents. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |

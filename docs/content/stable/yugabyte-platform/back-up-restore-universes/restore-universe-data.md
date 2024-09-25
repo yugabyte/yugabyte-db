@@ -18,7 +18,7 @@ To access all universe backups, navigate to **Backups**.
 
 {{< warning title="Restoring a backup using YBC" >}}
 
-Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YBA version checks during restores. For more information, contact {{% support-platform %}}.
+Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YugabyteDB Anywhere version checks during restores. For more information, contact {{% support-platform %}}.
 
 {{< /warning >}}
 
@@ -112,7 +112,7 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 In addition to the basic restore, an advanced restore option is available for the following circumstances:
 
 - you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
-- you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YBA; that is, is no longer listed in the **Backups** list.
+- you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YugabyteDB Anywhere; that is, is no longer listed in the **Backups** list.
 
 For information regarding components of a backup, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
@@ -120,10 +120,10 @@ For information regarding components of a backup, refer to [Access backups in st
 
 To perform an advanced restore, you need the following:
 
-- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YBA installation so that the backup can be decrypted.
-- A matching [storage configuration](../configure-backup-storage/) in the target YBA installation with credentials to access the storage where the backup is located.
+- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
+- A matching [storage configuration](../configure-backup-storage/) in the target YugabyteDB Anywhere installation with credentials to access the storage where the backup is located.
 
-    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YBA.
+    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YugabyteDB Anywhere.
 
 - The storage address of the database or keyspace backup you want to restore.
 
@@ -153,11 +153,11 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
     ```
 
-1. Select the **Backup config** that corresponds to the location of the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+1. Select the **Backup config** that corresponds to the storage configuration that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 
-    Note that the backup config bucket takes precedence over the bucket specified in the backup location.
+    Note that the storage configuration bucket takes precedence over the bucket specified in the backup location.
 
-    For example, if the backup config you provide is for the following S3 Bucket:
+    For example, if the storage configuration you select is for the following S3 Bucket:
 
     ```output
     s3://test_bucket/test
@@ -169,7 +169,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     s3://user_bucket/test/univ-xyz...
     ```
 
-    YBA looks for the backup in `test_bucket/test`, not `user_bucket/test`.
+    YugabyteDB Anywhere looks for the backup in `test_bucket/test`, not `user_bucket/test`.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 

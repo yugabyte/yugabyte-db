@@ -435,8 +435,9 @@ struct PerformData {
             << "status: " << status << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      // In case of non-DDL write operations, increase mutation counters
-      if (!op->read_only() && (!req.has_options() || !req.options().ddl_mode()) &&
+      // In case of write operations, increase mutation counters for non-index relations.
+      if (!op->read_only() &&
+          !op->table()->IsIndex() &&
           GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
@@ -825,7 +826,7 @@ Status PgClientSession::AlterTable(
     client::YBTablePtr yb_table;
     RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
     auto table_properties = yb_table->schema().table_properties();
-    PgReplicaIdentity replica_identity;
+    PgReplicaIdentity replica_identity = PgReplicaIdentity::DEFAULT;
     RETURN_NOT_OK(
         GetReplicaIdentityEnumValue(req.replica_identity().replica_identity(), &replica_identity));
     table_properties.SetReplicaIdentity(replica_identity);

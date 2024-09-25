@@ -130,7 +130,11 @@ export const suggestedKubernetesConfigQueryKey = {
 
 export const xClusterQueryKey = {
   ALL: ['xCluster'],
-  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid],
+  detail: (xClusterConfigUuid: string, syncWithDb?: boolean) => [
+    ...xClusterQueryKey.ALL,
+    xClusterConfigUuid,
+    syncWithDb
+  ],
   needBootstrap: (requestParams: {
     sourceUniverseUuid?: string;
     targetUniverseUuid?: string;
@@ -142,7 +146,11 @@ export const xClusterQueryKey = {
 
 export const drConfigQueryKey = {
   ALL: ['drConfig'],
-  detail: (drConfigUuid: string | undefined) => [...drConfigQueryKey.ALL, drConfigUuid],
+  detail: (drConfigUuid: string | undefined, syncWithDb?: boolean) => [
+    ...drConfigQueryKey.ALL,
+    drConfigUuid,
+    syncWithDb
+  ],
   safetimes: (drConfigUuid: string) => [...drConfigQueryKey.detail(drConfigUuid), 'safetimes']
 };
 
@@ -215,6 +223,7 @@ export interface CreateDrConfigRequest {
 
   // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks
   dryRun?: boolean;
+  dbScoped?: boolean;
 }
 
 export interface EditDrConfigRequest {
@@ -253,6 +262,10 @@ export interface UpdateTablesInDrRequest {
   tables: string[];
 
   autoIncludeIndexTables?: boolean;
+}
+
+export interface UpdateDbsInDrRequest {
+  dbs: string[];
 }
 
 export interface CreateHaConfigRequest {
@@ -450,10 +463,12 @@ class ApiService {
     return axios.post(requestUrl, createDRConfigRequest).then((response) => response.data);
   };
 
-  fetchDrConfig = (drConfigUuid: string | undefined): Promise<DrConfig> => {
+  fetchDrConfig = (drConfigUuid: string | undefined, syncWithDb?: boolean): Promise<DrConfig> => {
     if (drConfigUuid) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-      return axios.get<DrConfig>(requestUrl).then((response) => response.data);
+      return axios
+        .get<DrConfig>(requestUrl, { params: { syncWithDB: syncWithDb } })
+        .then((response) => response.data);
     } else {
       return Promise.reject('Failed to fetch DR config. No DR config UUID provided.');
     }
@@ -519,6 +534,11 @@ class ApiService {
     return axios
       .post<YBPTask>(requestUrl, updateTablesInDrRequest)
       .then((response) => response.data);
+  };
+
+  updateDbsInDr = (drConfigUuid: string, updateDbsInDrRequest: UpdateDbsInDrRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_dbs`;
+    return axios.put<YBPTask>(requestUrl, updateDbsInDrRequest).then((response) => response.data);
   };
 
   syncDrConfig = (drConfigUuid: string) => {

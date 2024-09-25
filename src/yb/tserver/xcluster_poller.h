@@ -61,7 +61,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
       rpc::Rpcs* rpcs, client::YBClient& local_client,
       const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
       XClusterConsumer* xcluster_consumer, SchemaVersion last_compatible_consumer_schema_version,
-      int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term);
+      int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term,
+      bool is_automatic_mode);
   ~XClusterPoller();
 
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
@@ -146,6 +147,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   const NamespaceId consumer_namespace_id_;
   const XClusterPollerId poller_id_;
   const std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version_;
+  const bool is_automatic_mode_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
