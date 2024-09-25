@@ -1226,6 +1226,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
+    tserver::PgServersMetricsRequestPB req;
+    tserver::PgServersMetricsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ServersMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1543,6 +1552,10 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
   return impl_->TabletsMetadata();
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
+  return impl_->ServersMetrics();
 }
 
 void PerformExchangeFuture::wait() const {

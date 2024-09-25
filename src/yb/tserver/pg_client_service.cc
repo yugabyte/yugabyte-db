@@ -69,6 +69,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -80,6 +81,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_pg_errcodes.h"
+
 
 using namespace std::literals;
 
@@ -1697,6 +1699,58 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
     *resp->mutable_tablets() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
+  Status ServersMetrics(
+      const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
+      rpc::RpcContext* context) {
+
+    std::vector<tserver::PgServerMetricsInfoPB> result;
+    std::vector<std::future<Status>> status_futures;
+    std::vector<std::shared_ptr<GetMetricsResponsePB>> node_responses;
+
+    GetMetricsRequestPB metrics_req;
+    const auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    status_futures.reserve(remote_tservers.size());
+    node_responses.reserve(remote_tservers.size());
+
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetMetricsResponsePB>();
+      node_responses.push_back(node_resp);
+
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      controller->set_timeout(MonoDelta::FromMilliseconds(5000));
+
+      proxy->GetMetricsAsync(metrics_req, node_resp.get(), controller.get(),
+      [controller, status_promise] {
+        status_promise->set_value(controller->status());
+      });
+    }
+    for (size_t i = 0; i < status_futures.size(); ++i) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      tserver::PgServerMetricsInfoPB server_metrics;
+      server_metrics.set_uuid(remote_tservers[i]->permanent_uuid());
+      if (!s.ok()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(s.ToUserMessage());
+      } else if (node_resp->has_error()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(node_resp->error().status().message());
+      } else {
+        server_metrics.mutable_metrics()->Swap(node_resp->mutable_metrics());
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::OK);
+        server_metrics.set_error("");
+      }
+      result.emplace_back(std::move(server_metrics));
+    }
+
+    *resp->mutable_servers_metrics() = {result.begin(), result.end()};
     return Status::OK();
   }
 

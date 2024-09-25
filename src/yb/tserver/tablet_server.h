@@ -379,6 +379,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
+  Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
   struct PgClientServiceHolder {
