@@ -8,35 +8,14 @@ menu:
     parent: integrations-other
     weight: 571
 type: docs
-showRightNav: false
-
 ---
 
 [Apache Hudi](https://hudi.apache.org/) is a powerful data management framework that simplifies incremental data processing and storage, making it a valuable component for integrating with YugabyteDB to achieve real-time analytics, and seamless data consistency across distributed environments.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#HoodieDeltaStreamer" class="nav-link active" id="hoodie-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="hoodie" aria-selected="true">
-      <img src="/icons/availability.svg" alt="Hudi and CDC Icon">
-      Hoodie DeltaStreamer with YugabyteDB CDC
-    </a>
-  </li>
-  <li >
-    <a href="#HoodieStreamer" class="nav-link" id="hudi-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="hudi" aria-selected="false">
-      <img src="/icons/list-icon.svg" alt="Hudi incremental Icon">
-      Hoodie DeltaStreamer with incremental data loading
-    </a>
-  </li>
-</ul>
+The following tutorials describe how to integrate YugabyteDB with Apache Hudi:
 
-<div class="tab-content">
-  <div id="HoodieDeltaStreamer" class="tab-pane fade" role="tabpanel" aria-labelledby="hoodie-tab">
-
-The following tutorial describes steps to integrate YugabyteDB with Apache Hudi for real-time Change Data Capture (CDC) using YugabyteDB's [gRPC](/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/) CDC connector and Hoodie DeltaStreamer with Apache Spark.
-
-This integration allows continuous and incremental data ingestion from YugabyteDB into analytical processes, leveraging the power of Apache Hudi.
+- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
+- Loading incremental data into YugabyteDB using HoodieDeltaStreamer and JDBC driver.
 
 ## Prerequisites
 
@@ -48,9 +27,35 @@ To use Apache Hudi, ensure that you have the following:
 
 - Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
 
-## Setup Kafka and Schema Registry
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#HoodieDeltaStreamer" class="nav-link active" id="hoodie-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="hoodie" aria-selected="true">
+      <img src="/icons/availability.svg" alt="Hudi and CDC Icon">
+      YugabyteDB CDC
+    </a>
+  </li>
+  <li >
+    <a href="#HoodieStreamer" class="nav-link" id="hudi-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="hudi" aria-selected="false">
+      <img src="/icons/list-icon.svg" alt="Hudi incremental Icon">
+      Incremental data loading
+    </a>
+  </li>
+</ul>
 
-1. Download the `docker-compose.yaml` from the [CDC-examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/docker-compose.yaml) folder and run all the containers specified within it. It will install the Confluent schema registry, Control Center, ZooKeeper, Kafka, YugabyteDB Debezium Kafka Connector, Grafana, and Prometheus containers and configure the ports as required.
+<div class="tab-content">
+  <div id="HoodieDeltaStreamer" class="tab-pane fade show active" role="tabpanel" aria-labelledby="hoodie-tab">
+
+## YugabyteDB CDC
+
+This integration allows continuous and incremental data ingestion from YugabyteDB into analytical processes, leveraging the power of Apache Hudi.
+
+### Set up Kafka and schema registry
+
+1. Download `docker-compose.yaml` from the [CDC-examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/docker-compose.yaml) folder and run all the specified containers.
+
+    This installs the Confluent schema registry, Control Center, ZooKeeper, Kafka, YugabyteDB Debezium Kafka Connector, Grafana, and Prometheus containers. Configure the ports as required.
 
     This example uses port 8091 for the schema registry as follows:
 
@@ -75,9 +80,9 @@ To use Apache Hudi, ensure that you have the following:
     docker-compose up -d
     ```
 
-## Setup and configure gRPC CDC Stream ID in YugabyteDB
+### Set up and configure gRPC CDC stream ID in YugabyteDB
 
-Create a database stream ID for a specific database (for example, demo).
+Create a database stream ID for a specific database (for example, demo):
 
 1. Assign your current database node address to the "{IP}" variable as follows:
 
@@ -91,9 +96,9 @@ Create a database stream ID for a specific database (for example, demo).
     ./yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.demo implicit all
     ```
 
-    This will output a stream ID such as, `a4f8291c3737419dbe4feee5a1b19aee`.
+    This outputs a stream ID, such as `a4f8291c3737419dbe4feee5a1b19aee`.
 
-## Deploy the Kafka Source Connector
+### Deploy the Kafka source connector
 
 Run the Kafka connector with the following command:
 
@@ -125,17 +130,21 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 }'
 ```
 
-## Validate the schema and verify Kafka Topics
+### Validate the schema and verify Kafka topics
 
-Launch the Confluent Control Center and verify the schema details and messages in the relevant topics. Access the Control Center at <http://{your_docker_container_IP_or_VM}:9021>. Start [populating the data from YugabyteDB](/preview/explore/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, <http://{your_docker_container_IP_or_VM}:9021/clusters/management/topics/cdc.public.cdctest/message-viewer>).
+Launch the Confluent Control Center and verify the schema details and messages in the relevant topics.
 
-## Install Apache Hudi
+Access the Control Center at <http://{your_docker_container_IP_or_VM}:9021>.
+
+Start [populating the data from YugabyteDB](/preview/explore/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, <http://{your_docker_container_IP_or_VM}:9021/clusters/management/topics/cdc.public.cdctest/message-viewer>).
+
+### Install Apache Hudi
 
 1. [Build Apache Hudi from source](https://github.com/apache/hudi?tab=readme-ov-file#building-apache-hudi-from-source). Modify the source files to account for differences between PostgreSQL and YugabyteDB CDC emissions as follows:
 
-    1. In `DebeziumConstants.java`, comment out or remove lines related to "xmin".
+    - In `DebeziumConstants.java`, comment out or remove lines related to `xmin`.
 
-    1. In `PostgresDebeziumSource.java`, comment out or remove parameters related to "xmin".
+    - In `PostgresDebeziumSource.java`, comment out or remove parameters related to `xmin`.
 
 1. Run Maven to build Hudi as follows:
 
@@ -143,7 +152,7 @@ Launch the Confluent Control Center and verify the schema details and messages i
     mvn clean package -DskipTests
     ```
 
-## Run a Spark Job using Hoodie DeltaStreamer
+### Run a Spark job using HoodieDeltaStreamer
 
 1. Create a `spark-config.properties` file as follows:
 
@@ -188,7 +197,7 @@ Launch the Confluent Control Center and verify the schema details and messages i
 
      Adjust paths and filenames as per your environment setup.
 
-## Query the Hudi table
+### Query the Hudi table
 
 1. Verify the Hudi table is created in `/tmp/hoodie/dbs-cdctest` as follows:
 
@@ -218,7 +227,7 @@ Launch the Confluent Control Center and verify the schema details and messages i
     spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
     ```
 
-## Verify
+### Verify
 
 Perform database operations on the `cdctest` table in YugabyteDB and verify that the changes are reflected in the Hudi table by running queries through the Spark shell.
 
@@ -255,7 +264,7 @@ Perform database operations on the `cdctest` table in YugabyteDB and verify that
     DELETE FROM public.cdctest WHERE sno = 826;
     ```
 
-1. Verify deletion in Hudi Table with the follwing query in a Spark shell:
+1. Verify deletion in Hudi Table with the following query in a Spark shell:
 
     ```spark
     spark.sql("SELECT _hoodie_commit_time, sno, name, _change_operation_type FROM cdcdemo").show()
@@ -263,27 +272,17 @@ Perform database operations on the `cdctest` table in YugabyteDB and verify that
 
     The record with `sno = 826` is deleted from the Hudi table due to the propagated delete event.
 
-</div>
+  </div>
 
-  <div id="HoodieStreamer" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+  <div id="HoodieStreamer" class="tab-pane fade" role="tabpanel" aria-labelledby="hudi-tab">
 
-The following tutorial describes steps to how to load incremental data YugabyteDB and with Apache Hudi using Hudi's Streamer and JDBC Driver.
+## Incremental data load
 
 This approach is particularly advantageous for incremental data loading/ETL, and applications requiring real-time processing and handling large amounts of distributed data.
 
-## Prerequisites
+### Install Apache Hudi
 
-To use Apache Hudi, ensure that you have the following:
-
-- Docker.
-
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/docker).
-
-- Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
-
-## Install Apache Hudi
-
-1. [Build Apache Hudi from source](https://github.com/apache/hudi?tab=readme-ov-file#building-apache-hudi-from-source) by following the official instructions from the [Apache Hudi GitHub repository](https://github.com/apache/hudi).
+1. [Build Apache Hudi from source](https://github.com/apache/hudi?tab=readme-ov-file#building-apache-hudi-from-source) by following the official instructions.
 
 1. Run Maven to build Hudi as follows:
 
@@ -291,9 +290,9 @@ To use Apache Hudi, ensure that you have the following:
     mvn clean package -DskipTests
     ```
 
-## Configure and Run Hudi's DeltaStreamer
+### Configure and run HoodieDeltaStreamer
 
-1. Create a configuration file for Spark (spark-config.properties) as follows:
+1. Create a `spark-config.properties` file as follows:
 
     ```properties
     spark.serializer=org.apache.spark.serializer.KryoSerializer
@@ -301,7 +300,7 @@ To use Apache Hudi, ensure that you have the following:
     spark.sql.hive.convertMetastoreParquet=false
     ```
 
-1. Create Hudi table properties (hudi_tbl.props) as follows:
+1. Create Hudi table properties (`hudi_tbl.props`) as follows:
 
     ```properties
     hoodie.datasource.write.keygenerator.class=org.apache.hudi.keygen.SimpleKeyGenerator
@@ -324,7 +323,7 @@ To use Apache Hudi, ensure that you have the following:
     # hoodie.streamer.jdbc.password - Password as per your configuration
     hoodie.streamer.jdbc.password=xxxxx
 
-    # hoodie.streamer.jdbc.driver.class - Here postgresql driver is used to connect YugabyteDB
+    # hoodie.streamer.jdbc.driver.class - PostgreSQL driver used to connect YugabyteDB
     hoodie.streamer.jdbc.driver.class=org.postgresql.Driver
 
     # hoodie.streamer.jdbc.table.name - YugabyteDB table name is hudi_test_table
@@ -364,7 +363,7 @@ To use Apache Hudi, ensure that you have the following:
 
     Adjust paths and filenames as per your environment setup.
 
-## Query the Hudi table
+### Query the Hudi table
 
 1. Verify the Hudi table is created in the specified directory as follows:
 
@@ -415,7 +414,8 @@ To use Apache Hudi, ensure that you have the following:
     ```
 
   </div>
+</div>
 
 ## Learn more
 
-- [Combine Transactional Integrity and Data Lake Operations with YugabyteDB and Apache Hudi](https://www.yugabyte.com/blog/apache-hudi-data-lakehouse-integration/)
+[Combine Transactional Integrity and Data Lake Operations with YugabyteDB and Apache Hudi](https://www.yugabyte.com/blog/apache-hudi-data-lakehouse-integration/)
