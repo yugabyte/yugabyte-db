@@ -1802,9 +1802,10 @@ class NodeChecker():
 
     def check_yb_node_clock_drift(self):
         e = self._new_entry("Node Clock Drift")
-        if not chrony_exists() and not ntp_exists():
+        if not chrony_exists() and not ntp_exists() and not timesyncd_exists():
             if self.clock_service_required:
-                return e.fill_and_return_entry(["no time sync service found (chrony or ntp(d))"],
+                return e.fill_and_return_entry(["no time sync service found (chrony, ntp(d) or " +
+                                               "timesyncd)"],
                                                has_error=True)
             return e.ignore_check()
         # metrics[0] is clock drift metric
@@ -2104,6 +2105,10 @@ def get_clock_drift_ms():
         return _chrony_get_clock_drift_ms()
     if ntp_exists():
         return _ntp_get_clock_drift_ms()
+    if timesyncd_exists():
+        return _timesyncd_get_clock_drift_ms()
+    logging.error("unknown time service: must be ntp(d) or chrony")
+    return "Failed to get clock drift"
 
 
 def _chrony_get_clock_drift_ms():
@@ -2135,6 +2140,11 @@ def _ntp_get_clock_drift_ms():
           return int(float(out)*1000) # Convert seconds to milliseconds
     return "Failed to get clock drift from ntp(d)"
 
+def _timesyncd_get_clock_drift_ms():
+    # Timesyncd does not do incremental clock drift correction, and instead will step the clock
+    # to be correct. We will return 0 here and handle a not-synced system with other errors.
+    return 0
+
 def get_ntp_service_status():
     if chrony_exists():
         return 1 if is_service_running("chronyd.service") else 0
@@ -2142,6 +2152,8 @@ def get_ntp_service_status():
         ntp_running = is_service_running("ntp.service")
         ntpd_running = is_service_running("ntpd.service")
         return 1 if ntp_running or ntpd_running else 0
+    elif timesyncd_exists():
+        return get_timedatectl_status()
     logging.error("unknown time service: must be ntp(d) or chrony")
     return 0
 
@@ -2154,6 +2166,23 @@ def ntp_exists():
     env = os.environ.copy()
     ntp_out = check_output("command -v ntpq", env)
     return "Error" not in ntp_out
+
+def timesyncd_exists():
+    env = os.environ.copy()
+    timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
+    return "Error" not in timesyncd_out
+
+# Returns 1 if timesyncd is running and synced, 0 otherwise.
+def get_timedatectl_status():
+    # timesyncd is not running
+    if not is_service_running("systemd-timesyncd.service"):
+        return 0
+
+    env = os.environ.copy()
+    out = check_output("timedatectl status", env)
+    if "System clock synchronized: yes" in out:
+        return 1
+    return 0
 
 def is_service_running(service_name):
     env = os.environ.copy()
