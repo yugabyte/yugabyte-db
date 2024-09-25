@@ -179,7 +179,7 @@ To create an export configuration, do the following:
 
   {{% /tab %}}
 
-  {{% tab header="Google Cloud Storage" lang="gcs" %}}
+  {{% tab header="GCS" lang="gcs" %}}
 
 The Google Cloud Storage integration requires the following:
 
