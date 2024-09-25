@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
@@ -42,7 +43,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 import play.libs.Json;
 
 @Singleton
@@ -264,19 +265,19 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
             .getConfForScope(universe, UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)
             .toMillis();
     Map<String, Long> maybeFailedMasters = new HashMap<>();
-    List<ServerInfo> masters = getMasters(ybClient);
-    boolean isMasterLeaderPresent = masters.stream().anyMatch(ServerInfo::isLeader);
-    if (!isMasterLeaderPresent) {
+    List<PeerInfo> masters = getMasters(ybClient);
+    HostAndPort leader = ybClient.getLeaderMasterHostAndPort();
+    if (leader == null) {
       log.error("Cannot find a master leader in the universe {}", universe.getUniverseUUID());
       return maybeFailedMasters;
     }
     Map<String, Long> masterHeartbeatDelays = getMasterHeartbeatDelays(ybClient);
     masters.stream()
-        .filter(masterInfo -> !masterInfo.isLeader())
+        .filter(peerInfo -> !peerInfo.hasHost(leader.getHost()))
         .forEach(
-            masterInfo -> {
-              String masterUuid = masterInfo.getUuid();
-              String ipAddress = masterInfo.getHost();
+            peerInfo -> {
+              String masterUuid = peerInfo.getUuid();
+              String ipAddress = peerInfo.getLastKnownPrivateIps().get(0).getHost();
               NodeDetails node = universe.getNodeByAnyIP(ipAddress);
               if (!masterHeartbeatDelays.containsKey(masterUuid)) {
                 // The master heartbeat map does not contain the master, this is a discrepancy as
@@ -563,11 +564,13 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<ServerInfo> getMasters(YBClient ybClient) {
+  private List<PeerInfo> getMasters(YBClient ybClient) {
     try {
-      return ybClient.listMasters().getMasters();
+      return ybClient.listMasterRaftPeers().getPeersList().stream()
+          .filter(p -> p.getMemberType() == PeerInfo.MemberType.VOTER)
+          .collect(Collectors.toList());
     } catch (Exception e) {
-      String errMsg = String.format("Error in listing masters - %s", e.getMessage());
+      String errMsg = String.format("Error in listing master raft peers - %s", e.getMessage());
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
