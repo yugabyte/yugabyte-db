@@ -239,7 +239,8 @@ export const getFormData = (
       communicationPorts,
       customizePort: false, //** */
       ybcPackagePath: null, //** */,
-      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent)
+      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -319,6 +320,7 @@ export const getUserIntent = (
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
     useSystemd: advancedConfig.useSystemd,
+    enableConnectionPooling: _.get(advancedConfig, 'enableConnectionPooling', false),
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 

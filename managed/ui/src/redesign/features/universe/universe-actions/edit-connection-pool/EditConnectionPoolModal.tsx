@@ -146,11 +146,21 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
   const YSQL_PORTS_LIST = [
     {
       id: 'ysqlServerRpcPort',
-      tooltip: t('universeForm.advancedConfig.dbRPCPortTooltip')
+      tooltip: (
+        <Trans
+          i18nKey={'universeForm.advancedConfig.dbRPCPortTooltip'}
+          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+        />
+      )
     },
     {
       id: 'internalYsqlServerRpcPort',
-      tooltip: t('universeForm.advancedConfig.ysqlConPortTooltip')
+      tooltip: (
+        <Trans
+          i18nKey={'universeForm.advancedConfig.ysqlConPortTooltip'}
+          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+        />
+      )
     }
   ];
 
@@ -264,54 +274,51 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                     }}
                   />
                 </Box>
-                {overRidePortsValue && (
-                  <>
-                    {YSQL_PORTS_LIST.map((item) => (
-                      <Controller
-                        name={item.id}
-                        render={({ field: { value, onChange } }) => {
-                          return (
-                            <Box
-                              flex={1}
-                              mt={1}
-                              display={'flex'}
-                              width="100%"
-                              flexDirection={'row'}
-                              alignItems={'center'}
-                              key={item.id}
-                            >
-                              <Box flexShrink={1}>
-                                <YBLabel dataTestId={`EditConnectionPoolModal-${item.id}`}>
-                                  {t(`universeForm.advancedConfig.${item.id}`)} &nbsp;{' '}
-                                  <YBTooltip title={item.tooltip}>
-                                    <img alt="Info" src={InfoMessageIcon} />
-                                  </YBTooltip>{' '}
-                                </YBLabel>
-                              </Box>
+                {YSQL_PORTS_LIST.map((item) => (
+                  <Controller
+                    name={item.id}
+                    render={({ field: { value, onChange } }) => {
+                      return (
+                        <Box
+                          flex={1}
+                          mt={1}
+                          display={'flex'}
+                          width="100%"
+                          flexDirection={'row'}
+                          alignItems={'center'}
+                          key={item.id}
+                        >
+                          <Box flexShrink={1}>
+                            <YBLabel dataTestId={`EditConnectionPoolModal-${item.id}`}>
+                              {t(`universeForm.advancedConfig.${item.id}`)} &nbsp;{' '}
+                              <YBTooltip title={item.tooltip}>
+                                <img alt="Info" src={InfoMessageIcon} />
+                              </YBTooltip>{' '}
+                            </YBLabel>
+                          </Box>
 
-                              <Box flex={1} display={'flex'} width="300px">
-                                <YBInput
-                                  value={value}
-                                  onChange={onChange}
-                                  onBlur={(event) => {
-                                    let port =
-                                      Number(event.target.value.replace(/\D/g, '')) ||
-                                      get(universeDetails.communicationPorts, item.id);
-                                    port = port > MAX_PORT ? MAX_PORT : port;
-                                    onChange(port);
-                                  }}
-                                  inputProps={{
-                                    'data-testid': `EditConnectionPoolModal-Input-${item.id}}`
-                                  }}
-                                />
-                              </Box>
-                            </Box>
-                          );
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
+                          <Box flex={1} display={'flex'} width="300px">
+                            <YBInput
+                              value={value}
+                              disabled={!overRidePortsValue}
+                              onChange={onChange}
+                              onBlur={(event) => {
+                                let port =
+                                  Number(event.target.value.replace(/\D/g, '')) ||
+                                  get(universeDetails.communicationPorts, item.id);
+                                port = port > MAX_PORT ? MAX_PORT : port;
+                                onChange(port);
+                              }}
+                              inputProps={{
+                                'data-testid': `EditConnectionPoolModal-Input-${item.id}}`
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      );
+                    }}
+                  />
+                ))}
               </Box>
             )}
           </Box>
