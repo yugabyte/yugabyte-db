@@ -207,15 +207,25 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       const NamespaceId& namespace_id, const TableId& table_id, const TableName& table_name,
       const PgSchemaName& pg_schema_name) {
     auto table_info = TableInfoPtr(new TableInfo(table_id, /*colocated=*/false));
-    auto l = table_info->LockForWrite();
-    auto& pb = l.mutable_data()->pb;
-    pb.set_name(table_name);
-    pb.set_namespace_id(namespace_id);
-    pb.mutable_schema()->set_pgschema_name(pg_schema_name);
-    pb.set_table_type(PGSQL_TABLE_TYPE);
-    l.Commit();
+    {
+      auto l = table_info->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      pb.set_state(master::SysTablesEntryPB::PREPARING);
+      pb.set_name(table_name);
+      pb.set_namespace_id(namespace_id);
+      pb.mutable_schema()->set_pgschema_name(pg_schema_name);
+      pb.set_table_type(PGSQL_TABLE_TYPE);
+      l.Commit();
+    }
 
     namespace_tables[namespace_id].push_back(table_info);
+
+    {
+      auto l = table_info->LockForWrite();
+      l.mutable_data()->pb.set_state(master::SysTablesEntryPB::RUNNING);
+      l.Commit();
+    }
+
     return table_info;
   }
 

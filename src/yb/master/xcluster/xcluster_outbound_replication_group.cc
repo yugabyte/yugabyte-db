@@ -584,7 +584,15 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     std::unordered_map<TableSchemaNamePair, scoped_refptr<TableInfo>, TableSchemaNamePairHash>
         table_names_map;
     for (auto& table_info : all_tables) {
-      table_names_map[{table_info->name(), table_info->pgschema_name()}] = table_info;
+      auto it = InsertOrReturnExisting(
+          &table_names_map,
+          {TableSchemaNamePair(table_info->name(), table_info->pgschema_name()),
+           table_info});
+      SCHECK(
+          !it, AlreadyPresent,
+          Format(
+              "$0: Multiple table ids found for table $1.$2. Table ids: $3, $4", ToString(),
+              table_info->pgschema_name(), table_info->name(), (*it)->id(), table_info->id()));
     }
 
     for (auto& table : table_names) {

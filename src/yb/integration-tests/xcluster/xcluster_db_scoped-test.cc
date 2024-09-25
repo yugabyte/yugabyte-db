@@ -11,7 +11,10 @@
 // under the License.
 //
 
+#include <gmock/gmock.h>
+
 #include "yb/cdc/xcluster_util.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -38,6 +41,14 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     XClusterYsqlTestBase::SetUp();
   }
 
+  std::vector<TableId> ExtractTableIds(const master::GetUniverseReplicationResponsePB& resp) {
+    std::vector<TableId> results;
+    for (const auto& table_id : resp.entry().tables()) {
+      results.push_back(table_id);
+    }
+    return results;
+  }
+
   Result<master::GetXClusterStreamsResponsePB> GetXClusterStreams(
       const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
       const std::vector<PgSchemaName>& pg_schema_names) {
@@ -54,6 +65,19 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   Result<master::GetXClusterStreamsResponsePB> GetAllXClusterStreams(
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
+  }
+
+  Status EnablePITROnClusters() {
+    return RunOnBothClusters([this](Cluster* cluster) -> Status {
+      client::SnapshotTestUtil snapshot_util;
+      snapshot_util.SetProxy(&cluster->client_->proxy_cache());
+      snapshot_util.SetCluster(cluster->mini_cluster_.get());
+
+      RETURN_NOT_OK(snapshot_util.CreateSchedule(
+          nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue,
+          2s * kTimeMultiplier, 20h));
+      return Status::OK();
+    });
   }
 };
 
@@ -834,6 +858,78 @@ TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
   result = ASSERT_RESULT(CallAdmin(
       producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
   ASSERT_STR_CONTAINS(result, "Bootstrap is required");
+}
+
+// Make sure we can setup replication with hidden tables.
+TEST_F(XClusterDBScopedTest, CreateReplicationWithHiddenTables) {
+  ASSERT_OK(SetUpClusters());
+  // Setup PITR schedule so that dropped tables are hidden.
+  ASSERT_OK(EnablePITROnClusters());
+
+  // Create and drop a table to create a hidden table.
+  auto table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+  std::shared_ptr<client::YBTable> new_table;
+  ASSERT_OK(producer_client()->OpenTable(table_name, &new_table));
+  const auto hidden_table_id = new_table->id();
+
+  auto& catalog_mgr = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+  auto table = catalog_mgr.GetTableInfo(hidden_table_id);
+  ASSERT_TRUE(table);
+  ASSERT_TRUE(table->LockForRead()->visible_to_client());
+
+  ASSERT_OK(DropYsqlTable(
+      &producer_cluster_, table_name.namespace_name(), table_name.pgschema_name(),
+      table_name.table_name()));
+  ASSERT_NOK(producer_client()->OpenTable(table_name, &new_table));
+
+  ASSERT_FALSE(table->LockForRead()->visible_to_client());
+
+  // Setup replication and make sure it is healthy.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
+  ASSERT_THAT(ExtractTableIds(resp), testing::Not(testing::Contains(hidden_table_id)));
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Make sure the hidden table is still there.
+  ASSERT_TRUE(table->LockForRead()->is_hidden_but_not_deleting());
+}
+
+// Create and drop tables in a loop with PITR which will keep the dropped tables in hidden state.
+TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnablePITROnClusters());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  for (int i = 0; i < 5; i++) {
+    auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+    std::shared_ptr<client::YBTable> new_producer_table;
+    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
+
+    auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_));
+    std::shared_ptr<client::YBTable> new_consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &new_consumer_table));
+
+    ASSERT_OK(InsertRowsInProducer(0, 10, new_producer_table));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
+
+    ASSERT_OK(DropYsqlTable(producer_cluster_, *new_producer_table.get()));
+    ASSERT_OK(DropYsqlTable(consumer_cluster_, *new_consumer_table.get()));
+  }
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 }  // namespace yb
