@@ -14,10 +14,6 @@
 #include "utils/helio_errors.h"
 #include "utils/version_utils.h"
 
-#define MONGO_LEGACY_ERRORS_PRIVATE
-#include "utils/mongo_errors.h"
-#undef MONGO_LEGACY_ERRORS_PRIVATE
-
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -47,20 +43,8 @@ Datum
 pg_attribute_noreturn()
 command_throw_mongo_error(PG_FUNCTION_ARGS)
 {
-	if (IsClusterVersionAtleastThis(1, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-						errmsg("command_throw_mongo_error function is deprecated now")));
-	}
-	else
-	{
-		int mongoErrorCode = PG_GETARG_INT32(0);
-		text *msg = PG_GETARG_TEXT_P(1);
-		int apiErrorCode = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
-		Assert(EreportCodeIsMongoError(apiErrorCode) && msg != NULL);
-
-		ereport(ERROR, (errcode(apiErrorCode), errmsg("%s", text_to_cstring(msg))));
-	}
+	ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+					errmsg("command_throw_mongo_error function is deprecated now")));
 }
 
 
@@ -73,18 +57,7 @@ command_throw_mongo_error(PG_FUNCTION_ARGS)
 Datum
 command_convert_mongo_error_to_postgres(PG_FUNCTION_ARGS)
 {
-	if (IsClusterVersionAtleastThis(1, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-						errmsg(
-							"command_convert_mongo_error_to_postgres function is deprecated now")));
-	}
-	else
-	{
-		int mongoErrorCode = PG_GETARG_INT32(0);
-		int result = mongoErrorCode + _ERRCODE_MONGO_ERROR_FIRST;
-
-		ereport(INFO, (errcode(result), errmsg("Converted mongo error code to PG")));
-	}
-	PG_RETURN_VOID();
+	ereport(ERROR, (errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+					errmsg("command_convert_mongo_error_to_postgres "
+						   "function is deprecated now")));
 }

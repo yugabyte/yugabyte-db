@@ -10,15 +10,6 @@ CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.generate_create_index_
     p_index_key helio_core.bson)
 RETURNS helio_core.bson LANGUAGE C STRICT AS 'pg_helio_api', $$generate_create_index_arg$$;
 
-
-CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.convert_mongo_error_to_postgres(
-  mongoErrorCode int4)
-RETURNS void LANGUAGE C STRICT AS 'pg_helio_api', $$command_convert_mongo_error_to_postgres$$;
-
-\set VERBOSITY verbose
-SELECT helio_distributed_test_helpers.convert_mongo_error_to_postgres(1);
-\set VERBOSITY default
-
 -- Returns the command (without "CONCURRENTLY" option) used to create given
 -- Mongo index on given collection.
 CREATE FUNCTION helio_distributed_test_helpers.mongo_index_get_pg_def(
