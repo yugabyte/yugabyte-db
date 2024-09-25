@@ -26,7 +26,7 @@ showRightNav: false
     <a href="#HoodieStreamer" class="nav-link" id="hudi-tab" data-bs-toggle="tab"
       role="tab" aria-controls="hudi" aria-selected="false">
       <img src="/icons/list-icon.svg" alt="Hudi incremental Icon">
-      Hoodie Streamer with incremental data pull
+      Hoodie DeltaStreamer with incremental data loading
     </a>
   </li>
 </ul>
@@ -34,7 +34,7 @@ showRightNav: false
 <div class="tab-content">
   <div id="HoodieDeltaStreamer" class="tab-pane fade" role="tabpanel" aria-labelledby="hoodie-tab">
 
-The following tutorial describes steps to integrate YugabyteDB with Apache Hudi for real-time Change Data Capture (CDC) using YugabyteDB's CDC connector and Hoodie DeltaStreamer with Apache Spark.
+The following tutorial describes steps to integrate YugabyteDB with Apache Hudi for real-time Change Data Capture (CDC) using YugabyteDB's [gRPC](/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/) CDC connector and Hoodie DeltaStreamer with Apache Spark.
 
 This integration allows continuous and incremental data ingestion from YugabyteDB into analytical processes, leveraging the power of Apache Hudi.
 
@@ -75,7 +75,7 @@ To use Apache Hudi, ensure that you have the following:
     docker-compose up -d
     ```
 
-## Setup and configure CDC Stream ID in YugabyteDB
+## Setup and configure gRPC CDC Stream ID in YugabyteDB
 
 Create a database stream ID for a specific database (for example, demo).
 
