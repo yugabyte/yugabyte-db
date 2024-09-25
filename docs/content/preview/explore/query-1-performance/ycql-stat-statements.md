@@ -41,7 +41,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 
 {{% setup/local %}}
 
-Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
+Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../yugabyte-clients/ysqlsh/#starting-ysqlsh).
 
 ### Describe the columns in the view
 
