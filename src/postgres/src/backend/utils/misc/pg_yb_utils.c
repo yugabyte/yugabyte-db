@@ -1930,7 +1930,7 @@ YBDecrementDdlNestingLevel()
 			{
 				/* Wait for tserver hearbeat */
 				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
-				elog(LOG,
+				elog(LOG_SERVER_ONLY,
 					 "connection manager: adding sleep of %d microseconds "
 					 "after DDL commit",
 					 sleep);

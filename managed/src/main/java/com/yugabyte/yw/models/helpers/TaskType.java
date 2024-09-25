@@ -981,6 +981,15 @@ public enum TaskType {
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 
+  PGUpgradeTServerCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  RunYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
+
+  RollbackYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 

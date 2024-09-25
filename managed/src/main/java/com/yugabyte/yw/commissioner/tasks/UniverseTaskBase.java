@@ -87,7 +87,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetBackupHiddenState;
@@ -130,6 +132,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
@@ -1721,6 +1724,43 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       subTaskGroup.addSubTask(task);
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createPGUpgradeTServerCheckTask(String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("PGUpgradeTServerCheck");
+    PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
+    PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createRunYsqlMajorVersionCatalogUpgradeTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RunYsqlMajorVersionCatalogUpgrade");
+    RunYsqlMajorVersionCatalogUpgrade task = createTask(RunYsqlMajorVersionCatalogUpgrade.class);
+    RunYsqlMajorVersionCatalogUpgrade.Params params =
+        new RunYsqlMajorVersionCatalogUpgrade.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createRollbackYsqlMajorVersionCatalogUpgradeTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RollbackYsqlMajorVersionCatalogUpgrade");
+    RollbackYsqlMajorVersionCatalogUpgrade task =
+        createTask(RollbackYsqlMajorVersionCatalogUpgrade.class);
+    RollbackYsqlMajorVersionCatalogUpgrade.Params params =
+        new RollbackYsqlMajorVersionCatalogUpgrade.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -5110,12 +5150,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Creates a task to update universe state */
   protected SubTaskGroup createUpdateUniverseSoftwareUpgradeStateTask(
       SoftwareUpgradeState state, Boolean isSoftwareRollbackAllowed) {
+    return createUpdateUniverseSoftwareUpgradeStateTask(
+        state, isSoftwareRollbackAllowed, false) /* retainPrevYBSoftwareConfig */;
+  }
+
+  protected SubTaskGroup createUpdateUniverseSoftwareUpgradeStateTask(
+      SoftwareUpgradeState state,
+      Boolean isSoftwareRollbackAllowed,
+      boolean retainPrevYBSoftwareConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseState");
     UpdateUniverseSoftwareUpgradeState.Params params =
         new UpdateUniverseSoftwareUpgradeState.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.state = state;
     params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
+    params.retainPrevYBSoftwareConfig = retainPrevYBSoftwareConfig;
     UpdateUniverseSoftwareUpgradeState task = createTask(UpdateUniverseSoftwareUpgradeState.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -5716,7 +5765,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               .collect(Collectors.toSet());
       for (PitrConfig pitrConfig : pitrConfigsToBeDropped) {
         createDeletePitrConfigTask(
-            pitrConfig.getUuid(), xClusterConfig.getTargetUniverseUUID(), false /* ignoreErrors */);
+            pitrConfig.getUuid(),
+            pitrConfig.getUniverse().getUniverseUUID(),
+            false /* ignoreErrors */);
       }
     }
 
@@ -6114,26 +6165,40 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createFinalizeUpgradeTasks(boolean upgradeSystemCatalog) {
+    createFinalizeUpgradeTasks(upgradeSystemCatalog, null);
+  }
+
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog, Runnable ysqlUpgradeFinalizeTask) {
     Universe universe = getUniverse();
     String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
-        false /* isSoftwareRollbackAllowed */);
+        false /* isSoftwareRollbackAllowed */,
+        true /* retainPrevYBSoftwareConfig */);
 
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-      if (upgradeSystemCatalog) {
-        // Run YSQL upgrade on the universe.
-        createRunYsqlUpgradeTask(version);
+      if (ysqlUpgradeFinalizeTask != null) {
+        // Run YSQL upgrade finalize task on the universe.
+        // This is a temp step as we need to remove flags set during upgrade.
+        ysqlUpgradeFinalizeTask.run();
       }
+
       // Promote all auto flags upto class External.
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
           true /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
+      if (upgradeSystemCatalog) {
+        // Run YSQL upgrade on the universe.
+        createRunYsqlUpgradeTask(version);
+      }
+
       createUpdateUniverseSoftwareUpgradeStateTask(
-          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+          false /* isSoftwareRollbackAllowed */);
 
     } else {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
