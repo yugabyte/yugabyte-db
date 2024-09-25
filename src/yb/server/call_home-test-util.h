@@ -15,8 +15,7 @@
 #include "yb/server/call_home.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonreader.h"
-#include "yb/util/test_util.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"
 #include <boost/asio/ip/tcp.hpp>
@@ -30,6 +29,7 @@ DECLARE_int32(callhome_interval_secs);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_bool(remote_bootstrap_from_leader_only);
+DECLARE_string(version_file_json_path);
 
 DEFINE_test_flag(bool, call_home_dummy1, false, "Dummy test flag to test call home");
 DEFINE_test_flag(bool, call_home_dummy2, false, "Dummy test flag to test call home");
@@ -65,14 +65,13 @@ void TestCallHome(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_tag) = tag_value;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_url) = Format("http://$0/callhome", addr);
 
-  std::set<std::string> low{"cluster_uuid", "node_uuid", "server_type",
-                       "timestamp",    "tablets",   "gflags"};
+  std::set<std::string> low{"cluster_uuid", "node_uuid", "server_type", "timestamp",
+                            "tablets",      "gflags",    "version_info"};
   low.insert(additional_collections.begin(), additional_collections.end());
 
   std::unordered_map<std::string, std::set<std::string>> collection_levels;
   collection_levels["low"] = low;
   collection_levels["medium"] = low;
-  collection_levels["medium"].insert({"hostname", "current_user"});
   collection_levels["high"] = collection_levels["medium"];
   collection_levels["high"].insert({"metrics", "rpcs"});
 
@@ -94,12 +93,6 @@ void TestCallHome(
     std::string received_tag;
     ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
     ASSERT_EQ(received_tag, tag_value);
-
-    if (collection_level.second.find("hostname") != collection_level.second.end()) {
-      std::string received_hostname;
-      ASSERT_OK(reader.ExtractString(reader.root(), "hostname", &received_hostname));
-      ASSERT_EQ(received_hostname, server->get_hostname());
-    }
 
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
       std::string received_user;
@@ -187,6 +180,8 @@ void TestGFlagsCallHome(ServerType* server) {
   ASSERT_OK(SET_FLAG(ysql_hba_conf_csv, kHbaValue));
   ASSERT_OK(SET_FLAG(remote_bootstrap_from_leader_only, true));
   ASSERT_OK(SET_FLAG(TEST_call_home_dummy1, true));
+  const auto kSecretDBname = "shhh_db";
+  ASSERT_OK(SET_FLAG(version_file_json_path, kSecretDBname));
   std::string json;
   CallHomeType call_home(server);
   json = call_home.BuildJson();
@@ -208,6 +203,9 @@ void TestGFlagsCallHome(ServerType* server) {
   // TEST flags should only be included if they are non default.
   ASSERT_STR_CONTAINS(flags, "call_home_dummy1");
   ASSERT_STR_NOT_CONTAINS(flags, "call_home_dummy2");
+  // Secret db name should be masked.
+  ASSERT_STR_NOT_CONTAINS(flags, kSecretDBname);
+  ASSERT_STR_CONTAINS(flags, "version_file_json_path=***");
 
   call_home.Shutdown();
 }
