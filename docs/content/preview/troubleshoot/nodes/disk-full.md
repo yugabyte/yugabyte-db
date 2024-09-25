@@ -55,29 +55,29 @@ During YB-TServer startup, the FSManager (File System Manager) module checks the
 
 **Option 1**: Check if any files (like older YB-TServer logs) on the `log_dir` drive can be removed/deleted to help the YB-TServer process to bootstrap successfully.
 
-**Option 2**: In {{<release "2.18.1.0">}} and later, you can prevent repeated WAL file allocation in a crash loop by using the [--reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
+**Option 2**: In {{<release "2.18.1.0">}} and later, you can prevent repeated WAL file allocation in a crash loop by using the [reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
 
 If a tablet's last WAL file size is less than or equal to this threshold value, the bootstrap process will reuse the last WAL file rather than create a new one. To set the flag so that the last WAL file is always reused, you can set the flag to the current maximum WAL file size (64MB), as follows:
 
 ```sh
-reuse_unclosed_segment_threshold_bytes=67108864
+--reuse_unclosed_segment_threshold_bytes=67108864
 ```
 
-The following two options are recommendations specific to [YugabyteDB Anywhere](../../../yugabyte-platform/).
+The following two recommendations are specific to [YugabyteDB Anywhere](../../../yugabyte-platform/).
 
-**Option 3**: Increase the disk volume size through YugabyteDB Anywhere [edit universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) UI. Note that there are a few important considerations:
+**Option 3**: Increase the disk volume size using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option. Note the following important considerations:
 
-- Preflight checks : YugabyteDB Anywhere UI performs preflight checks to ensure a smooth [smart resize](../../../yugabyte-platform/manage-deployments/edit-universe/#smart-resize) operation. One of the checks verifies there is no leaderless tablet in the cluster. To bypass this check, you can disable the [runtime Global Configuration flag](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) `yb.checks.leaderless_tablets.enabled` as a Super Admin user.
+- Preflight checks - YugabyteDB Anywhere performs preflight checks to ensure a smooth [smart resize](../../../yugabyte-platform/manage-deployments/edit-universe/#smart-resize) operation. One of the checks verifies there is no leaderless tablet in the cluster. To bypass this check, you can disable the `yb.checks.leaderless_tablets.enabled` global [runtime configuration flag](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) as a Super Admin user.
 
-- Master leader requirement: A designated master leader node is essential within the YugabyteDB Anywhere universe to receive and process node resize requests. If no master leader is available, the resize operation will fail. After the disk space is successfully increased, the bootstrap process for the resized nodes should proceed without issues.
+- Master leader - The universe needs to have a designated master leader node to receive and process node resize requests. If no master leader is available, the resize operation will fail. After the disk space is successfully increased, the bootstrap process for the resized nodes should proceed without issues.
 
-**Option 4**: Add a new node through YugabyteDB Anywhere [edit universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) UI.
+**Option 4**: Add a new node using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option.
 
-Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node operation will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1, Option 2, or Option 3) to form the quorum first, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
+Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1, Option 2, or Option 3) to form a quorum, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
 
 {{<warning title="Important: Accidental Disk Unmount">}}
 
-During internal testing (refer to GitHub issue [#22120](https://github.com/yugabyte/yugabyte-db/issues/22120)), it was identified that that accidentally unmounting a YugaByteDB data disk can potentially lead to data inconsistencies and cause the YB-TServer to enter a crash loop state.
+Internal testing (refer to GitHub issue [#22120](https://github.com/yugabyte/yugabyte-db/issues/22120)) identified that accidentally unmounting a YugaByteDB data disk can potentially lead to data inconsistencies and cause the YB-TServer to enter a crash loop.
 
 The testing indicated that unmounting a disk followed by a delayed remount resulted in a window of 15-90 minutes where the YB-TServer process could still access the empty directory. This sequence could cause the server to crash and trigger data recovery mechanisms that recreate missing tablets on a different disk. If the original disk is remounted later, duplicate tablets will be detected, causing the server to crash repeatedly.
 
