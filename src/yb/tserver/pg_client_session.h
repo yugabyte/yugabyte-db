@@ -297,6 +297,9 @@ class PgClientSession {
 
   Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no);
   Status CheckPlainSessionReadTimeIsSet() const;
+  Status DdlAtomicityFinishTransaction(
+      bool has_docdb_schema_changes, const TransactionMetadata* metadata,
+      std::optional<bool> commit);
 
   struct PendingUsedReadTime {
     UsedReadTime value;

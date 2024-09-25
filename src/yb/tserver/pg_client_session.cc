@@ -1063,12 +1063,26 @@ Status PgClientSession::FinishTransaction(
         << ", commit: " << commit_status;
     // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
     // is possible that the commit succeeded at the transaction coordinator but we failed to get
-    // the response back. Thus we will not report any status to the YB-Master in this case. It
-    // will run its background task to figure out whether the transaction succeeded or failed.
+    // the response back. Thus we will not report any status to the YB-Master in this case. But
+    // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
+    // background task to figure out whether the transaction succeeded or failed.
     if (!commit_status.ok()) {
+      auto status = DdlAtomicityFinishTransaction(
+          has_docdb_schema_changes, metadata, std::nullopt);
+      if (!status.ok()) {
+        // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
+        // not be able to start a background task to figure out whether the DDL transaction
+        // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
+        // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
+        // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
+        // for any table/index that are involved in a DDL transaction and start a background task
+        // to complete the DDL transaction at the DocDB side.
+        LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+      }
       return commit_status;
-    } else if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-               pg_node_level_mutation_counter_) {
+    }
+    if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+        pg_node_level_mutation_counter_) {
       // Gather # of mutated rows for each table (count only the committed sub-transactions).
       auto table_mutations = txn_value->GetTableMutationCounts();
       VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
@@ -1083,16 +1097,23 @@ Status PgClientSession::FinishTransaction(
     txn_value->Abort();
   }
 
+  return DdlAtomicityFinishTransaction(has_docdb_schema_changes, metadata, req.commit());
+}
+
+Status PgClientSession::DdlAtomicityFinishTransaction(
+    bool has_docdb_schema_changes, const TransactionMetadata* metadata,
+    std::optional<bool> commit) {
   // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
-  // any operations postponed to the end of transaction. Report the status of the transaction and
-  // wait for the post-processing by YB-Master to end.
+  // any operations postponed to the end of transaction. If the status is known
+  // (commit.has_value() is true), then report the status of the transaction and wait for the
+  // post-processing by YB-Master to end.
   if (YsqlDdlRollbackEnabled() && has_docdb_schema_changes && metadata) {
-    if (FLAGS_report_ysql_ddl_txn_status_to_master) {
+    if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
       // If we failed to report the status of this DDL transaction, we can just log and ignore it,
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
-      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", req.commit()));
+      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, *commit),
+                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
     }
 
     if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
@@ -1102,6 +1123,10 @@ Status PgClientSession::FinishTransaction(
       // back changes to table/column names in case of transaction abort. d) dropping a table in
       // case of DROP TABLE commit. All the above actions take place only after the transaction
       // is completed.
+      // Note that this is called even when the DDL transaction status is not known
+      // (commit.has_value() is false), the purpose is to use the side effect of
+      // WaitForDdlVerificationToFinish to trigger the start of a background task to
+      // complete the DDL transaction at the DocDB side.
       ERROR_NOT_OK(client().WaitForDdlVerificationToFinish(*metadata),
                   "WaitForDdlVerificationToFinish call failed");
     }
