@@ -79,15 +79,14 @@ To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../..
 - Total retention time (in minutes).
 - The name of the database or keyspace.
 
-Assuming the retention target is three days, you can execute the following command to create a schedule that produces a snapshot once a day (every 1,440 minutes) and retains it for three days (4,320 minutes):
+For example, to create a schedule that produces a snapshot of a YSQL database once a day (every 1,440 minutes) and retains it for three days (4,320 minutes), you would execute the following command:
 
-For a YSQL database,
 
 ```sh
 ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 ysql.<database_name>
 ```
 
-For a YCQL keyspace,
+The equivalent command for a YCQL keyspace would be the following:
 
 ```sh
 ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <keyspace_name>
