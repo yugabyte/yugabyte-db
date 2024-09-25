@@ -32,7 +32,7 @@ A _replication slot_ represents a stream of changes that can be replayed to a cl
 
 Logical replication of a table starts with taking a snapshot of the data on the publisher database and copying that to the subscriber. After that is done, the changes on the publisher are sent to the subscriber as they occur in real-time. The subscriber applies the data in the same order as the publisher so that transactional consistency is guaranteed for publications in a single subscription. This method of data replication is sometimes referred to as transactional replication.
 
-For more information, refer to [Key concepts](../../../explore/change-data-capture/using-logical-replication/key-concepts/)
+For more information, refer to [How the connector works](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/#how-the-connector-works).
 
 ## Prerequisites
 
