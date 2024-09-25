@@ -114,8 +114,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
-
 #include "yb/tserver/tserver_xcluster_context_if.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
@@ -236,12 +236,16 @@ DEFINE_test_flag(bool, pause_apply_tablet_split, false,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-DEFINE_UNKNOWN_int32(verify_tablet_data_interval_sec, 0,
+DEFINE_NON_RUNTIME_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
 
-DEFINE_UNKNOWN_int32(cleanup_metrics_interval_sec, 60,
+DEFINE_NON_RUNTIME_int32(cleanup_metrics_interval_sec, 60,
              "The tick interval time for the metrics cleanup background task. "
+             "If set to 0, it disables the background task.");
+
+DEFINE_NON_RUNTIME_int32(data_size_metric_updater_interval_sec, 60,
+             "The interval time for the data size metric updater background task. "
              "If set to 0, it disables the background task.");
 
 DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
@@ -577,6 +581,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
+  ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -757,6 +762,9 @@ Status TSTabletManager::Init() {
   verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
 
+  data_size_metric_updater_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), [this]() { return ts_data_size_metrics_->Update(); });
+
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
 
@@ -811,32 +819,31 @@ void TSTabletManager::CleanupCheckpoints() {
   }
 }
 
+// Schedules a background task if the interval is > 0.
+void TSTabletManager::StartScheduledTask(
+    rpc::Poller* task, const std::string& name, MonoDelta interval) {
+  if (interval > 0s) {
+    task->Start(&server_->messenger()->scheduler(), interval);
+    LOG(INFO) << Format("$0 task started with interval $1", name, interval);
+  } else {
+    LOG(INFO) << Format("$0 task is disabled because interval is <= 0", name);
+  }
+}
+
 Status TSTabletManager::Start() {
-  if (FLAGS_cleanup_split_tablets_interval_sec > 0) {
-    tablets_cleaner_->Start(
-        &server_->messenger()->scheduler(), FLAGS_cleanup_split_tablets_interval_sec * 1s);
-    LOG(INFO) << "Split tablets cleanup monitor started...";
-  } else {
-    LOG(INFO)
-        << "Split tablets cleanup is disabled by cleanup_split_tablets_interval_sec flag set to 0";
-  }
-  if (FLAGS_verify_tablet_data_interval_sec > 0) {
-    verify_tablet_data_poller_->Start(
-        &server_->messenger()->scheduler(), FLAGS_verify_tablet_data_interval_sec * 1s);
-    LOG(INFO) << "Tablet data verification task started...";
-  } else {
-    LOG(INFO)
-        << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
-  }
-  metrics_emitter_->Start(&server_->messenger()->scheduler(), 1s);
-  if (FLAGS_cleanup_metrics_interval_sec > 0) {
-    metrics_cleaner_->Start(
-        &server_->messenger()->scheduler(), FLAGS_cleanup_metrics_interval_sec * 1s);
-    LOG(INFO) << "Old metrics cleanup task started...";
-  } else {
-    LOG(INFO)
-        << "Old metrics cleanup is disabled by cleanup_metrics_interval_sec flag set to 0";
-  }
+  StartScheduledTask(
+      tablets_cleaner_.get(), "Split tablets cleanup",
+      FLAGS_cleanup_split_tablets_interval_sec * 1s);
+  StartScheduledTask(
+      verify_tablet_data_poller_.get(), "Tablet data verification",
+      FLAGS_verify_tablet_data_interval_sec * 1s);
+  StartScheduledTask(metrics_emitter_.get(), "Metrics emitter", 1s);
+  StartScheduledTask(
+      metrics_cleaner_.get(), "Old metrics cleanup",
+      FLAGS_cleanup_metrics_interval_sec * 1s);
+  StartScheduledTask(
+      data_size_metric_updater_.get(), "Data size metric updater",
+      FLAGS_data_size_metric_updater_interval_sec * 1s);
 
   if (waiting_txn_registry_) {
     waiting_txn_registry_poller_->Start(
@@ -2197,6 +2204,8 @@ void TSTabletManager::StartShutdown() {
   verify_tablet_data_poller_->Shutdown();
 
   tablet_metadata_validator_->Shutdown();
+
+  data_size_metric_updater_->Shutdown();
 
   metrics_emitter_->Shutdown();
 

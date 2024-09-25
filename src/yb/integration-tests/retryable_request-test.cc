@@ -329,7 +329,7 @@ TEST_F_EX(RetryableRequestTest, TestMemTrackerMetric, SingleServerRetryableReque
   std::string mem_tracker_metric_name =
       "mem_tracker_server_1_Tablets_overhead_PerTablet_Retryable_Requests";
   auto tablet_metrics_entity = tablet_peer->tablet()->GetTabletMetricsEntity();
-  ASSERT_TRUE(tablet_metrics_entity->TEST_ContainMetricName(mem_tracker_metric_name));
+  ASSERT_TRUE(tablet_metrics_entity->TEST_ContainsMetricName(mem_tracker_metric_name));
 }
 
 class MultiNodeRetryableRequestTest : public RetryableRequestTest {
