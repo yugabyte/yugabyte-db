@@ -80,11 +80,13 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
@@ -123,11 +125,13 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,

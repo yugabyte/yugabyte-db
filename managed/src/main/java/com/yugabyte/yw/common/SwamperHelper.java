@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -172,7 +173,7 @@ public class SwamperHelper {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
     int port = t.getPort(nodeDetails);
-    if (nodeDetails.isActive() && port > 0) {
+    if (processSwamperForNode(nodeDetails) && port > 0) {
       targetNodes.add(nodeDetails.cloudInfo.private_ip + ":" + port);
     }
 
@@ -258,7 +259,6 @@ public class SwamperHelper {
     if (swamperFile == null) {
       return;
     }
-
     universe
         .getNodes()
         .forEach(
@@ -280,7 +280,9 @@ public class SwamperHelper {
             (node) -> {
               // Since some nodes might not be active (for example removed),
               // we do not want to add them to the swamper targets.
-              if (!node.isActive()) return;
+              if (!processSwamperForNode(node)) {
+                return;
+              }
 
               for (TargetType t : TargetType.values()) {
                 if (t == TargetType.NODE_EXPORT || t == TargetType.INVALID_EXPORT) {
@@ -539,5 +541,9 @@ public class SwamperHelper {
 
   public static long getScrapeIntervalSeconds(String scrapeIntervalStr) {
     return Util.goDurationToJava(scrapeIntervalStr).getSeconds();
+  }
+
+  public boolean processSwamperForNode(NodeDetails node) {
+    return node.isActive() || node.state.equals(NodeState.ToBeRemoved);
   }
 }

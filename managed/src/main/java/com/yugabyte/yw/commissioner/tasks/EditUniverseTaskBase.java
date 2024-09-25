@@ -255,6 +255,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
       // Start masters. If it is already started, it has no effect.
       createStartMasterProcessTasks(newMasters);
+
+      // Update swamper target files to fetch metrics from new masters.
+      createSwamperTargetUpdateTask(false /* removeFile */);
     }
 
     Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
@@ -276,7 +279,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         createStartYbcProcessTasks(
             newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
+
+      // Update swamper target files to fetch metrics from new tservers.
+      createSwamperTargetUpdateTask(false /* removeFile */);
     }
+
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live.
       createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Live)
@@ -385,16 +392,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createXClusterConfigUpdateMasterAddressesTask();
     }
 
-    // Stop scrapping metrics from TServers that is set to be removed
-    if (!newTservers.isEmpty()
-        || !newMasters.isEmpty()
-        || !tserversToBeRemoved.isEmpty()
-        || !removeMasters.isEmpty()
-        || !nodesToBeRemoved.isEmpty()) {
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-    }
-
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
       // Remove nodes from load balancer.
@@ -412,6 +409,16 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               true /* deleteRootVolumes */,
               false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    }
+
+    // Stop scrapping metrics from TServers that is set to be removed
+    if (!newTservers.isEmpty()
+        || !newMasters.isEmpty()
+        || !tserversToBeRemoved.isEmpty()
+        || !removeMasters.isEmpty()
+        || !nodesToBeRemoved.isEmpty()) {
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
