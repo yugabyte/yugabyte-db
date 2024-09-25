@@ -333,6 +333,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
+    'gflag_allowlist.txt',
     f'{POSTGRES_BUILD_SUBDIR}/contrib',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/isolation',

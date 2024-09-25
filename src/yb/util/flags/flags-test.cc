@@ -28,6 +28,9 @@ DECLARE_string(vmodule);
 DECLARE_string(allowed_preview_flags_csv);
 DEFINE_RUNTIME_PREVIEW_bool(preview_flag, false, "preview flag");
 
+DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "",
+    "This is a duplicate flag used only for testing");
+
 namespace yb {
 
 class FlagsTest : public YBTest {
@@ -183,4 +186,26 @@ TEST_F(FlagsTest, TestPreviewFlagsAllowList) {
   ASSERT_EQ(FLAGS_allowed_preview_flags_csv, "");
   expected_old_allow_list = FLAGS_allowed_preview_flags_csv;
 }
+
+namespace flags_internal {
+bool IsFlagPrivate(const gflags::CommandLineFlagInfo& flag_info);
+}  // namespace flags_internal
+
+TEST_F(FlagsTest, AllowList) {
+  auto is_flag_private = [](const std::string& flag_name) {
+    gflags::CommandLineFlagInfo flag_info;
+    EXPECT_TRUE(google::GetCommandLineFlagInfo(flag_name.c_str(), &flag_info));
+    return flags_internal::IsFlagPrivate(flag_info);
+  };
+
+  // Non string flags should always be allowed.
+  ASSERT_FALSE(is_flag_private("flagstest_testflag"));
+
+  // Allowed string flag.
+  ASSERT_FALSE(is_flag_private("vmodule"));
+
+  // Not allowed string flag.
+  ASSERT_TRUE(is_flag_private("ysql_cron_database_name"));
+}
+
 } // namespace yb
