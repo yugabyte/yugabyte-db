@@ -14,6 +14,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +38,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AutoMasterFailoverTest extends FakeDBApplication {
@@ -54,8 +56,8 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
   private Universe defaultUniverse;
   private AutoMasterFailover automatedMasterFailover;
   private Map<String, Long> mockMasterHeartbeatDelays;
-  private List<ServerInfo> mockServerInfoList;
-  private ListMastersResponse mockListMastersResponse;
+  private List<PeerInfo> mockPeerInfoList;
+  private ListMasterRaftPeersResponse mockListMastersResponse;
   private GetMasterHeartbeatDelaysResponse mockMasterHeartbeatDelaysResponse;
 
   private final String[] masterUUIDs = {
@@ -84,16 +86,23 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
             eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)))
         .thenReturn(Duration.ofMinutes(10));
 
-    mockListMastersResponse = mock(ListMastersResponse.class);
-    mockServerInfoList = new ArrayList<>();
+    mockListMastersResponse = mock(ListMasterRaftPeersResponse.class);
+    mockPeerInfoList = new ArrayList<>();
     for (int i = 0; i < masterUUIDs.length; i++) {
-      ServerInfo serverInfo = new ServerInfo(masterUUIDs[i], "127.0.0." + i, 7100, i == 0, "");
-      mockServerInfoList.add(serverInfo);
+      PeerInfo peerInfo = new PeerInfo();
+
+      peerInfo.setLastKnownPrivateIps(
+          Collections.singletonList(HostAndPort.fromParts("127.0.0." + i, 7100)));
+      peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+      peerInfo.setUuid(masterUUIDs[i]);
+      mockPeerInfoList.add(peerInfo);
     }
-    when(mockListMastersResponse.getMasters()).thenReturn(mockServerInfoList);
+    when(mockListMastersResponse.getPeersList()).thenReturn(mockPeerInfoList);
 
     when(mockYbClient.getMasterHeartbeatDelays()).thenReturn(mockMasterHeartbeatDelaysResponse);
-    when(mockYbClient.listMasters()).thenReturn(mockListMastersResponse);
+    when(mockYbClient.listMasterRaftPeers()).thenReturn(mockListMastersResponse);
+    when(mockYbClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("127.0.0.0", 7100));
     when(mockYbClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     when(mockBaseTaskDependencies.getYbService()).thenReturn(mockYbClientService);

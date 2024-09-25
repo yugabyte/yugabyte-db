@@ -276,14 +276,14 @@ import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 import play.mvc.Http;
@@ -2594,19 +2594,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
     String ip = node.cloudInfo.private_ip;
-    String secondary_ip = node.cloudInfo.secondary_private_ip;
+    String secondaryIp = node.cloudInfo.secondary_private_ip;
     String masterAddresses = universe.getMasterAddresses();
 
     try (YBClient client =
         ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
-      ListMastersResponse response = client.listMasters();
-      List<ServerInfo> servers = response.getMasters();
-      return servers.stream()
-          .anyMatch(s -> s.getHost().equals(ip) || s.getHost().equals(secondary_ip));
+      ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
+      List<PeerInfo> peers = response.getPeersList();
+      return peers.stream().anyMatch(p -> p.hasHost(ip) || p.hasHost(secondaryIp));
     } catch (Exception e) {
       String msg =
           String.format(
-              "Error when fetching listMasters rpc for node %s - %s",
+              "Error when fetching listRaftPeersMasters rpc for node %s - %s",
               node.nodeName, e.getMessage());
       throw new RuntimeException(msg, e);
     }
@@ -2622,16 +2621,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     String masterAddresses = universe.getMasterAddresses();
     try (YBClient client =
         ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
-      return client.listMasters().getMasters().stream()
+      return client.listMasterRaftPeers().getPeersList().stream()
           .map(
-              serverInfo -> {
-                // Port in ServerInfo is set to 0.
-                NodeDetails node = universe.getNodeByAnyIP(serverInfo.getHost());
+              peerInfo -> {
+                String ipAddress = peerInfo.getLastKnownPrivateIps().get(0).getHost();
+                NodeDetails node = universe.getNodeByAnyIP(ipAddress);
                 if (node == null || !node.isMaster) {
                   String errMsg =
                       String.format(
-                          "Master %s on DB is not in YBA masters %s",
-                          serverInfo.getHost(), masterAddresses);
+                          "Master %s on DB is not in YBA masters %s", ipAddress, masterAddresses);
                   log.error(errMsg);
                   throw new IllegalStateException(errMsg);
                 }
@@ -4958,9 +4956,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     String masterAddresses = universe.getMasterAddresses();
     YBClient client = ybService.getClient(masterAddresses, universe.getCertificateNodetoNode());
     try {
-      ListMastersResponse response = client.listMasters();
-      List<ServerInfo> servers = response.getMasters();
-      boolean anyMatched = servers.stream().anyMatch(s -> s.getHost().equals(ipToUse));
+      ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
+      List<PeerInfo> peers = response.getPeersList();
+      boolean anyMatched = peers.stream().anyMatch(p -> p.hasHost(ipToUse));
       return anyMatched == isAddMasterOp;
     } catch (Exception e) {
       String msg =
