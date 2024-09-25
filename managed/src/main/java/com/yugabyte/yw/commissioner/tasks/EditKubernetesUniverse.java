@@ -799,6 +799,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    createSwamperTargetUpdateTask(false /* removeFile */);
   }
 
   /**
