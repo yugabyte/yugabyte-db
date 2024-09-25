@@ -50,7 +50,6 @@ CREATE TABLE writetest (a int);
 CREATE TEMPORARY TABLE temptest (a int);
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE; -- ok
-ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
 ROLLBACK; BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE; -- YB workaround of above failure
 SELECT * FROM writetest; -- ok
  a 
@@ -63,7 +62,6 @@ COMMIT;
 BEGIN;
 SET TRANSACTION READ ONLY; -- ok
 SET TRANSACTION READ WRITE; -- ok
-ERROR:  cannot set transaction read-write mode inside a read-only transaction
 -- YB: above fails even without a savepoint in YB.  If that is fixed, port remaining queries
 COMMIT;
 BEGIN;

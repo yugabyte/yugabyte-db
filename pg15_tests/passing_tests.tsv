@@ -79,6 +79,7 @@ JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial3
+JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial4
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressParallel
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
