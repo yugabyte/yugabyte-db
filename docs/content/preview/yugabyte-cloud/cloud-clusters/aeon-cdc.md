@@ -107,7 +107,7 @@ The following example shows the required and common properties:
 | database.password | The user password. |
 | database.sslmode | The SSL mode to use; set to `require`. |
 | topic.prefix | Set to `yb`. Used as the topic name prefix for all Kafka topics that receive records from this connector. |
-| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires `yb.consistent.snapshot` to be set to false. |
+| snapshot.mode | Specifies the criteria for performing a snapshot when the connector starts. Can be one of `Initial`, `Initial_only`, or `Never`. `Initial` requires `yb.consistent.snapshot` to be set to false. To learn more about the options for taking a snapshot when the connector starts, refer to [Snapshots](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector/#snapshots). |
 | yb.consistent.snapshot | If you are using CDC with YugabyteDB Aeon clusters in Initial snapshot mode, this property is required and must be set to false. |
 | table.include.list | The names of the tables to monitor, comma-separated, in format `schema.table-name`. |
 | plugin.name | Set to `yboutput`. The name of the YugabyteDB logical decoding plugin. |
