@@ -17,13 +17,16 @@ You can export cluster metrics and logs to third-party tools for analysis and cu
 1. Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export to.
 1. Use the configuration to export data from a cluster. While the connection is active, metrics or logs are automatically streamed to the tool.
 
-Currently, you can export data to the following tools:
+Currently, you can export data to the following tools.
 
-- [Datadog](https://docs.datadoghq.com/)
-- [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
-- [Sumo Logic](https://www.sumologic.com)
-- [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}}
-- [VictoriaMetrics](https://docs.victoriametrics.com/) {{<badge/tp>}}
+| Integration | Log export | Metric export |
+| :---------- | :--------- | :------------ |
+| [Datadog](https://docs.datadoghq.com/) | Database query logs<br>Database audit logs | Yes |
+| [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) | | Yes |
+| [Sumo Logic](https://www.sumologic.com) | | Yes |
+| [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}} | | Yes |
+| [VictoriaMetrics](https://docs.victoriametrics.com/) {{<badge/tp>}} | | Yes |
+| [Google Cloud Storage](https://cloud.google.com/storage) | Database audit logs | |
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -172,6 +175,23 @@ To create an export configuration, do the following:
     http://<victoria-metrics-endpoint-host-address>/opentelemetry
     ```
 
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Google Cloud Storage" lang="gcs" %}}
+
+The Google Cloud Storage integration requires the following:
+
+- A service account that has been granted the `logging.logWriter` permission.
+- Service account credentials. These credentials are used to authorize your use of the storage. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create credentials for a service account](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the GCP documentation.
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the Google Cloud Storage provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Upload the JSON key file.
+1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
   {{% /tab %}}
