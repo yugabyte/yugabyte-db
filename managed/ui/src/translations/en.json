@@ -140,7 +140,7 @@
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
         "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times.",
-        "overridePortsLabel": "Override YCQL Default Ports"
+        "overridePortsLabel": "Override YCQL Ports"
       },
       "encryptionInTransit": {
         "title": "Manage encryption in-Transit",
@@ -263,7 +263,7 @@
         "modalTitle": "Edit Connection Pooling",
         "toggleLabel": "Built-in Connection Pooling",
         "subText": "Enable built-in YSQL connection pooling to maximize the number of simultaneous connections to your database.",
-        "portsOverride": "Default Ports Override",
+        "portsOverride": "Override Ports",
         "enableWarningRF3": "<strong>Note!</strong> Enabling built-in connection pooling requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "enableWarningRF1": "<strong>Note!</strong>  Enabling built-in connection pooling requires a <strong>restart</strong> of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart.",
         "disableWarning1RF3": "<strong>Note!</strong> Disabling built-in connection pooling:",
@@ -343,8 +343,8 @@
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
-        "dbRPCPortTooltip": "Port for connecting to your application clients.",
-        "ysqlConPortTooltip": "Port for connecting to the databases when connection pooling is enabled."
+        "dbRPCPortTooltip": "Port for connecting to your application clients. <br/> DEFAULT PORT : {{port}}",
+        "ysqlConPortTooltip": "Port for connecting to the databases when connection pooling is enabled. <br/> DEFAULT PORT : {{port}}"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -917,7 +917,7 @@
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
             },
-            "Error": "Error"
+            "Failed": "Failed"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",

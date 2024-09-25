@@ -99,20 +99,20 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   // We always want to fetch a fresh xCluster config before presenting the user with
   // xCluster table actions (add/remove/restart). This is because it gives the backend
   // an opportunity to sync with the DB and add/drop tables as needed.
-  const xClusterConfigQuery = useQuery(
+  const xClusterConfigFullQuery = useQuery(
     xClusterQueryKey.detail(xClusterConfigUuid),
     () => fetchXClusterConfig(xClusterConfigUuid),
     { refetchOnMount: 'always' }
   );
   const sourceUniverseQuery = useQuery<Universe>(
-    universeQueryKey.detail(xClusterConfigQuery.data?.sourceUniverseUUID),
-    () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
-    { enabled: !!xClusterConfigQuery.data }
+    universeQueryKey.detail(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    { enabled: !!xClusterConfigFullQuery.data }
   );
 
   const sourceUniverseNamespacesQuery = useQuery<UniverseNamespace[]>(
-    universeQueryKey.namespaces(xClusterConfigQuery.data?.sourceUniverseUUID),
-    () => api.fetchUniverseNamespaces(xClusterConfigQuery.data?.sourceUniverseUUID)
+    universeQueryKey.namespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverseNamespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID)
   );
 
   const editTableMutation = useMutation(
@@ -120,7 +120,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       const bootstrapRequiredTableUuids =
         categorizedNeedBootstrapPerTableResponse?.bootstrapTableUuids ?? [];
       return props.isDrInterface
-        ? xClusterConfigQuery.data?.type === XClusterConfigType.DB_SCOPED
+        ? xClusterConfigFullQuery.data?.type === XClusterConfigType.DB_SCOPED
           ? api.updateDbsInDr(props.drConfigUuid, {
               dbs: formValues.namespaceUuids.map(formatUuidForXCluster)
             })
@@ -129,7 +129,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             })
         : editXClusterConfigTables(xClusterConfigUuid, {
             tables: formValues.tableUuids,
-            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfigQuery.data),
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfigFullQuery.data),
             ...(!formValues.skipBootstrap &&
               bootstrapRequiredTableUuids.length > 0 && {
                 bootstrapParams: {
@@ -147,6 +147,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
           }
           queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
         };
@@ -187,8 +188,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   );
   const modalTitle = t('title');
   if (
-    xClusterConfigQuery.isLoading ||
-    xClusterConfigQuery.isIdle ||
+    xClusterConfigFullQuery.isLoading ||
+    xClusterConfigFullQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
@@ -201,7 +202,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     );
   }
 
-  if (xClusterConfigQuery.isError) {
+  if (xClusterConfigFullQuery.isError) {
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
         <YBErrorIndicator
@@ -213,7 +214,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       </YBModal>
     );
   }
-  const xClusterConfig = xClusterConfigQuery.data;
+  const xClusterConfig = xClusterConfigFullQuery.data;
 
   const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
   const sourceUniverseUuid = xClusterConfig.sourceUniverseUUID;

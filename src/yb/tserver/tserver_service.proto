@@ -138,6 +138,9 @@ service TabletServerService {
       returns (ReleaseObjectLockResponsePB);
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
+
+  rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
+      returns (AdminExecutePgsqlResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -550,5 +553,15 @@ message StartRemoteSnapshotTransferRequestPB {
 }
 
 message StartRemoteSnapshotTransferResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message AdminExecutePgsqlRequestPB {
+  required string database_name = 1;
+  // The list of SQL statements to execute. Execution will stop at the first error.
+  repeated string pgsql_statements = 2;
+}
+
+message AdminExecutePgsqlResponsePB {
   optional TabletServerErrorPB error = 1;
 }

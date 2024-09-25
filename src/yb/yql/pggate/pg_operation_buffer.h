@@ -33,22 +33,28 @@ namespace yb::pggate {
 
 class PgDocMetrics;
 class PgSession;
+class PgTableDesc;
 
 struct BufferingSettings {
   size_t max_batch_size;
   size_t max_in_flight_operations;
 };
 
-struct BufferableOperations {
-  PgsqlOps operations;
-  PgObjectIds relations;
-
-  void Add(PgsqlOpPtr op, const PgObjectId& relation);
+class BufferableOperations {
+ public:
+  const PgsqlOps& operations() const { return operations_; }
+  const PgObjectIds& relations() const { return relations_; }
+  void Add(PgsqlOpPtr&& op, const PgTableDesc& table);
   void Swap(BufferableOperations* rhs);
   void Clear();
   void Reserve(size_t capacity);
-  bool empty() const;
-  size_t size() const;
+  bool Empty() const;
+  size_t Size() const;
+  void MoveTo(PgsqlOps& operations, PgObjectIds& relations) &&;
+
+ private:
+  PgsqlOps operations_;
+  PgObjectIds relations_;
 };
 
 class PgOperationBuffer {

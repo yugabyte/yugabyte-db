@@ -12,7 +12,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -67,7 +67,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
-        GlobalConfKeys.dbScopedXClusterCreationEnabled.getKey(),
+        UniverseConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
 
@@ -176,7 +176,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -217,7 +216,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  //  @Test
+  @Test
   public void testDrDbScopedUpdate() throws InterruptedException {
     Universe sourceUniverse =
         createDRUniverse(DB_SCOPED_STABLE_VERSION, "source-universe", true, 1, 1);
@@ -250,7 +249,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     List<String> createNamespaceNames = Arrays.asList("dbnoncolocated");
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
@@ -300,8 +298,18 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
 
+    // Need to wait for masters to propagate dropping of db1 to tservers, which will take 1-2
+    // seconds.
+    Thread.sleep(5000);
+
+    // Validate rows are not replicated to target universe.
     insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
     validateRowCount(targetUniverse, table1, 1 /* expectedRows */);
+    validateNotExpectedRowCount(targetUniverse, table1, 2 /* notExpectedRows */);
+
+    // Validate we are able to drop database on target universe (PITR config is dropped correctly).
+    dropDatabase(sourceUniverse, db1);
+    dropDatabase(targetUniverse, db1);
 
     insertRow(sourceUniverse, table2, Map.of("id", "12", "name", "'val12'"));
     validateRowCount(targetUniverse, table2, 2 /* expectedRows */);
@@ -349,7 +357,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -723,7 +730,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {

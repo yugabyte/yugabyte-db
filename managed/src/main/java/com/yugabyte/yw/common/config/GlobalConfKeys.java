@@ -785,14 +785,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
-      new ConfKeyInfo<>(
-          "yb.xcluster.db_scoped.creationEnabled",
-          ScopeType.GLOBAL,
-          "Flag to enable db scoped xCluster replication creation",
-          "If flag is enabled, allows DR creation with db scoped xCluster replication",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> xclusterEnableAutoFlagValidation =
       new ConfKeyInfo<>(
           "yb.xcluster.enable_auto_flag_validation",
@@ -1500,7 +1492,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " create a service in each Availability zone, whereas 'Namespaced' will create one"
               + " service per Namespace",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> numCloudYbaBackupsRetention =
       new ConfKeyInfo<>(
           "yb.auto_yba_backups.num_cloud_retention",

@@ -100,28 +100,28 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   // We always want to fetch a fresh xCluster config before presenting the user with
   // xCluster table actions (add/remove/restart). This is because it gives the backend
   // an opportunity to sync with the DB and add/drop tables as needed.
-  const xClusterConfigQuery = useQuery(
+  const xClusterConfigFullQuery = useQuery(
     xClusterQueryKey.detail(xClusterConfigUuid),
     () => fetchXClusterConfig(xClusterConfigUuid),
     { refetchOnMount: 'always' }
   );
   const sourceUniverseQuery = useQuery<Universe>(
-    universeQueryKey.detail(xClusterConfigQuery.data?.sourceUniverseUUID),
-    () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
-    { enabled: !!xClusterConfigQuery.data }
+    universeQueryKey.detail(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    { enabled: !!xClusterConfigFullQuery.data }
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(
-      xClusterConfigQuery.data?.sourceUniverseUUID,
+      xClusterConfigFullQuery.data?.sourceUniverseUUID,
       XCLUSTER_UNIVERSE_TABLE_FILTERS
     ),
     () =>
       fetchTablesInUniverse(
-        xClusterConfigQuery.data?.sourceUniverseUUID,
+        xClusterConfigFullQuery.data?.sourceUniverseUUID,
         XCLUSTER_UNIVERSE_TABLE_FILTERS
       ).then((response) => response.data),
-    { enabled: !!xClusterConfigQuery.data }
+    { enabled: !!xClusterConfigFullQuery.data }
   );
 
   const restartConfigMutation = useMutation(
@@ -201,8 +201,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   };
   const modalTitle = t(`title.${props.isDrInterface ? 'dr' : 'xCluster'}`);
   if (
-    xClusterConfigQuery.isLoading ||
-    xClusterConfigQuery.isIdle ||
+    xClusterConfigFullQuery.isLoading ||
+    xClusterConfigFullQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseTablesQuery.isLoading ||
@@ -222,7 +222,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     );
   }
 
-  if (xClusterConfigQuery.isError) {
+  if (xClusterConfigFullQuery.isError) {
     return (
       <YBModal
         title={modalTitle}
@@ -241,7 +241,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     );
   }
 
-  const xClusterConfig = xClusterConfigQuery.data;
+  const xClusterConfig = xClusterConfigFullQuery.data;
   const configTableType = getXClusterConfigTableType(xClusterConfig);
   if (
     sourceUniverseQuery.isError ||

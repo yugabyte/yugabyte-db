@@ -62,6 +62,8 @@ class XClusterOutboundReplicationGroup
         upsert_to_sys_catalog_func;
     const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
         delete_from_sys_catalog_func;
+    const std::function<Status(const NamespaceId&, StdStatusCallback)>
+        setup_ddl_replication_extension_func;
   };
 
   explicit XClusterOutboundReplicationGroup(
@@ -131,6 +133,9 @@ class XClusterOutboundReplicationGroup
 
   void StartPostLoadTasks(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  Status SetDDLQueueTableIsPartOfInitialBootstrap(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
   Status RepairAddTable(
       const NamespaceId& namespace_id, const TableId& table_id, const xrepl::StreamId& stream_id,
       const LeaderEpoch& epoch) EXCLUDES(mutex_);
@@ -142,10 +147,14 @@ class XClusterOutboundReplicationGroup
   Result<std::string> GetStreamId(const NamespaceId& namespace_id, const TableId& table_id) const
       EXCLUDES(mutex_);
 
-  bool AutomaticDDLMode() const;
+  bool AutomaticDDLMode() const { return automatic_ddl_mode_; }
+
+  Status SetupDDLReplicationExtension(
+      const NamespaceId& namespace_id, StdStatusCallback callback) const;
 
  private:
   friend class XClusterOutboundReplicationGroupMocked;
+  friend class XClusterOutboundReplicationGroupMockedTest;
   friend class AddTableToXClusterSourceTask;
   friend class XClusterCheckpointNamespaceTask;
 
@@ -191,6 +200,9 @@ class XClusterOutboundReplicationGroup
 
   Status AddTableToInitialBootstrapMapping(
       const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  Status PopulateTablesForInitalBootstrap(const NamespaceId& namespace_id, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
   // Returns the NamespaceInfoPB for the given namespace_id. If its not found returns a NotFound
@@ -257,9 +269,9 @@ class XClusterOutboundReplicationGroup
   mutable std::shared_mutex mutex_;
   std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
 
-  XClusterOutboundReplicationGroupTaskFactory& task_factory_;
+  const bool automatic_ddl_mode_;
 
-  bool automatic_ddl_mode_;
+  XClusterOutboundReplicationGroupTaskFactory& task_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(XClusterOutboundReplicationGroup);
 };

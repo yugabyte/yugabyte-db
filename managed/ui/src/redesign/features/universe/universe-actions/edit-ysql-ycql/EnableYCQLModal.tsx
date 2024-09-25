@@ -394,88 +394,83 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                       </div>
                     </YBTooltip>
                   </Box>
-                  {overridePortsValue && (
-                    <>
-                      <Controller
-                        name="yqlServerHttpPort"
-                        render={({ field: { value, onChange } }) => {
-                          return (
-                            <Box
-                              flex={1}
-                              mt={2}
-                              display={'flex'}
-                              width="100%"
-                              flexDirection={'row'}
-                              alignItems={'center'}
-                            >
-                              <Box flexShrink={1}>
-                                <YBLabel dataTestId={`EnableYCQLModal-yqlServerHttpPort`}>
-                                  {t(`universeForm.advancedConfig.yqlServerHttpPort`)}
-                                </YBLabel>
-                              </Box>
+                  <Controller
+                    name="yqlServerHttpPort"
+                    render={({ field: { value, onChange } }) => {
+                      return (
+                        <Box
+                          flex={1}
+                          mt={2}
+                          display={'flex'}
+                          width="100%"
+                          flexDirection={'row'}
+                          alignItems={'center'}
+                        >
+                          <Box flexShrink={1}>
+                            <YBLabel dataTestId={`EnableYCQLModal-yqlServerHttpPort`}>
+                              {t(`universeForm.advancedConfig.yqlServerHttpPort`)}
+                            </YBLabel>
+                          </Box>
 
-                              <Box flex={1} display={'flex'} width="300px">
-                                <YBInput
-                                  disabled={rotateYCQLPasswordValue}
-                                  value={value}
-                                  onChange={onChange}
-                                  onBlur={(event) => {
-                                    let port =
-                                      Number(event.target.value.replace(/\D/g, '')) ||
-                                      universeDetails.communicationPorts.yqlServerHttpPort;
-                                    port = port > MAX_PORT ? MAX_PORT : port;
-                                    onChange(port);
-                                  }}
-                                  inputProps={{
-                                    'data-testid': 'EnableYCQLModal-Input-yqlServerHttpPort'
-                                  }}
-                                />
-                              </Box>
-                            </Box>
-                          );
-                        }}
-                      />
-                      <Controller
-                        name="yqlServerRpcPort"
-                        render={({ field: { value, onChange } }) => {
-                          return (
-                            <Box
-                              flex={1}
-                              mt={2}
-                              display={'flex'}
-                              width="100%"
-                              flexDirection={'row'}
-                              alignItems={'center'}
-                            >
-                              <Box flexShrink={1}>
-                                <YBLabel dataTestId={`EnableYCQLModal-yqlServerRpcPort`}>
-                                  {t(`universeForm.advancedConfig.yqlServerRpcPort`)}
-                                </YBLabel>
-                              </Box>
-
-                              <Box flex={1} display={'flex'} width="300px">
-                                <YBInput
-                                  disabled={rotateYCQLPasswordValue}
-                                  value={value}
-                                  onChange={onChange}
-                                  onBlur={(event) => {
-                                    let port =
-                                      Number(event.target.value.replace(/\D/g, '')) ||
-                                      universeDetails.communicationPorts.yqlServerRpcPort;
-                                    port = port > MAX_PORT ? MAX_PORT : port;
-                                    onChange(port);
-                                  }}
-                                  inputProps={{
-                                    'data-testid': 'EnableYCQLModal-Input-yqlServerRpcPort'
-                                  }}
-                                />
-                              </Box>
-                            </Box>
-                          );
-                        }}
-                      />
-                    </>
-                  )}
+                          <Box flex={1} display={'flex'} width="300px">
+                            <YBInput
+                              disabled={rotateYCQLPasswordValue || !overridePortsValue}
+                              value={value}
+                              onChange={onChange}
+                              onBlur={(event) => {
+                                let port =
+                                  Number(event.target.value.replace(/\D/g, '')) ||
+                                  universeDetails.communicationPorts.yqlServerHttpPort;
+                                port = port > MAX_PORT ? MAX_PORT : port;
+                                onChange(port);
+                              }}
+                              inputProps={{
+                                'data-testid': 'EnableYCQLModal-Input-yqlServerHttpPort'
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      );
+                    }}
+                  />
+                  <Controller
+                    name="yqlServerRpcPort"
+                    render={({ field: { value, onChange } }) => {
+                      return (
+                        <Box
+                          flex={1}
+                          mt={2}
+                          display={'flex'}
+                          width="100%"
+                          flexDirection={'row'}
+                          alignItems={'center'}
+                        >
+                          <Box flexShrink={1}>
+                            <YBLabel dataTestId={`EnableYCQLModal-yqlServerRpcPort`}>
+                              {t(`universeForm.advancedConfig.yqlServerRpcPort`)}
+                            </YBLabel>
+                          </Box>
+                          <Box flex={1} display={'flex'} width="300px">
+                            <YBInput
+                              disabled={rotateYCQLPasswordValue || !overridePortsValue}
+                              value={value}
+                              onChange={onChange}
+                              onBlur={(event) => {
+                                let port =
+                                  Number(event.target.value.replace(/\D/g, '')) ||
+                                  universeDetails.communicationPorts.yqlServerRpcPort;
+                                port = port > MAX_PORT ? MAX_PORT : port;
+                                onChange(port);
+                              }}
+                              inputProps={{
+                                'data-testid': 'EnableYCQLModal-Input-yqlServerRpcPort'
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      );
+                    }}
+                  />
                 </>
               )}
               {/* rotate password section */}

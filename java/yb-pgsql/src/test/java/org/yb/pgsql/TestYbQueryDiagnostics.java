@@ -19,6 +19,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -28,6 +29,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import org.json.JSONObject;
 import org.junit.Before;
@@ -57,6 +59,11 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     private static final int ASH_SAMPLING_INTERVAL_MS = 500;
+    private static final String noQueriesExecutedWarning = "No query executed;";
+    private static final String pgssResetWarning =
+        "pg_stat_statements was reset, query string not available;";
+    private static final String permissionDeniedWarning =
+        "Failed to create query diagnostics directory, Permission denied;";
 
     @Before
     public void setUp() throws Exception {
@@ -293,9 +300,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertQueryDiagnosticsStatus(resultSet,
                                          fileErrorBundlePath.getParent() /* expectedViewPath */,
                                          "Error" /* expectedStatus */,
-                                         "Failed to create query " +
-                                         "diagnostics directory, " +
-                                         "Permission denied;" /* expectedDescription */,
+                                         permissionDeniedWarning /* expectedDescription */,
                                          fileErrorRunParams);
 
             resultSet = statement.executeQuery(
@@ -417,8 +422,15 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         long sleep_time_s = diagnosticsInterval + 1;
 
         try (Statement statement = connection.createStatement()) {
-            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+            statement.execute("SELECT pg_sleep(0.5)");
+
+            String queryId = getQueryIdFromPgStatStatements(statement, "%pg_sleep%");
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+
+            /* Protects from "No query executed;" warning */
+            statement.execute("SELECT pg_sleep(0.1)");
+
+            /* sleep for bundle expiry */
             statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
             Path ashPath = bundleDataPath.resolve("active_session_history.csv");
 
@@ -462,7 +474,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkPgssData() throws Exception {
-        int diagnosticsInterval = 10;
+        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -470,6 +482,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             true /* explainDist */,
             false /* explainDebug */,
             0 /* bindVarQueryMinDuration */);
+
+        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
+        long sleep_time_s = diagnosticsInterval + 1;
 
         try (Statement statement = connection.createStatement()) {
             statement.execute("SELECT pg_sleep(0.5)");
@@ -481,10 +496,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("SELECT * from pg_class");
             statement.execute("SELECT pg_sleep(0.2)");
 
-            /*
-             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
-            */
-            Thread.sleep((diagnosticsInterval + 1) * 1000);
+            /* sleep for bundle expiry */
+            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
 
             Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
 
@@ -516,6 +529,152 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                            Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTime), epsilon);
             assertLessThan("mean_time is incorrect",
                            Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTime), epsilon);
+        }
+    }
+
+    private void runBundleWithQueries(Statement statement, String queryId,
+                                      QueryDiagnosticsParams queryDiagnosticsParams,
+                                      String[] queries, String warning) throws Exception {
+        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
+        long sleep_time_s = queryDiagnosticsParams.diagnosticsInterval + 1;
+
+        Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+        for (String query : queries) {
+            statement.execute(query);
+        }
+
+        /*
+         * Sleep for the bundle expiry duration.
+         * This also prevents from "No data available in ASH for the given time range;" warning.
+         */
+        statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
+
+        /* Select the last executed bundle */
+        ResultSet resultSet = statement.executeQuery("SELECT * " +
+                                                     "FROM yb_query_diagnostics_status " +
+                                                     "ORDER BY start_time DESC");
+        if (!resultSet.next())
+            fail("yb_query_diagnostics_status view does not have expected data");
+
+        assertQueryDiagnosticsStatus(resultSet,
+                                     bundleDataPath /* expectedViewPath */,
+                                     "Success" /* expectedStatus */,
+                                     warning /* expectedDescription */,
+                                     queryDiagnosticsParams);
+
+        if (!warning.equals(noQueriesExecutedWarning)) {
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+            Files.size(pgssPath) , 0L);
+
+            /* Read the pg_stat_statements.csv file */
+            List<String> pgssData = Files.readAllLines(pgssPath);
+            String[] tokens = pgssData.get(1).split(",");
+
+            /* Ensure that the query string in pg_stat_statements is empty as expected */
+            assertEquals("pg_stat_statements query is incorrect", "\"\"", tokens[1]);
+        }
+    }
+
+    @Test
+    public void testPgssResetBetweenDiagnostics() throws Exception {
+        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            /*
+             * If pg_stat_statements resets during the bundle creation process,
+             * the query string in the pg_stat_statements output file will not be available.
+             * A warning will be included in the description field of the catalog view
+             * to indicate the same.
+             */
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+
+            /* Test different scenarios of pgss reset */
+
+            /* reset */
+            runBundleWithQueries(statement, queryId, queryDiagnosticsParams, new String[] {
+                "SELECT pg_stat_statements_reset()",
+            }, noQueriesExecutedWarning);
+
+            /* statement -> reset */
+            runBundleWithQueries(statement, queryId, queryDiagnosticsParams, new String[] {
+                "EXECUTE stmt('var1', 1, 1.1)",
+                "SELECT pg_stat_statements_reset()",
+            }, pgssResetWarning);
+
+            /* reset -> statement */
+            runBundleWithQueries(statement, queryId, queryDiagnosticsParams, new String[] {
+                "SELECT pg_stat_statements_reset()",
+                "EXECUTE stmt('var2', 2, 2.2)"
+            }, pgssResetWarning);
+
+            /*
+             * statement -> reset -> statement
+             *
+             * Note that this also emits pgssResetWarning, although a statement is executed
+             * after the reset. This is intentional as if we were to implement a check for
+             * last_time_query_bundled against last_time_reset, it would require a
+             * GetCurrentTimestamp() call per bundled query, which could be expensive.
+             */
+            runBundleWithQueries(statement, queryId, queryDiagnosticsParams, new String[] {
+                "EXECUTE stmt('var1', 1, 1.1)",
+                "SELECT pg_stat_statements_reset()",
+                "EXECUTE stmt('var2', 2, 2.2)"
+            }, pgssResetWarning);
+        }
+    }
+
+    @Test
+    public void emptyBundle() throws Exception {
+        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
+        long sleep_time_s = diagnosticsInterval + 1;
+
+        try (Statement statement = connection.createStatement()) {
+            /* Run query diagnostics on the prepared stmt */
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+
+            /* sleep for bundle expiry */
+            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
+
+            /* Check that the bundle is empty */
+            try (Stream<Path> files = Files.list(bundleDataPath)) {
+                if (files.findAny().isPresent()) {
+                    fail("The bundle directory is not empty, even though no queries were fired");
+                }
+            } catch (IOException e) {
+                fail("Failed to list files in the bundle directory: " + e.getMessage());
+            }
+
+            /* Check that the bundle is empty in the view */
+            ResultSet resultSet = statement.executeQuery(
+                                  "SELECT * FROM yb_query_diagnostics_status");
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            assertQueryDiagnosticsStatus(resultSet,
+                                         bundleDataPath /* expectedViewPath */,
+                                         "Success" /* expectedStatus */,
+                                         noQueriesExecutedWarning /* expectedDescription */,
+                                         params);
         }
     }
 }

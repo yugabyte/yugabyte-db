@@ -51,6 +51,9 @@ bool ValidateSecretFlag(const char* flag_name, const std::string& new_val) {
 }
 DEFINE_validator(flagstest_secret_flag, &ValidateSecretFlag);
 
+DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "",
+    "This is a duplicate flag used only for testing");
+
 namespace yb {
 
 class FlagsTest : public YBTest {
@@ -321,6 +324,27 @@ TEST_F(FlagsTest, NewInstallValue) {
 
   new_install_value = flags_internal::GetFlagNewInstallValue("flagstest_secret_flag");
   ASSERT_FALSE(new_install_value.has_value());
+}
+
+namespace flags_internal {
+bool IsFlagPrivate(const gflags::CommandLineFlagInfo& flag_info);
+}  // namespace flags_internal
+
+TEST_F(FlagsTest, AllowList) {
+  auto is_flag_private = [](const std::string& flag_name) {
+    gflags::CommandLineFlagInfo flag_info;
+    EXPECT_TRUE(google::GetCommandLineFlagInfo(flag_name.c_str(), &flag_info));
+    return flags_internal::IsFlagPrivate(flag_info);
+  };
+
+  // Non string flags should always be allowed.
+  ASSERT_FALSE(is_flag_private("flagstest_testflag"));
+
+  // Allowed string flag.
+  ASSERT_FALSE(is_flag_private("vmodule"));
+
+  // Not allowed string flag.
+  ASSERT_TRUE(is_flag_private("ysql_cron_database_name"));
 }
 
 } // namespace yb

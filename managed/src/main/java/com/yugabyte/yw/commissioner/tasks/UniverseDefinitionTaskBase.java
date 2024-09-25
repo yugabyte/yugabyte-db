@@ -89,6 +89,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
@@ -996,15 +997,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createConfigureUniverseTasks(
-      Cluster primaryCluster, @Nullable Collection<NodeDetails> masterNodes) {
+      Cluster primaryCluster,
+      @Nullable Collection<NodeDetails> masterNodes,
+      @Nullable Runnable gflagsUpgradeSubtasks) {
     // Wait for a Master Leader to be elected.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+    // Update the gflags to set master_join_existing_universe to true.
     if (CollectionUtils.isNotEmpty(masterNodes)
         && primaryCluster.userIntent.providerType != CloudType.kubernetes) {
-      // Update the gflags to set master_join_existing_universe to false.
-      // It is not set for k8s universe because this restarts the pods.
       createGFlagsOverrideTasks(masterNodes, ServerType.MASTER, null /* param customizer */);
+    } else if (gflagsUpgradeSubtasks != null) {
+      gflagsUpgradeSubtasks.run();
     }
 
     // Persist the placement info into the YB master leader.
@@ -2814,9 +2818,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String ybcSoftwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
+    UserIntent userIntent =
+        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     if (softwareVersion == null) {
-      UserIntent userIntent =
-          getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
@@ -2834,6 +2838,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 universe.getCluster(node.placementUuid),
                 universe.getUniverseDetails().clusters);
       }
+    }
+    if (gFlagsValidation.ysqlMajorVersionUpgrade(
+        userIntent.ybSoftwareVersion, params.ybSoftwareVersion)) {
+      // As this task is used for software upgrade, we need to set pg upgrade flag to true.
+      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.IN_PROGRESS;
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
@@ -2906,7 +2915,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     params.gflags = gflags;
-
     return params;
   }
 
