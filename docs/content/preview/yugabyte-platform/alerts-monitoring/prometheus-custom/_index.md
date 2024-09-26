@@ -26,7 +26,7 @@ You can do this in the following ways:
 
     Your independent Prometheus instance can scrape data from database nodes directly (in the case of VM-based universes) or scrape data from a Kubernetes Prometheus Operator Service Monitor (in the case of K8s-based universes). This data scraping runs in parallel to and independently from the YugabyteDB Anywhere-embedded Prometheus.
 
-If you have [Grafana](../../../../explore/observability/grafana-dashboard/grafana/) available, you can access a rich set of visualizations using the YugabyteDB Grafana dashboard. To download the dashboard, use the following API request:
+If you have Grafana available, you can access a rich set of visualizations using the YugabyteDB Grafana dashboard, which is included with your YugabyteDB Anywhere installation. To download the dashboard, use the following API request:
 
 ```sh
 curl -k --request GET \
