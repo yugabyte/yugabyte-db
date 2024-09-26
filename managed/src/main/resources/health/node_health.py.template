@@ -2115,9 +2115,14 @@ def _chrony_get_clock_drift_ms():
     if "Error" not in chrony_out and "Active: active" in chrony_out:
         # Check drift using chrony
         out = check_output("chronyc tracking", env)
-        match = re.search("System time.*: (.*) second", out, re.MULTILINE)
-        if match:
-          return float(match.group(1))*1000 # Convert seconds to milliseconds
+        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
+        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
+        if skew_match and delay_match and dispersion_match:
+            skew = float(skew_match.group(1))
+            delay = float(delay_match.group(1))
+            dispersion = float(dispersion_match.group(1))
+            return skew + dispersion + (.5 * delay)
     return "Failed to get clock drift from chrony"
 
 def _ntp_get_clock_drift_ms():
