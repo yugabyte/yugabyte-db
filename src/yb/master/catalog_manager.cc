@@ -8423,10 +8423,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         // effectively "dropping" and "recreating" the not-yet-in-use PG15 namespace.
         //
         // User-created namespaces are expected to be "created" once by pg_restore. In this case,
-        // the PG11 version of the namespace must already exist, and we will re-use it. However,
-        // this case has not yet been tested.
-        //
-        // TODO(20710): Verify upgrade behavior with user-created databases.
+        // the PG11 version of the namespace must already exist, and we will re-use it.
         if (ns == nullptr) {
           std::string context;
           if (by_id) {
@@ -9943,7 +9940,6 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
   // masters without the upgrade flag. A refinement would be to not require a restart to switch out
   // of upgrade mode, in which case we might need to do a one-time bump of the PG15
   // pg_yb_catalog_version number.
-  //
   TableId table_id;
   if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
     table_id = kPgYbCatalogVersionTableIdPg11;
