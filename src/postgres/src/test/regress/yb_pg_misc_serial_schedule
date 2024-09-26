@@ -5,7 +5,7 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_independent_serial_schedule, the tests in this schedule have dependencies.
 ####################################################################################################
-# Dependency for yb_pg_create_index, yb_pg_errors, yb_pg_misc,
+# Dependency for yb_pg_create_index, yb_pg_errors, yb_pg_random, yb_pg_misc,
 # yb_pg_misc_functions, yb_pg_prepare, yb_pg_with
 test: yb_pg_test_setup
 
@@ -16,6 +16,7 @@ test: yb_pg_create_type
 test: yb_pg_create_index
 test: yb_pg_create_am
 test: yb_pg_errors
+test: yb_pg_random
 test: yb_pg_misc
 test: yb_pg_misc_functions
 test: yb_pg_prepare
