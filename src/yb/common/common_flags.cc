@@ -164,7 +164,7 @@ bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
   // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (yb::std_util::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
+  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "Must be less than consensus_max_batch_size_bytes "
         << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";

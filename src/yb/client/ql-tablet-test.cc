@@ -1992,7 +1992,7 @@ class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
     SCHECK_NOTNULL(tablet);
     auto* db = tablet->regular_db();
 
-    while (std_util::cmp_less(
+    while (std::cmp_less(
                db->GetCurrentVersionSstFilesUncompressedSize(),
                kNumFlushes * FLAGS_db_write_buffer_size) ||
            db->GetCurrentVersionNumSSTFiles() < kNumSstFiles) {
