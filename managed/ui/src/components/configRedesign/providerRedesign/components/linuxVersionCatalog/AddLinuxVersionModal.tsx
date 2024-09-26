@@ -135,7 +135,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       details: {
         arch: ArchitectureType.X86_64,
         sshPort: 22,
-        ...(showIMDSv2 && { useIMDSv2: false })
+        ...(showIMDSv2 && { useIMDSv2: true })
       },
       ...editDetails
     },
