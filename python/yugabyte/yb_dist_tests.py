@@ -355,6 +355,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'www',
     'yb_build.sh',
     'build/venv',
+    'build/venv-arm64',
     'requirements.txt',
     'requirements_frozen.txt',
     'build/yugabyte-bash-common',

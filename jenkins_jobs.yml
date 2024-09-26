@@ -33,14 +33,14 @@ jobs:
     architecture: aarch64
     release_artifact: false
 
-  - os: mac12
+  - os: mac13
     compiler: clang
     build_type: release
     architecture: arm64
     release_artifact: true
     test_opts: YB_COMPILE_ONLY=1
 
-  - os: mac12
+  - os: mac13
     compiler: clang
     build_type: release
     architecture: x86_64
