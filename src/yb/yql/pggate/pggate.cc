@@ -2279,6 +2279,10 @@ Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
   return pg_session_->TabletsMetadata();
 }
 
+Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
+    return pg_session_->ServersMetrics();
+}
+
 void PgApiImpl::ClearSessionState() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();

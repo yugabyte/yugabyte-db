@@ -81,6 +81,7 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_db_clone);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_bool(TEST_fail_clone_pg_schema);
@@ -712,14 +713,22 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_VECTORS_EQ(rows, kRows);
 
   // Verify first clone only has the first row.
-  auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_EQ(row, kRows[0]);
+  // Use a scope here and below so we can drop the cloned databases after.
+  {
+    auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, kRows[0]);
+  }
 
   // Verify second clone has both rows.
-  auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-  rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
+  {
+    auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+    rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_VECTORS_EQ(rows, kRows);
+  }
+
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
@@ -828,6 +837,41 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfter
   auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>(
       Format("SELECT * FROM t1 WHERE value=$0", std::get<1>(kRows[0])))));
   ASSERT_EQ(row, kRows[0]);
+}
+
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequences)) {
+  int kIncrement = 5;
+  // First 3 rows will be inserted into source database while the 4th row will be inserted in the
+  // clone. The 4th row takes into account that the first "FLAGS_ysql_sequence_cache_minval" values
+  // are allocated to the source DB cache.
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {
+      {1, 1}, {2, 6}, {3, 11}, {4, kIncrement * FLAGS_ysql_sequence_cache_minval + 1}};
+  // Create a sequence and attach it to the column value.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE SEQUENCE value_data INCREMENT $0 OWNED BY t1.value", kIncrement));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "ALTER TABLE t1 ALTER COLUMN value SET DEFAULT nextval('value_data')"));
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", std::get<0>(kRows[0])));
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", std::get<0>(kRows[1])));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+  // Verify table t1 exists in the clone database and rows are as of ht1.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, kRows[0]);
+  // Insert a row on both source and clone. Check the sequence behavior in both.
+  auto key = std::get<0>(kRows[2]);
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", key));
+  row = ASSERT_RESULT(
+      (source_conn_->FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
+  ASSERT_EQ(row, kRows[2]);
+  key = std::get<0>(kRows[3]);
+  ASSERT_OK(target_conn.ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", key));
+  row = ASSERT_RESULT(
+      (target_conn.FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
+  ASSERT_EQ(row, kRows[3]);
 }
 
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {

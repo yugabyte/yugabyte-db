@@ -605,6 +605,32 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         containsString("this operation can potentially take down a majority"));
   }
 
+  @Test
+  public void testRollingUpgradeTmpWithYSQLAuth() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.enableYSQL = true;
+    userIntent.enableYSQLAuth = true;
+    userIntent.ysqlPassword = "qqWER123!!";
+    userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap(GFlagsUtil.TMP_DIRECTORY, "/tmp"),
+            Collections.singletonMap(GFlagsUtil.TMP_DIRECTORY, "/tmp"));
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap(GFlagsUtil.TMP_DIRECTORY, "/tmp2"),
+            Collections.singletonMap(GFlagsUtil.TMP_DIRECTORY, "/tmp2"));
+    universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    TaskInfo taskInfo =
+        doGflagsUpgrade(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+    verifyYSQL(universe);
+  }
+
   protected TaskInfo doGflagsUpgrade(
       Universe universe,
       UpgradeTaskParams.UpgradeOption upgradeOption,
@@ -660,6 +686,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   private void compareGFlags(Universe universe) {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    SpecificGFlags specificGFlags = userIntent.specificGFlags;
     for (NodeDetails node : universe.getNodes()) {
       UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
       for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
@@ -674,10 +703,14 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         Map<String, String> gflagsOnDisk = getDiskFlags(node, universe, serverType);
         gflags.forEach(
             (k, v) -> {
+              String expectedValue = v;
+              if (k.equals(GFlagsUtil.TMP_DIRECTORY)) {
+                expectedValue = localNodeManager.getTmpDir(gflags, node.getNodeName(), userIntent);
+              }
               String actual = varz.getOrDefault(k, "?????");
-              assertEquals("Compare in memory gflag " + k, v, actual);
+              assertEquals("Compare in memory gflag " + k, expectedValue, actual);
               String onDisk = gflagsOnDisk.getOrDefault(k, "?????");
-              assertEquals("Compare on disk gflag " + k, v, onDisk);
+              assertEquals("Compare on disk gflag " + k, expectedValue, onDisk);
             });
       }
     }

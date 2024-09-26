@@ -516,8 +516,6 @@ class TableProperties {
   std::optional<PgReplicaIdentity> ysql_replica_identity_;
 };
 
-using PgSchemaName = std::string;
-
 // Provides missing, i.e. default, value for specified column if present.
 class MissingValueProvider {
  public:

@@ -11,13 +11,6 @@ properties:
     format: uuid
     example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
     readOnly: true
-  frequency:
-    description: Interval between two backups.
-    type: integer
-    format: int64
-  frequency_time_unit:
-    description: The time unit for the interval between backups.
-    $ref: "./TimeUnitType.yaml"
   storage_location:
     description: bucket or directory where backups are stored
     type: string

@@ -1538,6 +1538,8 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO yb_db_admin"));
+  ASSERT_OK(conn.Execute("SET ROLE yb_db_admin"));
   ASSERT_OK(conn.Execute("CREATE TABLE t1(a int)"));
   auto version = ASSERT_RESULT(GetCatalogVersion(&conn));
 

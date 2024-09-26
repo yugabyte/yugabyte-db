@@ -188,16 +188,6 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryInNodeShell(
-      Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean authEnabled) {
-    return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
-        authEnabled);
-  }
-
-  public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
 
     return executeQueryInNodeShell(

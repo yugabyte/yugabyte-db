@@ -509,7 +509,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
   WARN_NOT_OK(process_->Wait(&ret), Format("$0 Waiting on $1", LogPrefix(), process_name_and_pid));
   process_.reset();
   LOG_WITH_PREFIX(INFO) << "Process " << process_name_and_pid << " shutdown completed in "
-                        << CoarseMonoClock::Now() - start_time << "ms";
+                        << ToMilliseconds(CoarseMonoClock::Now() - start_time) << "ms";
 }
 
 void ExternalDaemon::FlushCoverage() {

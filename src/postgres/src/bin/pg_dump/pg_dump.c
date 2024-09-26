@@ -15650,7 +15650,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			&& (tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_MATVIEW
 				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
 			&& yb_properties && yb_properties->is_colocated
-			&& !simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace))
+			&& (!simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace)
+			|| dopt->outputNoTablespaces))
 		{
 			simple_string_list_append(&colocated_database_tablespaces, tbinfo->reltablespace);
 			/*
@@ -15663,6 +15664,16 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 							  yb_properties->tablegroup_oid);
+			if (dopt->outputNoTablespaces)
+			{
+				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+				{
+					appendPQExpBufferStr(q,
+									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+					appendPQExpBuffer(q,
+						"SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+				}
+			}
 		}
 
 		appendPQExpBuffer(q, "CREATE %s%s %s",
@@ -16603,6 +16614,30 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
+		if (dopt->outputNoTablespaces && is_colocated_database && !is_legacy_colocated_database)
+		{
+			YbTableProperties yb_properties;
+			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+			PQExpBuffer yb_reloptions = createPQExpBuffer();
+			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
+				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
+
+			if(yb_properties && yb_properties->is_colocated){
+				appendPQExpBufferStr(q,
+								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
+				appendPQExpBuffer(q,
+								 "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+								 yb_properties->tablegroup_oid);
+				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
+				{
+					appendPQExpBufferStr(q,
+									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+					appendPQExpBuffer(q,
+						"SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+				}
+			}
+			destroyPQExpBuffer(yb_reloptions);
+		}
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
 		appendPQExpBuffer(q, ";\n");
@@ -18951,6 +18986,22 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
 				  relname);
 #endif
+
+		if (is_colocated_database && !is_legacy_colocated_database &&  properties->is_colocated)
+		{
+			query = createPQExpBuffer();
+			/* Get name of the tablegroup.*/
+			appendPQExpBuffer(query,
+							"SELECT * FROM pg_yb_tablegroup WHERE oid=%u",
+							properties->tablegroup_oid);
+			res = ExecuteSqlQueryForSingleRow(fout, query->data);
+			int i_grpname = PQfnumber(res, "grpname");
+			properties->tablegroup_name =
+				PQgetisnull(res, 0, i_grpname) ? "" : PQgetvalue(res, 0, i_grpname);
+
+			PQclear(res);
+			destroyPQExpBuffer(query);
+		}
 	}
 
 

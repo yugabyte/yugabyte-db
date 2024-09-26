@@ -1622,26 +1622,6 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 						appendStringInfo(&buf, " %s", range_split_clause);
 				}
 			}
-
-			Relation indrel = table_open(indrelid, AccessShareLock);
-
-			/*
-			 * If the indexed table's tablegroup mismatches that of an
-			 * index table, this is a leftover from beta days of tablegroup
-			 * feature. We cannot replicate this via DDL statement anymore.
-			 */
-			if (YbGetTableProperties(indexrel)->tablegroup_oid !=
-				YbGetTableProperties(indrel)->tablegroup_oid)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("tablegroup of an index %s does not match its "
-								"indexed table, this is no longer supported",
-								NameStr(idxrelrec->relname)),
-						 errhint("Please drop and re-create the index.")));
-			}
-
-			table_close(indrel, AccessShareLock);
 		}
 
 		/*

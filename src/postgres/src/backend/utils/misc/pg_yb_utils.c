@@ -102,6 +102,7 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
+#include "utils/jsonb.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -1566,6 +1567,7 @@ int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
+	.is_enabled = false,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
@@ -3787,6 +3789,105 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+static Datum GetMetricsAsJsonbDatum(YBCMetricsInfo* metrics, size_t metricsCount){
+	JsonbParseState *state = NULL;
+	JsonbValue result;
+	JsonbValue key;
+	JsonbValue value;
+	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	for (int j = 0; j < metricsCount; j++) {
+		key.type = jbvString;
+		key.val.string.val = (char *)metrics[j].name;
+		key.val.string.len = strlen(metrics[j].name);
+		pushJsonbValue(&state, WJB_KEY, &key);
+
+		value.type = jbvString;
+		value.val.string.val = (char *)metrics[j].value;
+		value.val.string.len = strlen(metrics[j].value);
+		pushJsonbValue(&state, WJB_VALUE, &value);
+	}
+	result = *pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	Jsonb *jsonb = JsonbValueToJsonb(&result);
+	return JsonbPGetDatum(jsonb);
+} 
+
+Datum
+yb_servers_metrics(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define YB_SERVERS_METRICS_COLS 4
+
+	/* only superuser and yb_db_admin can query this function */
+	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers and yb_db_admin can query yb_servers_metrics"))));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YBCPgServerMetricsInfo	*servers_metrics_info = NULL;
+	size_t		num_servers = 0;
+	HandleYBStatus(YBCServersMetrics(&servers_metrics_info, &num_servers));
+
+	for (i = 0; i < num_servers; ++i)
+	{
+		YBCPgServerMetricsInfo *metricsInfo = (YBCPgServerMetricsInfo *)servers_metrics_info + i;
+		Datum		values[YB_SERVERS_METRICS_COLS];
+		bool		nulls[YB_SERVERS_METRICS_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = CStringGetTextDatum(metricsInfo->uuid);
+		values[1] = GetMetricsAsJsonbDatum(metricsInfo->metrics, metricsInfo->metrics_count);
+		values[2] = CStringGetTextDatum(metricsInfo->status);
+		values[3] = CStringGetTextDatum(metricsInfo->error);
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+#undef YB_SERVERS_METRICS_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return (Datum) 0;
+}
+
 /*---------------------------------------------------------------------------*/
 /* Deterministic DETAIL order                                                */
 /*---------------------------------------------------------------------------*/
@@ -5180,8 +5281,8 @@ YbGetRedactedQueryString(const char* query, int query_len,
 bool
 YbIsUpdateOptimizationEnabled()
 {
-	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
-	return yb_update_optimization_options.num_cols_to_compare > 0 &&
+	return yb_update_optimization_options.is_enabled &&
+		   yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 

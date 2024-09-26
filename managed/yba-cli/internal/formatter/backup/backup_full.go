@@ -19,8 +19,7 @@ import (
 const (
 	// Backup details
 	defaultFullBackupGeneral = "table {{.BackupUUID}}\t{{.BackupType}}\t{{.State}}"
-	backupDetails1           = "table {{.Universe}}\t{{.ScheduleName}}" +
-		"\t{{.BaseBackupUUID}}\t{{.HasIncrementalBackups}}"
+	backupDetails1           = "table {{.Universe}}\t{{.ScheduleName}}\t{{.HasIncrementalBackups}}"
 	backupDetails2 = "table {{.StorageConfig}}\t{{.StorageConfigType}}"
 	backupDetails3 = "table {{.CreateTime}}\t{{.CompletionTime}}\t{{.ExpiryTime}}"
 )

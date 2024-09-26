@@ -18,12 +18,12 @@
 #include "yb/util/size_literals.h"
 
 DEFINE_RUNTIME_uint32(tablet_replicas_per_gib_limit, 1024 / 0.7,
-    "The maximum number of tablets the cluster can support per GiB of RAM reserved by TServers for "
-    "tablet overheads. 0 means no limit.");
+    "The maximum number of tablets the universe can support per GiB of RAM reserved by TServers "
+    "for tablet overheads. 0 means no limit.");
 TAG_FLAG(tablet_replicas_per_gib_limit, advanced);
 
 DEFINE_RUNTIME_uint32(tablet_replicas_per_core_limit, 0,
-    "The maximum number of tablets the cluster can support per vCPU being used by TServers. 0 "
+    "The maximum number of tablets the universe can support per vCPU being used by TServers. 0 "
     "means no limit.");
 TAG_FLAG(tablet_replicas_per_core_limit, advanced);
 

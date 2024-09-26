@@ -64,7 +64,7 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
   public void testListTroubleshootingPlatforms() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
-      HttpUrl baseUrl = server.url("/api/customer_metadata/" + customer.toString());
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
       TroubleshootingPlatform platform1 =
           TroubleshootingPlatformServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
@@ -110,7 +110,7 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
   public void testCreateTroubleshootingPlatform() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
-      HttpUrl baseUrl = server.url("/api/customer_metadata/" + customer.toString());
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
       TroubleshootingPlatform platform =
           TroubleshootingPlatformServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
@@ -137,7 +137,7 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
   public void testEditTroubleshootingPlatform() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
-      HttpUrl baseUrl = server.url("/api/customer_metadata/" + customer.toString());
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
       TroubleshootingPlatform platform =
           TroubleshootingPlatformServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
@@ -174,7 +174,7 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
   public void testDeleteTroubleshootingPlatform() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
-      HttpUrl baseUrl = server.url("/api/customer_metadata/" + customer.toString());
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
       TroubleshootingPlatform platform =
           TroubleshootingPlatformServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
