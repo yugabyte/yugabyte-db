@@ -73,7 +73,7 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE,
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
-        > 0;
+        >= 0;
   }
 
   public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {
@@ -82,7 +82,7 @@ public class KubernetesUtil {
             MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE,
             MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_PREVIEW,
             true)
-        > 0;
+        >= 0;
   }
 
   // ToDo: Old k8s provider needs to be fixed, so that we can get

@@ -997,15 +997,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createConfigureUniverseTasks(
-      Cluster primaryCluster, @Nullable Collection<NodeDetails> masterNodes) {
+      Cluster primaryCluster,
+      @Nullable Collection<NodeDetails> masterNodes,
+      @Nullable Runnable gflagsUpgradeSubtasks) {
     // Wait for a Master Leader to be elected.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+    // Update the gflags to set master_join_existing_universe to true.
     if (CollectionUtils.isNotEmpty(masterNodes)
         && primaryCluster.userIntent.providerType != CloudType.kubernetes) {
-      // Update the gflags to set master_join_existing_universe to false.
-      // It is not set for k8s universe because this restarts the pods.
       createGFlagsOverrideTasks(masterNodes, ServerType.MASTER, null /* param customizer */);
+    } else if (gflagsUpgradeSubtasks != null) {
+      gflagsUpgradeSubtasks.run();
     }
 
     // Persist the placement info into the YB master leader.

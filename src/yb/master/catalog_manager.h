@@ -2379,6 +2379,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
 
+  scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
+
   friend class ClusterLoadBalancer;
 
   // Policy for load balancing tablets on tablet servers.
