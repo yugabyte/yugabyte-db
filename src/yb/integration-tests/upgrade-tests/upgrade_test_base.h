@@ -52,9 +52,13 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status RestartTServerInCurrentVersion(
       ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize = true);
 
+  Status PerformYsqlMajorVersionUpgrade();
+
   Status FinalizeUpgrade();
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
+
+  Status FinalizeYsqlMajorVersionUpgrade();
 
   Status PerformYsqlUpgrade();
 
@@ -67,6 +71,8 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status RestartAllTServersInOldVersion(MonoDelta delay_between_nodes = 3s);
   Status RestartTServerInOldVersion(
       ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize = true);
+
+  Status RollbackYsqlMajorVersion();
 
   Status RollbackVolatileAutoFlags();
 
@@ -89,6 +95,8 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   std::string old_version_tserver_bin_path_, current_version_tserver_bin_path_;
 
   std::optional<uint32> auto_flags_rollback_version_;
+
+  bool is_ysql_major_version_upgrade_ = false;
 };
 
 // Supported builds

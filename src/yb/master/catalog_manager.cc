@@ -13331,5 +13331,52 @@ Result<TablegroupId> CatalogManager::GetTablegroupId(const TableId& table_id) {
   return tablegroup->id();
 }
 
+Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver() const {
+  ServerRegistrationPB local_registration;
+  RETURN_NOT_OK(master_->GetMasterRegistration(&local_registration));
+
+  std::unordered_set<std::string> local_hosts;
+  for (const auto& addr : local_registration.private_rpc_addresses()) {
+    local_hosts.insert(addr.host());
+  }
+
+  const auto& local_cloud_info = local_registration.cloud_info();
+
+  TSDescriptorVector descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, VERIFY_RESULT(placement_uuid()));
+
+  auto best_score = CatalogManagerUtil::CloudInfoSimilarity::NO_MATCH;
+  TSDescriptorPtr best_tserver;
+  for (const auto& desc : descs) {
+    const auto& ts_info = desc->GetTSInformationPB();
+    DCHECK(ts_info.has_registration());
+    if (!ts_info.has_registration()) {
+      continue;
+    }
+
+    const auto& ts_cloud_info = ts_info.registration().common().cloud_info();
+    auto ts_score = CatalogManagerUtil::ComputeCloudInfoSimilarity(ts_cloud_info, local_cloud_info);
+    if (ts_score < best_score) {
+      continue;
+    }
+
+    if (ts_score == CatalogManagerUtil::CloudInfoSimilarity::ZONE_MATCH) {
+      // If this tserver is on the same node as master pick it.
+      for (const auto& addr : ts_info.registration().common().private_rpc_addresses()) {
+        if (local_hosts.contains(addr.host())) {
+          return desc;
+        }
+      }
+    }
+
+    best_score = ts_score;
+    best_tserver = desc;
+  }
+
+  SCHECK(best_tserver, NotFound, "Couldn't find a live tablet server to connect to");
+
+  return best_tserver;
+}
+
 }  // namespace master
 }  // namespace yb

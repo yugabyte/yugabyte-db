@@ -243,75 +243,16 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
+  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver());
   PgWrapper::PgUpgradeParams pg_upgrade_params{
       .data_dir = pg_conf.data_dir,
-      .old_version_pg_address = VERIFY_RESULT(GetClosestLiveTserverAddress()),
-      .old_version_pg_port = pgwrapper::PgProcessConf::kDefaultPort,
+      .old_version_pg_address = VERIFY_RESULT(closest_ts->GetHostPort()).host(),
+      .old_version_pg_port = narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()),
       .new_version_pg_address = pg_conf.listen_addresses,
       .new_version_pg_port = pg_conf.pg_port};
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
 
   return Status::OK();
-}
-
-Result<std::string> YsqlInitDBAndMajorUpgradeHandler::GetClosestLiveTserverAddress() {
-  ServerRegistrationPB local_reg;
-  RETURN_NOT_OK(master_.GetMasterRegistration(&local_reg));
-
-  std::unordered_set<std::string> local_addresses;
-  for (const auto& addr : local_reg.private_rpc_addresses()) {
-    local_addresses.insert(addr.host());
-  }
-  const auto& local_cloud_info = local_reg.cloud_info();
-
-  std::vector<std::shared_ptr<TSDescriptor>> descs;
-  master_.ts_manager()->GetAllLiveDescriptorsInCluster(
-      &descs, VERIFY_RESULT(catalog_manager_.placement_uuid()));
-
-  int best_score = -1;
-  std::string best_host;
-  for (const auto& desc : descs) {
-    if (!desc->IsLive()) {
-      continue;
-    }
-    const auto& ts_info = desc->GetTSInformationPB();
-
-    if (!ts_info.has_registration() ||
-        ts_info.registration().common().private_rpc_addresses().empty()) {
-      continue;
-    }
-
-    const auto& ts_cloud_info = ts_info.registration().common().cloud_info();
-    int ts_score = 0;
-    if (ts_cloud_info.placement_cloud() == local_cloud_info.placement_cloud()) {
-      ts_score++;
-      if (ts_cloud_info.placement_region() == local_cloud_info.placement_region()) {
-        ts_score++;
-        if (ts_cloud_info.placement_zone() == local_cloud_info.placement_zone()) {
-          ts_score++;
-        }
-      }
-    }
-    if (ts_score < best_score) {
-      continue;
-    }
-
-    if (ts_score == 3) {
-      // If this tserver is on the same node as master pick it.
-      for (const auto& addr : ts_info.registration().common().private_rpc_addresses()) {
-        if (local_addresses.contains(addr.host())) {
-          return addr.host();
-        }
-      }
-    }
-
-    best_score = ts_score;
-    best_host = ts_info.registration().common().private_rpc_addresses(0).host();
-  }
-
-  SCHECK(!best_host.empty(), IllegalState, "Couldn't find alive tablet server to connect to");
-
-  return best_host;
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const LeaderEpoch& epoch) {

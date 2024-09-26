@@ -19,11 +19,18 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+
+#include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 
 DECLARE_uint32(auto_flags_apply_delay_ms);
 
@@ -194,6 +201,14 @@ void AddUnDefOkFlag(std::vector<std::string>& flag_list, const std::string& flag
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
+Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enable) {
+  for (auto* master : cluster.master_daemons()) {
+    RETURN_NOT_OK(
+        cluster.SetFlag(master, "TEST_online_pg11_to_pg15_upgrade", enable ? "true" : "false"));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
@@ -203,6 +218,10 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
+  if (old_version_info_.version != kBuild_2_20_2_4) {
+    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2_20_2_4;
+  }
+
   if (IsSanitizer()) {
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
@@ -257,6 +276,15 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
+  server::GetStatusRequestPB req;
+  server::GetStatusResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
+                                   current_version_info_.ysql_major_version();
+
   return Status::OK();
 }
 
@@ -266,6 +294,9 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInCurrentVersion(delay_between_nodes), "Failed to restart masters");
+
+  RETURN_NOT_OK_PREPEND(
+      PerformYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
 
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
@@ -296,6 +327,12 @@ Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_betwee
 Status UpgradeTestBase::RestartMasterInCurrentVersion(
     ExternalMaster& master, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-master " << master.id() << " in current version";
+
+  if (is_ysql_major_version_upgrade_) {
+    // Multiple tests can run on the same box, so use a unique ports.
+    master.AddExtraFlag("ysql_upgrade_postgres_port", yb::ToString(cluster_->AllocateFreePort()));
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(master, current_version_master_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
@@ -329,6 +366,44 @@ Status UpgradeTestBase::RestartTServerInCurrentVersion(
   }
 
   return Status::OK();
+}
+
+Status UpgradeTestBase::PerformYsqlMajorVersionUpgrade() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Running ysql major version upgrade";
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, true));
+
+  master::StartYsqlMajorVersionUpgradeInitdbRequestPB req;
+  master::StartYsqlMajorVersionUpgradeInitdbResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  auto master_admin_proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+  RETURN_NOT_OK(master_admin_proxy.StartYsqlMajorVersionUpgradeInitdb(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto is_upgrade_done = [&master_admin_proxy]() -> Result<bool> {
+    master::IsYsqlMajorVersionUpgradeInitdbDoneRequestPB req;
+    master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+    RETURN_NOT_OK(master_admin_proxy.IsYsqlMajorVersionUpgradeInitdbDone(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    if (resp.has_initdb_error()) {
+      return StatusFromPB(resp.initdb_error().status());
+    }
+    return resp.done();
+  };
+
+  return LoggedWaitFor(
+      is_upgrade_done, 10min, "Waiting for ysql major version upgrade to complete");
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -365,6 +440,18 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   return Status::OK();
 }
 
+Status UpgradeTestBase::FinalizeYsqlMajorVersionUpgrade() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Finalizing ysql major version upgrade";
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
+
+  return Status::OK();
+}
+
 Status UpgradeTestBase::PerformYsqlUpgrade() {
   LOG(INFO) << "Running ysql upgrade";
 
@@ -386,6 +473,9 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
 
+  RETURN_NOT_OK_PREPEND(
+      FinalizeYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
+
   RETURN_NOT_OK_PREPEND(PromoteAutoFlags(), "Failed to promote AutoFlags");
 
   RETURN_NOT_OK_PREPEND(PerformYsqlUpgrade(), "Failed to perform ysql upgrade");
@@ -393,6 +483,29 @@ Status UpgradeTestBase::FinalizeUpgrade() {
   // Set the current version bin path for the cluster, so that any newly added nodes get started on
   // the new version.
   cluster_->SetDaemonBinPath(current_version_bin_path_);
+
+  return Status::OK();
+}
+
+Status UpgradeTestBase::RollbackYsqlMajorVersion() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Running ysql major version rollback";
+
+  master::RollbackYsqlMajorVersionUpgradeRequestPB req;
+  master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorVersionUpgrade(
+          req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
 
   return Status::OK();
 }
@@ -426,6 +539,8 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Rolling back upgrade";
 
+  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersion(), "Failed to run ysql major version rollback");
+
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   RETURN_NOT_OK_PREPEND(
@@ -453,6 +568,12 @@ Status UpgradeTestBase::RestartAllMastersInOldVersion(MonoDelta delay_between_no
 Status UpgradeTestBase::RestartMasterInOldVersion(
     ExternalMaster& master, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-master " << master.id() << " in old version";
+
+  if (is_ysql_major_version_upgrade_) {
+    // Multiple tests can run on the same box, so use a unique ports.
+    master.RemoveExtraFlag("ysql_upgrade_postgres_port");
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(master, old_version_master_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
@@ -478,6 +599,17 @@ Status UpgradeTestBase::RestartAllTServersInOldVersion(MonoDelta delay_between_n
 Status UpgradeTestBase::RestartTServerInOldVersion(
     ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-tserver " << ts.id() << " in old version";
+
+  if (is_ysql_major_version_upgrade_ && old_version_info_.version == kBuild_2_20_2_4) {
+    // YB_TODO: Remove this once we switch to a newer version.
+    // 2.20 does not have the pg_data symlink changes so we need to manually delete the pg_data
+    // folder and use the pg_data_11.
+    auto env = Env::Default();
+    const auto pg_data_dir = JoinPathSegments(ts.GetRootDir(), "pg_data");
+    RETURN_NOT_OK(env->DeleteRecursively(pg_data_dir));
+    RETURN_NOT_OK(env->RenameFile(JoinPathSegments(ts.GetRootDir(), "pg_data_11"), pg_data_dir));
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(ts, old_version_tserver_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
