@@ -19,15 +19,9 @@ The following flags are used to configure the data drive:
 - [fs_data_dirs](../../../reference/configuration/yb-tserver/#fs-data-dirs)
 - [log_dir](../../../reference/configuration/yb-tserver/#log-dir)
 
-## Scenarios
+## Disk full scenarios on data drives
 
-### The drive containing the log file is full
-
-During the tablet bootstrap that takes place during a YB-TServer restart, a new WAL file is allocated, irrespective of the amount of logs generated in the server's previous WAL file. If a YB-TServer has several tablets and results in a crash loop, each one of the tablets creates new WAL files on every bootstrap, filling up the disk.
-
-### Disk full situation on other data drives
-
-#### Crash loop due to write I/O error
+### Crash loop due to write I/O error
 
 If the disk isn't completely full (it probably has a few KBs of disk space left), the YB-TServer can successfully bootstrap. However, a subsequent write operation might fail with a fatal/crash error due to the disk getting full. This can lead to a continuous crash loop as the server restarts and encounters the same issue all over again.
 An example IO error is as follows:
@@ -36,7 +30,7 @@ An example IO error is as follows:
 consensus_queue.cc:368] Check failed: _s.ok() Bad status: IO error (yb/util/env_posix.cc:504): /mnt/d1/yb-data/tserver/wals/table-6e527d21c179455286ae94ddcbebd267/tablet-be46450d80d049ee8b6a0780dfa54926/.tmp.newsegmentiS4vyN: No space left on device (system error 28)
 ```
 
-#### Automatic YB-TServer blacklisting
+### Automatic YB-TServer blacklisting
 
 During YB-TServer startup, the FSManager (File System Manager) module checks the health of each data drive by creating a small test file. If the disk is completely full, the YB-TServer does the following:
 
@@ -53,9 +47,7 @@ During YB-TServer startup, the FSManager (File System Manager) module checks the
 
 ## Recommended recovery actions
 
-**Option 1**: Check if any files (like older YB-TServer logs) on the `log_dir` drive can be removed/deleted to help the YB-TServer process to bootstrap successfully.
-
-**Option 2**: In {{<release "2.18.1.0">}} and later, you can prevent repeated WAL file allocation in a crash loop by using the [reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
+**Option 1**: In {{<release "2.18.1.0">}} and later, you can prevent repeated WAL file allocation in a crash loop by using the [reuse_unclosed_segment_threshold_bytes](../../../reference/configuration/yb-tserver/#reuse-unclosed-segment-threshold-bytes) flag.
 
 If a tablet's last WAL file size is less than or equal to this threshold value, the bootstrap process will reuse the last WAL file rather than create a new one. To set the flag so that the last WAL file is always reused, you can set the flag to the current maximum WAL file size (64MB), as follows:
 
@@ -65,15 +57,15 @@ If a tablet's last WAL file size is less than or equal to this threshold value, 
 
 The following two recommendations are specific to [YugabyteDB Anywhere](../../../yugabyte-platform/).
 
-**Option 3**: Increase the disk volume size using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option. Note the following important considerations:
+**Option 2**: Increase the disk volume size using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option. Note the following important considerations:
 
 - Preflight checks - YugabyteDB Anywhere performs preflight checks to ensure a smooth [smart resize](../../../yugabyte-platform/manage-deployments/edit-universe/#smart-resize) operation. One of the checks verifies there is no leaderless tablet in the cluster. To bypass this check, you can disable the `yb.checks.leaderless_tablets.enabled` global [runtime configuration flag](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) as a Super Admin user.
 
 - Master leader - The universe needs to have a designated master leader node to receive and process node resize requests. If no master leader is available, the resize operation will fail. After the disk space is successfully increased, the bootstrap process for the resized nodes should proceed without issues.
 
-**Option 4**: Add a new node using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option.
+**Option 3**: Add a new node using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option.
 
-Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1, Option 2, or Option 3) to form a quorum, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
+Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1 or Option 2) to form a quorum, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
 
 {{<warning title="Important: Accidental Disk Unmount">}}
 
