@@ -46,6 +46,7 @@
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
@@ -85,6 +86,9 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
 
+DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
+    "Time to release unused allocated big memory segment from session to pool.");
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -92,6 +96,7 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint64(rpc_max_message_size);
 
 namespace yb::tserver {
+
 namespace {
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
@@ -521,16 +526,19 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   SharedExchange* exchange;
 
+  EventStatsPtr stats_exchange_response_size;
+
   CoarseTimePoint deadline;
 
   CountDownLatch latch{1};
 
   SharedExchangeQuery(
       std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
-      SharedExchange* exchange_)
+      SharedExchange* exchange_, const EventStatsPtr& stats_exchange_response_size_)
       : PerformData(
             session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
-        session(std::move(session_)), exchange(exchange_) {
+        session(std::move(session_)), exchange(exchange_),
+        stats_exchange_response_size(stats_exchange_response_size_) {
   }
 
   // Initialize query from data stored in exchange with specified size.
@@ -560,11 +568,28 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto full_size =
         CodedOutputStream::VarintSize32(header_size) + header_size +
         CodedOutputStream::VarintSize32(body_size) + body_size;
+
+    if (stats_exchange_response_size) {
+      stats_exchange_response_size->Increment(full_size);
+    }
+
     auto* start = exchange->Obtain(full_size);
+    std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
+    std::shared_ptr<PgClientSession> locked_session;
     if (!start) {
-      buffer = RefCntBuffer(full_size - sidecars.size());
-      start = pointer_cast<std::byte*>(buffer.data());
+      locked_session = session.lock();
+      if (locked_session) {
+        shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
+        if (shared_memory_segment.second) {
+          start = shared_memory_segment.second;
+        }
+      }
+
+      if (!start) {
+        buffer = RefCntBuffer(full_size - sidecars.size());
+        start = pointer_cast<std::byte*>(buffer.data());
+      }
     }
     auto* out = start;
     out = WriteVarint32ToArray(header_size, out);
@@ -575,9 +600,16 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
       sidecars.CopyTo(out);
       out += sidecars.size();
       DCHECK_EQ(out - start, full_size);
-      exchange->Respond(full_size);
+      if (!shared_memory_segment.second) {
+        exchange->Respond(full_size);
+      } else {
+        exchange->Respond(kTooBigResponseMask | kBigSharedMemoryMask | full_size |
+                          (shared_memory_segment.first << kBigSharedMemoryIdShift));
+      }
     } else {
-      auto locked_session = session.lock();
+      if (!locked_session) {
+        locked_session = session.lock();
+      }
       auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
       exchange->Respond(kTooBigResponseMask | id);
     }
@@ -626,6 +658,26 @@ PgClientSession::UsedReadTimeApplier BuildUsedReadTimeApplier(
   };
 }
 
+Result<PgReplicaIdentity> GetReplicaIdentityEnumValue(
+    PgReplicaIdentityType replica_identity_proto) {
+  switch (replica_identity_proto) {
+    case DEFAULT:
+      return PgReplicaIdentity::DEFAULT;
+    case FULL:
+      return PgReplicaIdentity::FULL;
+    case NOTHING:
+      return PgReplicaIdentity::NOTHING;
+    case CHANGE:
+      return PgReplicaIdentity::CHANGE;
+    default:
+      RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+  }
+}
+
+std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
+  return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
+}
+
 } // namespace
 
 std::ostream& operator<<(std::ostream& str, const PgClientSession::PrefixLogger& logger) {
@@ -672,7 +724,8 @@ PgClientSession::PgClientSession(
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-    PgSequenceCache* sequence_cache)
+    PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
+    const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
       id_(id),
       client_(*client),
@@ -683,6 +736,9 @@ PgClientSession::PgClientSession(
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
       sequence_cache_(*sequence_cache),
+      shared_mem_pool_(shared_mem_pool),
+      big_shared_mem_expiration_task_(&scheduler),
+      stats_exchange_response_size_(stats_exchange_response_size),
       read_point_history_(PrefixLogger(id_)) {}
 
 Status PgClientSession::CreateTable(
@@ -826,9 +882,8 @@ Status PgClientSession::AlterTable(
     client::YBTablePtr yb_table;
     RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
     auto table_properties = yb_table->schema().table_properties();
-    PgReplicaIdentity replica_identity = PgReplicaIdentity::DEFAULT;
-    RETURN_NOT_OK(
-        GetReplicaIdentityEnumValue(req.replica_identity().replica_identity(), &replica_identity));
+    auto replica_identity = VERIFY_RESULT(GetReplicaIdentityEnumValue(
+        req.replica_identity().replica_identity()));
     table_properties.SetReplicaIdentity(replica_identity);
     alterer->SetTableProperties(table_properties);
   }
@@ -2115,7 +2170,8 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
-  auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
+  auto data = std::make_shared<SharedExchangeQuery>(
+      shared_this_.lock(), &table_cache_, exchange, stats_exchange_response_size_);
   auto status = data->Init(size);
   if (status.ok()) {
     static std::atomic<int64_t> next_rpc_id{0};
@@ -2139,6 +2195,67 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     return nullptr;
   }
   return rpc::SharedField(data, &data->latch);
+}
+
+void PgClientSession::ScheduleBigSharedMemExpirationCheck(
+    std::chrono::steady_clock::duration delay) {
+  big_shared_mem_expiration_task_.Schedule([this](const Status& status) {
+    if (!status.ok()) {
+      std::lock_guard lock(big_shared_mem_mutex_);
+      big_shared_mem_expiration_task_scheduled_ = false;
+      return;
+    }
+    auto expiration_time =
+        last_big_shared_memory_access_.load() +
+        FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms;
+    auto now = CoarseMonoClock::Now();
+    if (expiration_time < now) {
+      expiration_time = now + 100ms; // in case of scheduling recheck
+      std::lock_guard lock(big_shared_mem_mutex_);
+      if (big_shared_mem_handle_ && !InUseAtomic(big_shared_mem_handle_).load()) {
+        big_shared_mem_handle_ = {};
+        big_shared_mem_expiration_task_scheduled_ = false;
+        return;
+      }
+    }
+    ScheduleBigSharedMemExpirationCheck(expiration_time - now);
+  }, delay);
+}
+
+std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(size_t size) {
+  std::pair<uint64_t, std::byte*> result;
+  bool schedule_expiration_task = false;
+  {
+    std::lock_guard lock(big_shared_mem_mutex_);
+    if (big_shared_mem_handle_ && big_shared_mem_handle_.size() >= size) {
+      auto& in_use = InUseAtomic(big_shared_mem_handle_);
+      LOG_IF_WITH_PREFIX(DFATAL, in_use.load()) << "Big shared mem segment still in use";
+      in_use.store(true);
+    } else {
+      auto new_handle = shared_mem_pool_.Obtain(size + sizeof(std::atomic<bool>));
+      if (!new_handle) {
+        return {0, nullptr};
+      }
+      new (new_handle.address()) std::atomic<bool>(true);
+      new_handle.TruncateLeft(sizeof(std::atomic<bool>));
+      big_shared_mem_handle_ = std::move(new_handle);
+    }
+    result = {big_shared_mem_handle_.id(), big_shared_mem_handle_.address()};
+    last_big_shared_memory_access_ = CoarseMonoClock::now();
+    if (!big_shared_mem_expiration_task_scheduled_) {
+      big_shared_mem_expiration_task_scheduled_ = true;
+      schedule_expiration_task = true;
+    }
+  }
+  if (schedule_expiration_task) {
+    ScheduleBigSharedMemExpirationCheck(
+        FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms);
+  }
+  return result;
+}
+
+void PgClientSession::Shutdown() {
+  big_shared_mem_expiration_task_.Shutdown();
 }
 
 }  // namespace yb::tserver

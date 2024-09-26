@@ -38,9 +38,11 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/coding_consts.h"
@@ -142,7 +144,8 @@ class PgClientSession {
       client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
       const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-      PgSequenceCache* sequence_cache);
+      PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
+      const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler);
 
   uint64_t id() const { return id_; }
 
@@ -167,26 +170,9 @@ class PgClientSession {
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
-  Status GetReplicaIdentityEnumValue(
-      PgReplicaIdentityType replica_identity_proto, PgReplicaIdentity *replica_identity_enum) {
-    switch (replica_identity_proto) {
-      case DEFAULT:
-        *replica_identity_enum = PgReplicaIdentity::DEFAULT;
-        break;
-      case FULL:
-        *replica_identity_enum = PgReplicaIdentity::FULL;
-        break;
-      case NOTHING:
-        *replica_identity_enum = PgReplicaIdentity::NOTHING;
-        break;
-      case CHANGE:
-        *replica_identity_enum = PgReplicaIdentity::CHANGE;
-        break;
-      default:
-        RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
-    }
-    return Status::OK();
-  }
+  std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
+
+  void Shutdown();
 
  private:
   struct SetupSessionResult {
@@ -300,6 +286,8 @@ class PgClientSession {
       bool has_docdb_schema_changes, const TransactionMetadata* metadata,
       std::optional<bool> commit);
 
+  void ScheduleBigSharedMemExpirationCheck(std::chrono::steady_clock::duration delay);
+
   struct PendingUsedReadTime {
     UsedReadTime value;
     bool pending_update = {false};
@@ -330,6 +318,13 @@ class PgClientSession {
   PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;
+  PgSharedMemoryPool& shared_mem_pool_;
+  std::mutex big_shared_mem_mutex_;
+  std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
+  SharedMemorySegmentHandle big_shared_mem_handle_ GUARDED_BY(big_shared_mem_mutex_);
+  bool big_shared_mem_expiration_task_scheduled_ GUARDED_BY(big_shared_mem_mutex_) = false;
+  rpc::ScheduledTaskTracker big_shared_mem_expiration_task_;
+  EventStatsPtr stats_exchange_response_size_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
