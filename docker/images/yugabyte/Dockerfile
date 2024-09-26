@@ -49,6 +49,11 @@ WORKDIR $YB_HOME
 ARG yum_install="yum install --disableplugin=subscription-manager"
 ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager"
 
+# Install hostname for ubi8 images.
+RUN if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8/ubi"* ]]; then \
+  dnf install hostname; \
+  fi
+
 # Install required python packages first
 # this should leave us with python3.8 as the default python3
 RUN set -x ; \
