@@ -1,40 +1,102 @@
+# node-agent-provision.yaml
+
 ynp:
-  # Home directory for the yugabyte user
+  # Home directory for the 'yugabyte' user.
+  # This is where the YugabyteDB software and data will reside.
   yb_home_dir: /home/yugabyte
-  # NTP servers for the node
-  chrony_servers: ["0.pool.ntp.org", "1.pool.ntp.org"]
+
+  # NTP (Network Time Protocol) servers for time synchronization.
+  chrony_servers:
+    - "0.pool.ntp.org"
+    - "1.pool.ntp.org"
+
+  # User ID for the 'yugabyte' user.
+  # Specifies the UID to ensure consistency across nodes.
   yb_user_id: 994
-  # Public key path for the key to be used for yugabyte user.
-  # Default's to current user public key.
-  public_key_filepath: ""
+
+  # Indicates if the node is in an air-gapped environment (no internet access).
+  # Set to 'true' if the node cannot access external networks.
   # Airgapped
   is_airgap: false
+
+  # Determines whether to use system-level systemd for service management.
+  # Set to 'true' to integrate with the system's init system.
   use_system_level_systemd: false
+
+  # The IP address of the node.
+  # Should be the address that other nodes will use to communicate.
   node_ip: 127.0.0.1
+
+  # Temporary directory for provisioning tasks.
+  # Used for storing temporary files during setup.
   tmp_directory: /tmp
 
 yba:
+  # The base URL of the Yugabyte Anywhere instance.
+  # Example: 'https://yba.example.com'.
   url: <url>
+
+  # The UUID of the customer in Yugabyte Anywhere.
+  # This is a unique identifier provided by YBA.
   customer_uuid: <customer_uuid>
+
+  # API key for authenticating with Yugabyte Anywhere.
+  # Used for secure communication and operations.
   api_key: <api_key>
+
+  # The name to assign to this node within YBA.
+  # Helps in identifying the node in the YBA interface.
   node_name: <name>
+
+  # The external FQDN or IP address of the node.
+  # Must be accessible by the YBA server.
   node_external_fqdn: <ip/dns>
+
+  # Provider configuration details.
   provider:
+    # Name of the cloud or infrastructure provider.
+    # Examples: 'aws', 'gcp', 'azure', 'onprem'.
     name: provider_name
+
+    # Region-specific settings.
     region:
+      # Name of the region where the node is located.
+      # Example: 'us-west-1'.
       name: region_name
+
+      # Zone-specific settings within the region.
       zone:
+        # Name of the availability zone.
+        # Example: 'us-west-1a'.
         name: zone_name
-    access_key_path: <key_content>
+
+  # Instance type specifications.
   instance_type:
+    # Name of the instance type.
+    # Example: 'c5.large' for AWS, 'n1-standard-4' for GCP.
     name: instance_name
-    cores: cores
-    memory_size: size
-    volume_size: size
+
+    # Number of CPU cores allocated to the instance.
+    cores: <number_of_cores>
+
+    # Amount of memory (in GB) allocated to the instance.
+    memory_size: <memory_in_gb>
+
+    # Size of the storage volume (in GB).
+    volume_size: <volume_in_gb>
+
+    # List of mount points for data storage.
+    # Data directories should be mounted here.
     mount_points:
-    - /mnt/d1
+      - /mnt/d1
 
 logging:
+  # Logging level for the application.
+  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
   level: INFO
+
+  # Directory where log files will be stored.
   directory: ./logs
+
+  # Name of the log file.
   file: app.log

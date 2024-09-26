@@ -856,6 +856,11 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(
               BAD_REQUEST, "YSQL RPC port cannot be the same as internal YSQL RPC port");
         }
+
+        if (Common.CloudType.kubernetes.equals(userIntent.providerType)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
+        }
       }
 
       // update otel port

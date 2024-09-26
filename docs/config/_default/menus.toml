@@ -848,15 +848,6 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-platform]]
-  name = "Servers for nodes"
-  parent = "prepare"
-  weight = 40
-  identifier = "server-nodes"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
-
 ########## Menus (in preview) for YB Managed section
 
 [[preview_yugabyte-cloud]]
@@ -1074,15 +1065,6 @@
   name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
-  [stable_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
-
-[[stable_yugabyte-platform]]
-  name = "Servers for nodes"
-  parent = "prepare"
-  weight = 40
-  identifier = "server-nodes"
   [stable_yugabyte-platform.params]
     showSection = true
     hideLink = true

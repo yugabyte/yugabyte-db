@@ -33,6 +33,18 @@ public class XClusterRemoveNamespaceFromOutboundReplicationGroup extends XCluste
     // The parent xCluster config must be stored in xClusterConfig field.
     // The db to be removed from the xcluster replication must be stored in the dbToRemove field.
     public String dbToRemove;
+
+    public boolean keepEntry;
+  }
+
+  @Override
+  public String getName() {
+    return String.format(
+        "%s(xClusterConfig=%s,dbToRemove=%s,keepEntry=%s)",
+        this.getClass().getSimpleName(),
+        taskParams().getXClusterConfig().getUuid(),
+        taskParams().dbToRemove,
+        taskParams().keepEntry);
   }
 
   @Override
@@ -71,7 +83,12 @@ public class XClusterRemoveNamespaceFromOutboundReplicationGroup extends XCluste
                 "XClusterRemoveNamespaceFromOutboundReplicationGroup rpc failed with error: %s",
                 createResponse.errorMessage()));
       }
-      xClusterConfig.removeNamespaces(Set.of(dbId));
+      if (!taskParams().keepEntry) {
+        log.info(
+            "Removing db id: {} from xClusterConfig Object {}", dbId, xClusterConfig.getUuid());
+        xClusterConfig.removeNamespaces(Set.of(dbId));
+      }
+
       log.debug(
           "Removing source db id: {} from xClusterConfig {} completed",
           taskParams().getDbToRemove(),

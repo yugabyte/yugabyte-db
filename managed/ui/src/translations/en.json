@@ -41,6 +41,7 @@
       "and": "and",
       "learnMore": "Learn more",
       "clear": "Clear",
+      "reminder": "Reminder",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -250,7 +251,13 @@
         "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "disableWarning3": "May impact performance.",
         "disableWarning1RF1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility requires a <strong>restart</strong> of <strong>{{universeName}}</strong> and may impact performance.",
-        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>"
+        "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
+        "analyzeModal": {
+          "msg1": "Enabling Enhanced Postgres Compatibility also enables the <strong>Cost Based Optimizer (CBO).</strong>",
+          "msg2": "You must run",
+          "msg3": "on user tables after data load for the CBO to create optimal execution plans.",
+          "learnLink": "Learn more about ANALYZE"
+        }
       },
       "connectionPooling": {
         "modalTitle": "Edit Connection Pooling",
@@ -326,7 +333,7 @@
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
         "ysqlServerRpcPort": "YSQL RPC Port",
-        "internalYsqlServerRpcPort": "YSQL Database Port",
+        "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
         "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
@@ -910,7 +917,7 @@
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
             },
-            "Error": "Error"
+            "Failed": "Failed"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",
@@ -2704,16 +2711,16 @@
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
-            "backupStrategy":"Backup Strategy",
+            "backupStrategy": "Backup Strategy",
             "success": "Scheduled backup policy is being updated"
           },
           "deleteModal": {
-            "deleteMsg":"Are you sure you want to delete this schedule policy?"
+            "deleteMsg": "Are you sure you want to delete this schedule policy?"
           },
           "showIntervalModal": {
             "title": "Backup Intervals",
-            "fullBackup":"Full Backup",
-            "incrementalBackup":"Incremental Backup"
+            "fullBackup": "Full Backup",
+            "incrementalBackup": "Incremental Backup"
           },
           "backupTables": "Backup Tables"
         }
@@ -2769,11 +2776,11 @@
           "parallelThreads": "Parallel threads (Optional)"
         },
         "validationErrMsg": {
-          "keyspacesAlreadyExists":"Keyspace already exists in the target Universe",
+          "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
           "pitrMillisOptions.secs": "Secs must be between 0 to 59",
           "kmsConfigRequired": "KMS Config is required",
-          "invalidKeyspaceName":"Invalid keyspace name",
-          "duplicateKeyspaceName":"Duplicate keyspace name given"
+          "invalidKeyspaceName": "Invalid keyspace name",
+          "duplicateKeyspaceName": "Duplicate keyspace name given"
         }
       }
     },

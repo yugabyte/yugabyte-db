@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -163,6 +164,10 @@ public class GCPUtil implements CloudUtil {
     }
 
     return storageOptions.build().getService();
+  }
+
+  public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
+    return false;
   }
 
   @Override

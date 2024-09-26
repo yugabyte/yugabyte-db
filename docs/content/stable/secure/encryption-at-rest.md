@@ -19,6 +19,10 @@ Note that encryption can be applied at the following levels:
 - At the database layer, in which case the encryption process and its associated capabilities, such as key rotation, are cluster-wide.
 - At the file system level, in which case it is the responsibility of the operations teams to manage the process manually on every node. It is important to note that the degree to which file systems or external encryption mechanisms support online operations can vary (for example, when the database processes are still running).
 
+    If you are using third party disk encryption software, such as Vormetric or CipherTrust, the disk encryption service must be up and running on the node before starting any YugabyteDB services. If YugabyteDB processes start _before_ the encryption service, restarting an already encrypted node can result in data corruption.
+
+    To avoid issues, stop YugabyteDB services on the node _before_ enabling or disabling the disk encryption service.
+
 ## Enable encryption
 
 You enable encryption as follows:

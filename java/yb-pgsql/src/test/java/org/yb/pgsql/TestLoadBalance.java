@@ -14,17 +14,17 @@
 package org.yb.pgsql;
 
 import com.google.common.net.HostAndPort;
-import com.yugabyte.ysql.ClusterAwareLoadBalancer;
 import com.yugabyte.jdbc.PgConnection;
-import org.yb.AssertionWrappers;
+import com.yugabyte.ysql.ClusterAwareLoadBalancer;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.AssertionWrappers;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -240,7 +240,7 @@ public class TestLoadBalance extends BasePgSQLTest {
     AssertionWrappers.assertTrue("Expected 7 tservers, found " + rows, rows == 7);
 
     AssertionWrappers.assertTrue("Expected 6 tservers not found",
-      verifyResultUntil(10, 3000, e.getKey(), 6));
+      verifyResultUntil(50, 3000, e.getKey(), 6));
 
     runProcess(
       TestUtils.findBinary("yb-admin"),

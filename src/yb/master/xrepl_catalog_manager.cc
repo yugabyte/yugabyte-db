@@ -2380,7 +2380,7 @@ Status CatalogManager::ProcessTablesToBeRemovedFromCDCSDKStreams(
           "ProcessTablesToBeRemovedFromCDCSDKStreams::StartRemovalFromQualifiedTableList");
 
       if (!FLAGS_TEST_cdcsdk_skip_table_removal_from_qualified_list) {
-        Status status = RemoveTableFromCDCStreamMetadataAndMaps(stream, table_id);
+        Status status = RemoveTableFromCDCStreamMetadataAndMaps(stream, table_id, epoch);
         if (!status.ok()) {
           LOG(WARNING) << "Encountered error while trying to remove table " << table_id
                        << " from qualified table list of stream " << stream_id << " and maps. - "
@@ -5085,7 +5085,7 @@ Result<std::vector<cdc::CDCStateTableEntry>> CatalogManager::SyncCDCStateTableEn
 }
 
 Status CatalogManager::RemoveTableFromCDCStreamMetadataAndMaps(
-    const CDCStreamInfoPtr stream, const TableId table_id) {
+    const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch) {
   // Remove the table from the CDC stream metadata & cdcsdk_tables_to_stream_map_ and persist
   // the updated metadata.
   {
@@ -5102,8 +5102,7 @@ Status CatalogManager::RemoveTableFromCDCStreamMetadataAndMaps(
       LOG_WITH_FUNC(INFO) << "Removing table " << table_id
                           << " from qualified table list of CDC stream " << stream->id();
       RETURN_ACTION_NOT_OK(
-          sys_catalog_->Upsert(leader_ready_term(), stream),
-          "Updating CDC streams in system catalog");
+          sys_catalog_->Upsert(epoch, stream), "Updating CDC streams in system catalog");
     }
 
     ltm.Commit();

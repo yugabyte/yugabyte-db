@@ -1585,7 +1585,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 					YBCNewConstant(
 						ybScan->handle,
 						ybc_get_atttypid(scan_plan->bind_desc,
-										 current->sk_attno),
+										 scan_plan->bind_key_attnums[current->sk_attno]),
 						current->sk_collation,
 						current->sk_argument,
 						false);

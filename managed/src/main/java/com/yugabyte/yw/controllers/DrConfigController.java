@@ -183,16 +183,8 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
-            || createForm.dbScoped;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterCreationEnabled)
-        && createForm.dbScoped) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
-              + "by setting yb.xcluster.db_scoped.creationEnabled to true in the application.conf");
-    }
-
+        confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled);
     if (isDbScoped) {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
@@ -1119,9 +1111,6 @@ public class DrConfigController extends AuthenticatedController {
       if (xClusterConfig.getType() != ConfigType.Db) {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.

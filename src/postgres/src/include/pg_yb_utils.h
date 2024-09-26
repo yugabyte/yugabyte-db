@@ -564,8 +564,6 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
-extern int yb_update_num_cols_to_compare;
-extern int yb_update_max_cols_size_to_compare;
 /*
  * Enables scalar array operation pushdown.
  * If true, planner sends supported expressions to DocDB for evaluation
@@ -682,6 +680,7 @@ extern bool yb_use_hash_splitting_by_default;
 
 typedef struct YBUpdateOptimizationOptions
 {
+	bool is_enabled;
 	int num_cols_to_compare;
 	int max_cols_size_to_compare;
 } YBUpdateOptimizationOptions;

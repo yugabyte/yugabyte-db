@@ -571,7 +571,7 @@ export default class RollingUpgradeForm extends Component {
                   }}
                 />
               ) : (
-                <span>Select new CA signed cert from the list</span>
+                <span>Select a new certificate from the list</span>
               )
             }
             asyncValidating={

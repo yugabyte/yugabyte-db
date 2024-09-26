@@ -332,6 +332,9 @@ YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
 
+void YBCPgAlterTableInvalidateTableByOid(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
+
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
                             YBCPgOid table_relfilenode_oid,
                             bool if_exist,
@@ -873,10 +876,12 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
 YBCStatus YBCPgInitVirtualWalForCDC(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations);
 
 YBCStatus YBCPgUpdatePublicationTableList(
-    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, YBCPgOid *relfilenodes,
+    size_t num_relations);
 
 YBCStatus YBCPgDestroyVirtualWalForCDC();
 
@@ -899,6 +904,8 @@ void YBCStoreTServerAshSamples(
     uint64_t sample_time);
 
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
+
+YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);

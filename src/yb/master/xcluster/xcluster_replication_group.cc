@@ -17,17 +17,19 @@
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/xcluster_rpc_tasks.h"
+
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/is_operation_done_result.h"
-#include "yb/master/xcluster_rpc_tasks.h"
-#include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/common/xcluster_util.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/util/result.h"
 
 DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
@@ -484,11 +486,11 @@ Status RemoveNamespaceFromReplicationGroup(
     return Status::OK();
   }
 
-  auto consumer_tables =
-      VERIFY_RESULT(catalog_manager.GetTableInfosForNamespace(consumer_namespace_id));
+  auto consumer_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
+      catalog_manager, consumer_namespace_id, /*include_sequences_data=*/true));
   std::unordered_set<TableId> consumer_table_ids;
-  for (const auto& table_info : consumer_tables) {
-    consumer_table_ids.insert(table_info->id());
+  for (const auto& table_designator : consumer_designators) {
+    consumer_table_ids.insert(table_designator.id);
   }
 
   std::vector<TableId> producer_table_ids;

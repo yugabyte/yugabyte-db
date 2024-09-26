@@ -21,12 +21,24 @@
 #ifdef __clang__
 // For https://gist.githubusercontent.com/mbautin/87278fc41654c6c74cf7232960364c95/raw
 #pragma GCC diagnostic ignored "-Wpass-failed"
+#pragma GCC diagnostic ignored "-Wdeprecated-volatile"
+
+#ifdef __aarch64__
+// Temporarily disable failing on #warning directives inside index_plugins.hpp. This will become
+// unnecessary once we enable SimSIMD.
+#pragma GCC diagnostic ignored "-W#warnings"
+#endif
 
 #if __clang_major__ == 14
 // For https://gist.githubusercontent.com/mbautin/7856257553a1d41734b1cec7c73a0fb4/raw
 #pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
 #endif
+
+// Usearch 2.15.1 has unused variables in the insert_sorted function for to_move and
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #endif  // __clang__
+
+#define SIMSIMD_NATIVE_BF16 0
 
 #include "usearch/index.hpp"
 #include "usearch/index_dense.hpp"

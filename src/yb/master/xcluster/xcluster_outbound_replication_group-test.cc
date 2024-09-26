@@ -16,6 +16,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client_mock.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
@@ -174,6 +175,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
   void SetUp() {
     YBTest::SetUp();
+    LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
         UseAutomaticMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
@@ -267,13 +269,21 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           [this](const NamespaceId& namespace_id, bool include_sequences_data) {
             std::lock_guard l(mutex_);
             auto tables = namespace_tables[namespace_id];
+            std::vector<TableDesignator> table_designators;
+            for (const auto& table_info : tables) {
+              table_designators.push_back(GetDesignatorFromTableInfo(*table_info));
+            }
             if (include_sequences_data) {
               auto sequences_tables = namespace_tables[kPgSequencesDataNamespaceId];
               if (sequences_tables.size() > 0) {
-                tables.push_back(sequences_tables.back());
+                TableDesignator table_designator;
+                table_designator.id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
+                table_designator.name = "sequences_data";
+                table_designator.pgschema_name = "";
+                table_designators.push_back(table_designator);
               }
             }
-            return tables;
+            return table_designators;
           },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
@@ -336,11 +346,11 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       } else if (table_info.table_name == kTableName2) {
         ASSERT_EQ(table_info.table_id, table_id2);
       } else if (table_info.table_name == "sequences_data") {
-        ASSERT_EQ(table_info.table_id, kPgSequencesDataTableId);
+        ASSERT_TRUE(xcluster::IsSequencesDataAlias(table_info.table_id));
       } else {
         FAIL() << "Unexpected table name: " << table_info.table_name;
       }
-      if (table_info.table_id != kPgSequencesDataTableId) {
+      if (!xcluster::IsSequencesDataAlias(table_info.table_id)) {
         if (skip_schema_name_check) {
           // Make sure it is not empty.
           EXPECT_FALSE(table_info.pg_schema_name.empty());
@@ -537,7 +547,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, CreateTargetReplicat
   std::vector<xrepl::StreamId> expected_streams{xcluster_streams.begin(), xcluster_streams.end()};
   std::vector<TableId> expected_tables{kTableId1};
   if (UseAutomaticMode()) {
-    expected_tables.push_back(kPgSequencesDataTableId);
+    expected_tables.push_back(xcluster::GetSequencesDataAliasForNamespace(kNamespaceId));
   }
   EXPECT_CALL(
       xcluster_client,

@@ -17,23 +17,29 @@ import (
 )
 
 const (
-	defaultBackupListing = "table {{.BackupUUID}}\t{{.BaseBackupUUID}}\t{{.Universe}}" +
+	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
 		"\t{{.StorageConfig}}\t{{.StorageConfigType}}\t{{.BackupType}}" +
 		"\t{{.State}}\t{{.CompletionTime}}"
 
-	backupUUIDHeader     = "Backup UUID"
+	// BackupUUIDHeader to display backup UUID
+	BackupUUIDHeader     = "Backup UUID"
 	baseBackupUUIDHeader = "Base Backup UUID"
 	// UniverseHeader to display universe UUID and Name
-	UniverseHeader              = "Universe"
-	storageConfigHeader         = "Storage Configuration"
-	storageConfigTypeHeader     = "Storage Configuration Type"
-	backupTypeHeader            = "Backup Type"
+	UniverseHeader = "Universe"
+	// StorageConfigHeader to display storage config
+	StorageConfigHeader     = "Storage Configuration"
+	storageConfigTypeHeader = "Storage Configuration Type"
+	// BackupTypeHeader to display backup type
+	BackupTypeHeader            = "Backup Type"
 	scheduleNameHeader          = "Schedule Name"
 	hasIncrementalBackupsHeader = "Has Incremental Backups"
-	stateHeader                 = "State"
-	expiryTimeHeader            = "Expiry Time"
-	createTimeHeader            = "Create Time"
-	completionTimeHeader        = "Completion Time"
+	// StateHeader to display state
+	StateHeader      = "State"
+	expiryTimeHeader = "Expiry Time"
+	// CreateTimeHeader to display create time
+	CreateTimeHeader = "Create Time"
+	// CompletionTimeHeader to display completion time
+	CompletionTimeHeader = "Completion Time"
 )
 
 // Context for BackupResp outputs
@@ -95,18 +101,18 @@ func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
 func NewBackupContext() *Context {
 	backupCtx := Context{}
 	backupCtx.Header = formatter.SubHeaderContext{
-		"BackupUUID":            backupUUIDHeader,
+		"BackupUUID":            BackupUUIDHeader,
 		"BaseBackupUUID":        baseBackupUUIDHeader,
 		"Universe":              UniverseHeader,
-		"StorageConfig":         storageConfigHeader,
+		"StorageConfig":         StorageConfigHeader,
 		"StorageConfigType":     storageConfigTypeHeader,
-		"BackupType":            backupTypeHeader,
+		"BackupType":            BackupTypeHeader,
 		"ScheduleName":          scheduleNameHeader,
 		"HasIncrementalBackups": hasIncrementalBackupsHeader,
-		"State":                 stateHeader,
+		"State":                 StateHeader,
 		"ExpiryTime":            expiryTimeHeader,
-		"CreateTime":            createTimeHeader,
-		"CompletionTime":        completionTimeHeader,
+		"CreateTime":            CreateTimeHeader,
+		"CompletionTime":        CompletionTimeHeader,
 	}
 	return &backupCtx
 }

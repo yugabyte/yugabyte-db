@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
@@ -70,8 +71,9 @@ Status XClusterCheckpointNamespaceTask::FirstStep() {
     // Ensure sequences_data table has been created and added to our tables to checkpoint.
     // TODO: Consider making this async  so we don't have to burn a thread waiting.
     RETURN_NOT_OK(outbound_replication_group_.helper_functions_.create_sequences_data_table_func());
+    TableId sequence_table_alias_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id_);
     RETURN_NOT_OK(outbound_replication_group_.AddTableToInitialBootstrapMapping(
-        namespace_id_, kPgSequencesDataTableId, epoch_));
+        namespace_id_, sequence_table_alias_id, epoch_));
   }
 
   ScheduleNextStep(
