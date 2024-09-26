@@ -117,7 +117,7 @@ To register an application, do the following:
 1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
 
     ```sh
-    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient 
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
     ```
 
 1. Click **Register**.
@@ -192,6 +192,7 @@ The `ysql_hba_conf_csv` flag must be set to support using JWTs for authenticatio
 - `jwt_audiences` - the audience or target app for the token, which in this case is the client ID of the application you registered.
 - `jwt_matching_claim_key` - the email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values.
 - `jwt_jwks_path` - The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS.
+- `jwt_jwks_url` - Specifies the URL which YugabyteDB can retrieve the JWKS for verifying JWTs. Theis parameter is an alternative to `jwt_jwks_path`, where you need to provide the actual key content. Either `jwt_jwks_path` or `jwt_jwks_url` must be set to enable JWT verification in YugabyteDB.
 
 The following illustration shows an example of setting the `ysql_hba_conf_csv` flag in YugabyteDB Anywhere:
 
