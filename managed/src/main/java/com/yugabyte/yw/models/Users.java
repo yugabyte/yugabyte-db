@@ -482,21 +482,9 @@ public class Users extends Model {
           }
         }
       } else {
-        // to authenticate old format of api token with no seperator
-        LOG.warn("Using older API token format. Renew to improve performance.");
-        List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
-        long startTime = System.currentTimeMillis();
-        for (Users user : usersList) {
-          if (Users.hasher.isValid(apiToken, user.getApiToken())) {
-            LOG.info(
-                "Authentication using API token. Completed time: {} ms",
-                System.currentTimeMillis() - startTime);
-            return user;
-          }
-        }
-        LOG.info(
-            "Authentication using API token. Completed time: {} ms",
-            System.currentTimeMillis() - startTime);
+        // Don't try validating with the old format token. It causes CPU issues.
+        // It is okay to log these tokens because they aren't valid and will not be accepted.
+        LOG.warn("Using older API token format: {}. Not going to validate.", apiToken);
       }
       return null;
     } catch (Exception e) {
