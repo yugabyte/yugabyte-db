@@ -47,7 +47,8 @@ class NodeConnectModal extends Component {
       currentUniverse,
       clusterType,
       universeUUID,
-      providers
+      providers,
+      disabled
     } = this.props;
     const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
     let accessCommand = null;
@@ -69,7 +70,9 @@ class NodeConnectModal extends Component {
     }
 
     const providerUsed = _.find(providers?.data, { uuid: providerUUID });
-    const imageBundleUsed = _.find(providerUsed?.imageBundles, { uuid: cluster?.userIntent?.imageBundleUUID });
+    const imageBundleUsed = _.find(providerUsed?.imageBundles, {
+      uuid: cluster?.userIntent?.imageBundleUUID
+    });
 
     const tectiaSSH = runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === 'yb.security.ssh2_enabled'
@@ -107,11 +110,13 @@ class NodeConnectModal extends Component {
       const accessKeyInfo = accessKey?.keyInfo;
       const sshPort = imageBundleUsed?.details?.sshPort ?? (accessKeyInfo?.sshPort || 22);
       if (!isTectiaSSHEnabled) {
-        accessCommand = `sudo ssh -i ${accessKeyInfo?.privateKey ?? '<private key>'
-          } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sudo ssh -i ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       } else {
-        accessCommand = `sshg3 -K ${accessKeyInfo?.privateKey ?? '<private key>'
-          } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sshg3 -K ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       }
     }
 
@@ -128,7 +133,8 @@ class NodeConnectModal extends Component {
           <MenuItem
             eventKey={btnId}
             data-testid="NodeAction-CONNECT"
-            onClick={() => this.toggleConnectModal(true)}
+            onSelect={() => this.toggleConnectModal(true)}
+            disabled={disabled}
           >
             {label}
           </MenuItem>

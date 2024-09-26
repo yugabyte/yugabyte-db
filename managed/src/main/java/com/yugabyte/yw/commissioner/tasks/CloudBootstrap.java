@@ -296,13 +296,17 @@ public class CloudBootstrap extends CloudTaskBase {
                   createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
                 });
-        taskParams()
-            .perRegionMetadata
-            .forEach(
-                (regionCode, metadata) -> {
-                  createAccessKeySetupTask(taskParams(), regionCode)
-                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-                });
+        // For the case of manually provisioned onprem provider, we don't
+        // need to setup access key.
+        if (!(cloudType == CloudType.onprem && p.getDetails().skipProvisioning)) {
+          taskParams()
+              .perRegionMetadata
+              .forEach(
+                  (regionCode, metadata) -> {
+                    createAccessKeySetupTask(taskParams(), regionCode)
+                        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+                  });
+        }
 
         // Need not to init CloudInitializer task for onprem provider.
         if (!p.getCloudCode().equals(CloudType.onprem)) {

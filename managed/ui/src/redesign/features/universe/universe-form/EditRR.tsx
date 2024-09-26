@@ -20,6 +20,7 @@ import {
 } from './utils/helpers';
 import { CloudType, ClusterModes, ClusterType, UniverseFormData } from './utils/dto';
 import { TOAST_AUTO_DISMISS_INTERVAL } from './utils/constants';
+import { providerQueryKey, api as helperApi } from '../../../helpers/api';
 
 interface EditReadReplicaProps {
   uuid: string;
@@ -58,6 +59,15 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
     }
   );
 
+  const asyncProviderUuid = universe?.universeDetails
+    ? getAsyncCluster(universe?.universeDetails)?.userIntent?.provider ?? ''
+    : '';
+  const providerConfigQuery = useQuery(
+    providerQueryKey.detail(asyncProviderUuid),
+    () => helperApi.fetchProvider(asyncProviderUuid),
+    { enabled: !!asyncProviderUuid }
+  );
+
   const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = (formData: UniverseFormData) => {
@@ -86,12 +96,14 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
     editReadReplica(configurePayload);
   };
 
-  if (isLoading || contextState.isLoading) return <YBLoading />;
+  if (isLoading || contextState.isLoading || providerConfigQuery.isLoading) {
+    return <YBLoading />;
+  }
 
   if (!universe?.universeDetails) return null;
 
   //get async form data and intitalize the form
-  const initialFormData = getAsyncFormData(universe.universeDetails);
+  const initialFormData = getAsyncFormData(universe.universeDetails, providerConfigQuery.data);
 
   return (
     <>

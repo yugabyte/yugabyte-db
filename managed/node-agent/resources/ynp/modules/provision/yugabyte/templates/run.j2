@@ -49,35 +49,12 @@ else
     echo "el8 not detected, skipping changing selinux context"
 fi
 
-# Configure the public key
-if [ -z {{ public_key_filepath }} ]; then
-    LOGGED_IN_USER="${SUDO_USER:-$USER}"
-    PUBKEY_FILE="/home/$LOGGED_IN_USER/.ssh/id_rsa.pub"
-    AUTH_KEYS_FILE="/home/$LOGGED_IN_USER/.ssh/authorized_keys"
-    PUBKEY_CONTENT=""
+installer_dir="{{ ynp_dir }}/../../bin"
+# Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
+# can read the binary in restricted environment.
+mkdir -p {{ yb_home_dir }}/.install
+cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
+chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
 
-    if [ -f "$PUBKEY_FILE" ]; then
-        PUBKEY_CONTENT=$(cat "$PUBKEY_FILE")
-    elif [ -f "$AUTH_KEYS_FILE" ]; then
-        PUBKEY_CONTENT=$(cat "$AUTH_KEYS_FILE")
-    fi
-
-    if [ -n "$PUBKEY_CONTENT" ]; then
-        su - {{ yb_user }} -c "mkdir -p /home/{{ yb_user }}/.ssh && chmod 700 /home/{{ yb_user }}/.ssh"
-
-        if ! su - {{ yb_user }} -c "grep -q '$PUBKEY_CONTENT' /home/{{ yb_user }}/.ssh/authorized_keys"; then
-            echo "$PUBKEY_CONTENT" | su - {{ yb_user }} -c "tee -a /home/{{ yb_user }}/.ssh/authorized_keys > /dev/null"
-            su - {{ yb_user }} -c "chmod 400 /home/{{ yb_user }}/.ssh/authorized_keys"
-            chown -R {{ yb_user }}:{{ yb_user }} /home/{{ yb_user }}/.ssh
-            echo "Public key added to {{ yb_user }}"
-        else
-            echo "Public key already exists for {{ yb_user }}"
-        fi
-    else
-        echo "Neither public key nor authorized_keys file found or they are empty"
-        exit 1
-    fi
-fi
-
-# Ensure the permissions for yb_home_dir are 711
-chmod -R 711 "{{ yb_home_dir }}"
+# Ensure the permissions for yb_home_dir are 750
+chmod 750 "{{ yb_home_dir }}"

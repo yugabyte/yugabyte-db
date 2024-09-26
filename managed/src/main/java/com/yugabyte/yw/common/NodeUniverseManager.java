@@ -450,8 +450,6 @@ public class NodeUniverseManager extends DevopsBase {
     } else if (cloudType != Common.CloudType.unknown) {
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.getOrBadRequest(providerUUID);
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
       if (optional.isPresent()) {
@@ -462,6 +460,8 @@ public class NodeUniverseManager extends DevopsBase {
         }
         nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
+        AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(

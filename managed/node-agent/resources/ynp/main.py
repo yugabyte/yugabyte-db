@@ -35,15 +35,16 @@ def log_installed_packages(logger):
 
 def main():
     args = parse_arguments()
-    setup_logger.setup_logger()
-    logger = logging.getLogger(__name__)
-
     try:
         with open(get_absolute_path(args.config_file)) as f:
             ynp_config = yaml.safe_load(f)
     except Exception as e:
-        logger.error("Parsing YAML failed with ", e)
+        print("Parsing YAML failed with ", e)
         raise
+    conf = parse_config(ynp_config)
+    setup_logger.setup_logger(conf)
+
+    logger = logging.getLogger(__name__)
     logger.debug("YNP config %s" % pprint.pformat(ynp_config))
 
     conf = parse_config(ynp_config)

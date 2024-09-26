@@ -100,14 +100,15 @@ class AnsibleProcess(object):
         node_agent_cert_path = vars.pop("node_agent_cert_path", None)
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         offload = vars.pop("offload_ansible", False) and not disable_offloading
-        ssh_key_type = parse_private_key(ssh_key_file)
+        if ssh_key_file is not None:
+            ssh_key_type = parse_private_key(ssh_key_file)
         remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
 
         playbook_args.update(vars)
-        if self.can_ssh:
+        if self.can_ssh and ssh_key_file is not None:
             playbook_args.update({
                 "ssh_user": ssh_user,
                 "yb_server_ssh_user": ssh_user,
