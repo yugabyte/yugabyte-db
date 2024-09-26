@@ -97,6 +97,7 @@ JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 JAVA	org.yb.pgsql.TestPgRegressPushdownKey
 JAVA	org.yb.pgsql.TestPgRegressReplicaIdentity
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
+JAVA	org.yb.pgsql.TestPgRegressRules#testPgRegressRules
 JAVA	org.yb.pgsql.TestPgRegressTAQO
 JAVA	org.yb.pgsql.TestPgRegressTable
 JAVA	org.yb.pgsql.TestPgRegressTablegroup
