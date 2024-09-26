@@ -29,8 +29,8 @@ You can do this in the following ways:
 If you have [Grafana](../../../../explore/observability/grafana-dashboard/grafana/) available, you can access a rich set of visualizations using the YugabyteDB Grafana dashboard. To download the dashboard, use the following API request:
 
 ```sh
-curl --request GET \
-  --url https://stoplight.io/mocks/yugabyte/yugabyte-platform/18947515/api/v1/grafana_dashboard \
+curl -k --request GET \
+  --url https://<platfrom_url>/api/v1/grafana_dashboard \
   --header 'Accept: application/json' \
   --header 'X-AUTH-YW-API-TOKEN: 123'
 ```
