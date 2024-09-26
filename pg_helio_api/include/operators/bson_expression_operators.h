@@ -271,8 +271,6 @@ void HandleDollarLiteral(pgbson *doc, const bson_value_t *operatorValue,
 						 ExpressionResult *expressionResult);
 void HandleDollarLtrim(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
-void HandleDollarMergeObjects(pgbson *doc, const bson_value_t *operatorValue,
-							  ExpressionResult *expressionResult);
 void HandleDollarMillisecond(pgbson *doc, const bson_value_t *operatorValue,
 							 ExpressionResult *expressionResult);
 void HandleDollarMinute(pgbson *doc, const bson_value_t *operatorValue,
@@ -440,6 +438,8 @@ void HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarMax(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarMergeObjects(pgbson *doc, void *arguments,
+									   ExpressionResult *expressionResult);
 void HandlePreParsedDollarMeta(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarMin(pgbson *doc, void *arguments,
@@ -629,6 +629,9 @@ void ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *dat
 					ParseAggregationExpressionContext *context);
 void ParseDollarMeta(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
+void ParseDollarMergeObjects(const bson_value_t *argument,
+							 AggregationExpressionData *data,
+							 ParseAggregationExpressionContext *context);
 void ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
 void ParseDollarMod(const bson_value_t *argument, AggregationExpressionData *data,

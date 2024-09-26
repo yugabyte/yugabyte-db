@@ -324,7 +324,7 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_MAX },
 	{ "$maxN", NULL, &ParseDollarMaxN, &HandlePreParsedDollarMaxMinN,
 	  FEATURE_AGG_OPERATOR_MAXN },
-	{ "$mergeObjects", &HandleDollarMergeObjects, NULL, NULL,
+	{ "$mergeObjects", NULL, &ParseDollarMergeObjects, &HandlePreParsedDollarMergeObjects,
 	  FEATURE_AGG_OPERATOR_MERGEOBJECTS },
 	{ "$meta", NULL, &ParseDollarMeta, &HandlePreParsedDollarMeta,
 	  FEATURE_AGG_OPERATOR_META },

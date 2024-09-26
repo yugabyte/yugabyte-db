@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_object_operators.c
+ * src/operators/bson_expression_object_operators.c
  *
  * Object Operator expression implementations of BSON.
  *
@@ -59,10 +59,10 @@ typedef enum
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void AppendDocumentForMergeObjects(pgbson *sourceDocument, const
-										  bson_value_t *value,
-										  BsonIntermediatePathNode *tree,
-										  ExpressionResult *parent);
+static void AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool
+										  isConstant,
+										  BsonIntermediatePathNode *tree);
+static void WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result);
 static void HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
 														  ExpressionResult *
 														  expressionResult, bool
@@ -87,193 +87,128 @@ static bson_value_t ProcessResultForDollarSetFieldOrUnsetField(bson_value_t fiel
 															   bson_value_t input,
 															   bson_value_t value);
 
+
+/* --------------------------------------------------------- */
+/* Parse and Handle Pre-parse functions */
+/* --------------------------------------------------------- */
+
 /*
- * Evaluates the output of an $mergeObjects expression.
- * Since $mergeObjects is expressed as { "$mergeObjects": [ <expression1>, <expression2>, ... ] }
- * We evaluate the inner expressions and then return the merged object.
+ * Parses a $mergeObjects expression.
+ * $mergeObjects is expressed as { "$mergeObjects": [ <object-expression1>, <object-expression2>, ... ] } or { "$mergeObjects": <object-expression> }
  * If multiple objects have the same field define, the last one wins.
  * Null evaluates to empty document.
  */
 void
-HandleDollarMergeObjects(pgbson *doc, const bson_value_t *operatorValue,
-						 ExpressionResult *expressionResult)
+ParseDollarMergeObjects(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
-	pgbson_writer childWriter;
-	BsonIntermediatePathNode *tree = MakeRootNode();
-	if (operatorValue->value_type == BSON_TYPE_ARRAY)
+	List *argumentsList = NIL;
+	bool allArgumentsConstant = true;
+
+	int arrayArgsLen = argument->value_type == BSON_TYPE_ARRAY ?
+					   BsonDocumentValueCountKeys(argument) : 0;
+
+	/* If the arg expression is an array of size > 1 parse as a list. */
+	if (arrayArgsLen > 1)
 	{
-		bson_iter_t arrayIterator;
-		bson_iter_init_from_data(&arrayIterator, operatorValue->value.v_doc.data,
-								 operatorValue->value.v_doc.data_len);
-		while (bson_iter_next(&arrayIterator))
+		argumentsList = ParseFixedArgumentsForExpression(argument,
+														 arrayArgsLen,
+														 "$mergeObjects",
+														 &data->operator.argumentsKind,
+														 context);
+		ListCell *cell = NULL;
+		foreach(cell, argumentsList)
 		{
-			const bson_value_t *arrayValue = bson_iter_value(&arrayIterator);
-			AppendDocumentForMergeObjects(doc, arrayValue, tree, expressionResult);
+			AggregationExpressionData *currentValue = lfirst(cell);
+			allArgumentsConstant = allArgumentsConstant &&
+								   IsAggregationExpressionConstant(
+				currentValue);
 		}
 	}
 	else
 	{
-		AppendDocumentForMergeObjects(doc, operatorValue, tree, expressionResult);
+		AggregationExpressionData *parsedArg = ParseFixedArgumentsForExpression(argument,
+																				1,
+																				"$mergeObjects",
+																				&data->
+																				operator.
+																				argumentsKind,
+																				context);
+		argumentsList = lappend(argumentsList, parsedArg);
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			parsedArg);
 	}
 
-	pgbson_element_writer *elementWriter = ExpressionResultGetElementWriter(
-		expressionResult);
-	PgbsonElementWriterStartDocument(elementWriter, &childWriter);
-
-	if (tree->childData.numChildren > 0)
+	if (allArgumentsConstant)
 	{
-		TraverseTreeAndWrite(tree, &childWriter, doc);
+		BsonIntermediatePathNode *tree = MakeRootNode();
+		ListCell *cell;
+
+		foreach(cell, argumentsList)
+		{
+			AggregationExpressionData *currentValue = lfirst(cell);
+			AppendDocumentForMergeObjects(&currentValue->value, true, tree);
+		}
+
+		WriteMergeObjectsResult(tree, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
 	}
-
-	PgbsonElementWriterEndDocument(elementWriter, &childWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
-
-	FreeTree(tree);
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
 }
 
 
 /*
- * Appends a current value that holds a expression to the given tree
- * if the expression evaluates to a document.
- * If the expression evaluates to null or undefined, it is a noop.
- * If the expression is not a document, null or undefined, an error is emitted.
+ * Handles executing a pre-parsed $mergeObjects expression.
  */
-static void
-AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
-							  BsonIntermediatePathNode *tree,
-							  ExpressionResult *parentExpression)
+void
+HandlePreParsedDollarMergeObjects(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
 {
+	BsonIntermediatePathNode *tree = MakeRootNode();
+	List *argumentsList = (List *) arguments;
+
 	bool isNullOnEmpty = false;
-
-	bson_value_t evaluatedResult = EvaluateExpressionAndGetValue(sourceDocument, value,
-																 parentExpression,
-																 isNullOnEmpty);
-	bson_type_t evaluatedValueType = evaluatedResult.value_type;
-
-	/* if the value is null or undefined it is a noop
-	 * so we don't need to do anything for it. */
-	if (evaluatedValueType != BSON_TYPE_DOCUMENT &&
-		!IsExpressionResultNullOrUndefined(&evaluatedResult))
+	ListCell *cell = NULL;
+	foreach(cell, argumentsList)
 	{
-		ereport(ERROR,
-				errcode(ERRCODE_HELIO_DOLLARMERGEOBJECTSINVALIDTYPE),
-				errmsg("$mergeObjects requires object inputs, but input %s is of type %s",
-					   BsonValueToJsonForLogging(&evaluatedResult),
-					   BsonTypeName(evaluatedValueType)),
-				errdetail_log(
-					"$mergeObjects requires object inputs, but input is of type %s",
-					BsonTypeName(evaluatedValueType)));
+		AggregationExpressionData *currentData = lfirst(cell);
+
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
+
+		AppendDocumentForMergeObjects(&childResult.value, IsAggregationExpressionConstant(
+										  currentData), tree);
+		ExpressionResultReset(&childResult);
 	}
-	else if (evaluatedValueType == BSON_TYPE_DOCUMENT)
-	{
-		bson_iter_t docIter;
-		bson_iter_init_from_data(&docIter,
-								 evaluatedResult.value.v_doc.data,
-								 evaluatedResult.value.v_doc.data_len);
 
-		/* Expressions are already evaluated (this will change once we move this to the new framework. )*/
-		bool treatLeafDataAsConstant = true;
-		ParseAggregationExpressionContext ignoreContext = { 0 };
+	bson_value_t result = { 0 };
+	pgbson_writer baseWriter;
+	PgbsonWriterInit(&baseWriter);
 
-		while (bson_iter_next(&docIter))
-		{
-			StringView pathView = bson_iter_key_string_view(&docIter);
-
-			const bson_value_t *docValue = bson_iter_value(&docIter);
-			bool nodeCreated = false;
-			const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
-				&pathView, docValue,
-				tree, BsonDefaultCreateLeafNode,
-				treatLeafDataAsConstant, &nodeCreated, &ignoreContext);
-
-			/* if the node already exists we need to update the value
-			 * as $mergeObjects has the behavior that the last path spec
-			 * found if duplicates wins */
-			if (!nodeCreated)
-			{
-				ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
-								   treatLeafDataAsConstant, &ignoreContext);
-			}
-		}
-	}
+	WriteMergeObjectsResult(tree, &result);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
-/* Function verifies if the input to $setField expression, is such that the expression result will
- * short circuit to null by definitions. */
-static bool
-IsAggregationExpressionEvaluatesToNull(AggregationExpressionData *expressionData)
+/* Parses the $setField expression specified in the bson_value_t.
+ * $setField is expressed as { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
+ */
+void
+ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
 {
-	switch (expressionData->kind)
-	{
-		case AggregationExpressionKind_Operator:
-		case AggregationExpressionKind_Array:
-		{
-			return false;
-		}
-
-		case AggregationExpressionKind_SystemVariable:
-		{
-			if (expressionData->systemVariable.kind ==
-				AggregationExpressionSystemVariableKind_Root)
-			{
-				if (expressionData->value.value_type == BSON_TYPE_DOCUMENT)
-				{
-					return false;
-				}
-
-				if (expressionData->value.value_type == BSON_TYPE_NULL)
-				{
-					return true;
-				}
-
-				return false;
-			}
-		}
-
-		/* paths and variables are not supported for const folding */
-		case AggregationExpressionKind_Variable:
-		case AggregationExpressionKind_Path:
-		{
-			return false;
-		}
-
-		case AggregationExpressionKind_Document:
-		{
-			/* here we want to eval the input given to setfield using an agnostic env of root {} */
-			/* ExpressionResult expressionResult = { 0 }; results in gcc bug on centos */
-			ExpressionResult expressionResult;
-			memset(&expressionResult, 0, sizeof(ExpressionResult));
-			ExpressionResult childExpression = ExpressionResultCreateChild(
-				&expressionResult);
-			bool isNullOnEmpty = true;
-			pgbson doc = *(PgbsonInitEmpty());
-
-			EvaluateAggregationExpressionData(expressionData, &doc, &childExpression,
-											  isNullOnEmpty);
-			return IsExpressionResultNullOrUndefined(&childExpression.value);
-		}
-
-		case AggregationExpressionKind_Constant:
-		{
-			bson_value_t *value = &expressionData->value;
-			return IsExpressionResultNullOrUndefined(value);
-		}
-
-		default:
-		{
-			ereport(ERROR, (errmsg(
-								"IsAggregationExpressionEvaluatesToNull: Unexpected aggregation expression kind %d",
-								expressionData->kind)));
-		}
-	}
-
-	return false;
+	bool isSetField = true;
+	ParseDollarSetFieldOrUnsetFieldCore(argument, data, isSetField, context);
 }
 
 
 /*
- * Evaluates the output of a $setField expression.
+ * Handles executing a pre-parsed $setField expression.
  * $setField is expressed as:
  * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
  * We evalute the value and add the field/value into the "input" document.  If the value is a special term "$$REMOVE", we remove instead.
@@ -288,20 +223,21 @@ HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
 }
 
 
-/* Parses the $setField expression specified in the bson_value_t and stores it in the data argument.
- * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
+/*
+ * Parses the $unsetField expression specified in the bson_value_t.
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
  */
 void
-ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
-					ParseAggregationExpressionContext *context)
+ParseDollarUnsetField(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
 {
-	bool isSetField = true;
+	bool isSetField = false;
 	ParseDollarSetFieldOrUnsetFieldCore(argument, data, isSetField, context);
 }
 
 
 /*
- * Evaluates the output of a $unsetField expression.
+ * Handles executing a pre-parsed $unsetField expression.
  * $unsetField is expressed as:
  * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
  */
@@ -315,59 +251,8 @@ HandlePreParsedDollarUnsetField(pgbson *doc, void *arguments,
 }
 
 
-/* Parses the $unsetField expression specified in the bson_value_t and stores it in the data argument.
- * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
- */
-void
-ParseDollarUnsetField(const bson_value_t *argument, AggregationExpressionData *data,
-					  ParseAggregationExpressionContext *context)
-{
-	bool isSetField = false;
-	ParseDollarSetFieldOrUnsetFieldCore(argument, data, isSetField, context);
-}
-
-
 /*
- * Evaluates the output of a $getField expression.
- * $getField is expressed as:
- * $getField { "field": <const expression>, "input": <document> default to be "$$CURRENT" } }
- * or $getField: <const expression of field> to retirved field from $$CURRENT
- */
-void
-HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
-							  ExpressionResult *expressionResult)
-{
-	DollarGetFieldArguments *getFieldArguments = (DollarGetFieldArguments *) arguments;
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&getFieldArguments->field, doc, &fieldExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedFieldArg = fieldExpression.value;
-
-	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&getFieldArguments->input, doc, &inputExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedInputArg = inputExpression.value;
-
-	if (evaluatedInputArg.value_type == BSON_TYPE_DOCUMENT || IsExpressionResultNull(
-			&evaluatedInputArg))
-	{
-		bson_value_t result = ProcessResultForDollarGetField(evaluatedFieldArg,
-															 evaluatedInputArg);
-		if (result.value_type != BSON_TYPE_EOD)
-		{
-			ExpressionResultSetValue(expressionResult, &result);
-		}
-	}
-
-	/* If the field is not found, or input is missing or doesn't resolve to an object, do nothing to return missing directly */
-	/* which is not the same with mongodb documentation. */
-}
-
-
-/* Parses the $getField expression specified in the bson_value_t and stores it in the data argument.
+ * Parses the $getField expression specified in the bson_value_t.
  * 1. full expression
  * $getField { "field": <const expression>, "input": <document> default to be "$$CURRENT" } }
  *      example: {"$getField": {"field": "a", "input": "$$CURRENT"}}
@@ -513,73 +398,51 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 
 
 /*
- * Evaluates the output of a $setField and $unsetField expression.
- * $setField is expressed as:
- * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
- * We evalute the value and add the field/value into the "input" document.  If the value is a special term "$$REMOVE", we remove instead.
- *
- * $unsetField is expressed as:
- * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ * Handles executing a pre-parsed $getField expression.
+ * $getField is expressed as:
+ * $getField { "field": <const expression>, "input": <document> default to be "$$CURRENT" } }
+ * or $getField: <const expression of field> to retirved field from $$CURRENT
  */
-static void
-HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
-											  ExpressionResult *expressionResult, bool
-											  isSetField)
+void
+HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
 {
-	const char *operatorName = isSetField ? "$setField" : "$unsetField";
-	DollarSetFieldArguments *setFieldArguments = (DollarSetFieldArguments *) arguments;
+	DollarGetFieldArguments *getFieldArguments = (DollarGetFieldArguments *) arguments;
 
 	bool isNullOnEmpty = false;
 
 	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
-
-	EvaluateAggregationExpressionData(&setFieldArguments->field, doc, &fieldExpression,
+	EvaluateAggregationExpressionData(&getFieldArguments->field, doc, &fieldExpression,
 									  isNullOnEmpty);
 	bson_value_t evaluatedFieldArg = fieldExpression.value;
 
 	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&setFieldArguments->input, doc, &inputExpression,
+	EvaluateAggregationExpressionData(&getFieldArguments->input, doc, &inputExpression,
 									  isNullOnEmpty);
 	bson_value_t evaluatedInputArg = inputExpression.value;
 
-	bson_value_t evaluatedValueArg = { 0 };
-	if (isSetField)
+	if (evaluatedInputArg.value_type == BSON_TYPE_DOCUMENT || IsExpressionResultNull(
+			&evaluatedInputArg))
 	{
-		ExpressionResult valueExpression = ExpressionResultCreateChild(expressionResult);
-		EvaluateAggregationExpressionData(&setFieldArguments->value, doc,
-										  &valueExpression, isNullOnEmpty);
-		evaluatedValueArg = valueExpression.value;
-	}
-	else
-	{
-		evaluatedValueArg.value_type = BSON_TYPE_EOD;
+		bson_value_t result = ProcessResultForDollarGetField(evaluatedFieldArg,
+															 evaluatedInputArg);
+		if (result.value_type != BSON_TYPE_EOD)
+		{
+			ExpressionResultSetValue(expressionResult, &result);
+		}
 	}
 
-	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-	{
-		/* return null rewrite, BSON_TYPE_NULL as a generated constant */
-		bson_value_t value = (bson_value_t) {
-			.value_type = BSON_TYPE_NULL
-		};
-		ExpressionResultSetValue(expressionResult, &value);
-		return;
-	}
-
-	if (evaluatedInputArg.value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
-							"%s requires 'input' to evaluate to type Object",
-							operatorName)));
-	}
-
-	bson_value_t result = ProcessResultForDollarSetFieldOrUnsetField(evaluatedFieldArg,
-																	 evaluatedInputArg,
-																	 evaluatedValueArg);
-	ExpressionResultSetValue(expressionResult, &result);
+	/* If the field is not found, or input is missing or doesn't resolve to an object, do nothing to return missing directly */
+	/* which is not the same with mongodb documentation. */
 }
 
 
-/* Parses the $setField and $unsetField expression specified in the bson_value_t and stores it in the data argument.
+/* --------------------------------------------------------- */
+/* Parse and Handle Pre-parse helper functions */
+/* --------------------------------------------------------- */
+
+/*
+ * Parses the $setField and $unsetField expression specified in the bson_value_t.
  * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
  * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
  */
@@ -725,6 +588,73 @@ ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
 								operatorName)));
 		}
 	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $setField and $unsetField expression.
+ * $setField is expressed as:
+ * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
+ * We evalute the value and add the field/value into the "input" document.  If the value is a special term "$$REMOVE", we remove instead.
+ *
+ * $unsetField is expressed as:
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ */
+static void
+HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
+											  ExpressionResult *expressionResult, bool
+											  isSetField)
+{
+	const char *operatorName = isSetField ? "$setField" : "$unsetField";
+	DollarSetFieldArguments *setFieldArguments = (DollarSetFieldArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&setFieldArguments->field, doc, &fieldExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedFieldArg = fieldExpression.value;
+
+	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&setFieldArguments->input, doc, &inputExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInputArg = inputExpression.value;
+
+	bson_value_t evaluatedValueArg = { 0 };
+	if (isSetField)
+	{
+		ExpressionResult valueExpression = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(&setFieldArguments->value, doc,
+										  &valueExpression, isNullOnEmpty);
+		evaluatedValueArg = valueExpression.value;
+	}
+	else
+	{
+		evaluatedValueArg.value_type = BSON_TYPE_EOD;
+	}
+
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		/* return null rewrite, BSON_TYPE_NULL as a generated constant */
+		bson_value_t value = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+		ExpressionResultSetValue(expressionResult, &value);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSETFIELDREQUIRESOBJECT), errmsg(
+							"%s requires 'input' to evaluate to type Object",
+							operatorName)));
+	}
+
+	bson_value_t result = ProcessResultForDollarSetFieldOrUnsetField(evaluatedFieldArg,
+																	 evaluatedInputArg,
+																	 evaluatedValueArg);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
@@ -898,4 +828,169 @@ ProcessResultForDollarSetFieldOrUnsetField(bson_value_t field, bson_value_t inpu
 	result = ConvertPgbsonToBsonValue(pgbsonResult);
 
 	return result;
+}
+
+
+/* --------------------------------------------------------- */
+/* Other helper functions */
+/* --------------------------------------------------------- */
+
+static void
+AppendDocumentForMergeObjects(const bson_value_t *currentValue, bool isConstant,
+							  BsonIntermediatePathNode *tree)
+{
+	/* if the value is null or undefined it is a noop
+	 * so we don't need to do anything for it. */
+	if (currentValue->value_type != BSON_TYPE_DOCUMENT &&
+		!IsExpressionResultNullOrUndefined(currentValue))
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_HELIO_DOLLARMERGEOBJECTSINVALIDTYPE),
+				errmsg("$mergeObjects requires object inputs, but input %s is of type %s",
+					   BsonValueToJsonForLogging(currentValue),
+					   BsonTypeName(currentValue->value_type)),
+				errdetail_log(
+					"$mergeObjects requires object inputs, but input is of type %s",
+					BsonTypeName(currentValue->value_type)));
+	}
+
+	if (currentValue->value_type == BSON_TYPE_DOCUMENT)
+	{
+		bson_iter_t docIter;
+		bson_iter_init_from_data(&docIter,
+								 currentValue->value.v_doc.data,
+								 currentValue->value.v_doc.data_len);
+
+		/* Expressions are already evaluated (this will change once we move this to the new framework. )*/
+		bool treatLeafDataAsConstant = true;
+		ParseAggregationExpressionContext ignoreContext = { 0 };
+
+		while (bson_iter_next(&docIter))
+		{
+			StringView pathView = bson_iter_key_string_view(&docIter);
+
+			const bson_value_t *docValue = bson_iter_value(&docIter);
+			bool nodeCreated = false;
+			const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
+				&pathView, docValue,
+				tree, BsonDefaultCreateLeafNode,
+				treatLeafDataAsConstant, &nodeCreated, &ignoreContext);
+
+			/* if the node already exists we need to update the value
+			 * as $mergeObjects has the behavior that the last path spec
+			 * found if duplicates wins */
+			if (!nodeCreated)
+			{
+				ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
+								   treatLeafDataAsConstant, &ignoreContext);
+			}
+		}
+	}
+}
+
+
+/*
+ * Helper to write the result of a $mergeObjects expression.
+ */
+static void
+WriteMergeObjectsResult(BsonIntermediatePathNode *tree, bson_value_t *result)
+{
+	pgbson_writer baseWriter;
+	PgbsonWriterInit(&baseWriter);
+
+	pgbson_element_writer elementWriter;
+	PgbsonInitObjectElementWriter(&baseWriter, &elementWriter, "", 0);
+
+	pgbson_writer childWriter;
+	PgbsonElementWriterStartDocument(&elementWriter, &childWriter);
+
+	pgbson *doc = PgbsonInitEmpty();
+	if (tree->childData.numChildren > 0)
+	{
+		TraverseTreeAndWrite(tree, &childWriter, doc);
+	}
+
+	PgbsonElementWriterEndDocument(&elementWriter, &childWriter);
+
+	const bson_value_t bsonValue = PgbsonElementWriterGetValue(&elementWriter);
+
+	pgbson *pgbson = BsonValueToDocumentPgbson(&bsonValue);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(pgbson, &element);
+	*result = element.bsonValue;
+
+	FreeTree(tree);
+}
+
+
+/* Function verifies if the input to $setField expression, is such that the expression result will
+ * short circuit to null by definitions. */
+static bool
+IsAggregationExpressionEvaluatesToNull(AggregationExpressionData *expressionData)
+{
+	switch (expressionData->kind)
+	{
+		case AggregationExpressionKind_Operator:
+		case AggregationExpressionKind_Array:
+		{
+			return false;
+		}
+
+		case AggregationExpressionKind_SystemVariable:
+		{
+			if (expressionData->systemVariable.kind ==
+				AggregationExpressionSystemVariableKind_Root)
+			{
+				if (expressionData->value.value_type == BSON_TYPE_DOCUMENT)
+				{
+					return false;
+				}
+
+				if (expressionData->value.value_type == BSON_TYPE_NULL)
+				{
+					return true;
+				}
+
+				return false;
+			}
+		}
+
+		/* paths and variables are not supported for const folding */
+		case AggregationExpressionKind_Variable:
+		case AggregationExpressionKind_Path:
+		{
+			return false;
+		}
+
+		case AggregationExpressionKind_Document:
+		{
+			/* here we want to eval the input given to setfield using an agnostic env of root {} */
+			/* ExpressionResult expressionResult = { 0 }; results in gcc bug on centos */
+			ExpressionResult expressionResult;
+			memset(&expressionResult, 0, sizeof(ExpressionResult));
+			ExpressionResult childExpression = ExpressionResultCreateChild(
+				&expressionResult);
+			bool isNullOnEmpty = true;
+			pgbson doc = *(PgbsonInitEmpty());
+
+			EvaluateAggregationExpressionData(expressionData, &doc, &childExpression,
+											  isNullOnEmpty);
+			return IsExpressionResultNullOrUndefined(&childExpression.value);
+		}
+
+		case AggregationExpressionKind_Constant:
+		{
+			bson_value_t *value = &expressionData->value;
+			return IsExpressionResultNullOrUndefined(value);
+		}
+
+		default:
+		{
+			ereport(ERROR, (errmsg(
+								"IsAggregationExpressionEvaluatesToNull: Unexpected aggregation expression kind %d",
+								expressionData->kind)));
+		}
+	}
+
+	return false;
 }
