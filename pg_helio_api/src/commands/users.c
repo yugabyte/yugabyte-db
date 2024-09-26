@@ -16,6 +16,7 @@
 #include "commands/parse_error.h"
 #include "utils/feature_counter.h"
 #include "libpq/scram.h"
+#include "metadata/metadata_cache.h"
 
 enum Helio_Roles
 {
@@ -542,7 +543,8 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 		cmdStr = FormatSqlQuery(
 			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
 			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname NOT IN " \
-			"('helio_admin_role', 'helio_readonly_role')) SELECT ARRAY_AGG(row_get_bson(r)) FROM r;");
+			"('helio_admin_role', 'helio_readonly_role')) SELECT ARRAY_AGG(%s.row_get_bson(r)) FROM r;",
+			CoreSchemaName);
 		bool readOnly = true;
 		bool isNull = false;
 		userInfoDatum = ExtensionExecuteQueryViaSPI(cmdStr, readOnly,
@@ -553,7 +555,7 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 		cmdStr = FormatSqlQuery(
 			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
 			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname = $1) SELECT " \
-			"ARRAY_AGG(row_get_bson(r)) FROM r;");
+			"ARRAY_AGG(%s.row_get_bson(r)) FROM r;", CoreSchemaName);
 		int argCount = 1;
 		Oid argTypes[1];
 		Datum argValues[1];

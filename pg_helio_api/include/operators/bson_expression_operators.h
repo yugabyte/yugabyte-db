@@ -799,7 +799,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowExpressionTakesExactlyNArgs(const char * expression, int requiredArgs, int numArgs)
 {
-	ereport(ERROR, (errcode(ERRCODE_HELIO_EXPRESSIONTAKESEXACTLYNARGS), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16020), errmsg(
 						"Expression %s takes exactly %d arguments. %d were passed in.",
 						expression, requiredArgs, numArgs)));
 }

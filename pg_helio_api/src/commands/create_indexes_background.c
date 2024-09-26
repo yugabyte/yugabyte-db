@@ -1109,7 +1109,7 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 	 *      FROM helio_api_catalog.helio_index_queue piq
 	 *      WHERE cmd_type = 'C' AND index_id =ANY(ARRAY[32001, 32002, 32003, 32004, 32005, 32006])
 	 *  )
-	 *  SELECT COALESCE(mongo_catalog.bson_array_agg(mongo_catalog.row_get_bson(query), ''), '{ "": [] }'::mongo_catalog.bson) FROM query
+	 *  SELECT COALESCE(CORE_SCHEMA.bson_array_agg(CORE_SCHEMA.row_get_bson(query), ''), '{ "": [] }'::CORE_SCHEMA.bson) FROM query
 	 */
 	const char *query =
 		FormatSqlQuery("WITH query AS (SELECT index_cmd_status::int4, comment, attempt"
