@@ -447,4 +447,3 @@ REFRESH MATERIALIZED VIEW public.mv1;
 --
 -- YSQL database dump complete
 --
-
