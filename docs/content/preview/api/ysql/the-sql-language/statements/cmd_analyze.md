@@ -5,7 +5,7 @@ linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
 badges: tp
 menu:
-  preview:
+  preview_api:
     identifier: cmd_analyze
     parent: statements
 type: docs

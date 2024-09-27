@@ -4,7 +4,7 @@ headerTitle: Cursor manipulation in PL/pgSQL—the "open", "fetch", and "close" 
 linkTitle: Cursor manipulation
 description: Describes the syntax and semantics of the PL/pgSQL "open", "fetch", and "close" statements. [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: cursor-manipulation
     parent: basic-statements
     weight: 50

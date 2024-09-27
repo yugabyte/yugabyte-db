@@ -4,7 +4,7 @@ headerTitle: The transaction model for top-level SQL statements
 linkTitle: Transaction model for top-level SQL statements
 description: Explains how top-level SQL statements are executed each in its own transaction unless explicitly started with "begin;" or "start transaction;" [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: txn-model-for-top-level-sql
     parent: api-ysql
     weight: 20

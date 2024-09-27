@@ -4,7 +4,7 @@ headerTitle: yb_is_local_table(oid)
 linkTitle: yb_is_local_table()
 description: Returns whether the given 'oid' is a table replicated only in the local region.
 menu:
-  preview:
+  preview_api:
     identifier: api-ysql-exprs-yb_is_local_table
     parent: geo-partitioning-helper-functions
 type: docs

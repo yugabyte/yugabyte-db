@@ -4,7 +4,7 @@ linkTitle: array_agg(), unnest(), generate_subscripts()
 headerTitle: array_agg(), unnest(), and generate_subscripts()
 description: array_agg(), unnest(), and generate_subscripts()
 menu:
-  preview:
+  preview_api:
     identifier: array-agg-unnest
     parent: array-functions-operators
 type: docs

@@ -5,13 +5,13 @@ linkTitle: APIs
 description: YugabyteDB API reference for PostgreSQL-compatible YSQL and Cassandra-compatible YCQL
 image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
-menu:
-  preview:
-    identifier: api
-    parent: reference
-    weight: 1100
 type: indexpage
 ---
+<!--menu:
+  preview_api:
+    identifier: api
+    parent: yugabyte-apis
+    weight: 1100-->
 
 YugabyteDB supports two flavors of distributed SQL:
 

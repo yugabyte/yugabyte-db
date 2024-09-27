@@ -6,17 +6,17 @@ description: YCQL is a semi-relational API that is best fit for internet-scale O
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent: Cassandra-compatible API
-menu:
-  preview:
+showRightNav: true
+type: indexpage
+---
+<!--menu:
+  preview_api:
     parent: api
     identifier: api-cassandra
     weight: 10
     params:
       classes: separator
-showRightNav: true
-type: indexpage
----
-
+-->
 ## Introduction
 
 Yugabyte Cloud Query Language (YCQL) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html).
