@@ -473,7 +473,8 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   private CustomerTask submitMasterFailoverTask(
       Customer customer, Universe universe, Action action) {
     NodeDetails node = universe.getNode(action.getNodeName());
-    NodeDetails possibleReplacementCandidate = findReplacementMaster(universe, node);
+    String possibleReplacementCandidate =
+        findReplacementMaster(universe, node, true /* pickNewNode */);
     if (possibleReplacementCandidate == null) {
       log.error(
           "No replacement master found for node {} in universe {}",
@@ -483,7 +484,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
     log.debug(
         "Found a possible replacement master candidate {} for universe {}",
-        possibleReplacementCandidate.getNodeName(),
+        possibleReplacementCandidate,
         universe.getUniverseUUID());
     Set<String> leaderlessTablets = getLeaderlessTablets(universe.getUniverseUUID());
     if (CollectionUtils.isNotEmpty(leaderlessTablets)) {

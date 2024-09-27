@@ -7,6 +7,7 @@ import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -741,8 +742,52 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
   }
 
-  // Find a similar node on which a new master process can be started.
-  public NodeDetails findReplacementMaster(Universe universe, NodeDetails currentNode) {
+  public void ensureRemoteProcessState(
+      Universe universe, NodeDetails node, String processName, boolean ensureRunning) {
+    List<String> command =
+        ImmutableList.<String>builder()
+            .add("pgrep")
+            .add("-flu")
+            .add("yugabyte")
+            .add(processName)
+            .add("2>/dev/null")
+            .add("||")
+            .add("true")
+            .build();
+    log.debug(
+        "Ensuring {} process running state={} for {} using command {}",
+        processName,
+        ensureRunning,
+        node.nodeName,
+        command);
+    ShellResponse response = nodeUniverseManager.runCommand(node, universe, command);
+    String message = response.processErrors().getMessage();
+    log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
+    boolean isProcessRunning = StringUtils.isNotBlank(message) && message.contains(processName);
+    if (isProcessRunning ^ ensureRunning) {
+      String errMsg =
+          String.format(
+              "Process %s must be %s on node %s but it is not",
+              processName, ensureRunning ? "running" : "stopped", node.nodeName);
+      log.error(errMsg);
+      throw new IllegalStateException(errMsg);
+    }
+  }
+
+  /**
+   * This finds a tserver only node to start a new master to replace the master on the current node.
+   * It returns the node name which can be searched in the universe in context.
+   *
+   * <p>Note: Do not run this in DB transaction block as this can take a while.
+   *
+   * @param universe the universe.
+   * @param currentNode the current node to be replaced.
+   * @param pickNewNode true to make sure no nodes are already marked for master for safety, false
+   *     to pick only the marked node.
+   * @return name of the replacement node.
+   */
+  public String findReplacementMaster(
+      Universe universe, NodeDetails currentNode, boolean pickNewNode) {
     if ((currentNode.isMaster || currentNode.masterState == MasterState.ToStop)
         && currentNode.dedicatedTo == null) {
       List<NodeDetails> candidates =
@@ -756,27 +801,72 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                           && n.getRegion().equals(currentNode.getRegion())
                           && n.getZone().equals(currentNode.getZone()))
               .collect(Collectors.toList());
-      // This takes care of picking up the node that was previously selected.
-      Optional<NodeDetails> optional =
+      if (candidates.isEmpty()) {
+        log.debug(
+            "No master replacement found for node {} in universe {}",
+            currentNode.getNodeName(),
+            universe.getUniverseUUID());
+        return null;
+      }
+      // Find the already marked nodes.
+      List<NodeDetails> markedNodes =
           candidates.stream()
               .filter(
                   n ->
                       n.masterState == MasterState.ToStart
                           || n.masterState == MasterState.Configured)
               .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
-              .findFirst();
-      if (optional.isPresent()) {
-        return optional.get();
+              .collect(Collectors.toList());
+      if (markedNodes.size() > 1) {
+        String errMsg =
+            String.format(
+                "Multiple nodes %s are marked to start master. Only one node must be marked",
+                markedNodes.stream()
+                    .map(NodeDetails::getNodeName)
+                    .collect(Collectors.joining(", ")));
+        log.error(errMsg);
+        throw new IllegalStateException(errMsg);
       }
-      Set<NodeDetails> liveTserverNodes = getLiveTserverNodes(universe);
-      // This picks up an eligible node from the candidates.
-      return candidates.stream()
-          .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
-          .filter(n -> liveTserverNodes.contains(n))
-          .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
-          .findFirst()
-          .orElse(null);
+      NodeDetails selectedNode = Iterables.getOnlyElement(markedNodes, null);
+      if (selectedNode != null) {
+        if (pickNewNode) {
+          String errMsg =
+              String.format(
+                  "Node %s is already marked to start master against picking a new node",
+                  selectedNode.getNodeName());
+          log.error(errMsg);
+          throw new IllegalStateException(errMsg);
+        }
+        log.info("Found replacement node {}", selectedNode.getNodeName());
+        if (selectedNode.masterState == MasterState.ToStart) {
+          ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
+        }
+        return selectedNode.getNodeName();
+      }
+      if (pickNewNode) {
+        Collections.shuffle(candidates);
+        Set<NodeDetails> liveTserverNodes = getLiveTserverNodes(universe);
+        // This picks up an eligible node from the candidates.
+        Optional<NodeDetails> optional =
+            candidates.stream()
+                .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
+                .filter(n -> liveTserverNodes.contains(n))
+                .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+                .findFirst();
+        if (optional.isPresent()) {
+          selectedNode = optional.get();
+          log.info("Found replacement node {}", selectedNode.getNodeName());
+          ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
+          return selectedNode.getNodeName();
+        }
+      }
+      // Ignore case for pickNewNode = false and selectedNode = null.
     }
+    log.info(
+        "No replacement found for node {} with isMaster={} and masterState={}",
+        currentNode.getNodeName(),
+        currentNode.isMaster,
+        currentNode.masterState);
     return null;
   }
 
@@ -869,12 +959,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
-    // This is automatically cleared when the task is successful. It is done
-    // proactively to not run this conditional block on re-run or retry.
-    createSetNodeStatusTasks(
-            Collections.singleton(currentNode),
-            NodeStatus.builder().masterState(MasterState.None).build())
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
   }
 
   public SubTaskGroup createUpdateUniverseFieldsTask(Consumer<Universe> fieldModifer) {
@@ -2141,7 +2225,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     boolean skipHostNameCheck = skipType == NodeManager.SkipCertValidationType.HOSTNAME;
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckCertificateConfig");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("CheckCertificateConfig", SubTaskGroupType.ValidateConfigurations);
     clusters.stream()
         .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
         .forEach(

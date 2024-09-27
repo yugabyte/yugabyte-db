@@ -723,10 +723,10 @@ public class TaskExecutor {
             anyEx = (anyEx != null) ? anyEx : thisEx;
             runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
             removeCompletedSubTask(iter, runnableSubTask, anyEx);
-          } catch (Exception e) {
-            anyEx = e;
-            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
-            removeCompletedSubTask(iter, runnableSubTask, e);
+          } catch (Throwable th) {
+            anyEx = th;
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Failure, th);
+            removeCompletedSubTask(iter, runnableSubTask, th);
           }
         }
       }

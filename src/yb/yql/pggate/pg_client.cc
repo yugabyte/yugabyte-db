@@ -96,6 +96,7 @@ Result<rpc::CallData> MakeFetchBigDataResult(const Info& info) {
 class BigDataFetcher {
  public:
   virtual void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) = 0;
+  virtual Slice FetchBigSharedMemory(uint64_t id, size_t size) = 0;
   virtual ~BigDataFetcher() = default;
 };
 
@@ -209,6 +210,21 @@ struct PerformData : public FetchBigDataCallback {
   }
 
   template <class Res>
+  Res FetchBigSharedMemory(size_t encoded_id_and_size) {
+    if constexpr (std::is_same_v<Res, bool>) {
+      return true;
+    }
+    using Traits = ResponseReadyTraits<Res>;
+    auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
+    auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
+    auto slice = big_data_fetcher->FetchBigSharedMemory(id, size);
+    auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
+    auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
+    in_use.store(false);
+    return result;
+  }
+
+  template <class Res>
   Res ResponseReady() {
     using Traits = ResponseReadyTraits<Res>;
     UniqueLock lock(exchange_mutex);
@@ -239,8 +255,11 @@ struct PerformData : public FetchBigDataCallback {
       }
       data_id = tserver::kTooBigResponseMask;
     } else {
-      fetching_big_data = true;
       data_id = (**exchange_result).size() ^ tserver::kTooBigResponseMask;
+      if (data_id & tserver::kBigSharedMemoryMask) {
+        return FetchBigSharedMemory<Res>(data_id ^ tserver::kBigSharedMemoryMask);
+      }
+      fetching_big_data = true;
     }
     lock.unlock();
     if (data_id != tserver::kTooBigResponseMask) {
@@ -271,9 +290,10 @@ struct PerformData : public FetchBigDataCallback {
   }
 
   Result<rpc::CallResponsePtr> CompletePerform() {
-    auto call_data = VERIFY_RESULT(ResponseReady<Result<rpc::CallData>>());
+    auto call_data = ResponseReady<Result<rpc::CallData>>();
+    RETURN_NOT_OK(call_data);
     auto response = std::make_shared<rpc::CallResponse>();
-    RETURN_NOT_OK(response->ParseFrom(&call_data));
+    RETURN_NOT_OK(response->ParseFrom(&*call_data));
     RETURN_NOT_OK(resp.ParseFromSlice(response->serialized_response()));
     return response;
   }
@@ -777,6 +797,22 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
+  Slice FetchBigSharedMemory(uint64_t id, size_t size) override {
+    if (id != big_shared_memory_id_) {
+      big_mapped_region_ = {};
+      big_shared_memory_object_ = {};
+      big_shared_memory_object_ = boost::interprocess::shared_memory_object(
+          boost::interprocess::open_only,
+          tserver::MakeSharedMemoryBigSegmentName(exchange_->instance_id(), id).c_str(),
+          boost::interprocess::read_write);
+      big_mapped_region_ = boost::interprocess::mapped_region(
+          big_shared_memory_object_, boost::interprocess::read_write);
+    }
+    return Slice(
+        static_cast<const char*>(big_mapped_region_.get_address()),
+        size + sizeof(std::atomic<bool>));
+  }
+
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
     auto& ops = *req->mutable_ops();
     for (const auto& op : operations) {
@@ -1277,6 +1313,10 @@ class PgClient::Impl : public BigDataFetcher {
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
   YBCPgAshConfig ash_config_;
+
+  uint64_t big_shared_memory_id_;
+  boost::interprocess::shared_memory_object big_shared_memory_object_;
+  boost::interprocess::mapped_region big_mapped_region_;
 };
 
 std::string DdlMode::ToString() const {
