@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -27,9 +26,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
@@ -51,11 +48,6 @@ public class Commissioner {
 
   private final TaskExecutor taskExecutor;
 
-  // A map of all task UUID's to the task runnable objects for all the user tasks that are currently
-  // active. Recently completed tasks are also in this list, their completion percentage should be
-  // persisted before removing the task from this map.
-  private final Map<UUID, RunnableTask> runningTasks = new ConcurrentHashMap<>();
-
   // A map of task UUIDs to latches for currently paused tasks.
   private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
 
@@ -65,7 +57,6 @@ public class Commissioner {
 
   @Inject
   public Commissioner(
-      ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
@@ -78,8 +69,6 @@ public class Commissioner {
     this.runtimeConfGetter = runtimeConfGetter;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool.");
-    progressMonitor.start(runningTasks);
-    log.info("Started TaskProgressMonitor thread.");
   }
 
   /**
@@ -124,10 +113,7 @@ public class Commissioner {
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
-      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
-      // Add this task to our queue.
-      runningTasks.put(taskUUID, taskRunnable);
-      return taskRunnable.getTaskUUID();
+      return taskExecutor.submit(taskRunnable, executor);
     } catch (Throwable t) {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
@@ -198,9 +184,9 @@ public class Commissioner {
     if (latch == null) {
       return false;
     }
-    RunnableTask runnableTask = runningTasks.get(taskUUID);
-    if (runnableTask != null) {
-      runnableTask.setTaskExecutionListener(getTaskExecutionListener());
+    Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskUUID);
+    if (optional.isPresent()) {
+      optional.get().setTaskExecutionListener(getTaskExecutionListener());
     }
     latch.countDown();
     // Wait for the task to come out of the wait and starts running.
@@ -254,9 +240,9 @@ public class Commissioner {
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
-    RunnableTask runnable = runningTasks.get(taskInfo.getTaskUUID());
-    if (runnable != null) {
-      userTaskDetails = taskInfo.getUserTaskDetails(runnable.getTaskCache());
+    Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getTaskUUID());
+    if (optional.isPresent()) {
+      userTaskDetails = taskInfo.getUserTaskDetails(optional.get().getTaskCache());
     } else {
       userTaskDetails = taskInfo.getUserTaskDetails();
     }
@@ -445,7 +431,7 @@ public class Commissioner {
                 pauseLatches.remove(parentTaskUUID);
               }
               // Resume can set a new listener.
-              RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
+              RunnableTask runnableTask = taskExecutor.getRunnableTask(taskInfo.getParentUuid());
               TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
               if (listener != null) {
                 listener.beforeTask(taskInfo);
@@ -455,69 +441,5 @@ public class Commissioner {
       consumer = consumer == null ? pauseConsumer : consumer.andThen(pauseConsumer);
     }
     return consumer;
-  }
-  /**
-   * A progress monitor to constantly write a last updated timestamp in the DB so that this process
-   * and all its subtasks are considered to be alive.
-   */
-  @Slf4j
-  @Singleton
-  private static class ProgressMonitor {
-
-    private static final String YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL =
-        "yb.commissioner.progress_check_interval";
-    private final PlatformScheduler platformScheduler;
-    private final RuntimeConfigFactory runtimeConfigFactory;
-
-    @Inject
-    public ProgressMonitor(
-        PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
-      this.platformScheduler = platformScheduler;
-      this.runtimeConfigFactory = runtimeConfigFactory;
-    }
-
-    public void start(Map<UUID, RunnableTask> runningTasks) {
-      Duration checkInterval = this.progressCheckInterval();
-      if (checkInterval.isZero()) {
-        log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
-        log.warn("!!! TASK GC DISABLED !!!");
-      } else {
-        log.info("Scheduling Progress Check every " + checkInterval);
-        platformScheduler.schedule(
-            getClass().getSimpleName(),
-            Duration.ZERO, // InitialDelay
-            checkInterval,
-            () -> scheduleRunner(runningTasks));
-      }
-    }
-
-    private void scheduleRunner(Map<UUID, RunnableTask> runningTasks) {
-      // Loop through all the active tasks.
-      try {
-        Iterator<Entry<UUID, RunnableTask>> iter = runningTasks.entrySet().iterator();
-        while (iter.hasNext()) {
-          Entry<UUID, RunnableTask> entry = iter.next();
-          RunnableTask taskRunnable = entry.getValue();
-          // If the task is still running, update its latest timestamp as a part of the heartbeat.
-          if (taskRunnable.isTaskRunning()) {
-            taskRunnable.doHeartbeat();
-          } else if (taskRunnable.hasTaskCompleted()) {
-            log.info(
-                "Task {} has completed with {} state.", taskRunnable, taskRunnable.getTaskState());
-            // Remove task from the set of live tasks.
-            iter.remove();
-          }
-        }
-        // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
-      } catch (Exception e) {
-        log.error("Error running commissioner progress checker", e);
-      }
-    }
-
-    private Duration progressCheckInterval() {
-      return runtimeConfigFactory
-          .staticApplicationConf()
-          .getDuration(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL);
-    }
   }
 }

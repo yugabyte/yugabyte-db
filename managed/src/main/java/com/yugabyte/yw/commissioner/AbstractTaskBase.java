@@ -140,16 +140,19 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public synchronized void terminate() {
-    if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(
-          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-      executor = null;
+    if (getUserTaskUUID().equals(getTaskUUID())) {
+      if (executor != null && !executor.isShutdown()) {
+        log.info("Shutting down executor with name: {}", getExecutorPoolName());
+        MoreExecutors.shutdownAndAwaitTermination(
+            executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+        executor = null;
+      }
     }
   }
 
   protected synchronized ExecutorService getOrCreateExecutorService() {
     if (executor == null) {
-      log.info("Executor name: {}", getExecutorPoolName());
+      log.info("Creating executor with name: {}", getExecutorPoolName());
       ThreadFactory namedThreadFactory =
           new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
       executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);

@@ -461,7 +461,7 @@ public class NodeUniverseManager extends DevopsBase {
         nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(

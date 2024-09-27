@@ -759,7 +759,7 @@ public class GCPUtil implements CloudUtil {
       }
       return false;
     } catch (Exception e) {
-      e.printStackTrace();
+      log.error("Failed to fetch interruptions status for GCP instance", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Fetch interruptions status for GCP instance failed with " + e.getMessage());

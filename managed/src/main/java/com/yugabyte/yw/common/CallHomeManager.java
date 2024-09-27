@@ -76,7 +76,7 @@ public class CallHomeManager {
       headers.put(
           "X-AUTH-TOKEN", Base64.getEncoder().encodeToString(c.getUuid().toString().getBytes()));
       JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
-      LOG.info("Response: " + response.toString());
+      LOG.info("Response: {}", response);
     }
   }
 

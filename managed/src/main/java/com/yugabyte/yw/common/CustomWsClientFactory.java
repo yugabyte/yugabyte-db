@@ -53,7 +53,9 @@ public class CustomWsClientFactory {
             .withFallback(runtimeConfigFactory.staticApplicationConf())
             .withOnlyPath("play.ws");
     // Enable trace level logging to debug actual config value being resolved:
-    log.trace("Creating ws client with config: {}", customWsConfig.root().render());
+    if (log.isTraceEnabled()) {
+      log.trace("Creating ws client with config: {}", customWsConfig.root().render());
+    }
     AhcWSClient customWsClient =
         AhcWSClient.create(
             AhcWSClientConfigFactory.forConfig(customWsConfig, environment.classLoader()),

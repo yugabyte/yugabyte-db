@@ -1476,13 +1476,7 @@ public class NodeManager extends DevopsBase {
     }
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam,
-            type,
-            keyInfo,
-            Common.CloudType.onprem,
-            accessKeyCode,
-            null,
-            null));
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKeyCode, null, null));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), provider.getUuid(), new UniverseTaskParams.CommunicationPorts()));

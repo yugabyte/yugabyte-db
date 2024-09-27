@@ -233,7 +233,6 @@ public class LdapUtil {
         groups.add(entry.getDn().toString());
       }
     } catch (LdapException | CursorException e) {
-      e.printStackTrace();
       log.error(
           "Error querying groups with base dn: {} and search filter: {}",
           ldapConfiguration.getLdapBaseDN(),
