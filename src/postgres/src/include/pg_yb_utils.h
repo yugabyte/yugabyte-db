@@ -551,6 +551,16 @@ extern bool yb_enable_saop_pushdown;
 */
 extern int yb_toast_catcache_threshold;
 
+/*
+ * Configure size of the parallel range in requests for parallel keys.
+ */
+extern int yb_parallel_range_size;
+
+/*
+ * Enable preloading of foreign key information into the relation cache.
+ */
+extern bool yb_enable_fkey_catcache;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

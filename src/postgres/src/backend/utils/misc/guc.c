@@ -2609,6 +2609,17 @@ static struct config_bool ConfigureNamesBool[] =
 		yb_enable_ash_check_hook, NULL, NULL
 	},
 
+	{
+		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable preloading of foreign key information into the relation cache."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
