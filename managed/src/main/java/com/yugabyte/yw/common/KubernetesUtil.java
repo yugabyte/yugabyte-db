@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -1310,9 +1311,23 @@ public class KubernetesUtil {
   public static void validateServiceEndpoints(
       UniverseDefinitionTaskParams universeParams, Map<String, String> universeConfig)
       throws IOException {
-    if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
+    UniverseDefinitionTaskParams params = universeParams;
+    // Populate primary cluster from universe if not available
+    // This is for case: Edit Read-Replica
+    if (universeParams.getPrimaryCluster() == null) {
+      Optional<Universe> optUniverse = Universe.maybeGet(universeParams.getUniverseUUID());
+      if (!optUniverse.isPresent()) {
+        // Universe not found here is an unexpected scenario, return
+        return;
+      }
+      // Add primary cluster to index 0 in params deep copy
+      params = Json.fromJson(Json.toJson(universeParams), UniverseDefinitionTaskParams.class);
+      params.clusters.add(0, optUniverse.get().getUniverseDetails().getPrimaryCluster());
+    }
+
+    if (!shouldConfigureNamespacedService(params, universeConfig)) {
       Map<String, Map<UUID, Map<String, Map<String, Object>>>> nsScopedServices =
-          getNamespaceNSScopedServices(universeParams, null /* clusterType */);
+          getNamespaceNSScopedServices(params, null /* clusterType */);
       if (nsScopedServices == null) {
         return;
       }
@@ -1327,9 +1342,9 @@ public class KubernetesUtil {
       return;
     }
     // Validate service name does not appear twice in final overrides per AZ.
-    validateConflictingService(universeParams);
+    validateConflictingService(params);
     // Validate Namespaced scope service
-    validateNamespacedServiceEndpoints(universeParams);
+    validateNamespacedServiceEndpoints(params);
   }
 
   /**
