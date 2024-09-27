@@ -7,6 +7,8 @@ menu:
     identifier: performance
     parent: monitor-voyager
     weight: 103
+aliases:
+  - /preview/yugabyte-voyager/performance/
 type: docs
 ---
 
