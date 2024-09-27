@@ -786,4 +786,36 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (my_func(1))"));
 }
 
+TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalCatBothTest) {
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE primary_table(k INT PRIMARY KEY)"));
+  ASSERT_OK(
+      ddl_conn.Execute("CREATE TABLE foreign_table(k INT, region INT) PARTITION BY LIST (region)"));
+  // Add 10 child tables for the foreign_table
+  for (int i = 1; i <= 10; ++i) {
+    ASSERT_OK(ddl_conn.ExecuteFormat(
+        "CREATE TABLE foreign_table_$0 PARTITION OF foreign_table FOR VALUES IN ($0)", i));
+  }
+  ASSERT_OK(
+      ddl_conn.Execute("ALTER TABLE foreign_table ADD CONSTRAINT fk_foreign_table_primary_table "
+                       "FOREIGN KEY (k) REFERENCES primary_table(k)"));
+  // Dummy connection to build the relcache init file
+  { auto unused_conn = ASSERT_RESULT(Connect()); }
+
+  auto select_conn = ASSERT_RESULT(Connect());
+
+  const auto startup_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(startup_rpc_count, kSubsequentConnectionRPCCount);
+
+  const auto select_rpc_count =
+      ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) -> Status {
+        RETURN_NOT_OK(conn->Fetch(
+            "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
+        return Status::OK();
+      }));
+  // With yb_enable_fkey_catcache turned off, we would see more than 8 RPCs
+  // because we have to look up the foreign keys from master.
+  ASSERT_EQ(select_rpc_count, 8);
+}
+
 } // namespace yb::pgwrapper
