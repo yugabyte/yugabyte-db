@@ -363,7 +363,7 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   {
     UniqueLock lock(service_state_mutex_);
     LOG_TASK_IDLE_AND_RETURN_IF_SHUTDOWN;
-    task_wait_cond_.wait_for(GetLockForCondition(&lock), wait_time_ms * 1ms);
+    task_wait_cond_.wait_for(GetLockForCondition(lock), wait_time_ms * 1ms);
   }
 
   StartPeriodicTaskIfNeeded();

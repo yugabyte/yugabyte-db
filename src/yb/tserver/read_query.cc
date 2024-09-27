@@ -707,9 +707,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
   }
 
   if (!req_->pgsql_batch().empty()) {
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
     size_t total_num_rows_read = 0;
-    for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
+    for (const auto& pgsql_read_req : req_->pgsql_batch()) {
       tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(

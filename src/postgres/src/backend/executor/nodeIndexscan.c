@@ -190,8 +190,8 @@ IndexNext(IndexScanState *node)
 				if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY) {
 					scandesc->yb_exec_params->rowmark = erm->markType;
 					scandesc->yb_exec_params->pg_wait_policy = erm->waitPolicy;
-					YBSetRowLockPolicy(&scandesc->yb_exec_params->docdb_wait_policy,
-									   erm->waitPolicy);
+					scandesc->yb_exec_params->docdb_wait_policy =
+						YBGetDocDBWaitPolicy(erm->waitPolicy);
 				}
 			}
 		}

@@ -3420,8 +3420,21 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
+			List *update_colnos = root->update_colnos;
+			if (bms_membership(root->all_result_relids) == BMS_MULTIPLE)
+			{
+				/*
+				 * For partitioned tables, get the UPDATE colnos from
+				 * ModifyTablePath.updateColnosLists, which should contain a
+				 * single item corresponding to the only leaf partition being
+				 * updated.
+				 */
+				Assert(list_length(path->updateColnosLists) == 1);
+				update_colnos = linitial(path->updateColnosLists);
+			}
+
 			/*
-			 * It is expected that root->update_colnos and
+			 * It is expected that update_colnos and
 			 * projection_path->pathtarget contain the updated columns in the
 			 * same order.
 			 *
@@ -3430,7 +3443,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * for ybPushdownTlist.
 			 */
 			int resno = tle->resno =
-				list_nth_int(root->update_colnos, update_col_index++);
+				list_nth_int(update_colnos, update_col_index++);
 
 			/* Updates involving primary key columns are not single-row. */
 			if (bms_is_member(resno - attr_offset, primary_key_attrs))

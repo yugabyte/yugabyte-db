@@ -46,6 +46,14 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");
 
+DEFINE_test_flag(bool, xcluster_enable_sequence_replication, false,
+    "Enable xCluster automatic replication of sequences (requires automatic DB-scoped "
+    "replication).");
+
+DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
+    "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
+    "xCluster replication mode.");
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -285,8 +293,10 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   LOG_FUNC_AND_RPC;
   SCHECK(FLAGS_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_ids);
+  bool automatic_ddl_mode =
+      req->automatic_ddl_mode() || FLAGS_TEST_force_automatic_ddl_replication_mode;
   SCHECK(
-      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      !automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
       "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   std::vector<NamespaceId> namespace_ids;
@@ -296,7 +306,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
 
   RETURN_NOT_OK(CreateOutboundReplicationGroup(
       xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids,
-      req->automatic_ddl_mode(), epoch));
+      automatic_ddl_mode, epoch));
 
   return Status::OK();
 }

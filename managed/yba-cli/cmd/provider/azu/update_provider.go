@@ -6,6 +6,7 @@ package azu
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -77,6 +78,8 @@ var updateAzureProviderCmd = &cobra.Command{
 		details := provider.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		azureCloudInfo := cloudInfo.GetAzu()
+
+		providerImageBundles := provider.GetImageBundles()
 
 		newProviderName, err := cmd.Flags().GetString("new-name")
 		if err != nil {
@@ -255,6 +258,38 @@ var updateAzureProviderCmd = &cobra.Command{
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
 
+		// Update Image Bundles
+
+		addImageBundles, err := cmd.Flags().GetStringArray("add-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		editImageBundles, err := cmd.Flags().GetStringArray("edit-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		removeImageBundles, err := cmd.Flags().GetStringArray("remove-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles = removeAzureImageBundles(removeImageBundles, providerImageBundles)
+
+		providerImageBundles = editAzureImageBundles(
+			editImageBundles,
+			providerImageBundles)
+
+		providerImageBundles = addAzureImageBundles(
+			addImageBundles,
+			providerImageBundles,
+		)
+
+		provider.SetImageBundles(providerImageBundles)
+
+		// End of Updating Image Bundles
+
 		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
@@ -314,10 +349,10 @@ func init() {
 		"[Optional] Add region associated with the Azure provider. "+
 			"Provide the following comma separated fields as key-value pairs:"+
 			"\"region-name=<region-name>,"+
-			"vnet=<virtual-network>,sg-id=<security-group-id>,yb-image=<custom-ami>\". "+
+			"vnet=<virtual-network>,sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
-			" Security Group ID and YB Image (AMI) are optional. "+
+			" Security Group ID is optional. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateAzureProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the Azure Region defined. "+
@@ -347,7 +382,7 @@ func init() {
 		"[Optional] Edit region details associated with the Azure provider. "+
 			"Provide the following comma separated fields as key-value pairs:"+
 			"\"region-name=<region-name>,"+
-			"vnet=<virtual-network>,sg-id=<security-group-id>,yb-image=<custom-ami>\". "+
+			"vnet=<virtual-network>,sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" Virtual network and Security Group ID are optional. "+
@@ -362,10 +397,42 @@ func init() {
 			"Subnet IDs and Secondary subnet ID is optional. "+
 			"Each zone needs to be modified using a separate --edit-zone flag.")
 
+	updateAzureProviderCmd.Flags().StringArray("add-image-bundle", []string{},
+		"[Optional] Add Intel x86_64 image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, machine image and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --add-image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+
+	updateAzureProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
+		"[Optional] Edit Intel x86_64 image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>,machine-image=<custom-ami>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle UUID is a required key-value pair.",
+				formatter.GreenColor)+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --edit-image-bundle <image-bundle-uuid>=<image-bundle>,machine-image=<custom-ami>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+
+	updateAzureProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
+		"[Optional] Image bundle UUID to be removed from the provider. "+
+			"Each bundle to be removed needs to be provided using a separate "+
+			"--remove-image-bundle definition.")
+
 	updateAzureProviderCmd.Flags().String("ssh-user", "",
 		"[Optional] Updating SSH User to access the YugabyteDB nodes.")
 	updateAzureProviderCmd.Flags().Int("ssh-port", 0,
 		"[Optional] Updating SSH Port to access the YugabyteDB nodes.")
+	updateAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
+	updateAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
 
 	updateAzureProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
@@ -453,7 +520,6 @@ func addAzureRegions(
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Azu: &ybaclient.AzureRegionCloudInfo{
-						YbImage:         util.GetStringPointer(region["yb-image"]),
 						SecurityGroupId: util.GetStringPointer(region["sg-id"]),
 						Vnet:            util.GetStringPointer(region["vnet"]),
 					},
@@ -578,4 +644,139 @@ func addAzureZones(
 	}
 
 	return zones
+}
+
+func removeAzureImageBundles(
+	removeImageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
+	if len(removeImageBundles) == 0 {
+		return providerImageBundles
+	}
+
+	for _, ib := range removeImageBundles {
+		for i, pIb := range providerImageBundles {
+			if strings.Compare(pIb.GetUuid(), ib) == 0 {
+				providerImageBundles = util.RemoveComponentFromSlice(
+					providerImageBundles, i,
+				).([]ybaclient.ImageBundle)
+			}
+		}
+	}
+
+	return providerImageBundles
+}
+
+func editAzureImageBundles(
+	editImageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) []ybaclient.ImageBundle {
+
+	for i, ib := range providerImageBundles {
+		bundleUUID := ib.GetUuid()
+		details := ib.GetDetails()
+		if len(editImageBundles) != 0 {
+			for _, imageBundleString := range editImageBundles {
+				imageBundle := providerutil.BuildImageBundleMapFromString(imageBundleString, "edit")
+
+				if strings.Compare(imageBundle["uuid"], bundleUUID) == 0 {
+					if len(imageBundle["machine-image"]) != 0 {
+						details.SetGlobalYbImage(imageBundle["machine-image"])
+					}
+					if len(imageBundle["ssh-user"]) != 0 {
+						details.SetSshUser(imageBundle["ssh-user"])
+					}
+					if len(imageBundle["ssh-port"]) != 0 {
+						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						if err != nil {
+							errMessage := err.Error() + " Using SSH Port as 22\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							sshPort = 22
+						}
+						details.SetSshPort(int32(sshPort))
+					}
+
+					ib.SetDetails(details)
+
+					if len(imageBundle["default"]) != 0 {
+						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
+						if err != nil {
+							errMessage := err.Error() + " Setting default as false\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							defaultBundle = false
+						}
+						ib.SetUseAsDefault(defaultBundle)
+					}
+
+				}
+
+			}
+		}
+		providerImageBundles[i] = ib
+	}
+	return providerImageBundles
+}
+
+func addAzureImageBundles(
+	imageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) []ybaclient.ImageBundle {
+	if len(imageBundles) == 0 {
+		return providerImageBundles
+	}
+	imageBundleLen := len(imageBundles)
+	for _, i := range imageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+		bundle = providerutil.DefaultImageBundleValues(bundle)
+
+		if _, ok := bundle["ssh-user"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"SSH User not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		if _, ok := bundle["machine-image"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize("Machine Image not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+		if imageBundleLen == 1 && !defaultBundle {
+			defaultBundle = true
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:          util.GetStringPointer(bundle["arch"]),
+				GlobalYbImage: util.GetStringPointer(bundle["machine-image"]),
+				SshUser:       util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+			},
+		}
+		providerImageBundles = append(providerImageBundles, imageBundle)
+	}
+	return providerImageBundles
 }

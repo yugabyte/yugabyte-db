@@ -114,11 +114,11 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   List<TaskType> RENAME_FAILURE_TASK_SEQUENCE =
       ImmutableList.of(
           // Freeze for source.
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           // Freeze for target.
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigRename,
           TaskType.XClusterConfigSetStatus,
@@ -128,11 +128,11 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   List<TaskType> ADD_TABLE_IS_ALTER_DONE_FAILURE =
       ImmutableList.of(
           // Freeze for source.
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           // Freeze for target.
-          TaskType.FreezeUniverse,
           TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigSetStatusForTables,
           TaskType.BootstrapProducer,

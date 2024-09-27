@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -630,10 +629,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
           if (processType.equals(ServerType.TSERVER) && nodeList.iterator().next().isYsqlServer) {
             createWaitForServersTasks(
-                    nodeList,
-                    ServerType.YSQLSERVER,
-                    context.getUserIntent(),
-                    context.getCommunicationPorts())
+                    nodeList, ServerType.YSQLSERVER, context.getTargetUniverseState())
                 .setSubTaskGroupType(subGroupType);
           }
 
@@ -1223,11 +1219,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean runBeforeStopping;
     boolean processInactiveMaster;
     @Builder.Default boolean processTServersFirst = false;
-    // Set this field to access client userIntent during runtime as
-    // usually universeDetails are updated only at the end of task.
-    UniverseDefinitionTaskParams.UserIntent userIntent;
-    // Set this field to provide custom communication ports during runtime.
-    CommunicationPorts communicationPorts;
+    // This is transient universe state to keep track of changes already applied
+    // (as actual universe in DB is usually updated at the end of task).
+    Universe targetUniverseState;
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;

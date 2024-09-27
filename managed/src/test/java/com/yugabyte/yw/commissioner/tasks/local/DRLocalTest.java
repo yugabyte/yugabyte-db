@@ -11,12 +11,14 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -26,12 +28,23 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
 public class DRLocalTest extends DRLocalTestBase {
+
+  @Before
+  public void setupNonDbDr() {
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
+        UniverseConfKeys.dbScopedXClusterCreationEnabled.getKey(),
+        "false",
+        true /* isSuperAdmin */);
+  }
 
   @Test
   public void testDrConfigSetup() throws InterruptedException {
@@ -61,7 +74,6 @@ public class DRLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = source.getUniverseUUID();
     formData.targetUniverseUUID = target.getUniverseUUID();
     formData.name = "DisasterRecovery-1";
-    formData.dbScoped = false;
     formData.dbs = new HashSet<>();
     for (TableInfoForm.NamespaceInfoResp namespaceInfo : resp) {
       if (namespaceInfo.name.equals("yugabyte")) {
@@ -80,8 +92,7 @@ public class DRLocalTest extends DRLocalTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(source.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(target.getUniverseUUID()));
-    Thread.sleep(3000);
-    verifyYSQL(target);
+    assertYsqlOutputEqualsWithRetry(target, "select count(*) from some_table", "3");
 
     NodeDetails details = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
@@ -93,13 +104,7 @@ public class DRLocalTest extends DRLocalTestBase {
             10);
     assertTrue(ysqlResponse.isSuccess());
 
-    Thread.sleep(2500);
-    details = target.getUniverseDetails().nodeDetailsSet.iterator().next();
-    ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(
-            details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
-    assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
+    assertYsqlOutputEqualsWithRetry(target, "select count(*) from some_table", "5");
     verifyPayload();
 
     Result deleteResult = deleteDrConfig(UUID.fromString(json.get("resourceUUID").asText()));

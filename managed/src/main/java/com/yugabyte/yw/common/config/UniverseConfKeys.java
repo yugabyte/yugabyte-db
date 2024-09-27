@@ -826,6 +826,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout in secs for YSQL queries",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ysqlConsistencyTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.ysql_timeout_secs",
+          ScopeType.UNIVERSE,
+          "YSQL Queries Timeout for Consistency Check Operations",
+          "Timeout in secs for YSQL queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> numCoresToKeep =
       new ConfKeyInfo<>(
           "yb.num_cores_to_keep",
@@ -1107,7 +1115,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
+  public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag to enable db scoped xCluster replication creation",
+          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1323,7 +1338,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableConsistencyCheck =
       new ConfKeyInfo<>(
-          "yb.universe.consistency_check_enabled",
+          "yb.universe.consistency_check.enabled",
           ScopeType.UNIVERSE,
           "Enable consistency check for universe",
           "When enabled, all universe operations will attempt consistency check validation before"
@@ -1346,4 +1361,30 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node agent enabler installation time-out for the universe",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> consistencyUpdateDelay =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.update_delay_secs",
+          ScopeType.UNIVERSE,
+          "Delay after updating consistency check information in YBDB",
+          "Introduces a sleep in the PG update query to help simulate testing with unreliable YSQL"
+              + " connection",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> consistencyCheckPendingTest =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check.test_pending",
+          ScopeType.UNIVERSE,
+          "Test handling of pending consistency check update",
+          "YBA will shutdown immediately after updating the DB sequence number but before saving to"
+              + " local universe details",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowNodeAgentClientMixMode =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.allow_mix_mode",
+          ScopeType.UNIVERSE,
+          "Allow Mix Mode Operations in Universe",
+          "Allow node agent and SSH communications to nodes at the same time for the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -99,10 +99,11 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   );
 
   // Looking up storage config name for DR UI only.
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName = props.isDrInterface
     ? storageConfigs?.find((storageConfig) => storageConfig.configUUID === props.storageConfigUuid)
@@ -122,7 +123,7 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
     targetTableMissing
   } = categorizedNeedBootstrapPerTableResponse;
   const skipBootstrap = watch('skipBootstrap');
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
 
   const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
     (config: any) =>

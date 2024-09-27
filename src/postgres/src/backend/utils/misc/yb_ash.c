@@ -130,7 +130,7 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  QueryCompletion *qc);
 
-static const unsigned char *get_yql_endpoint_tserver_uuid();
+static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
 static void copy_pgproc_sample_fields(PGPROC *proc, int index);
@@ -776,7 +776,7 @@ YbAshMain(Datum main_arg)
 }
 
 static const unsigned char *
-get_yql_endpoint_tserver_uuid()
+get_top_level_node_id()
 {
 	static const unsigned char *local_tserver_uuid = NULL;
 	if (!local_tserver_uuid && IsYugaByteEnabled())
@@ -854,11 +854,11 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
 	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
-	/* yql_endpoint_tserver_uuid is constant for all PG samples */
-	if (get_yql_endpoint_tserver_uuid())
-		memcpy(cb_sample->yql_endpoint_tserver_uuid,
-			   get_yql_endpoint_tserver_uuid(),
-			   sizeof(cb_sample->yql_endpoint_tserver_uuid));
+	/* top_level_node_id is constant for all PG samples */
+	if (get_top_level_node_id())
+		memcpy(cb_sample->top_level_node_id,
+			   get_top_level_node_id(),
+			   sizeof(cb_sample->top_level_node_id));
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
@@ -960,7 +960,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		bool		nulls[ncols];
 		int			j = 0;
 		pg_uuid_t	root_request_id;
-		pg_uuid_t	yql_endpoint_tserver_uuid;
+		pg_uuid_t	top_level_node_id;
 		/* 22 bytes required for ipv4 and 48 for ipv6 (including null character) */
 		char		client_node_ip[48];
 
@@ -990,8 +990,8 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = CStringGetTextDatum(
 			pgstat_get_wait_event(sample->encoded_wait_event_code));
 
-		uchar_to_uuid(sample->yql_endpoint_tserver_uuid, &yql_endpoint_tserver_uuid);
-		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);
+		uchar_to_uuid(sample->top_level_node_id, &top_level_node_id);
+		values[j++] = UUIDPGetDatum(&top_level_node_id);
 
 		values[j++] = UInt64GetDatum(metadata->query_id);
 		values[j++] = Int32GetDatum(metadata->pid);
@@ -1364,7 +1364,7 @@ FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
 						 pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		/* Top level node id */
-		PrintUuidToBuffer(output_buffer, sample->yql_endpoint_tserver_uuid);
+		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
 		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d\n",
 						 (int64) sample->metadata.query_id,
 						 sample->metadata.pid,

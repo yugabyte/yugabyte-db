@@ -43,9 +43,9 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -711,8 +711,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     params.put("param1", "value1");
     doAnswer(
             inv -> {
-              throw new TaskExecutionException(
-                  TaskErrorCode.PLATFORM_RESTARTED, "Platform restarted");
+              throw new TaskExecutionException(Code.PLATFORM_RESTARTED, "Platform restarted");
             })
         .when(task)
         .run();
@@ -721,8 +720,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     waitForTask(taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    TaskError taskError = taskInfo.getTaskError();
-    assertEquals(TaskErrorCode.PLATFORM_RESTARTED, taskError.getCode());
+    YBAError taskError = taskInfo.getTaskError();
+    assertEquals(Code.PLATFORM_RESTARTED, taskError.getCode());
     assertEquals("Platform restarted", taskError.getMessage());
     JsonNode taskParams = taskInfo.getTaskParams();
     assertEquals(params, taskParams);

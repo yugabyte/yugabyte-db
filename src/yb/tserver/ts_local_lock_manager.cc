@@ -18,8 +18,11 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 
+using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
 namespace yb::tablet {
@@ -31,7 +34,12 @@ class TSLocalLockManager::Impl {
   ~Impl() = default;
 
   Status AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) {
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      WaitForBootstrap wait) {
+    if (wait) {
+      RETURN_NOT_OK(
+          Wait([this]() -> bool { return is_bootstrapped_; }, deadline, "Waiting to Bootstrap."));
+    }
     // There should be atmost one outstanding request per session that is actively being processed
     // by the TSLocalLockManager. In context of table locks, either the pg backend or the pg client
     // service should be responsible for this behavior. Else this could lead to invalid lock state
@@ -84,6 +92,14 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  void MarkBootstrapped() {
+    is_bootstrapped_ = true;
+  }
+
+  bool IsBootstrapped() const {
+    return is_bootstrapped_;
+  }
+
   size_t TEST_GrantedLocksSize() const {
     return object_lock_manager_.TEST_GrantedLocksSize();
   }
@@ -94,6 +110,27 @@ class TSLocalLockManager::Impl {
 
   void DumpLocksToHtml(std::ostream& out) {
     object_lock_manager_.DumpStatusHtml(out);
+  }
+
+  Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& entries) {
+    VLOG(2) << __func__ << " using " << yb::ToString(entries.lock_entries());
+    // TODO(amit): 1) When we implement YSQL leases, we need to clear out the locks, and
+    // re-bootstrap. For now, we are not doing that, the only time this should be happening
+    // is when a tserver registers with the master for the first time.
+    // 2) If the tserver is already bootstrapped from a master, we should not be bootstrapping
+    // again. However, even if we are bootstrap again, it should be safe to do so. Once we implement
+    // persistence of TServer Registration at the master, we can avoid this.
+    if (IsBootstrapped()) {
+      LOG_WITH_FUNC(INFO) << "TSLocalLockManager is already bootstrapped. Ignoring the request.";
+      return Status::OK();
+    }
+    for (const auto& acquire_req : entries.lock_entries()) {
+      // This call should not block on anything.
+      CoarseTimePoint deadline = CoarseMonoClock::Now() + 1s;
+      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tablet::WaitForBootstrap::kFalse));
+    }
+    MarkBootstrapped();
+    return Status::OK();
   }
 
  private:
@@ -119,6 +156,7 @@ class TSLocalLockManager::Impl {
   std::unordered_set<docdb::SessionIDHostPair,
                      boost::hash<docdb::SessionIDHostPair>> sessions_with_active_requests_
       GUARDED_BY(mutex_);
+  std::atomic_bool is_bootstrapped_{false};
 };
 
 TSLocalLockManager::TSLocalLockManager() : impl_(new Impl()) {}
@@ -126,8 +164,9 @@ TSLocalLockManager::TSLocalLockManager() : impl_(new Impl()) {}
 TSLocalLockManager::~TSLocalLockManager() {}
 
 Status TSLocalLockManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) {
-  return impl_->AcquireObjectLocks(req, deadline);
+    const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+    WaitForBootstrap wait) {
+  return impl_->AcquireObjectLocks(req, deadline, wait);
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(const tserver::ReleaseObjectLockRequestPB& req) {
@@ -144,6 +183,14 @@ size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
 
 size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
   return impl_->TEST_WaitingLocksSize();
+}
+
+Status TSLocalLockManager::BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& entries) {
+  return impl_->BootstrapDdlObjectLocks(entries);
+}
+
+void TSLocalLockManager::TEST_MarkBootstrapped() {
+  impl_->MarkBootstrapped();
 }
 
 } // namespace yb::tablet

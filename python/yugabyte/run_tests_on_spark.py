@@ -91,10 +91,6 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
 DEFAULT_MAX_NUM_TEST_FAILURES = 100
-# YB_TODO: BEGIN temporary modifications
-DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 500
-DEFAULT_MAX_NUM_TEST_FAILURES = 500
-# YB_TODO: END temporary modifications
 
 # Default for test artifact size limit to copy back to the build host, in bytes.
 MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024

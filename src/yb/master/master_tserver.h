@@ -100,10 +100,14 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void ClearAllMetaCachesOnServer() override;
 
+  Status ClearMetacache(const std::string& namespace_id) override;
+
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
+
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
  private:
   Master* master_ = nullptr;

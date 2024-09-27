@@ -780,6 +780,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     node.placementUuid = cluster.uuid;
     bodyJson.set("clusters", Json.newArray().add(Json.toJson(cluster)));
     bodyJson.set("nodeDetailsSet", Json.newArray().add(Json.toJson(node)));
+    bodyJson.put("nodePrefix", "demo-node");
 
     if (errorMessage == null) {
       Result result = sendCreateRequest(bodyJson);

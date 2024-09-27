@@ -28,7 +28,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ taskUUID, universe
   const [taskID, setTaskID] = useSessionStorage<string | null>(`taskID`, taskUUID);
 
   const [showTaskDetailsDrawer, toggleTaskDetailsDrawer] = useSessionStorage(
-    `show-task-detail`,
+    `show-task-detail-${taskID}`,
     false
   );
 

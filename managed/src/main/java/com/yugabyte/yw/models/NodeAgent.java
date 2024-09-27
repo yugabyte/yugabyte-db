@@ -13,10 +13,14 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.NodeAgentFilter;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
+import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.nodeagent.Server.ServerInfo;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -69,9 +73,11 @@ import play.mvc.Http.Status;
 @Setter
 @ApiModel(description = "Node agent details")
 public class NodeAgent extends Model {
-
   public static final KeyLock<UUID> NODE_AGENT_KEY_LOCK = new KeyLock<UUID>();
   public static final String NODE_AGENT_DIR = "node-agent";
+
+  private static final Set<State> INACTIVE_STATES =
+      ImmutableSet.of(State.REGISTERING, State.REGISTERED);
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -238,6 +244,14 @@ public class NodeAgent extends Model {
   @Column(nullable = false)
   private String home;
 
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Last error of node agent.",
+      accessMode = READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.1")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private YBAError lastError;
+
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
     ip("ip"),
@@ -267,6 +281,7 @@ public class NodeAgent extends Model {
       this.state.validateTransition(state);
     }
     this.state = state;
+    setLastError(null);
   }
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
@@ -302,7 +317,7 @@ public class NodeAgent extends Model {
     return expr.findList();
   }
 
-  public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
+  public static Set<NodeAgent> getAll(UUID customerUuid) {
     return finder.query().where().eq("customer_uuid", customerUuid).findSet();
   }
 
@@ -487,6 +502,11 @@ public class NodeAgent extends Model {
     return getCertDirPath().resolve(SERVER_KEY_NAME);
   }
 
+  @JsonIgnore
+  public boolean isActive() {
+    return !INACTIVE_STATES.contains(getState());
+  }
+
   public void updateCertDirPath(Path certDirPath) {
     updateCertDirPath(certDirPath, null);
   }
@@ -502,13 +522,30 @@ public class NodeAgent extends Model {
         });
   }
 
-  public void updateOffloadable(boolean offloadable) {
-    if (getConfig().isOffloadable() != offloadable) {
+  public void updateServerInfo(ServerInfo serverInfo) {
+    if (getConfig().isOffloadable() != serverInfo.getOffloadable()) {
       updateInTxn(
           n -> {
-            n.getConfig().setOffloadable(offloadable);
+            n.getConfig().setOffloadable(serverInfo.getOffloadable());
             n.update();
           });
+    }
+    clearLastError();
+  }
+
+  public void updateLastError(YBAError error) {
+    if (!Objects.equals(error, getLastError())) {
+      updateInTxn(
+          n -> {
+            n.setLastError(error);
+            n.update();
+          });
+    }
+  }
+
+  public void clearLastError() {
+    if (getLastError() != null) {
+      updateLastError(null);
     }
   }
 

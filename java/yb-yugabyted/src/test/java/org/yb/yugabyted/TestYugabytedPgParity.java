@@ -38,7 +38,7 @@ public class TestYugabytedPgParity extends BaseYbdClientTest {
 
         clusterConfigurations = new ArrayList<>();
         Map<String, String> yugabytedFlags = new HashMap<>();
-        yugabytedFlags.put("enable_pg_parity_tech_preview", "");
+        yugabytedFlags.put("enable_pg_parity_early_access", "");
 
         for (int i = 0; i < clusterParameters.numNodes; i++) {
             MiniYugabytedNodeConfigurations nodeConfigurations =

@@ -183,14 +183,8 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
-              + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
-    }
-
+        confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled);
     if (isDbScoped) {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
@@ -1118,9 +1112,6 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.
         Map<String, String> sourceTableIdTargetTableIdMap =
@@ -1632,7 +1623,7 @@ public class DrConfigController extends AuthenticatedController {
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
     Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
-    Set<String> newDatabaseIds = setDatabasesForm.databases;
+    Set<String> newDatabaseIds = setDatabasesForm.dbs;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
     if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
@@ -1756,7 +1747,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSetDatabasesForm formData =
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), DrConfigSetDatabasesForm.class);
-    formData.databases = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.databases);
+    formData.dbs = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.dbs);
     return formData;
   }
 

@@ -614,8 +614,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return GetTableType() == REDIS_TABLE_TYPE;
   }
 
-  bool IsBeingDroppedDueToDdlTxn(
-      const std::string& txn_id_pb, std::optional<bool> txn_success) const;
+  bool IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const;
 
   // Add a tablet to this table.
   Status AddTablet(const TabletInfoPtr& tablet);
@@ -944,6 +943,25 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
   DISALLOW_COPY_AND_ASSIGN(UDTypeInfo);
 };
 
+// This wraps around the proto containing information about what locks have been taken.
+// It will be used for LockObject persistence.
+struct PersistentObjectLockInfo : public Persistent<SysObjectLockEntryPB> {};
+
+class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
+ public:
+  explicit ObjectLockInfo(const std::string& ts_uuid) : ts_uuid_(ts_uuid) {}
+  ~ObjectLockInfo() = default;
+
+  // Return the user defined type's ID. Does not require synchronization.
+  virtual const std::string& id() const override { return ts_uuid_; }
+
+ private:
+  // The ID field is used in the sys_catalog table.
+  const std::string ts_uuid_;
+
+  DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
+};
+
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {};
@@ -1213,6 +1231,7 @@ struct PersistentUniverseReplicationInfo
   }
 
   bool IsDbScoped() const;
+  bool IsAutomaticDdlMode() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,

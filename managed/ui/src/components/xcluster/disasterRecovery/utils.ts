@@ -2,7 +2,6 @@ import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
 import { DrConfigAction, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
-import { XClusterConfigType } from '../constants';
 
 import { DrConfig, DrConfigSafetimeResponse, DrConfigState } from './dtos';
 import { Universe } from '../../../redesign/helpers/dtos';
@@ -29,7 +28,7 @@ export const getEnabledDrConfigActions = (
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
-    case DrConfigState.ERROR:
+    case DrConfigState.FAILED:
       return [DrConfigAction.DELETE];
     case DrConfigState.REPLICATING:
       return [

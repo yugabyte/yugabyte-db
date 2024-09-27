@@ -248,7 +248,8 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
             << std::endl;
   std::cout << Indent(indent) << "Table name: " << meta->table_name()
             << " Table id: " << meta->table_id() << std::endl;
-  std::cout << Indent(indent) << "Schema (version=" << meta->schema_version() << "): "
+  std::cout << Indent(indent)
+            << Format("Schema (primary table version=$0)", meta->primary_table_schema_version())
             << schema->ToString() << std::endl;
 
   tablet::RaftGroupReplicaSuperBlockPB pb;

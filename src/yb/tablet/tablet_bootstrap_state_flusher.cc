@@ -125,7 +125,7 @@ Status TabletBootstrapStateFlusher::FlushBootstrapState(TabletBootstrapFlushStat
     SetIdleAndNotifyAll();
   });
   TEST_PAUSE_IF_FLAG(TEST_pause_before_flushing_bootstrap_state);
-  return bootstrap_state_manager_->SaveToDisk(*raft_consensus_);
+  return bootstrap_state_manager_->SaveToDisk(tablet_, *raft_consensus_);
 }
 
 Status TabletBootstrapStateFlusher::SubmitFlushBootstrapStateTask() {

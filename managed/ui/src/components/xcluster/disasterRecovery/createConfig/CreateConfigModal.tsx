@@ -294,7 +294,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
 
   const isDbScopedEnabled =
     runtimeConfigEntries.find(
-      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_FEATURE_FLAG
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
     )?.value ?? false;
 
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {

@@ -530,10 +530,12 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
     if (!optional.isPresent()) {
       log.debug(
-          "Node agent is not enabled for provider {}({})", provider.getName(), provider.getUuid());
+          "Node agent is not enabled for node {} with provider {}",
+          node.getNodeName(),
+          provider.getUuid());
       return optional;
     }
     NodeAgent nodeAgent = optional.get();

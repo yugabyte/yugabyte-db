@@ -155,8 +155,9 @@ Master::Master(const MasterOptions& opts)
       state_(kStopped),
       metric_entity_cluster_(
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
-      ts_manager_(new TSManager()),
-      catalog_manager_(new CatalogManager(this)),
+      sys_catalog_(new SysCatalogTable(this, metric_registry_.get())),
+      ts_manager_(new TSManager(*sys_catalog_)),
+      catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
       auto_flags_manager_(
           new MasterAutoFlagsManager(clock(), fs_manager_.get(), catalog_manager_impl())),
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
@@ -164,8 +165,8 @@ Master::Master(const MasterOptions& opts)
       flush_manager_(new FlushManager(this, catalog_manager())),
       tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
       master_cluster_handler_(new MasterClusterHandler(catalog_manager_impl(), ts_manager_.get())),
-      tablet_split_manager_(new TabletSplitManager(
-          *this, metric_entity(), metric_entity_cluster())),
+      tablet_split_manager_(
+          new TabletSplitManager(*this, metric_entity(), metric_entity_cluster())),
       clone_state_manager_(CloneStateManager::Create(catalog_manager(), this, &sys_catalog())),
       snapshot_coordinator_(new MasterSnapshotCoordinator(
           catalog_manager_impl(), catalog_manager_impl(), tablet_split_manager())),

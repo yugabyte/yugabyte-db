@@ -292,6 +292,13 @@ SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = 
 DROP TABLE table1;
 DROP TABLE table2;
 
+-- Should not be able to move a single colocated table to other tablespace
+CREATE TABLE t1(a int) TABLESPACE tsp1;
+CREATE TABLE t2(a int) TABLESPACE tsp1;
+ALTER TABLE t1 SET TABLESPACE tsp2;
+DROP TABLE t1;
+DROP TABLE t2;
+
 -- A tablespace should not be dropped if any colocated tables are dependent on it
 CREATE TABLE t1 (a int) TABLESPACE tsp1;
 CREATE TABLE t2 (a int) TABLESPACE tsp1;

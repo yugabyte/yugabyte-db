@@ -25,6 +25,7 @@ import "yb/consensus/consensus_types.proto";
 import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver.proto";
 import "yb/rpc/service.proto";
 
 // Common information sent with every request from the tablet server
@@ -212,8 +213,9 @@ message TSHeartbeatRequestPB {
 
   optional int32 cluster_config_version = 8;
 
-  // List of candidate tablets for split based on tablet splitting strategy and settings.
-  repeated TabletForSplitPB DEPRECATED_tablets_for_split = 9;
+  // Field with tag 9 was called tablets_for_split. It was a list of candidate tablets for split
+  // based on tablet splitting strategy and settings.
+  reserved 9;
 
   // Physical time on tablet server
   optional fixed64 ts_physical_time = 10;
@@ -320,6 +322,10 @@ message TSHeartbeatResponsePB {
   optional uint32 xcluster_config_version = 24;
 
   optional string universe_uuid = 25;
+
+  // TODO: If this ends up being too big, consider adding a way to break this up
+  // into multiple messages.
+  optional tserver.DdlLockEntriesPB ddl_lock_entries = 26;
 }
 
 service MasterHeartbeat {

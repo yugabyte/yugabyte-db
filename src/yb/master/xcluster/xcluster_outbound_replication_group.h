@@ -13,12 +13,13 @@
 
 #pragma once
 
-#include "yb/master/xcluster/master_xcluster_types.h"
-#include "yb/master/xcluster/xcluster_catalog_entity.h"
-
 #include "yb/cdc/xcluster_types.h"
 
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 namespace yb {
 
@@ -37,9 +38,12 @@ class XClusterOutboundReplicationGroup
       public CatalogEntityWithTasks {
  public:
   struct HelperFunctions {
+    const std::function<Status()> create_sequences_data_table_func;
     const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>
         get_namespace_func;
-    const std::function<Result<std::vector<TableInfoPtr>>(const NamespaceId&)> get_tables_func;
+    const std::function<Result<std::vector<TableDesignator>>(
+        const NamespaceId&, bool include_sequences_data)>
+        get_tables_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
         const std::vector<TableId>&, const LeaderEpoch&)>
         create_xcluster_streams_func;
@@ -138,7 +142,7 @@ class XClusterOutboundReplicationGroup
   Result<std::string> GetStreamId(const NamespaceId& namespace_id, const TableId& table_id) const
       EXCLUDES(mutex_);
 
-  Result<bool> AutomaticDDLMode() const EXCLUDES(mutex_);
+  bool AutomaticDDLMode() const;
 
  private:
   friend class XClusterOutboundReplicationGroupMocked;
@@ -184,6 +188,10 @@ class XClusterOutboundReplicationGroup
 
   Result<NamespaceInfoPB> CreateNamespaceInfo(
       const NamespaceId& namespace_id, const LeaderEpoch& epoch) REQUIRES(mutex_);
+
+  Status AddTableToInitialBootstrapMapping(
+      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
   // Returns the NamespaceInfoPB for the given namespace_id. If its not found returns a NotFound
   // status. Caller must hold the WriteLock.
@@ -250,6 +258,8 @@ class XClusterOutboundReplicationGroup
   std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
 
   XClusterOutboundReplicationGroupTaskFactory& task_factory_;
+
+  bool automatic_ddl_mode_;
 
   DISALLOW_COPY_AND_ASSIGN(XClusterOutboundReplicationGroup);
 };

@@ -508,7 +508,7 @@ public class PlatformReplicationManager {
     }
   }
 
-  private class CreatePlatformBackupParams extends PlatformBackupParams {
+  public class CreatePlatformBackupParams extends PlatformBackupParams {
 
     // Whether to exclude prometheus metric data from the backup or not.
     private final boolean excludePrometheus;
@@ -517,7 +517,7 @@ public class PlatformReplicationManager {
     // Where to output the platform backup
     private final String outputDirectory;
 
-    CreatePlatformBackupParams() {
+    public CreatePlatformBackupParams() {
       this.excludePrometheus = true;
       this.excludeReleases = true;
       this.outputDirectory = replicationHelper.getBackupDir().toString();
@@ -550,12 +550,12 @@ public class PlatformReplicationManager {
     }
   }
 
-  private class RestorePlatformBackupParams extends PlatformBackupParams {
+  public class RestorePlatformBackupParams extends PlatformBackupParams {
 
     // Where to input a previously taken platform backup from.
     private final File input;
 
-    RestorePlatformBackupParams(File input) {
+    public RestorePlatformBackupParams(File input) {
       this.input = input;
     }
 

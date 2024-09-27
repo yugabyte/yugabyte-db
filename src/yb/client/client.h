@@ -402,6 +402,7 @@ class YBClient {
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
+  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                             StatusCallback callback);
@@ -1023,6 +1024,8 @@ class YBClient {
   const std::string& client_name() const;
 
   void ClearAllMetaCachesOnServer();
+
+  Status ClearMetacache(const std::string& namespace_id);
 
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the

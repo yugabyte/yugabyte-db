@@ -63,7 +63,6 @@ export const TaskFailedBanner: FC<TaskBannerCompProps> = ({
                 width={130}
               />
             </div>
-            <Divider orientation="vertical" className={commonStyles.divider} />
             <YBButton
               className={commonStyles.viewDetsailsButton}
               variant="secondary"

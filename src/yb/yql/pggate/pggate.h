@@ -1,4 +1,4 @@
-// Copyright (c) YugaByteDB, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -797,6 +797,8 @@ class PgApiImpl {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
 

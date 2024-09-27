@@ -44,6 +44,10 @@ CREATE VIEW yb_query_diagnostics_status AS
     SELECT *
     FROM yb_get_query_diagnostics_status();
 
+CREATE VIEW yb_servers_metrics AS
+    SELECT *
+    FROM yb_servers_metrics();
+
 CREATE OR REPLACE FUNCTION
   yb_is_database_colocated(check_legacy boolean DEFAULT false)
 RETURNS boolean

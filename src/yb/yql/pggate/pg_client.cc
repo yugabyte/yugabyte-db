@@ -159,7 +159,7 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
 
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
-  ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
+  ash_metadata->set_top_level_node_id(ash_config.top_level_node_id, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
   ash_metadata->set_pid(pg_metadata->pid);
@@ -401,7 +401,7 @@ class PgClient::Impl : public BigDataFetcher {
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
     ash_config_ = *ash_config;
-    memcpy(ash_config_.yql_endpoint_tserver_uuid, tserver_shared_data_.tserver_uuid(), 16);
+    memcpy(ash_config_.top_level_node_id, tserver_shared_data_.tserver_uuid(), 16);
 
     return Status::OK();
   }
@@ -706,9 +706,8 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  PerformResultFuture PerformAsync(
-      tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
-    auto& arena = operations->front()->arena();
+  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+    auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     AshMetadataToPB(ash_config_, options);
     req.set_session_id(session_id_);
@@ -720,7 +719,7 @@ class PgClient::Impl : public BigDataFetcher {
       promise->set_value(result);
     };
 
-    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
+    auto data = std::make_shared<PerformData>(&arena, std::move(operations), callback);
     if (exchange_ && exchange_->ReadyToSend()) {
       constexpr size_t kHeaderSize = sizeof(uint64_t);
       auto out = exchange_->Obtain(kHeaderSize + req.SerializedSize());
@@ -778,9 +777,9 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
-  void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
+  void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
     auto& ops = *req->mutable_ops();
-    for (auto& op : *operations) {
+    for (const auto& op : operations) {
       auto& union_op = ops.emplace_back();
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
@@ -1227,6 +1226,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
+    tserver::PgServersMetricsRequestPB req;
+    tserver::PgServersMetricsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ServersMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1453,8 +1461,8 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
 }
 
 PerformResultFuture PgClient::PerformAsync(
-    tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
-  return impl_->PerformAsync(options, operations);
+    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+  return impl_->PerformAsync(options, std::move(operations));
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {
@@ -1544,6 +1552,10 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
   return impl_->TabletsMetadata();
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
+  return impl_->ServersMetrics();
 }
 
 void PerformExchangeFuture::wait() const {

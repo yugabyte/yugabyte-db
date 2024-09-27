@@ -214,13 +214,12 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
-          TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForServer,
           TaskType.UpdatePlacementInfo,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
           TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateUniverseIntent,
@@ -231,11 +230,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -249,10 +247,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
-          TaskType.HandleKubernetesNamespacedServices,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckNodeSafeToDelete,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
@@ -266,7 +263,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedRemovePodTaskResults() {
     return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -288,9 +284,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
-          TaskType.UpdateConsistencyCheck,
-          TaskType.HandleKubernetesNamespacedServices,
           TaskType.UpdatePlacementInfo,
+          TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
@@ -319,7 +314,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

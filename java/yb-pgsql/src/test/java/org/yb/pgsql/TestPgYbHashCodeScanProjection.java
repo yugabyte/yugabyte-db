@@ -16,6 +16,7 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.junit.Assume.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -200,7 +201,18 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
 
   @Test
   public void testScans() throws Exception {
+    // (DB-12741) This test works with connection manager provided that its
+    // debug and query logs are disabled, which allows the logInterceptor to
+    // capture the needed information for this test to pass. Skip the test for
+    // the time being when connection manager is enabled.
+    assumeFalse(BasePgSQLTest.CONFIGURABLE_DEBUG_LOGS_NEEDED, isTestRunningWithConnectionManager());
+
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+    // Set up the necessary aspects of the test after restarting the cluster.
+    if (isConnMgrWarmupRoundRobinMode()) {
+      logInterceptor.detach();
+      setUp();
+    }
     try (Statement stmt = connection.createStatement()) {
       // Note: In case of using yb_hash_code function all its argument columns are fetched.
       //       They are required for row recheck.

@@ -470,6 +470,7 @@ TEST_F(XClusterColocatedNonTransactionalIndexTest, CreateIndexWithWorkload) {
 }
 
 class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
+ protected:
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -541,9 +542,21 @@ class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {
   }
 };
 
+class XClusterDbScopedYsqlIndexProducerOnlyTest : public XClusterYsqlIndexProducerOnlyTest {
+ protected:
+  Status SetupUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<TableId>& producer_table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) override {
+    RETURN_NOT_OK(CheckpointReplicationGroup());
+    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    return Status::OK();
+  }
+};
+
 // Make sure indexes are checkpointed to the End of WAL.
-TEST_F_EX(
-    XClusterDbScopedYsqlIndexTest, IndexCheckpointLocation, XClusterYsqlIndexProducerOnlyTest) {
+TEST_F(XClusterDbScopedYsqlIndexProducerOnlyTest, IndexCheckpointLocation) {
   ASSERT_OK(CheckpointReplicationGroup());
 
   for (; row_count_ < 100; row_count_++) {

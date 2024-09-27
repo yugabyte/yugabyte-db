@@ -512,6 +512,12 @@ extern bool yb_bypass_cond_recheck;
 extern bool yb_make_next_ddl_statement_nonbreaking;
 
 /*
+ * Enables nonincrementing DDL mode in which a DDL statement is considered as a
+ * "same version DDL" and therefore will not cause catalog version to increment.
+ */
+extern bool yb_make_next_ddl_statement_nonincrementing;
+
+/*
  * Allows capability to disable prefetching in a PLPGSQL FOR loop over a query.
  * This is introduced for some test(s) with lazy evaluation in READ COMMITTED
  * isolation that require the read rpcs to be issued over multiple invocations
@@ -558,8 +564,6 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
-extern int yb_update_num_cols_to_compare;
-extern int yb_update_max_cols_size_to_compare;
 /*
  * Enables scalar array operation pushdown.
  * If true, planner sends supported expressions to DocDB for evaluation
@@ -676,6 +680,7 @@ extern bool yb_use_hash_splitting_by_default;
 
 typedef struct YBUpdateOptimizationOptions
 {
+	bool is_enabled;
 	int num_cols_to_compare;
 	int max_cols_size_to_compare;
 } YBUpdateOptimizationOptions;
@@ -1012,19 +1017,21 @@ bool YbCatalogVersionTableInPerdbMode();
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
  * type enum LockWaitPolicy to the "docdb_wait_policy" of type enum WaitPolicy as defined in
  * common.proto.
+ * Note: enum WaitPolicy values are equal to enum LockWaitPolicy.
+ *       That is why function maps enum LockWaitPolicy into enum LockWaitPolicy.
  *
  * The semantics of the WaitPolicy enum differ slightly from those of the traditional LockWaitPolicy
  * in Postgres, as explained in common.proto. This is for historical reasons. WaitPolicy in
  * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
  * appropriate conflict-resolution steps for the different row-level lock policies.
  *
- * In isolation level SERIALIZABLE, this function sets docdb_wait_policy to WAIT_BLOCK as
+ * In isolation level SERIALIZABLE, this function returns WAIT_BLOCK as
  * this is the only policy currently supported for SERIALIZABLE.
  *
  * However, if wait queues aren't enabled in the following cases:
  *  * Isolation level SERIALIZABLE
  *  * The user requested LockWaitBlock in another isolation level
- * this function sets docdb_wait_policy to WAIT_ERROR (which actually uses the "Fail on Conflict"
+ * this function returns WAIT_ERROR (which actually uses the "Fail on Conflict"
  * conflict management policy instead of "no wait" semantics, as explained in "enum WaitPolicy" in
  * common.proto).
  *
@@ -1034,7 +1041,7 @@ bool YbCatalogVersionTableInPerdbMode();
  * 2. In isolation level REPEATABLE READ for a pg_wait_policy of LockWaitError because NOWAIT
  *    is not supported.
  */
-void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy);
+LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
@@ -1201,5 +1208,7 @@ extern bool YbUseFastBackwardScan();
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
+
+SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
 
 #endif /* PG_YB_UTILS_H */

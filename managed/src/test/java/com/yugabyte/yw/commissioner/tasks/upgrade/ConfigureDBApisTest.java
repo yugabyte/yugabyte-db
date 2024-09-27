@@ -75,6 +75,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.DropTable, TaskType.DropTable)
         .addTasks(TaskType.ChangeAdminPassword)
         .addTasks(TaskType.ChangeAdminPassword)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)

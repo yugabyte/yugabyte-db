@@ -81,6 +81,7 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_db_clone);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_bool(TEST_fail_clone_pg_schema);
@@ -660,6 +661,7 @@ class PgCloneTest : public PostgresMiniClusterTest {
   std::unique_ptr<pgwrapper::PGConn> source_conn_;
 
   const std::string kSourceNamespaceName = "testdb";
+  const std::string kSourceTableName = "t1";
   const std::string kTargetNamespaceName1 = "testdb_clone1";
   const std::string kTargetNamespaceName2 = "testdb_clone2";
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
@@ -711,14 +713,22 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_VECTORS_EQ(rows, kRows);
 
   // Verify first clone only has the first row.
-  auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_EQ(row, kRows[0]);
+  // Use a scope here and below so we can drop the cloned databases after.
+  {
+    auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, kRows[0]);
+  }
 
   // Verify second clone has both rows.
-  auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-  rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
+  {
+    auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+    rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_VECTORS_EQ(rows, kRows);
+  }
+
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
@@ -786,6 +796,82 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfter
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
   auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_EQ(row, kRows[0]);
+}
+
+// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
+// inherited from pg_dump.
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropIndex)) {
+  // Clone to a time before a drop index and check that the index exists with correct data.
+  // 1. Create a table and load some data.
+  // 2. Create an index on the table.
+  // 3. Mark time t.
+  // 4. Drop index.
+  // 5. Clone the database as of time t.
+  // 6. Check the index exists in the clone with the correct data.
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}};
+  const std::string kIndexName = "t1_v_idx";
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
+
+  ASSERT_OK(source_conn_->ExecuteFormat("CREATE INDEX $0 ON t1(value)", kIndexName));
+
+  // Scans should use the index now.
+  auto is_index_scan = ASSERT_RESULT(
+      source_conn_->HasIndexScan(Format("SELECT * FROM t1 where value=$0", std::get<1>(kRows[0]))));
+  LOG(INFO) << "Scans uses index scan " << is_index_scan;
+  ASSERT_TRUE(is_index_scan);
+
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+
+  // Verify table t1 exists in the clone database and that the index is used to fetch the data.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  is_index_scan = ASSERT_RESULT(
+      target_conn.HasIndexScan(Format("SELECT * FROM t1 WHERE value=$0", std::get<1>(kRows[0]))));
+  ASSERT_TRUE(is_index_scan);
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>(
+      Format("SELECT * FROM t1 WHERE value=$0", std::get<1>(kRows[0])))));
+  ASSERT_EQ(row, kRows[0]);
+}
+
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequences)) {
+  int kIncrement = 5;
+  // First 3 rows will be inserted into source database while the 4th row will be inserted in the
+  // clone. The 4th row takes into account that the first "FLAGS_ysql_sequence_cache_minval" values
+  // are allocated to the source DB cache.
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {
+      {1, 1}, {2, 6}, {3, 11}, {4, kIncrement * FLAGS_ysql_sequence_cache_minval + 1}};
+  // Create a sequence and attach it to the column value.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE SEQUENCE value_data INCREMENT $0 OWNED BY t1.value", kIncrement));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "ALTER TABLE t1 ALTER COLUMN value SET DEFAULT nextval('value_data')"));
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", std::get<0>(kRows[0])));
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", std::get<0>(kRows[1])));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+  // Verify table t1 exists in the clone database and rows are as of ht1.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, kRows[0]);
+  // Insert a row on both source and clone. Check the sequence behavior in both.
+  auto key = std::get<0>(kRows[2]);
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", key));
+  row = ASSERT_RESULT(
+      (source_conn_->FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
+  ASSERT_EQ(row, kRows[2]);
+  key = std::get<0>(kRows[3]);
+  ASSERT_OK(target_conn.ExecuteFormat("INSERT INTO t1 (key) VALUES ($0)", key));
+  row = ASSERT_RESULT(
+      (target_conn.FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
+  ASSERT_EQ(row, kRows[3]);
 }
 
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
@@ -1000,20 +1086,25 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CreateTabl
   ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (1, 1)"));
 
   auto clone_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
-  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2 (k int, v1 int)"));
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2 (k int, value int)"));
+  ASSERT_OK(source_conn_->Execute("CREATE INDEX i2 on t2(value)"));
 
-  // Clone before t2 was created and test that we can recreate t2.
+  // Clone before t2 and i2 were created.
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       clone_time));
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
 
-  // Should be able to create new tables and indexes and insert into all tables.
+  // Test that we can recreate dropped tables and create brand new tables, with indexes.
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, value int)"));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t3 (k int, value int)"));
   ASSERT_OK(target_conn.Execute("CREATE INDEX i1 on t1(value)"));
+  ASSERT_OK(target_conn.Execute("CREATE INDEX i2 on t2(value)"));
+  ASSERT_OK(target_conn.Execute("CREATE INDEX i3 on t3(value)"));
+
+  // Test that we can insert into all tables.
   ASSERT_OK(target_conn.Execute("INSERT INTO t1 VALUES (2, 2)"));
   ASSERT_OK(target_conn.Execute("INSERT INTO t2 VALUES (1, 1)"));
-  ASSERT_OK(target_conn.Execute("CREATE TABLE t3 (k int, v1 int)"));
   ASSERT_OK(target_conn.Execute("INSERT INTO t3 VALUES (1, 1)"));
 }
 

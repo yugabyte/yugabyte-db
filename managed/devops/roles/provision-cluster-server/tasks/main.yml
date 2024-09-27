@@ -119,7 +119,8 @@
 - name: setup-postgres-cgroups
   include_role:
     name: setup-cgroup
-  when: not systemd_option
+  when: not systemd_option or (ansible_os_family == 'RedHat' and
+        ansible_distribution_major_version < "9")
 
 - name: Grant traverse permission on yb_home directory
   file:

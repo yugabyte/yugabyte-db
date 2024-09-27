@@ -154,7 +154,7 @@ To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Oper
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:

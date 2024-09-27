@@ -466,7 +466,7 @@ export const getEnabledConfigActions = (
   isXClusterConfigAllBidirectional: boolean,
   drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
-  if (drConfigState === DrConfigState.ERROR) {
+  if (drConfigState === DrConfigState.FAILED) {
     // When DR config is in error state, we only allow the DR config delete operation.
     return [];
   }
@@ -508,12 +508,15 @@ export const getEnabledConfigActions = (
     }
   };
 
+  const restrictedActions = new Set<XClusterConfigAction>();
+  if (isXClusterConfigAllBidirectional) {
+    restrictedActions.add(XClusterConfigAction.RESTART);
+  }
+
   const enabledActions = getEnabledConfigActionsBasedOnStatus(replication.status);
 
-  // Remove `RESTART` action if all tables in the config are in bidirectional replication.
-  return isXClusterConfigAllBidirectional
-    ? enabledActions.filter((action) => action !== XClusterConfigAction.RESTART)
-    : enabledActions;
+  // Filter out the actions which have been restricted due to select circumstances.
+  return enabledActions.filter((action) => !restrictedActions.has(action));
 };
 
 /**

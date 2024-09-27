@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
@@ -414,6 +415,28 @@ message SysClusterConfigEntryPB {
   // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
   // the VisitSysCatalog path.
   optional string universe_uuid = 8;
+}
+
+message SysObjectLockEntryPB {
+  message LockTypesPB { repeated TableLockType lock_type = 1; }
+  message ObjectLocksMapPB {
+    // object_id -> Locks taken
+    map<uint64, LockTypesPB> objects = 1;
+  }
+  message DBObjectsMapPB {
+    // db_id -> map of objects/locks-taken
+    map<uint64, ObjectLocksMapPB> dbs = 1;
+  }
+  message SessionDBMapPB {
+    // session_id -> DB ...
+    map<uint64, DBObjectsMapPB> sessions = 1;
+  }
+
+  // host_uid is part of the key. Thus not stored
+  // explicitly in this proto again.
+
+  // incarnation id -> Session ...
+  map<uint64, SessionDBMapPB> incarnations = 1;
 }
 
 message SysXClusterConfigEntryPB {
@@ -929,7 +952,7 @@ message SysTServerEntryPB {
     UNSPECIFIED = 0;
     // TServer may be live. Clients need to check the in-memory last heartbeat time to be sure the
     // TServer has heartbeated recently.
-    MAYBE_LIVE = 1;
+    LIVE = 1;
     // TServer has not heartbeated recently.
     UNRESPONSIVE = 2;
     // Another tserver which started more recently has registered with a conflicting
