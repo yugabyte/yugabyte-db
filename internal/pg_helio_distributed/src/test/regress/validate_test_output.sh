@@ -67,6 +67,12 @@ for validationFile in $(ls ./expected/*.out); do
     # Extract the actual collection ID (we'll use this to check for uniqueness).
     collectionIdOutput=$(grep 'helio_api.next_collection_id' $sqlFilePath)
 
+    # Check if the sql file contains invalid schema names."
+    if grep -qE 'mongo_catalog|mongo_api_v1|mongo_data' "$sqlFilePath"; then
+        echo "Test file has invalid schema '${sqlFile}'";
+        exit 1
+    fi
+
     # Fail if not found.
     if [ "$collectionIdOutput" == "" ]; then
         echo "Test file prefix Validation failed on '${sqlFile}': Please ensure test files set helio_api.next_collection_id";
