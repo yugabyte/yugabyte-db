@@ -1,7 +1,7 @@
 ---
-title: Disk Full
-linkTitle: Disk Full
-headerTitle: Disk Full issue
+title: Disk full
+linkTitle: Disk full
+headerTitle: Disk full issue
 description: Learn how to address YugaByteDB node data drive full issues
 menu:
   preview:
