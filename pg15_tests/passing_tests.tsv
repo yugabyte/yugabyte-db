@@ -66,6 +66,7 @@ JAVA	org.yb.pgsql.TestPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
 JAVA	org.yb.pgsql.TestPgRegressFeaturePartition
 JAVA	org.yb.pgsql.TestPgRegressForeignData
+JAVA	org.yb.pgsql.TestPgRegressGenerated
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressHashIndex
