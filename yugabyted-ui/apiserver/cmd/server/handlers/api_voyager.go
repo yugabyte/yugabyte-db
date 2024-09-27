@@ -23,6 +23,7 @@ const LOGGER_FILE_NAME = "api_voyager"
 
 // Gets one row for each unique migration_uuid, and also gets the highest migration_phase and
 // invocation for import/export
+// Need to ignore rows with migration_phase 3 i.e. schema analysis
 const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = 
 `SELECT * FROM (
     SELECT migration_uuid, highest_export_phase, MAX(invocation_sequence) AS
@@ -30,7 +31,8 @@ const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string =
         SELECT migration_uuid, MAX(migration_phase) AS
         highest_export_phase, invocation_sequence FROM (
             SELECT migration_uuid, migration_phase, invocation_sequence FROM
-            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE migration_phase <= 4
+            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE
+                migration_phase <= 4 AND migration_phase != 3
         ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
     ) AS highest_export_rows GROUP BY migration_uuid, highest_export_phase
 ) AS export FULL JOIN 
@@ -309,6 +311,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             }
         }
 
+        // Get complexity from assessment if it exists.
         rowStruct.Complexity = "N/A"
         assessment := <-assessmentFuture
         if assessment.Error != nil {
@@ -363,30 +366,39 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
             continue
         }
 
-        if database.Status == pgtype.Present {
+        if database.Status == pgtype.Present && database.String != "" {
             rowStruct.SourceDb.Database = database.String
         }
-        if schema.Status == pgtype.Present {
+        if schema.Status == pgtype.Present && schema.String != "" {
             rowStruct.SourceDb.Schema = schema.String
         }
-        if status.Status == pgtype.Present {
+        if status.Status == pgtype.Present && status.String != "" {
             rowStruct.Status = status.String
         }
-        if exportDir.Status == pgtype.Present {
+        if exportDir.Status == pgtype.Present && exportDir.String != "" {
             rowStruct.Voyager.ExportDir = exportDir.String
         }
 
-        rowStruct.Status = "In Progress"
-        if migrationPhase == 6 && invocationSeq >= 2 {
-            rowStruct.Status = "Complete"
+        // Use rowStruct.Status, fall back to invocationSeq, assume >= 2 means completed.
+        isCompleted := false
+        if rowStruct.Status == "" {
+            isCompleted = invocationSeq >= 2
+        } else {
+            isCompleted = rowStruct.Status == "COMPLETED"
         }
-        
+
+        // If migration assessment is completed => Assessment
+        // If schema migration not completed => Schema migration
+        // If data migration not completed => Data migration
+        // Otherwise migration is complete => Completed
         if migrationPhase <= 1 {
             rowStruct.Progress = "Assessment"
-        } else if migrationPhase <= 5 {
+        } else if migrationPhase < 5 || (migrationPhase <= 5 && !isCompleted) {
             rowStruct.Progress = "Schema migration"
-        } else {
+        } else if migrationPhase < 6 || (migrationPhase <= 6 && !isCompleted) {
             rowStruct.Progress = "Data migration"
+        } else {
+            rowStruct.Progress = "Completed"
         }
 
         rowStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
@@ -399,25 +411,25 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
             err = json.Unmarshal([]byte(dbIp.String), &dbIpStruct)
             if dbIpStruct.SourceDbIp != "" {
                 rowStruct.SourceDb.Ip = dbIpStruct.SourceDbIp
-                if dbPort.Status == pgtype.Present {
+                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
                     rowStruct.SourceDb.Port = strconv.FormatInt(int64(dbPort.Int), 10)
                 }
-                if dbType.Status == pgtype.Present {
+                if dbType.Status == pgtype.Present && dbType.String != "" {
                     rowStruct.SourceDb.Engine = dbType.String
                 }
-                if dbVersion.Status == pgtype.Present {
+                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
                     rowStruct.SourceDb.Version = dbVersion.String
                 }
             }
             if dbIpStruct.TargetDbIp != "" {
                 rowStruct.TargetCluster.Ip = dbIpStruct.TargetDbIp
-                if dbPort.Status == pgtype.Present && rowStruct.TargetCluster.Ip != "" {
+                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
                     rowStruct.TargetCluster.Port = strconv.FormatInt(int64(dbPort.Int), 10)
                 }
-                if dbPort.Status == pgtype.Present && rowStruct.TargetCluster.Ip != "" {
+                if dbType.Status == pgtype.Present && dbType.String != "" {
                     rowStruct.TargetCluster.Engine = dbType.String
                 }
-                if dbVersion.Status == pgtype.Present {
+                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
                     rowStruct.TargetCluster.Version = dbVersion.String
                 }
             }
@@ -440,6 +452,7 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
         // For now, only support offline migrations
         rowStruct.MigrationType = "Offline"
 
+        // This value will be overwritten by the complexity in the migration assessment
         rowStruct.Complexity = "N/A"
         if complexity.Status == pgtype.Present {
             rowStruct.Complexity = complexity.String

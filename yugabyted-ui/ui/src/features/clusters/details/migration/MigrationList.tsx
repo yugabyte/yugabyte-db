@@ -2,6 +2,7 @@ import React, { FC, useMemo } from "react";
 import {
   Box,
   Divider,
+  Link,
   MenuItem,
   Paper,
   Typography,
@@ -282,16 +283,18 @@ export const MigrationList: FC<MigrationListProps> = ({
         display: migrationColSettings.engineVersion || migrationColSettings.host_ip,
         customBodyRender: (sourceDB: (typeof migrationNewData)[number]["source_db"]) => {
           return (
-            <Box onClick={() => setSourceDBSelection(sourceDB)} className={classes.linkBox}>
+            <Box>
               {migrationColSettings.engineVersion && (
                 <Typography variant="body2">
                   {getDbEngineString(sourceDB?.engine)} {sourceDB?.version}
                 </Typography>
               )}
               {migrationColSettings.host_ip && (
-                <Typography variant="body2">
-                  {sourceDB?.ip}{sourceDB?.port ? ":" + sourceDB.port : ""}
-                </Typography>
+                <Link onClick={() => setSourceDBSelection(sourceDB)} >
+                  <Typography variant="body2">
+                    {sourceDB?.ip}{sourceDB?.port ? ":" + sourceDB.port : ""}
+                  </Typography>
+                </Link>
               )}
             </Box>
           );
@@ -341,11 +344,13 @@ export const MigrationList: FC<MigrationListProps> = ({
                  migrationColSettings.exportDir,
         customBodyRender: (voyager: (typeof migrationNewData)[number]["voyager"]) => {
           return (
-            <Box onClick={() => setVoyagerSelection(voyager)} className={classes.linkBox}>
+            <Box>
               {migrationColSettings.machine_ip && (
-                <Typography variant="body2">
-                  {voyager?.machine_ip}
-                </Typography>
+                <Link onClick={() => setVoyagerSelection(voyager)}>
+                  <Typography variant="body2">
+                    {voyager?.machine_ip}
+                  </Typography>
+                </Link>
               )}
               {migrationColSettings.os && <Typography variant="body2">{voyager?.os}</Typography>}
               {migrationColSettings.availableDiskSpace && (
@@ -439,6 +444,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                     ? BadgeVariant.Light
                     : migrations[dataIndex].progress === "Schema migration"
                     ? BadgeVariant.InProgress
+                    : migrations[dataIndex].progress === "Data migration"
+                    ? BadgeVariant.Info
                     : migrations[dataIndex].progress === "Completed"
                     ? BadgeVariant.Success
                     : undefined
