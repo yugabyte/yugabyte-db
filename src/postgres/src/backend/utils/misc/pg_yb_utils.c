@@ -1389,6 +1389,7 @@ bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 bool yb_enable_fkey_catcache = true;
+int yb_insert_on_conflict_read_batch_size = 1024;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.is_enabled = false,

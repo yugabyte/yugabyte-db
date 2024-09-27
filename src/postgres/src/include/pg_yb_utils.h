@@ -563,6 +563,11 @@ extern int yb_parallel_range_size;
  */
 extern bool yb_enable_fkey_catcache;
 
+/*
+ * INSERT ON CONFLICT batching read batch size.
+ */
+extern int yb_insert_on_conflict_read_batch_size;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
