@@ -35,6 +35,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
@@ -56,6 +58,8 @@ using std::string;
 using std::vector;
 using namespace std::literals;
 
+using yb::tserver::ListTabletsForTabletServerResponsePB;
+
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
@@ -67,11 +71,32 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
   }
 
   void CreateTable(const string& tablename) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute(CreateTableStmt(tablename)));
+  }
+
+  // After the master is restarted, it will continue the rollback operations of ongoing
+  // DDL transactions. This will increment the table schema version and then propagate
+  // to all tablet leaders via AlterSchema RPC. The new master leader needs some time to
+  // learn who are the tablet leaders. If the new master does not know who is the leader
+  // of a tablet, AlterSchema RPC will fail and the tablet leader can have a stale schema
+  // version, leading to schema version mismatch error like: expected 3, got 4.
+  // This function adds a delay that is proportional to the number of tablets found in the
+  // cluster.
+  void WaitForMasterToLearnAllTabletLeaders() const {
+    std::unordered_set<std::string> tablet_id_set;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = CHECK_RESULT(cluster_->GetTablets(ts));
+      for (const auto& tablet : tablets) {
+        tablet_id_set.insert(tablet.tablet_id());
+      }
+    }
+    SleepFor(300ms * tablet_id_set.size() * RegularBuildVsDebugVsSanitizers(1, 3, 3));
   }
 
   void RestartMaster() {
@@ -83,7 +108,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
       auto s = cluster_->GetIsMasterLeaderServiceReady(master);
       return s.ok();
     }, MonoDelta::FromSeconds(60), "Wait for Master to be ready."));
-    SleepFor(5s);
+    WaitForMasterToLearnAllTabletLeaders();
+    LOG(INFO) << "Restarted Master";
   }
 
   void SetFlagOnAllProcessesWithRollingRestart(const string& flag) {
