@@ -27,9 +27,22 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
 // Get the table name along with the YSQL schema name if this is a YSQL table.
 std::string GetFullTableName(const TableInfo& table_info);
 
-Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
-    const CatalogManager& catalog_manager, const NamespaceId& namespace_id);
+struct TableDesignator {
+  TableId id;
+  TableName name;
+  PgSchemaName pgschema_name;
+
+  std::string ToString() const;
+};
+
+TableDesignator GetDesignatorFromTableInfo(const TableInfo& table_info);
+
+Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
+    bool include_sequences_data);
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
+
+bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info);
 
 }  // namespace yb::master

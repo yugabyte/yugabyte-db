@@ -4,7 +4,7 @@ package api.v2.controllers;
 
 import api.v2.handlers.ContinuousBackupHandler;
 import api.v2.models.ContinuousBackup;
-import api.v2.models.ContinuousBackupCreateSpec;
+import api.v2.models.ContinuousBackupSpec;
 import api.v2.models.ContinuousRestoreSpec;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
@@ -16,7 +16,7 @@ public class ContinuousBackupApiControllerImp extends ContinuousBackupApiControl
 
   @Override
   public ContinuousBackup createContinuousBackup(
-      Http.Request request, UUID cUUID, ContinuousBackupCreateSpec continuousBackupCreateSpec)
+      Http.Request request, UUID cUUID, ContinuousBackupSpec continuousBackupCreateSpec)
       throws Exception {
     return cbHandler.createContinuousBackup(request, cUUID, continuousBackupCreateSpec);
   }
@@ -29,10 +29,7 @@ public class ContinuousBackupApiControllerImp extends ContinuousBackupApiControl
 
   @Override
   public ContinuousBackup editContinuousBackup(
-      Http.Request request,
-      UUID cUUID,
-      UUID bUUID,
-      ContinuousBackupCreateSpec continuousBackupCreateSpec)
+      Http.Request request, UUID cUUID, UUID bUUID, ContinuousBackupSpec continuousBackupCreateSpec)
       throws Exception {
     return cbHandler.editContinuousBackup(request, cUUID, bUUID, continuousBackupCreateSpec);
   }

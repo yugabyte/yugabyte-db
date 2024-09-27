@@ -80,6 +80,8 @@ class YsqlTablegroupManager {
 
     std::unordered_set<TableId> ChildTableIds() const;
 
+    void ReplaceTablet(const TabletInfoPtr& tablet) { tablet_ = tablet; }
+
     std::string ToString() const;
 
    private:
@@ -92,7 +94,7 @@ class YsqlTablegroupManager {
 
     const TablegroupId tablegroup_id_;
     const NamespaceId database_id_;
-    const TabletInfoPtr tablet_;
+    TabletInfoPtr tablet_;
 
     TablegroupInfo(YsqlTablegroupManager* mgr,
                    const TablegroupId& tablegroup_id,

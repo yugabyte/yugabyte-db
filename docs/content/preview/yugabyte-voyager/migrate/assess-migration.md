@@ -190,18 +190,18 @@ After the bulk assessment is completed, the top-level directory specified using 
 
 ```sh
 /bulk-assessment-dir/
-├── bulkAssessmentReport.html
-├── bulkAssessmentReport.json
+├── bulk_assessment_report.html
+├── bulk_assessment_report.json
 ├── DBNAME-SCHEMA1-export-dir/
 │    └── assessment/
 │          └── reports/
-│                 ├── assessmentReport.html
-│                 └── assessmentReport.json
+│                 ├── migration_assessment_report.html
+│                 └── migration_assessment_report.json
 ├── SID-SCHEMA2-export-dir/
 │    └── assessment/
 │          └── reports/
-│                 ├── assessmentReport.html
-│                 └── assessmentReport.json
+│                 ├── migration_assessment_report.html
+│                 └── migration_assessment_report.json
 └── logs/
      └── yb-voyager-assess-migration-bulk.log
 ```

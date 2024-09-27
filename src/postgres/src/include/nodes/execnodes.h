@@ -1375,6 +1375,11 @@ typedef struct ModifyTableState
 	/* YB specific attributes. */
 	bool yb_fetch_target_tuple; /* Perform initial scan to populate
 								 * the ybctid. */
+	/*
+	 * If enabled, execution seeks to optimize secondary index updates,
+	 * constraint checks etc. This field is set to false for single row txns.
+	 */
+	bool yb_is_update_optimization_enabled;
 } ModifyTableState;
 
 /* ----------------

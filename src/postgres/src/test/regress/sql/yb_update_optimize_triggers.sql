@@ -3,7 +3,7 @@ SET yb_explain_hide_non_deterministic_fields TO true;
 SET yb_update_num_cols_to_compare TO 50;
 SET yb_update_max_cols_size_to_compare TO 10240;
 
--- This test requires the t-server gflag 'ysql_skip_row_lock_for_update' to be set to false.
+-- This test requires the t-server preview/auto flag 'ysql_yb_update_optimizations_infra' to be enabled.
 
 CREATE OR REPLACE FUNCTION musical_chair() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

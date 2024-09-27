@@ -30,7 +30,7 @@
 #include "nodes/plannodes.h"
 
 extern void YbComputeModifiedColumnsAndSkippableEntities(
-	ModifyTable *plan, ResultRelInfo *resultRelInfo, EState *estate,
+	ModifyTableState *mtstate, ResultRelInfo *resultRelInfo, EState *estate,
 	HeapTuple oldtuple, HeapTuple newtuple, Bitmapset **updatedCols,
 	bool beforeRowUpdateTriggerFired);
 

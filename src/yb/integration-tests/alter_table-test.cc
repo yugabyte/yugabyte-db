@@ -307,14 +307,14 @@ INSTANTIATE_TEST_CASE_P(BatchSize, ReplicatedAlterTableTest, ::testing::Values(1
 // on the TS handling the tablet of the altered table.
 // TODO: create and verify multiple tablets when the client will support that.
 TEST_P(AlterTableTest, TestTabletReports) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 }
 
 // Verify that adding an existing column will return an "already present" error
 TEST_P(AlterTableTest, TestAddExistingColumn) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 
   {
     Status s = AddNewI32Column(kTableName, "c1");
@@ -322,7 +322,7 @@ TEST_P(AlterTableTest, TestAddExistingColumn) {
     ASSERT_STR_CONTAINS(s.ToString(), "The column already exists: c1");
   }
 
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 }
 
 // Adding a nullable column with no default value should be equivalent
@@ -348,7 +348,7 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 // Verify that, if a tablet server is down when an alter command is issued,
 // it will eventually receive the command when it restarts.
 TEST_P(AlterTableTest, TestAlterOnTSRestart) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 
   ShutdownTS();
 
@@ -374,13 +374,13 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
   // Restart the TS and wait for the new schema
   RestartTabletServer();
   ASSERT_OK(WaitAlterTableCompletion(kTableName, 50));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 }
 
 // Verify that nothing is left behind on cluster shutdown with pending async tasks
 TEST_P(AlterTableTest, TestShutdownWithPendingTasks) {
   DontVerifyClusterBeforeNextTearDown();
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 
   ShutdownTS();
 
@@ -402,7 +402,7 @@ TEST_P(AlterTableTest, TestRestartTSDuringAlter) {
     return;
   }
 
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 
   Status s = AddNewI32Column(kTableName, "new-i32", MonoDelta::FromMilliseconds(1));
   ASSERT_TRUE(s.IsTimedOut());
@@ -415,7 +415,7 @@ TEST_P(AlterTableTest, TestRestartTSDuringAlter) {
 
   // Wait for the new schema
   ASSERT_OK(WaitAlterTableCompletion(kTableName, 50));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
+  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
 }
 
 TEST_P(AlterTableTest, TestGetSchemaAfterAlterTable) {

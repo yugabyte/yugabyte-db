@@ -11,6 +11,8 @@ import { DrConfig, DrConfigState } from '../dtos';
 
 interface DrConfigDetailsProps {
   drConfig: DrConfig;
+  isTableInfoLoading: boolean;
+  isTableInfoError: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -35,7 +37,11 @@ type DrConfigTab = typeof DrConfigTab[keyof typeof DrConfigTab];
 const DEFAULT_TAB = DrConfigTab.METRICS;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config';
 
-export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
+export const DrConfigDetails = ({
+  drConfig,
+  isTableInfoLoading,
+  isTableInfoError
+}: DrConfigDetailsProps) => {
   const [currentTab, setCurrentTab] = useState<DrConfigTab>(DEFAULT_TAB);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
@@ -74,6 +80,9 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           <ReplicationTables
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
+            isTableInfoLoading={isTableInfoLoading}
+            isTableInfoError={isTableInfoError}
+            // add isTableInfoAvailable prop that defaults to true. Show spinner if waiting for it.
             drConfigUuid={drConfig.uuid}
           />
         </TabPanel>

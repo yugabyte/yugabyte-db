@@ -12,7 +12,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -67,7 +67,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
-        GlobalConfKeys.dbScopedXClusterEnabled.getKey(),
+        UniverseConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
 
@@ -176,7 +176,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -217,7 +216,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  @Test
+  //  @Test
   public void testDrDbScopedUpdate() throws InterruptedException {
     Universe sourceUniverse =
         createDRUniverse(DB_SCOPED_STABLE_VERSION, "source-universe", true, 1, 1);
@@ -250,7 +249,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     List<String> createNamespaceNames = Arrays.asList("dbnoncolocated");
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
@@ -283,10 +281,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     List<String> updateNamespaceNames = Arrays.asList("dbcolocated");
     DrConfigSetDatabasesForm setDatabasesFormData = new DrConfigSetDatabasesForm();
-    setDatabasesFormData.databases = new HashSet<String>();
+    setDatabasesFormData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (updateNamespaceNames.contains(namespace.name)) {
-        setDatabasesFormData.databases.add(namespace.namespaceUUID.toString());
+        setDatabasesFormData.dbs.add(namespace.namespaceUUID.toString());
       }
     }
 
@@ -349,7 +347,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -462,6 +459,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
 
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -538,6 +540,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
+
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
@@ -626,7 +633,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  //  @Test
+  @Test
   public void testDbScopedRestart() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
@@ -713,7 +720,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {

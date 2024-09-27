@@ -200,7 +200,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       const TabletInfoPtr& tablet,
       const std::string& sender_uuid,
       const ConsensusStatePB& consensus_state,
-      const ReportedTabletPB& report);
+      const ReportedTabletPB& report,
+      const LeaderEpoch& epoch);
 
   void UpdateTabletReplicaInLocalMemory(
       TSDescriptor* ts_desc,
@@ -231,11 +232,13 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   Status ValidateTServerUniverseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
 
-  Result<TSDescriptorPtr> GetTSDescriptorOrRespond(
-      const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
+  Result<TSDescriptorPtr> UpdateAndReturnTSDescriptorOrRespond(
+      const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   Result<TSDescriptorPtr> RegisterTServerOrRespond(
-      const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
+      const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   Status FillHeartbeatResponseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
@@ -316,7 +319,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   if (!FillHeartbeatResponseOrRespond(*req, resp, &rpc).ok()) {
     return;
   }
-  auto desc_result = GetTSDescriptorOrRespond(*req, resp, &rpc);
+  auto desc_result = UpdateAndReturnTSDescriptorOrRespond(l.epoch(), *req, resp, &rpc);
   if (!desc_result.ok()) {
     return;
   }
@@ -1023,7 +1026,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
           << " using config reported by " << ts_desc->permanent_uuid()
           << " to that committed in log index " << cstate.config().opid_index()
           << " with leader state from term " << cstate.current_term();
-    UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report);
+    UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report, epoch);
 
     // 6d(iv). Update the consensus state. Don't use 'prev_cstate' after this.
     LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
@@ -1048,7 +1051,8 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
       LOG(INFO) << Format("Tablet replica map differs from reported consensus state. Replica map: "
           "$0. Reported consensus state: $1.", *tablet->GetReplicaLocations(),
           cstate.ShortDebugString());
-      UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report);
+      UpdateTabletReplicasAfterConfigChange(
+          tablet, ts_desc->permanent_uuid(), cstate, report, epoch);
     } else {
       UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report, tablet);
     }
@@ -1156,7 +1160,8 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     const TabletInfoPtr& tablet,
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
-    const ReportedTabletPB& report) {
+    const ReportedTabletPB& report,
+    const LeaderEpoch& epoch) {
   auto replica_locations = std::make_shared<TabletReplicaMap>();
   auto prev_rl = tablet->GetReplicaLocations();
 
@@ -1178,7 +1183,7 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
       LOG(INFO) << "Tablet server has never reported in. Registering the ts using "
                 << "the raft config. Peer: " << peer.ShortDebugString()
                 << "; Tablet: " << tablet->ToString();
-      Status s = catalog_manager_->RegisterTsFromRaftConfig(peer);
+      Status s = catalog_manager_->RegisterTsFromRaftConfig(peer, epoch);
       if (!s.ok()) {
         LOG(WARNING) << "Could not register ts from raft config: " << s
                     << " Skip updating the replica map.";
@@ -1456,10 +1461,18 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
 }
 
 Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
-    const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc) {
+    const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
+    rpc::RpcContext* rpc) {
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
-      req, server_->MakeCloudInfoPB(), &server_->proxy_cache());
+      req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
+    // Populate the response to bootstrap object locks.
+    // TODO: This would also need to be done whenever a tablet server with an
+    // expired lease gets a new lease. YSQL Leases are yet to be implemented.
+    // when that happens, we should re-bootstrap the TServer and bump up
+    // it's incarnation id (similar to how instance_seqno behaves across restarts).
+    LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
+    server_->catalog_manager_impl()->ExportObjectLockInfo(resp->mutable_ddl_lock_entries());
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());
@@ -1482,13 +1495,14 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
   return status;
 }
 
-Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::GetTSDescriptorOrRespond(
-    const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc) {
+Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
+    const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
+    rpc::RpcContext* rpc) {
   if (req.has_registration()) {
-    return RegisterTServerOrRespond(req, resp, rpc);
+    return RegisterTServerOrRespond(epoch, req, resp, rpc);
   }
 
-  auto desc_result = server_->ts_manager()->LookupAndUpdateTSFromHeartbeat(req);
+  auto desc_result = server_->ts_manager()->LookupAndUpdateTSFromHeartbeat(req, epoch);
   if (desc_result.ok()) {
     return std::move(*desc_result);
   }

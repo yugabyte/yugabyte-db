@@ -66,6 +66,7 @@ JAVA	org.yb.pgsql.TestPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
 JAVA	org.yb.pgsql.TestPgRegressFeaturePartition
 JAVA	org.yb.pgsql.TestPgRegressForeignData
+JAVA	org.yb.pgsql.TestPgRegressGenerated
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressHashIndex
@@ -79,11 +80,13 @@ JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial3
+JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial4
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressParallel
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgAuth
 JAVA	org.yb.pgsql.TestPgRegressPgForeignData
+JAVA	org.yb.pgsql.TestPgRegressPgIndex
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
@@ -95,10 +98,10 @@ JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 JAVA	org.yb.pgsql.TestPgRegressPushdownKey
 JAVA	org.yb.pgsql.TestPgRegressReplicaIdentity
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
+JAVA	org.yb.pgsql.TestPgRegressRules#testPgRegressRules
 JAVA	org.yb.pgsql.TestPgRegressTAQO
 JAVA	org.yb.pgsql.TestPgRegressTable
 JAVA	org.yb.pgsql.TestPgRegressTablegroup
-JAVA	org.yb.pgsql.TestPgRegressTablespaces
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsHypopg
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgCron
@@ -378,8 +381,8 @@ integration-tests_xcluster_ddl_replication-test	XClusterDDLReplicationTest.Block
 integration-tests_xcluster_ddl_replication-test	XClusterDDLReplicationTest.CreateTable
 integration-tests_xcluster_ddl_replication-test	XClusterDDLReplicationTest.DisableSplitting
 integration-tests_xcluster_ddl_replication-test	XClusterDDLReplicationTest.ExactlyOnceReplication
-integration-tests_xcluster_outbound_replication_group-itest	XClusterOutboundReplicationGroupTest.Repair
-integration-tests_xcluster_outbound_replication_group-itest	XClusterOutboundReplicationGroupTest.RepairWithYbAdmin
+integration-tests_xcluster_outbound_replication_group-itest	*/XClusterOutboundReplicationGroupParameterized.Repair/*
+integration-tests_xcluster_outbound_replication_group-itest	*/XClusterOutboundReplicationGroupParameterized.RepairWithYbAdmin/*
 integration-tests_xcluster_safe_time_service-test	XClusterSafeTimeServiceTest.ComputeSafeTime
 integration-tests_xcluster_safe_time_service-test	XClusterSafeTimeServiceTest.ComputeSafeTimeWithFilters
 integration-tests_xcluster_safe_time_service-test	XClusterSafeTimeServiceTest.ComputeSafeTimeWithFiltersSingleTablet

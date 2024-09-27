@@ -620,3 +620,17 @@ CREATE TABLE t1 PARTITION OF t (
     CONSTRAINT t1_pkey PRIMARY KEY ((id) HASH)
 )
 FOR VALUES IN ('1');
+
+-- Test that LZ4 TOAST compression is enabled
+SET default_toast_compression = 'lz4';
+CREATE TEMP TABLE default_compression_table (
+	a TEXT
+);
+INSERT INTO default_compression_table VALUES (repeat('a', 10000));
+SELECT pg_column_compression(a) FROM default_compression_table;
+CREATE TEMP TABLE lz4_table (
+	a TEXT COMPRESSION lz4
+);
+INSERT INTO lz4_table VALUES (repeat('a', 10000));
+SELECT pg_column_compression(a) FROM lz4_table;
+SHOW default_toast_compression;

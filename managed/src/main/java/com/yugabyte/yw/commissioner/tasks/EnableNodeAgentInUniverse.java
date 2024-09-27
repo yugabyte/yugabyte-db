@@ -24,7 +24,7 @@ public class EnableNodeAgentInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (!nodeAgentEnabler.shouldInstallNodeAgents(universe)) {
+    if (!nodeAgentEnabler.shouldInstallNodeAgents(universe, true /* Ignore universe lock */)) {
       throw new IllegalStateException(
           String.format(
               "Universe %s is not in state to migrate to use node agents",
@@ -59,7 +59,7 @@ public class EnableNodeAgentInUniverse extends UniverseDefinitionTaskBase {
       createUpdateUniverseFieldsTask(
           u -> {
             UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-            universeDetails.disableNodeAgent = false;
+            universeDetails.installNodeAgent = false;
           });
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();

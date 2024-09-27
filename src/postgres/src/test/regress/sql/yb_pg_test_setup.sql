@@ -23,6 +23,15 @@ GRANT ALL ON SCHEMA public TO public;
 -- of these tables in later tests, as it may affect other tests.)
 --
 
+CREATE TABLE CHAR_TBL(f1 char(4));
+
+INSERT INTO CHAR_TBL (f1) VALUES
+  ('a'),
+  ('ab'),
+  ('abcd'),
+  ('abcd    ');
+VACUUM CHAR_TBL;
+
 -- TODO(jason): see if "PRIMARY KEY" could be removed, which is not present in
 -- the upstream test.
 CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);

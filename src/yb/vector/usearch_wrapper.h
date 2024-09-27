@@ -27,29 +27,10 @@
 
 namespace yb::vectorindex {
 
-namespace detail {
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexImpl;
-}  // namespace detail
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndex : public VectorIndexBase<
-    detail::UsearchIndexImpl<Vector, DistanceResult>, Vector, DistanceResult> {
+template <class Vector, class DistanceResult>
+class UsearchIndexFactory {
  public:
-  explicit UsearchIndex(const HNSWOptions& options);
-  virtual ~UsearchIndex();
- private:
-  using Impl = detail::UsearchIndexImpl<Vector, DistanceResult>;
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
- public:
-  UsearchIndexFactory() = default;
-
-  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    return std::make_unique<UsearchIndex<Vector, DistanceResult>>(this->hnsw_options_);
-  }
+  static VectorIndexIfPtr<Vector, DistanceResult> Create(const HNSWOptions& options);
 };
 
 }  // namespace yb::vectorindex

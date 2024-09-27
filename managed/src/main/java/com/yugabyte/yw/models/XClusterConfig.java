@@ -1020,6 +1020,16 @@ public class XClusterConfig extends Model {
     super.update();
   }
 
+  @Transactional
+  @Override
+  public boolean delete() {
+    // If the dr config has no other xCluster configs, then delete the dr config as well.
+    if (this.drConfig != null && this.drConfig.getXClusterConfigs().size() == 1) {
+      this.drConfig.delete();
+    }
+    return super.delete();
+  }
+
   public static XClusterConfig getValidConfigOrBadRequest(
       Customer customer, UUID xClusterConfigUUID) {
     XClusterConfig xClusterConfig = getOrBadRequest(xClusterConfigUUID);

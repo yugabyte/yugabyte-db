@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -84,8 +83,8 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
                   : null);
         }
 
-        createDeleteDrConfigEntryTask(drConfig)
-            .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
+        // When the last xCluster config associated with this DR config is deleted, the dr config
+        // entry will be deleted as well.
 
         if (targetUniverse != null) {
           createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())

@@ -306,8 +306,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   // in Nov/2023.
   @Test
   public void testSeekNextEstimationIndexScan() throws Exception {
+    // (DB-12674) Allow tests to run in round-robin allocation mode when
+    // using a pool of warmed up connections to allow for deterministic results.
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     boolean isConnMgr = isTestRunningWithConnectionManager();
+    if (isConnMgr) {
+      setUp();
+    }
     try (Statement stmt = this.connection2.createStatement()) {
       // Warmup the cache when Connection Manager is enabled.
       // Additionally warmup all backends in round-robin mode.
@@ -432,8 +437,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   @Test
   public void testSeekNextEstimationBitmapScan() throws Exception {
     assumeTrue("BitmapScan has much fewer nexts in fastdebug (#22052)", TestUtils.isReleaseBuild());
+
+    // (DB-12674) Allow tests to run in round-robin allocation mode when
+    // using a pool of warmed up connections to allow for deterministic results.
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     boolean isConnMgr = isTestRunningWithConnectionManager();
+    if (isConnMgr) {
+      setUp();
+    }
     try (Statement stmt = this.connection2.createStatement()) {
       stmt.execute("SET work_mem TO '1GB'"); /* avoid getting close to work_mem */
       // Warmup the cache when Connection Manager is enabled.

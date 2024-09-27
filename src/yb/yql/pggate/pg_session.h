@@ -283,6 +283,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
+  Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,

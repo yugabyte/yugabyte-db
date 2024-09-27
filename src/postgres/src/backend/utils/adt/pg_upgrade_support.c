@@ -274,3 +274,14 @@ binary_upgrade_set_next_tablegroup_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
+
+Datum
+binary_upgrade_set_next_tablegroup_default(PG_FUNCTION_ARGS)
+{
+	bool		next_tablegroup_default = PG_GETARG_BOOL(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_tablegroup_default = next_tablegroup_default;
+
+	PG_RETURN_VOID();
+}

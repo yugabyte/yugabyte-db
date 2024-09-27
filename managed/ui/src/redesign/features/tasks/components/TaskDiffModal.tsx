@@ -35,7 +35,6 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   // Differ to be used for the current task.
   const [differ, setDiffer] = useState<BaseDiff<DiffComponentProps, any> | null>(null);
 
-
   const { data: auditData } = useQuery(
     ['auditData', currentTask?.id],
     () => getAuditLog(currentTask!.id),
@@ -43,12 +42,13 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
       enabled: !!currentTask && visible,
       select: (data) => data.data,
       onError: () => {
-              toast.error(t('diffDetailsNotFound'));
-            }
-    });
+        toast.error(t('diffDetailsNotFound'));
+      }
+    }
+  );
 
-  const taskDiffDetails = mapAuditLogToTaskDiffApiResp(auditData);
-  
+  const taskDiffDetails = useMemo(() => mapAuditLogToTaskDiffApiResp(auditData), [auditData]);
+
   useEffect(() => {
     if (!currentTask || !visible || !taskDiffDetails) {
       return;

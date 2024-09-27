@@ -268,6 +268,10 @@ public class Metrics {
     map = new HashMap<>();
     for (JsonElement subelem : obj.getAsJsonArray("metrics")) {
       JsonObject metric = subelem.getAsJsonObject();
+      if (metric.has("table_name")) {
+        // Skip table-specific metrics.
+        continue;
+      }
       if (metric.has("value")) {
         JsonPrimitive value = metric.get("value").getAsJsonPrimitive();
         if (value.isBoolean()) {

@@ -14,13 +14,17 @@ import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.directory.api.ldap.model.cursor.CursorException;
-import org.apache.directory.api.ldap.model.cursor.EntryCursor;
+import org.apache.directory.api.ldap.model.cursor.SearchCursor;
 import org.apache.directory.api.ldap.model.entry.Attribute;
 import org.apache.directory.api.ldap.model.entry.Entry;
 import org.apache.directory.api.ldap.model.entry.Value;
-import org.apache.directory.api.ldap.model.exception.LdapException;
+import org.apache.directory.api.ldap.model.message.SearchRequest;
+import org.apache.directory.api.ldap.model.message.SearchRequestImpl;
+import org.apache.directory.api.ldap.model.message.SearchResultDone;
 import org.apache.directory.api.ldap.model.message.SearchScope;
+import org.apache.directory.api.ldap.model.message.controls.PagedResults;
+import org.apache.directory.api.ldap.model.message.controls.PagedResultsImpl;
+import org.apache.directory.api.ldap.model.name.Dn;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 
 @Slf4j
@@ -52,74 +56,100 @@ public class QueryLdapServer extends AbstractTaskBase {
   // query the LDAP server, extract user and group data, and organize it into a user-to-group
   // mapping.
   private void queryLdap(LdapNetworkConnection connection, boolean enabledDetailedLogs)
-      throws LdapException, CursorException {
+      throws Exception {
     LdapUnivSyncFormData ldapUnivSyncFormData = taskParams().ldapUnivSyncFormData;
-    EntryCursor cursor =
-        connection.search(
-            ldapUnivSyncFormData.getLdapBasedn(),
-            ldapUnivSyncFormData.getLdapSearchFilter(),
-            SearchScope.SUBTREE,
-            "*");
+    byte[] cookie = null;
+    Integer ldapQueryPageSize = confGetter.getGlobalConf(GlobalConfKeys.ldapPageQuerySize);
 
-    while (cursor.next()) {
-      Entry entry = cursor.get();
-      if (enabledDetailedLogs) {
-        log.debug("LDAP user entry retrieved: {}", entry.toString());
-      }
+    do {
+      // Setup the paged results control
+      PagedResults pagedResultsControl = new PagedResultsImpl();
+      pagedResultsControl.setSize(ldapQueryPageSize); // Adjust page size as needed
+      pagedResultsControl.setCookie(cookie);
 
-      // search for the userfield in the DN
-      String dn = entry.getDn().toString();
-      String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
-      if (StringUtils.isEmpty(userKey)) {
+      SearchRequest searchRequest = new SearchRequestImpl();
+      searchRequest.setBase(new Dn(ldapUnivSyncFormData.getLdapBasedn()));
+      searchRequest.setFilter(ldapUnivSyncFormData.getLdapSearchFilter());
+      searchRequest.setScope(SearchScope.SUBTREE);
+      searchRequest.addAttributes("*", "+");
+      searchRequest.addControl(pagedResultsControl);
+
+      // Execute the search
+      SearchCursor cursor = connection.search(searchRequest);
+
+      while (cursor.next()) {
+        // Retrieve the entry from the cursor
+        Entry entry = cursor.getEntry();
+
         if (enabledDetailedLogs) {
-          log.debug(
-              "User dn {} does not contain {}(userfield). Fetching user attributes...",
+          log.debug("LDAP user entry retrieved: {}", entry.toString());
+        }
+
+        // Process the entry's DN and attributes
+        String dn = entry.getDn().toString();
+        String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+
+        if (StringUtils.isEmpty(userKey)) {
+          ArrayList<Attribute> userAttributes = new ArrayList<>(entry.getAttributes());
+          if (enabledDetailedLogs) {
+            log.debug("Number of attributes retrieved: " + userAttributes.size());
+            log.debug(
+                "User dn {} does not contain {}(userfield). Fetching user attributes...",
+                dn,
+                ldapUnivSyncFormData.getLdapUserfield());
+          }
+
+          // If userKey not found in DN, search in the attributes
+          for (Attribute attribute : userAttributes) {
+            if (attribute.getId().equalsIgnoreCase(ldapUnivSyncFormData.getLdapUserfield())) {
+              userKey = attribute.getString();
+              if (enabledDetailedLogs) {
+                log.debug("Iterating attribute here: " + attribute);
+                log.debug(
+                    "User name: {} retrieved from user attribute: {}", userKey, attribute.getId());
+              }
+            }
+          }
+        }
+
+        if (enabledDetailedLogs && StringUtils.isEmpty(userKey)) {
+          log.warn(
+              "User {} does not contain '{}'(userfield). Skipping the user from the sync...",
               dn,
               ldapUnivSyncFormData.getLdapUserfield());
         }
 
-        // if userfield is not found in the DN, search in the rest of the attributes
-        ArrayList<Attribute> userAttributes = new ArrayList<>(entry.getAttributes());
-        if (userAttributes != null) {
-          for (Attribute ae : userAttributes) {
-            if (ae.getId().trim().equalsIgnoreCase(ldapUnivSyncFormData.getLdapUserfield())) {
-              userKey = ae.getString();
-              if (enabledDetailedLogs) {
-                log.debug("User name: {} retrieved from user attribute: {}", userKey, ae.getId());
+        // Process groups
+        if (!StringUtils.isEmpty(userKey)) {
+          Attribute groups = entry.get(ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());
+          List<String> groupKeys = new ArrayList<>();
+          if (groups != null) {
+            for (Value group : groups) {
+              String groupKey =
+                  retrieveValueFromDN(group.getString(), ldapUnivSyncFormData.getLdapGroupfield());
+              if (ldapUnivSyncFormData.getGroupsToSync().size() == 0
+                  || ldapUnivSyncFormData.getGroupsToSync().contains(groupKey)) {
+                groupKeys.add(groupKey);
+
+                if (!taskParams().ldapGroups.contains(groupKey)) {
+                  taskParams().ldapGroups.add(groupKey);
+                }
               }
             }
           }
-          // Clear the list to remove all elements
-          userAttributes.clear();
-          // Set the reference to null to allow for garbage collection
-          userAttributes = null;
+          taskParams().userToGroup.put(userKey, groupKeys);
         }
       }
-      if (enabledDetailedLogs && StringUtils.isEmpty(userKey)) {
-        log.warn(
-            "User {} does not contain '{}'(userfield). Skipping the user from the sync...",
-            dn,
-            ldapUnivSyncFormData.getLdapUserfield());
-      }
 
-      if (!StringUtils.isEmpty(userKey)) {
-        Attribute groups = entry.get(ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());
-        List<String> groupKeys = new ArrayList<>();
-        if (groups != null) {
-          for (Value group : groups) {
-            String groupKey =
-                retrieveValueFromDN(group.getString(), ldapUnivSyncFormData.getLdapGroupfield());
-            groupKeys.add(groupKey);
+      // Retrieve the PagedResultsControl from the SearchResultDone
+      SearchResultDone searchResultDone = cursor.getSearchResultDone();
+      PagedResultsImpl responseControl =
+          (PagedResultsImpl) searchResultDone.getControl(PagedResultsImpl.OID);
+      cookie = (responseControl != null) ? responseControl.getCookie() : null;
 
-            if (!taskParams().ldapGroups.contains(groupKey)) {
-              // If not present, add it to the list
-              taskParams().ldapGroups.add(groupKey);
-            }
-          }
-        }
-        taskParams().userToGroup.put(userKey, groupKeys);
-      }
-    }
+      cursor.close();
+
+    } while (cookie != null && cookie.length > 0); // Continue pagination if cookie exists
   }
 
   @Override

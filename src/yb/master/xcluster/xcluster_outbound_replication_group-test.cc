@@ -16,6 +16,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client_mock.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
@@ -29,6 +30,8 @@
 
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
+DECLARE_bool(TEST_xcluster_enable_ddl_replication);
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 using namespace std::placeholders;
 using testing::_;
@@ -62,11 +65,13 @@ class XClusterOutboundReplicationGroupTaskFactoryMocked
 class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicationGroup {
  public:
   explicit XClusterOutboundReplicationGroupMocked(
-      const xcluster::ReplicationGroupId& replication_group_id, HelperFunctions helper_functions,
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
+      HelperFunctions helper_functions,
       XClusterOutboundReplicationGroupTaskFactoryMocked& task_factory)
       : XClusterOutboundReplicationGroup(
-            replication_group_id, {}, std::move(helper_functions), /*tasks_tracker=*/nullptr,
-            task_factory) {
+            replication_group_id, outbound_replication_group_pb, std::move(helper_functions),
+            /*tasks_tracker=*/nullptr, task_factory) {
     remote_client_ = std::make_shared<client::MockXClusterRemoteClientHolder>();
   }
 
@@ -168,6 +173,30 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     }
   }
 
+  void SetUp() {
+    YBTest::SetUp();
+    LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
+        UseAutomaticMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
+        UseAutomaticMode();
+  }
+
+  virtual bool UseAutomaticMode() {
+    // Except for parameterized tests, we currently default to semi-automatic mode.
+    return false;
+  }
+
+  // How many extra streams/tables a namespace has
+  int OverheadStreamsCount() {
+    if (!UseAutomaticMode()) {
+      return 0;
+    }
+    // So far automatic mode has one extra stream for each namespace: sequences_data.
+    // TODO(jhe): increment this when you add the DDL queue table
+    return 1;
+  }
+
   void CreateNamespace(const NamespaceName& namespace_name, const NamespaceId& namespace_id) {
     scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(namespace_id, /*tasks_tracker=*/nullptr);
     auto l = ns->LockForWrite();
@@ -190,11 +219,13 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     pb.set_table_type(PGSQL_TABLE_TYPE);
     l.Commit();
 
+    std::lock_guard l2(mutex_);
     namespace_tables[namespace_id].push_back(table_info);
     return table_info;
   }
 
   void DropTable(const NamespaceId& namespace_id, const TableId& table_id) {
+    std::lock_guard l(mutex_);
     auto it = std::find_if(
         namespace_tables[namespace_id].begin(), namespace_tables[namespace_id].end(),
         [&table_id](const auto& table_info) { return table_info->id() == table_id; });
@@ -205,8 +236,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   std::shared_ptr<XClusterOutboundReplicationGroupMocked> CreateReplicationGroup() {
+    SysXClusterOutboundReplicationGroupEntryPB outbound_replication_group_pb{};
+    outbound_replication_group_pb.set_automatic_ddl_mode(UseAutomaticMode());
     return std::make_shared<XClusterOutboundReplicationGroupMocked>(
-        kReplicationGroupId, helper_functions, *task_factory);
+        kReplicationGroupId, outbound_replication_group_pb, helper_functions, *task_factory);
   }
 
   scoped_refptr<CDCStreamInfo> CreateXClusterStream(const TableId& table_id) {
@@ -215,7 +248,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return make_scoped_refptr<CDCStreamInfo>(stream_id);
   }
 
-  std::unordered_map<NamespaceId, std::vector<TableInfoPtr>> namespace_tables;
+  mutable std::shared_mutex mutex_;
+  std::unordered_map<NamespaceId, std::vector<TableInfoPtr>> namespace_tables GUARDED_BY(mutex_);
   std::unordered_map<NamespaceId, scoped_refptr<NamespaceInfo>> namespace_infos;
   std::unordered_set<xrepl::StreamId> xcluster_streams;
   std::unique_ptr<ThreadPool> thread_pool;
@@ -223,10 +257,34 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   std::unique_ptr<XClusterOutboundReplicationGroupTaskFactoryMocked> task_factory;
 
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
+      .create_sequences_data_table_func =
+          [this]() {
+            (void)CreateTable(
+                kPgSequencesDataNamespaceId, kPgSequencesDataTableId, "sequences_data", "");
+            return Status::OK();
+          },
       .get_namespace_func =
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
-          [this](const NamespaceId& namespace_id) { return namespace_tables[namespace_id]; },
+          [this](const NamespaceId& namespace_id, bool include_sequences_data) {
+            std::lock_guard l(mutex_);
+            auto tables = namespace_tables[namespace_id];
+            std::vector<TableDesignator> table_designators;
+            for (const auto& table_info : tables) {
+              table_designators.push_back(GetDesignatorFromTableInfo(*table_info));
+            }
+            if (include_sequences_data) {
+              auto sequences_tables = namespace_tables[kPgSequencesDataNamespaceId];
+              if (sequences_tables.size() > 0) {
+                TableDesignator table_designator;
+                table_designator.id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
+                table_designator.name = "sequences_data";
+                table_designator.pgschema_name = "";
+                table_designators.push_back(table_designator);
+              }
+            }
+            return table_designators;
+          },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();
@@ -277,35 +335,54 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,
-      bool skip_schema_name_check = false) {
-    ASSERT_FALSE(ns_info.initial_bootstrap_required);
-    ASSERT_EQ(ns_info.table_infos.size(), 2);
+      bool sequences_data_included, bool skip_schema_name_check = false) {
+    EXPECT_FALSE(ns_info.initial_bootstrap_required);
+    ASSERT_EQ(ns_info.table_infos.size(), sequences_data_included ? 3 : 2);
     std::set<TableId> table_ids;
     for (const auto& table_info : ns_info.table_infos) {
+      SCOPED_TRACE("table name: " + table_info.table_name);
       if (table_info.table_name == kTableName1) {
         ASSERT_EQ(table_info.table_id, table_id1);
       } else if (table_info.table_name == kTableName2) {
         ASSERT_EQ(table_info.table_id, table_id2);
+      } else if (table_info.table_name == "sequences_data") {
+        ASSERT_TRUE(xcluster::IsSequencesDataAlias(table_info.table_id));
       } else {
         FAIL() << "Unexpected table name: " << table_info.table_name;
       }
-      if (skip_schema_name_check) {
-        // Make sure it is not empty.
-        ASSERT_FALSE(table_info.pg_schema_name.empty());
+      if (!xcluster::IsSequencesDataAlias(table_info.table_id)) {
+        if (skip_schema_name_check) {
+          // Make sure it is not empty.
+          EXPECT_FALSE(table_info.pg_schema_name.empty());
+        } else {
+          EXPECT_EQ(table_info.pg_schema_name, kPgSchemaName);
+        }
       } else {
-        ASSERT_EQ(table_info.pg_schema_name, kPgSchemaName);
+        EXPECT_TRUE(table_info.pg_schema_name.empty());
       }
-      ASSERT_FALSE(table_info.stream_id.IsNil());
-      ASSERT_TRUE(xcluster_streams.contains(table_info.stream_id));
+      EXPECT_FALSE(table_info.stream_id.IsNil());
+      EXPECT_TRUE(xcluster_streams.contains(table_info.stream_id));
 
       table_ids.insert(table_info.table_id);
     }
-    ASSERT_TRUE(table_ids.contains(table_id1));
-    ASSERT_TRUE(table_ids.contains(table_id2));
+    EXPECT_TRUE(table_ids.contains(table_id1));
+    EXPECT_TRUE(table_ids.contains(table_id2));
   }
 };
 
-TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
+class XClusterOutboundReplicationGroupMockedParameterized
+    : public XClusterOutboundReplicationGroupMockedTest,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  bool UseAutomaticMode() override { return GetParam(); }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    AutoMode, XClusterOutboundReplicationGroupMockedParameterized, ::testing::Values(true));
+INSTANTIATE_TEST_CASE_P(
+    SemiMode, XClusterOutboundReplicationGroupMockedParameterized, ::testing::Values(false));
+
+TEST_P(XClusterOutboundReplicationGroupMockedParameterized, TestMultipleTable) {
   CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
   CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
   auto outbound_rg_ptr = CreateReplicationGroup();
@@ -318,17 +395,28 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
   auto ns_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info_opt.has_value());
 
-  // We should have 2 streams now.
-  ASSERT_EQ(xcluster_streams.size(), 2);
+  if (UseAutomaticMode()) {
+    std::lock_guard l(mutex_);
+    // In automatic mode, sequences_data should have been created.
+    ASSERT_GT(namespace_tables[kPgSequencesDataNamespaceId].size(), 0);
+  }
+
+  // We should have 2 streams for normal tables now.
+  ASSERT_EQ(xcluster_streams.size(), 2 + OverheadStreamsCount());
 
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      kTableId1, kTableId2, *ns_info_opt, /*skip_schema_name_check=*/true));
+      kTableId1, kTableId2, *ns_info_opt, /*sequences_data_included=*/UseAutomaticMode(),
+      /*skip_schema_name_check=*/true));
   for (const auto& table_info : ns_info_opt->table_infos) {
     // Order is not deterministic so search with the table name.
     if (table_info.table_name == kTableName1) {
-      ASSERT_EQ(table_info.pg_schema_name, kPgSchemaName);
+      EXPECT_EQ(table_info.pg_schema_name, kPgSchemaName);
+    } else if (table_info.table_name == kTableName2) {
+      EXPECT_EQ(table_info.pg_schema_name, kPgSchemaName2);
+    } else if (table_info.table_name == "sequences_data") {
+      EXPECT_EQ(table_info.pg_schema_name, "");
     } else {
-      ASSERT_EQ(table_info.pg_schema_name, kPgSchemaName2);
+      FAIL() << "unknown tablename " << table_info.table_name;
     }
   }
 
@@ -338,7 +426,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
   ASSERT_TRUE(ns_info_opt.has_value());
 
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      kTableId1, kTableId2, *ns_info_opt, /*skip_schema_name_check=*/true));
+      kTableId1, kTableId2, *ns_info_opt, /*sequences_data_included=*/false,
+      /*skip_schema_name_check=*/true));
   ASSERT_EQ(ns_info_opt->table_infos[0].pg_schema_name, kPgSchemaName2);
   ASSERT_EQ(ns_info_opt->table_infos[1].pg_schema_name, kPgSchemaName);
   ASSERT_EQ(ns_info_opt->table_infos[0].table_name, kTableName2);
@@ -355,7 +444,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
   ASSERT_TRUE(xcluster_streams.empty());
 }
 
-TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
+TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddDeleteNamespaces) {
   CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
   CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName);
 
@@ -389,8 +478,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
 
   ASSERT_OK(outbound_rg.AddNamespacesSync(kEpoch, {kNamespaceId}, kTimeout));
 
-  // We should have 2 streams now.
-  ASSERT_EQ(xcluster_streams.size(), 2);
+  // We should have 2 normal streams now.
+  EXPECT_EQ(xcluster_streams.size(), 2 + OverheadStreamsCount());
   auto xcluster_streams_initial = xcluster_streams;
 
   // Make sure invalid namespace id is handled correctly.
@@ -401,13 +490,14 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
 
   auto ns1_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns1_info_opt.has_value());
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(kTableId1, kTableId2, *ns1_info_opt));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
+      kTableId1, kTableId2, *ns1_info_opt, /*sequences_data_included=*/UseAutomaticMode()));
 
   // Add the second namespace.
   ASSERT_OK(outbound_rg.AddNamespaceSync(kEpoch, namespace_id_2, kTimeout));
 
-  // We should have 4 streams now.
-  ASSERT_EQ(xcluster_streams.size(), 4);
+  // We should have 4 normal streams now.
+  ASSERT_EQ(xcluster_streams.size(), 4 + 2 * OverheadStreamsCount());
 
   // The info of the first namespace should not change.
   auto ns1_info_dup = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
@@ -417,16 +507,18 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   // Validate the seconds namespace.
   auto ns2_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(namespace_id_2));
   ASSERT_TRUE(ns2_info_opt.has_value());
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(ns2_table_id_1, ns2_table_id_2, *ns2_info_opt));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
+      ns2_table_id_1, ns2_table_id_2, *ns2_info_opt,
+      /*sequences_data_included=*/UseAutomaticMode()));
 
   ASSERT_OK(outbound_rg.RemoveNamespace(kEpoch, kNamespaceId, /*target_master_addresses=*/{}));
   ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
 
   // We should only have only the streams from second namespace.
-  ASSERT_EQ(xcluster_streams.size(), 2);
+  ASSERT_EQ(xcluster_streams.size(), 2 + OverheadStreamsCount());
 
-  // new_xcluster_streams and all_xcluster_streams should not overlap.
+  // New_xcluster_streams and all_xcluster_streams should not overlap.
   for (const auto& stream : xcluster_streams) {
     ASSERT_FALSE(xcluster_streams_initial.contains(stream));
   }
@@ -443,7 +535,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   ASSERT_TRUE(xcluster_streams.empty());
 }
 
-TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup) {
+TEST_P(XClusterOutboundReplicationGroupMockedParameterized, CreateTargetReplicationGroup) {
   CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
 
   auto outbound_rg_ptr = CreateReplicationGroup();
@@ -452,12 +544,18 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
 
   ASSERT_OK(outbound_rg.AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
 
-  std::vector<xrepl::StreamId> streams{xcluster_streams.begin(), xcluster_streams.end()};
+  std::vector<xrepl::StreamId> expected_streams{xcluster_streams.begin(), xcluster_streams.end()};
+  std::vector<TableId> expected_tables{kTableId1};
+  if (UseAutomaticMode()) {
+    expected_tables.push_back(xcluster::GetSequencesDataAliasForNamespace(kNamespaceId));
+  }
   EXPECT_CALL(
-      xcluster_client, SetupDbScopedUniverseReplication(
-                           kReplicationGroupId, _, std::vector<NamespaceName>{kNamespaceName},
-                           std::vector<NamespaceId>{kNamespaceId}, std::vector<TableId>{kTableId1},
-                           streams, /*automatic_ddl_mode=*/false))
+      xcluster_client,
+      SetupDbScopedUniverseReplication(
+          kReplicationGroupId, _, std::vector<NamespaceName>{kNamespaceName},
+          std::vector<NamespaceId>{kNamespaceId},
+          ::testing::UnorderedElementsAreArray(expected_tables),
+          ::testing::UnorderedElementsAreArray(expected_streams), UseAutomaticMode()))
       .Times(AtLeast(1));
 
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
@@ -512,7 +610,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
       SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::REPLICATING);
 }
 
-TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
+TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddTable) {
   auto table_info1 = CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
   CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
 
@@ -520,15 +618,15 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
 
   ASSERT_OK(outbound_rg->AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
   ASSERT_TRUE(outbound_rg->HasNamespace(kNamespaceId));
-  ASSERT_EQ(xcluster_streams.size(), 2);
+  EXPECT_EQ(xcluster_streams.size(), 2 + OverheadStreamsCount());
 
   auto ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
-  ASSERT_EQ(ns_info->table_infos.size(), 2);
+  EXPECT_EQ(ns_info->table_infos.size(), 2 + OverheadStreamsCount());
 
   // Same table should not get added twice.
   ASSERT_OK(outbound_rg->AddTable(table_info1, kEpoch));
 
-  ASSERT_EQ(ns_info->table_infos.size(), 2);
+  ASSERT_EQ(ns_info->table_infos.size(), 2 + OverheadStreamsCount());
 
   const TableName table_3 = "table3";
   const TableId table_id_3 = "table_id_3";
@@ -536,10 +634,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
 
   ASSERT_OK(outbound_rg->AddTable(table_info3, kEpoch));
 
-  ASSERT_EQ(xcluster_streams.size(), 3);
+  ASSERT_EQ(xcluster_streams.size(), 3 + OverheadStreamsCount());
   ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info.has_value());
-  ASSERT_EQ(ns_info->table_infos.size(), 3);
+  ASSERT_EQ(ns_info->table_infos.size(), 3 + OverheadStreamsCount());
 }
 
 // If we create a table during checkpoint, it should fail.

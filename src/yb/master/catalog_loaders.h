@@ -120,6 +120,7 @@ DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB,     catalo
 DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB,        catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB, catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB,   catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(ObjectLock,    std::string, SysObjectLockEntryPB,    catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(Role,       RoleName,    SysRoleEntryPB,
     catalog_manager_->permissions_manager()->mutex());
 DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,

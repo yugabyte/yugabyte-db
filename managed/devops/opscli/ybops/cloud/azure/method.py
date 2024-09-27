@@ -131,11 +131,7 @@ class AzureReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
         super(AzureReplaceRootVolumeMethod, self).__init__(base_command)
 
     def _mount_root_volume(self, host_info, volume):
-        curr_root_vol = host_info["root_volume"]
         self.cloud.mount_disk(host_info, volume)
-        disk_del = self.cloud.get_admin().delete_disk(curr_root_vol)
-        disk_del.wait()
-        logging.info("[app] Successfully deleted old OS disk {}".format(curr_root_vol))
 
     def _host_info_with_current_root_volume(self, args, host_info):
         return (host_info, host_info.get("root_volume"))
@@ -312,7 +308,7 @@ class AzureDeleteRootVolumesMethod(DeleteRootVolumesMethod):
         super(AzureDeleteRootVolumesMethod, self).__init__(base_command)
 
     def delete_volumes(self, args):
-        pass
+        self.cloud.delete_volumes(args)
 
 
 class AzurePauseInstancesMethod(AbstractInstancesMethod):

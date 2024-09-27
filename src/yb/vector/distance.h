@@ -16,10 +16,12 @@
 #include <cmath>
 #include <type_traits>
 
+#include "yb/common/vector_types.h"
+
+#include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
-#include "yb/common/vector_types.h"
 #include "yb/vector/graph_repr_defs.h"
 #include "yb/vector/coordinate_types.h"
 
@@ -167,14 +169,6 @@ struct VertexWithDistance {
     return YB_STRUCT_TO_STRING(vertex_id, distance);
   }
 
-  bool operator ==(const VertexWithDistance& other) const {
-    return vertex_id == other.vertex_id && distance == other.distance;
-  }
-
-  bool operator !=(const VertexWithDistance& other) const {
-    return !(*this == other);
-  }
-
   // Sort in lexicographical order of (distance, vertex_id).
   bool operator <(const VertexWithDistance& other) const {
     return distance < other.distance ||
@@ -182,10 +176,23 @@ struct VertexWithDistance {
   }
 
   bool operator>(const VertexWithDistance& other) const {
-    return distance > other.distance ||
-           (distance == other.distance && vertex_id > other.vertex_id);
+    return other < *this;
+  }
+
+  bool operator<=(const VertexWithDistance& other) const {
+    return !(other < *this);
+  }
+
+  bool operator>=(const VertexWithDistance& other) const {
+    return !(*this < other);
   }
 };
+
+template<ValidDistanceResultType DistanceResult>
+bool operator==(const VertexWithDistance<DistanceResult>& lhs,
+                const VertexWithDistance<DistanceResult>& rhs) {
+  return YB_STRUCT_EQUALS(vertex_id, distance);
+}
 
 template<ValidDistanceResultType DistanceResult>
 using VerticesWithDistances = std::vector<VertexWithDistance<DistanceResult>>;

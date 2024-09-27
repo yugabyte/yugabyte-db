@@ -168,14 +168,14 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
 
         # First stop both tserver and master processes.
         processes = ["tserver", "master", "controller"]
-        logging.info(("[app] Running control script to stop " +
-                      "against master, tserver and controller at {}").format(host_info['name']))
-        self.cloud.run_control_script(processes[0], "stop-destroy", args,
-                                      self.extra_vars, host_info)
-        self.cloud.run_control_script(processes[1], "stop-destroy", args,
-                                      self.extra_vars, host_info)
-        self.cloud.run_control_script(processes[2], "stop-destroy", args,
-                                      self.extra_vars, host_info)
+        if args.clean_otel_collector and args.provisioning_cleanup:
+            processes.append("otel-collector")
+
+        for process in processes:
+            logging.info(("[app] Running control script to stop {} at {}")
+                         .format(process, host_info['name']))
+            self.cloud.run_control_script(process, "stop-destroy", args,
+                                          self.extra_vars, host_info)
 
         # Revert the force using of user yugabyte.
         args.ssh_user = ssh_user
@@ -186,8 +186,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
                 "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
-        if ((args.clean_node_exporter or args.clean_otel_collector)
-                and args.provisioning_cleanup):
+        if args.clean_node_exporter and args.provisioning_cleanup:
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
             self.cloud.run_control_script(

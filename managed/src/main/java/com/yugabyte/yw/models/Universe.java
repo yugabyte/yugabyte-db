@@ -454,7 +454,7 @@ public class Universe extends Model {
   }
 
   /** Config parameters for the universe updater. */
-  @Builder
+  @Builder(toBuilder = true)
   @Data
   public static class UniverseUpdaterConfig {
     @Builder.Default private int expectedUniverseVersion = -1;

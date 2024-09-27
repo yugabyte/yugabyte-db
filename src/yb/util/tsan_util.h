@@ -28,6 +28,14 @@ constexpr bool IsTsan() {
   return NonTsanVsTsan(false, true);
 }
 
+constexpr bool IsAsan() {
+#if ADDRESS_SANITIZER
+  return true;
+#else
+  return false;
+#endif
+}
+
 template <class T>
 constexpr T RegularBuildVsSanitizers(T regular_build_value, T sanitizer_value) {
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)

@@ -63,6 +63,10 @@ def read_file(file_path: Union[str, pathlib.Path]) -> str:
 
 def write_file(
         content: Union[str, List[str]], output_file_path: Union[str, pathlib.Path]) -> None:
+    if '\n' in str(output_file_path):
+        raise ValueError(
+            "Output file path cannot contain newlines. It is possible that file content and path "
+            f"were reversed accidentally. Content: {content}, output_file_path: {output_file_path}")
     if isinstance(content, list):
         content = '\n'.join(content) + '\n'
     with open(path_to_str(output_file_path), 'w') as output_file:

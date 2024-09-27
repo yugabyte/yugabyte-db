@@ -92,6 +92,10 @@ Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
   return StartDistributedMasterOnPorts(rpc_port_, web_port_, peer_ports);
 }
 
+std::string MiniMaster::ToString() const {
+  return Format("m-$0", index_);
+}
+
 void MiniMaster::Shutdown() {
   TEST_SetThreadPrefixScoped prefix_se(Format("m-$0", index_));
   if (tunnel_) {
@@ -211,7 +215,7 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
   return StartOnPorts(rpc_port, web_port, &opts);
 }
 
-Status MiniMaster::Restart() {
+Status MiniMaster::Restart(bool wait_until_catalog_manager_is_leader) {
   CHECK(running_);
 
   auto prev_rpc = bound_rpc_addr();
@@ -222,7 +226,11 @@ Status MiniMaster::Restart() {
   MasterOptions opts(master_addresses);
   RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
-  return WaitForCatalogManagerInit();
+  RETURN_NOT_OK(WaitForCatalogManagerInit());
+  if (!wait_until_catalog_manager_is_leader) {
+    return Status::OK();
+  }
+  return WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
 Status MiniMaster::WaitForCatalogManagerInit() {

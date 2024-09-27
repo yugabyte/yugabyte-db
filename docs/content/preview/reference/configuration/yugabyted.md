@@ -1240,7 +1240,7 @@ To create a secure multi-zone cluster:
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
         --cloud_location=aws.us-east-1.us-east-1a \
-        --fault_tolerance=zone 
+        --fault_tolerance=zone
     ```
 
 1. Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
@@ -1614,7 +1614,7 @@ To create the read replica cluster, do the following:
         --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
         --cloud_location=aws.us-east-1.us-east-1e \
         --read_replica
-    
+
     ./bin/yugabyted start \
         --advertise_address=127.0.0.7 \
         --join=127.0.0.1 \

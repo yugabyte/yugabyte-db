@@ -332,17 +332,11 @@ TEST_F(PgFKeyTest,
       [&conn] { return AddFKConstraint(&conn, true /* skip_check */); })).read;
   ASSERT_EQ(add_fk_rpc_count, 0);
 
-  /* Note: VALIDATE CONSTRAINT is not yet supported. Uncomment next lines after fixing of #3946
   const auto validate_fk_rpc_count = ASSERT_RESULT(rpc_count_->Delta(
-      [&conn] { return conn.Execute("ALTER TABLE child VALIDATE CONSTRAINT child2parent"); })).read;
+      [&conn] { return conn.ExecuteFormat(
+          "ALTER TABLE $0 VALIDATE CONSTRAINT $1", kFKTable, kConstraintName); })).read;
 
-  ASSERT_EQ(validate_fk_rpc_count, 2);*/
-
-  // Check that VALIDATE CONSTRAINT is not supported
-  ASSERT_STR_CONTAINS(
-      conn.ExecuteFormat(
-          "ALTER TABLE $0 VALIDATE CONSTRAINT $1", kFKTable, kConstraintName).ToString(),
-      "not supported yet");
+  ASSERT_EQ(validate_fk_rpc_count, 2);
 }
 
 // Test checks FK correctness in case of FK check requires type casting.

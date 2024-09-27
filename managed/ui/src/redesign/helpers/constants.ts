@@ -44,7 +44,7 @@ export const RuntimeConfigKey = {
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
-  XCLUSTER_DB_SCOPED_FEATURE_FLAG: 'yb.xcluster.db_scoped.enabled',
+  XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG: 'yb.xcluster.db_scoped.creationEnabled',
   PERFORMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
   GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',
   IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',

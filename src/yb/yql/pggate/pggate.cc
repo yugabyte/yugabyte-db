@@ -1407,7 +1407,8 @@ Status PgApiImpl::NewSample(const PgObjectId& table_id,
                             bool is_region_local,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local);
+  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local,
+                                           clock_->Now());
   RETURN_NOT_OK(sample->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
   return Status::OK();
@@ -2276,6 +2277,10 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
 
 Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
   return pg_session_->TabletsMetadata();
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
+    return pg_session_->ServersMetrics();
 }
 
 void PgApiImpl::ClearSessionState() {

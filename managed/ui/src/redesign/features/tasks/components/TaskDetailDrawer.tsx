@@ -144,6 +144,7 @@ export const TaskDetailDrawer: FC<TaskDetailDrawerProps> = ({ visible, taskUUID,
         className: classes.dialogContent
       }}
       enableBackdropDismiss
+      keepMounted
     >
       <TaskDetailsHeader onClose={onHide} />
       <div className={classes.content}>

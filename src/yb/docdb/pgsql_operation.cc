@@ -1216,7 +1216,18 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   // skipped is set to false if this operation produces some data to write.
   bool skipped = true;
 
-  if (request_.has_ybctid_column_value()) {
+  // This function is invoked by three different callers:
+  // 1. Main table updates: requests have the YBCTID column field populated.
+  // 2. Secondary index updates: requests do not have the YBCTID column field populated.
+  //      The tuple identifier is constructed from partition and range key columns.
+  // 3. Sequence updates: requests are similar to secondary index updates. These updates are sent
+  //      by calling pggate directly, without going through the PostgreSQL layer.
+  // Since we cannot distinguish between (2) and (3), we make use of the table ID to determine the
+  // type of UPDATE to be performed. Sequence updates are always on the PG sequences data table.
+  bool is_sequence_update =
+      GetPgsqlTableId(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid) == request_.table_id();
+
+  if (!is_sequence_update) {
     const auto& schema = doc_read_context_->schema();
     ExpressionHelper expression_helper;
     RETURN_NOT_OK(expression_helper.Init(schema, projection(), request_, table_row));

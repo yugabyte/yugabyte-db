@@ -117,7 +117,9 @@
 #include "utils/snapmgr.h"
 
 /* Yugabyte includes */
+#include "catalog/pg_am_d.h"
 #include "executor/ybcModifyTable.h"
+#include "utils/relcache.h"
 
 /* waitMode argument to check_exclusion_or_unique_constraint() */
 typedef enum
@@ -257,6 +259,172 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
 }
 
 /* ----------------------------------------------------------------
+ *		YbExecDoInsertIndexTuple
+ *
+ *		This routine performs insertion of an index tuple of 'indexRelation'
+ *		that is identified by a combination of the base table CTID ('tuple->t_ybctid')
+ *		and data in the base table's tuple slot ('slot').
+ *		This routine has been refactored out of ExecInsertIndexTuples so that
+ *		Yugabyte's index update routine can invoke this routine directly without
+ *		needing to duplicate a bunch of checks in ExecInsertIndexTuples.
+ *		This routine is invoked by both Yugabyte and non-YB relations.
+ * ----------------------------------------------------------------
+ */
+static bool
+YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
+						 Relation indexRelation,
+						 IndexInfo *indexInfo,
+						 TupleTableSlot *slot,
+						 EState *estate,
+						 bool noDupErr,
+						 bool *specConflict,
+						 List *arbiterIndexes,
+						 bool update,
+						 ItemPointer tupleid)
+{
+	bool		applyNoDupErr;
+	IndexUniqueCheck checkUnique;
+	bool		indexUnchanged;
+	bool		satisfiesConstraint;
+	bool		deferredCheck = false;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+	Relation	heapRelation;
+	bool		isYBRelation;
+
+	heapRelation = resultRelInfo->ri_RelationDesc;
+	isYBRelation = IsYBRelation(heapRelation);
+
+	/*
+	 * FormIndexDatum fills in its values and isnull parameters with the
+	 * appropriate values for the column(s) of the index.
+	 */
+	FormIndexDatum(indexInfo,
+				   slot,
+				   estate,
+				   values,
+				   isnull);
+
+	/* Check whether to apply noDupErr to this index */
+	applyNoDupErr = noDupErr &&
+		(arbiterIndexes == NIL ||
+			list_member_oid(arbiterIndexes,
+							indexRelation->rd_index->indexrelid));
+
+	/*
+	 * The index AM does the actual insertion, plus uniqueness checking.
+	 *
+	 * For an immediate-mode unique index, we just tell the index AM to
+	 * throw error if not unique.
+	 *
+	 * For a deferrable unique index, we tell the index AM to just detect
+	 * possible non-uniqueness, and we add the index OID to the result
+	 * list if further checking is needed.
+	 *
+	 * For a speculative insertion (used by INSERT ... ON CONFLICT), do
+	 * the same as for a deferrable unique index.
+	 */
+	if (!indexRelation->rd_index->indisunique)
+		checkUnique = UNIQUE_CHECK_NO;
+	else if (applyNoDupErr)
+		checkUnique = UNIQUE_CHECK_PARTIAL;
+	else if (indexRelation->rd_index->indimmediate)
+		checkUnique = UNIQUE_CHECK_YES;
+	else
+		checkUnique = UNIQUE_CHECK_PARTIAL;
+
+	/*
+	 * There's definitely going to be an index_insert() call for this
+	 * index.  If we're being called as part of an UPDATE statement,
+	 * consider if the 'indexUnchanged' = true hint should be passed.
+	 *
+	 * YB Note: In case of a Yugabyte relation, we have already computed if
+	 * the index is unchanged (partly at planning time, and partly during
+	 * execution in ExecUpdate). Further, the result of this computation is
+	 * not just a hint, but is enforced by skipping RPCs to the storage
+	 * layer. Hence this variable is not relevant for Yugabyte relations and
+	 * will always evaluate to false.
+	 */
+	indexUnchanged = !isYBRelation && update && index_unchanged_by_update(resultRelInfo,
+																		  estate,
+																		  indexInfo,
+																		  indexRelation);
+
+	satisfiesConstraint =
+		index_insert(indexRelation, /* index relation */
+					 values,	/* array of index Datums */
+					 isnull,	/* null flags */
+					 tupleid,	/* tid of heap tuple */
+					 slot->tts_ybctid,
+					 heapRelation,	/* heap relation */
+					 checkUnique,	/* type of uniqueness check to do */
+					 indexUnchanged,	/* UPDATE without logical change? */
+					 indexInfo,
+					 false /* yb_shared_insert */);
+
+	/*
+	 * If the index has an associated exclusion constraint, check that.
+	 * This is simpler than the process for uniqueness checks since we
+	 * always insert first and then check.  If the constraint is deferred,
+	 * we check now anyway, but don't throw error on violation or wait for
+	 * a conclusive outcome from a concurrent insertion; instead we'll
+	 * queue a recheck event.  Similarly, noDupErr callers (speculative
+	 * inserters) will recheck later, and wait for a conclusive outcome
+	 * then.
+	 *
+	 * An index for an exclusion constraint can't also be UNIQUE (not an
+	 * essential property, we just don't allow it in the grammar), so no
+	 * need to preserve the prior state of satisfiesConstraint.
+	 */
+	if (indexInfo->ii_ExclusionOps != NULL)
+	{
+		bool		violationOK;
+		CEOUC_WAIT_MODE waitMode;
+
+		if (applyNoDupErr)
+		{
+			violationOK = true;
+			waitMode = CEOUC_LIVELOCK_PREVENTING_WAIT;
+		}
+		else if (!indexRelation->rd_index->indimmediate)
+		{
+			violationOK = true;
+			waitMode = CEOUC_NOWAIT;
+		}
+		else
+		{
+			violationOK = false;
+			waitMode = CEOUC_WAIT;
+		}
+
+		satisfiesConstraint =
+			check_exclusion_or_unique_constraint(heapRelation,
+												 indexRelation, indexInfo,
+												 tupleid, values, isnull,
+												 estate, false,
+												 waitMode, violationOK, NULL,
+												 NULL /* ybConflictSlot */);
+	}
+
+	if ((checkUnique == UNIQUE_CHECK_PARTIAL ||
+			indexInfo->ii_ExclusionOps != NULL) &&
+		!satisfiesConstraint)
+	{
+		/*
+		 * The tuple potentially violates the uniqueness or exclusion
+		 * constraint, so make a note of the index so that we can re-check
+		 * it later.  Speculative inserters are told if there was a
+		 * speculative conflict, since that always requires a restart.
+		 */
+		deferredCheck = true;
+		if (indexRelation->rd_index->indimmediate && specConflict)
+			*specConflict = true;
+	}
+
+	return deferredCheck;
+}
+
+/* ----------------------------------------------------------------
  *		ExecInsertIndexTuples
  *
  *		This routine takes care of inserting index tuples
@@ -301,8 +469,6 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 	Relation	heapRelation;
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
-	Datum		values[INDEX_MAX_KEYS];
-	bool		isnull[INDEX_MAX_KEYS];
 	bool		isYBRelation;
 
 	/*
@@ -338,19 +504,6 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 	{
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
-		bool		applyNoDupErr;
-		IndexUniqueCheck checkUnique;
-		bool		indexUnchanged;
-		bool		satisfiesConstraint;
-
-		/*
-		 * For an update command check if we need to skip index. For that purpose,
-		 * we check if the relid of the index is part of the skip list.
-		 */
-		if (indexRelation == NULL ||
-			list_member_oid(estate->yb_skip_entities.index_list,
-							RelationGetRelid(indexRelation)))
-			continue;
 
 		indexInfo = indexInfoArray[i];
 		Assert(indexInfo->ii_ReadyForInserts ==
@@ -391,134 +544,56 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 				continue;
 		}
 
-		/*
-		 * FormIndexDatum fills in its values and isnull parameters with the
-		 * appropriate values for the column(s) of the index.
-		 */
-		FormIndexDatum(indexInfo,
-					   slot,
-					   estate,
-					   values,
-					   isnull);
-
-		/* Check whether to apply noDupErr to this index */
-		applyNoDupErr = noDupErr &&
-			(arbiterIndexes == NIL ||
-			 list_member_oid(arbiterIndexes,
-							 indexRelation->rd_index->indexrelid));
-
-		/*
-		 * The index AM does the actual insertion, plus uniqueness checking.
-		 *
-		 * For an immediate-mode unique index, we just tell the index AM to
-		 * throw error if not unique.
-		 *
-		 * For a deferrable unique index, we tell the index AM to just detect
-		 * possible non-uniqueness, and we add the index OID to the result
-		 * list if further checking is needed.
-		 *
-		 * For a speculative insertion (used by INSERT ... ON CONFLICT), do
-		 * the same as for a deferrable unique index.
-		 */
-		if (!indexRelation->rd_index->indisunique)
-			checkUnique = UNIQUE_CHECK_NO;
-		else if (applyNoDupErr)
-			checkUnique = UNIQUE_CHECK_PARTIAL;
-		else if (indexRelation->rd_index->indimmediate)
-			checkUnique = UNIQUE_CHECK_YES;
-		else
-			checkUnique = UNIQUE_CHECK_PARTIAL;
-
-		/*
-		 * There's definitely going to be an index_insert() call for this
-		 * index.  If we're being called as part of an UPDATE statement,
-		 * consider if the 'indexUnchanged' = true hint should be passed.
-		 *
-		 * YB Note: In case of a Yugabyte relation, we have already computed if
-		 * the index is unchanged (partly at planning time, and partly during
-		 * execution in ExecUpdate). Further, the result of this computation is
-		 * not just a hint, but is enforced by skipping RPCs to the storage
-		 * layer. Hence this variable is not relevant for Yugabyte relations and
-		 * will always evaluate to false.
-		 */
-		indexUnchanged = !isYBRelation && update && index_unchanged_by_update(resultRelInfo,
-																			  estate,
-																			  indexInfo,
-																			  indexRelation);
-
-		satisfiesConstraint =
-			index_insert(indexRelation, /* index relation */
-						 values,	/* array of index Datums */
-						 isnull,	/* null flags */
-						 tupleid,	/* tid of heap tuple */
-						 slot->tts_ybctid,
-						 heapRelation,	/* heap relation */
-						 checkUnique,	/* type of uniqueness check to do */
-						 indexUnchanged,	/* UPDATE without logical change? */
-						 indexInfo,
-						 false /* yb_shared_insert */);
-
-		/*
-		 * If the index has an associated exclusion constraint, check that.
-		 * This is simpler than the process for uniqueness checks since we
-		 * always insert first and then check.  If the constraint is deferred,
-		 * we check now anyway, but don't throw error on violation or wait for
-		 * a conclusive outcome from a concurrent insertion; instead we'll
-		 * queue a recheck event.  Similarly, noDupErr callers (speculative
-		 * inserters) will recheck later, and wait for a conclusive outcome
-		 * then.
-		 *
-		 * An index for an exclusion constraint can't also be UNIQUE (not an
-		 * essential property, we just don't allow it in the grammar), so no
-		 * need to preserve the prior state of satisfiesConstraint.
-		 */
-		if (indexInfo->ii_ExclusionOps != NULL)
-		{
-			bool		violationOK;
-			CEOUC_WAIT_MODE waitMode;
-
-			if (applyNoDupErr)
-			{
-				violationOK = true;
-				waitMode = CEOUC_LIVELOCK_PREVENTING_WAIT;
-			}
-			else if (!indexRelation->rd_index->indimmediate)
-			{
-				violationOK = true;
-				waitMode = CEOUC_NOWAIT;
-			}
-			else
-			{
-				violationOK = false;
-				waitMode = CEOUC_WAIT;
-			}
-
-			satisfiesConstraint =
-				check_exclusion_or_unique_constraint(heapRelation,
-													 indexRelation, indexInfo,
-													 tupleid, values, isnull,
-													 estate, false,
-													 waitMode, violationOK, NULL,
-													 NULL /* ybConflictSlot */);
-		}
-
-		if ((checkUnique == UNIQUE_CHECK_PARTIAL ||
-			 indexInfo->ii_ExclusionOps != NULL) &&
-			!satisfiesConstraint)
-		{
-			/*
-			 * The tuple potentially violates the uniqueness or exclusion
-			 * constraint, so make a note of the index so that we can re-check
-			 * it later.  Speculative inserters are told if there was a
-			 * speculative conflict, since that always requires a restart.
-			 */
+		if (YbExecDoInsertIndexTuple(resultRelInfo, indexRelation, indexInfo,
+									 slot, estate, noDupErr,
+									 specConflict, arbiterIndexes, update,
+									 tupleid))
 			result = lappend_oid(result, RelationGetRelid(indexRelation));
-			if (indexRelation->rd_index->indimmediate && specConflict)
-				*specConflict = true;
-		}
 	}
 
 	return result;
+}
+
+/* ----------------------------------------------------------------
+ *		YbExecDoDeleteIndexTuple
+ *
+ *		This routine performs deletion of an index tuple of 'indexRelation'
+ *		that is identified by a combination of the base table CTID ('ybctid')
+ *		and data in the base table's tuple slot ('slot').
+ *		This routine has been refactored out of ExecDeleteIndexTuples so that
+ *		Yugabyte's index update routine can invoke this routine directly without
+ *		needing to duplicate a bunch of checks in ExecDeleteIndexTuples.
+ *		This routine is currently only invoked by Yugabyte relations.
+ * ----------------------------------------------------------------
+ */
+static void
+YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
+						 Relation indexRelation,
+						 IndexInfo *indexInfo,
+						 TupleTableSlot *slot,
+						 Datum ybctid,
+						 EState *estate)
+{
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+	Relation	heapRelation;
+
+	heapRelation = resultRelInfo->ri_RelationDesc;
+
+	/*
+	 * FormIndexDatum fills in its values and isnull parameters with the
+	 * appropriate values for the column(s) of the index.
+	 */
+	FormIndexDatum(indexInfo, slot, estate, values, isnull);
+
+	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+	yb_index_delete(indexRelation, /* index relation */
+					values,	/* array of index Datums */
+					isnull,	/* null flags */
+					ybctid,	/* ybctid */
+					heapRelation,	/* heap relation */
+					indexInfo);	/* index AM may need this */
+	MemoryContextSwitchTo(oldContext);
 }
 
 /* ----------------------------------------------------------------
@@ -540,8 +615,6 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
 	TupleTableSlot	*slot;
-	Datum		values[INDEX_MAX_KEYS];
-	bool		isnull[INDEX_MAX_KEYS];
 	bool		isYBRelation;
 
 	/*
@@ -575,15 +648,6 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 	{
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
-
-		/*
-		 * For an update command check if we need to skip index.
-		 * For that purpose, we check if the relid of the index is part of the skip list.
-		 */
-		if (indexRelation == NULL ||
-			list_member_oid(estate->yb_skip_entities.index_list,
-							RelationGetRelid(indexRelation)))
-			continue;
 
 		/*
 		 * No need to update YugaByte primary key which is intrinic part of
@@ -635,28 +699,310 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 				continue;
 		}
 
-		/*
-		 * FormIndexDatum fills in its values and isnull parameters with the
-		 * appropriate values for the column(s) of the index.
-		 */
-		FormIndexDatum(indexInfo,
-					   slot,
-					   estate,
-					   values,
-					   isnull);
-
-		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-		yb_index_delete(indexRelation, /* index relation */
-						values,	/* array of index Datums */
-						isnull,	/* null flags */
-						ybctid,	/* ybctid */
-						heapRelation,	/* heap relation */
-						indexInfo);	/* index AM may need this */
-		MemoryContextSwitchTo(oldContext);
+		YbExecDoDeleteIndexTuple(resultRelInfo, indexRelation, indexInfo,
+								 slot, ybctid, estate);
 	}
 
 	/* Drop the temporary slot */
 	ExecDropSingleTupleTableSlot(slot);
+}
+
+static void
+YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
+						 Relation indexRelation,
+						 IndexInfo *indexInfo,
+						 TupleTableSlot *slot,
+						 Datum oldYbctid,
+						 Datum newYbctid,
+						 EState *estate)
+{
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+	/*
+	* FormIndexDatum fills in its values and isnull parameters with the
+	* appropriate values for the column(s) of the index.
+	*/
+	FormIndexDatum(indexInfo, slot, estate, values, isnull);
+
+	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+	yb_index_update(indexRelation, /* index relation */
+					values,	/* array of index Datums */
+					isnull,	/* null flags */
+					oldYbctid,	/* old ybctid */
+					newYbctid,	/* ybctid */
+					resultRelInfo->ri_RelationDesc,	/* heap relation */
+					indexInfo);	/* index AM may need this */
+	MemoryContextSwitchTo(oldContext);
+}
+
+List *
+YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
+						TupleTableSlot *slot,
+						Datum ybctid,
+						HeapTuple oldtuple,
+						ItemPointer tupleid,
+						EState *estate,
+						Bitmapset *updatedCols,
+						bool is_pk_updated)
+{
+	int			i;
+	int			numIndices;
+	RelationPtr relationDescs;
+	IndexInfo **indexInfoArray;
+	ExprContext *econtext;
+	TupleTableSlot	*deleteSlot;
+	List	   *insertIndexes = NIL; /* A list of indexes whose tuples need to be reinserted */
+	List	   *deleteIndexes = NIL; /* A list of indexes whose tuples need to be deleted */
+	List	   *result = NIL;
+	Datum		newYbctid = is_pk_updated ?
+							YBCGetYBTupleIdFromSlot(slot) :
+							(Datum) NULL;
+
+	/*
+	 * Get information from the result relation info structure.
+	 */
+	numIndices = resultRelInfo->ri_NumIndices;
+	relationDescs = resultRelInfo->ri_IndexRelationDescs;
+	indexInfoArray = resultRelInfo->ri_IndexRelationInfo;
+
+	Assert(IsYBRelation(resultRelInfo->ri_RelationDesc));
+
+	/*
+	 * We will use the EState's per-tuple context for evaluating predicates
+	 * and index expressions (creating it if it's not already there).
+	 */
+	econtext = GetPerTupleExprContext(estate);
+
+	/*
+	 * Arrange for econtext's scan tuple to be the tuple under test using
+	 * a temporary slot.
+	 */
+	deleteSlot = ExecStoreHeapTuple(
+		oldtuple,
+		MakeSingleTupleTableSlot(
+			RelationGetDescr(resultRelInfo->ri_RelationDesc),
+			&TTSOpsHeapTuple),
+		false);
+
+	for (i = 0; i < numIndices; i++)
+	{
+		Relation	indexRelation = relationDescs[i];
+		IndexInfo  *indexInfo;
+		const AttrNumber offset =
+			YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
+
+		/*
+		 * For an update command check if we need to skip index.
+		 * For that purpose, we check if the relid of the index is part of the
+		 * skip list.
+		 */
+		if (indexRelation == NULL ||
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
+		
+		Form_pg_index indexData = indexRelation->rd_index;
+		/*
+		 * Primary key is a part of the base relation in Yugabyte and does not
+		 * need to be updated here.
+		 */
+		if (indexData->indisprimary)
+			continue;
+
+		indexInfo = indexInfoArray[i];
+
+		/*
+		 * Check for partial index -
+		 * There are four different update scenarios for an index with a predicate:
+		 * 1. Both the old and new tuples satisfy the predicate - In this case, the index tuple
+		 *    may either be updated in-place or deleted and reinserted depending on whether the
+		 *    key columns are modified.
+		 * 2. Neither the old nor the new tuple satisfy the predicate - In this case, the
+		 *    update of this index can be skipped altogether.
+		 * 3. The old tuple satisfies the predicate but the new tuple does not - In this case,
+		 *    the index tuple corresponding to the old tuple just needs to be deleted.
+		 * 4. The old tuple does not satisfy the predicate but the new tuple does - In this case,
+		 *    a new index tuple corresponding to the new tuple needs to be inserted.
+		 */
+		if (indexInfo->ii_Predicate != NIL)
+		{
+			ExprState  *predicate = ExecPrepareQual(indexInfo->ii_Predicate, estate);
+			bool		deleteApplicable = false;
+			bool		insertApplicable = false;
+
+			/*
+			 * If predicate state not set up yet, create it (in the estate's
+			 * per-query context)
+			 */
+			econtext->ecxt_scantuple = deleteSlot;
+			deleteApplicable = ExecQual(predicate, econtext);
+
+			econtext->ecxt_scantuple = slot;
+			insertApplicable = ExecQual(predicate, econtext);
+			
+			if (deleteApplicable != insertApplicable)
+			{
+				/*
+				 * Update is not possible as only one of (deletes, inserts) is
+				 * applicable. Bail out of further checks.
+				 */
+				if (deleteApplicable)
+					deleteIndexes = lappend_int(deleteIndexes, i);
+
+				if (insertApplicable)
+					insertIndexes = lappend_int(insertIndexes, i);
+
+				continue;
+			}
+			
+			
+			if (!deleteApplicable)
+			{
+				/* Neither deletes nor updates applicable. Nothing to be done for this index. */
+				continue;
+			}
+
+			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indpred, offset))
+			{
+				deleteIndexes = lappend_int(deleteIndexes, i);
+				insertIndexes = lappend_int(insertIndexes, i);
+				continue;
+			}
+		}
+
+		/*
+		 * Check if any of the columns associated with the expression index have
+		 * been modified. This can be done without evaluating the expression
+		 * itself.
+		 * Note that an expression index can have other key columns in addition
+		 * to the expression(s). That is, an expression index can be defined
+		 * like so:
+		 * CREATE INDEX ON table (f1(a, b), f2(b, c), d, e) INCLUDE (f, g, h);
+		 * Such an index can be updated inplace, only if none of (a, b, c, d, e)
+		 * have been modified.
+		 */
+		if (indexInfo->ii_Expressions != NIL)
+		{
+			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indexprs, offset))
+			{
+				deleteIndexes = lappend_int(deleteIndexes, i);
+				insertIndexes = lappend_int(insertIndexes, i);
+				continue;
+			}
+		}
+
+		if (!indexRelation->rd_indam->ybamcanupdatetupleinplace)
+		{
+			deleteIndexes = lappend_int(deleteIndexes, i);
+			insertIndexes = lappend_int(insertIndexes, i);
+			continue;
+		}
+
+		/*
+		 * In the following scenarios, the index tuple can be modified (updated)
+		 * in-place, without the need to delete and reinsert the tuple:
+		 * - The index is a covering index (number of key columns < number of columns in the index),
+		 *   only the non-key columns need to be updated, and the primary key is not updated.
+		 * - The index is a unique index and only the non-key columns of the index need to be
+		 *   updated (irrespective of whether the primary key is updated).
+		 */
+		if ((indexData->indnkeyatts == indexData->indnatts || is_pk_updated) &&
+			(!indexData->indisunique))
+		{
+			deleteIndexes = lappend_int(deleteIndexes, i);
+			insertIndexes = lappend_int(insertIndexes, i);
+			continue;
+		}
+
+		/*
+		 * The index operations in this function get enqueued into a buffer. The
+		 * buffer is flushed prematurely when there are two operations to the
+		 * same row. This leads to additional roundtrips to the storage layer
+		 * which can be avoided. A tuple is identified by a sequence of its key
+		 * columns. In the case where the key columns are specified in an update
+		 * query, but remain unmodified, the update is modeled as a
+		 * DELETE + INSERT operation when the optimization to detect unmodified
+		 * columns is disabled. In such cases, the DELETE and INSERT operations
+		 * conflict with each other since the tuple's key columns remain unchanged.
+		 * Consider the following example of a relation with four indexes that
+		 * has columns C1, C2, C3 of a tuple modified (updated) by a query:
+		 * Index I1 on (C1, C2)
+		 * Index I2 on (C4, C5, C3)
+		 * Index I3 on (C4, C5) INCLUDES (C1, C2)
+		 * Index I4 on (C4) INCLUDES (C5)
+		 *
+		 * The order of operations should be:
+		 * (1) Buffer UPDATE tuple of I3
+		 * (2) Buffer DELETE tuple of I1
+		 * (3) Buffer DELETE tuple of I2
+		 * (-) -- Flush --
+		 * (4) Buffer INSERT tuple of I1
+		 * (5) Buffer INSERT tuple of I2
+		 * (-) -- Flush --
+		 * Operations related to I4 are skipped altogether because none of the
+		 * columns in I4 are updated.
+		 *
+		 * To achieve this, we compute the list of all indexes whose key columns
+		 * are updated. These need the DELETE + INSERT. For all indexes, first
+		 * issue the deletes, followed by the inserts. 
+		 */
+
+		int j = 0;
+		for (; j < indexData->indnkeyatts; j++)
+		{
+			const AttrNumber bms_idx = indexData->indkey.values[j] - offset;
+			if (bms_is_member(bms_idx, updatedCols))
+				break;
+		}
+
+		if (j < indexRelation->rd_index->indnkeyatts)
+		{
+			deleteIndexes = lappend_int(deleteIndexes, i);
+			insertIndexes = lappend_int(insertIndexes, i);
+			continue;
+		}
+
+		/*
+		 * This tuple updates only non-key columns of the index. This implies
+		 * that the tuple will continue to satisfy all uniqueness and exclusion
+		 * constraints on the index after the update. The index need not be
+		 * rechecked.
+		 */
+		econtext->ecxt_scantuple = slot;
+		YbExecDoUpdateIndexTuple(resultRelInfo, indexRelation, indexInfo,
+								 slot, ybctid, newYbctid, estate);
+	}
+
+	ListCell	*lc;
+	int			index;
+
+	econtext->ecxt_scantuple = deleteSlot;
+	foreach(lc, deleteIndexes)
+	{
+		index = lfirst_int(lc);
+		YbExecDoDeleteIndexTuple(resultRelInfo, relationDescs[index],
+								 indexInfoArray[index], deleteSlot, ybctid,
+								 estate);
+	}
+
+	econtext->ecxt_scantuple = slot;
+	foreach(lc, insertIndexes)
+	{
+		index = lfirst_int(lc);
+		if (YbExecDoInsertIndexTuple(resultRelInfo, relationDescs[index],
+									 indexInfoArray[index], slot, estate,
+									 false /* noDupErr */,
+									 NULL /* specConflict */,
+									 NIL /* arbiterIndexes */,
+									 true /* update */,
+									 tupleid))
+			result = lappend_oid(result, RelationGetRelid(relationDescs[index]));
+	}
+
+	/* Drop the temporary slots */
+	ExecDropSingleTupleTableSlot(deleteSlot);
+
+	return result;
 }
 
 /* ----------------------------------------------------------------

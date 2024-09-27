@@ -80,6 +80,10 @@ extern void RelationInitIndexAccessInfo(Relation relation);
 
 extern bool CheckIndexForUpdate(Oid indexoid,
 								const Bitmapset *updated_attrs, AttrNumber attr_offset);
+extern bool CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
+								  Relation indexDesc,
+								  const int Anum_pg_index,
+								  AttrNumber attr_offset);
 
 /* caller must include pg_publication.h */
 struct PublicationDesc;

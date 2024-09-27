@@ -113,9 +113,9 @@ TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
 DEFINE_RUNTIME_bool(
     split_respects_tablet_replica_limits, false,
-    "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
-    "system will no longer split tablets when the limit machinery determines the cluster cannot "
-    "support any more tablet replicas.");
+    "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
+    "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
+    "the limit machinery determines the universe cannot support any more tablet replicas.");
 TAG_FLAG(split_respects_tablet_replica_limits, advanced);
 
 METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,

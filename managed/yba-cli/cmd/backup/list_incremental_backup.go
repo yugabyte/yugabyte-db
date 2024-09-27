@@ -15,7 +15,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/commonbackupinfo"
 )
 
 // listIncrementalBackupsCmd represents the universe backup command
@@ -58,22 +58,32 @@ var listIncrementalBackupsCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+		commonbackupinfo.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
 		for _, s := range rList {
 			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
-				backup.StorageConfigs = append(backup.StorageConfigs, s)
+				commonbackupinfo.StorageConfigs = append(commonbackupinfo.StorageConfigs, s)
 			}
 		}
 
-		commonBackupInfoContext := *backup.NewCommonBackupInfoContext()
-		commonBackupInfoContext.Output = os.Stdout
-		commonBackupInfoContext.Format = backup.NewCommonBackupInfoFormat(viper.GetString("output"))
-		for index, value := range r {
-			commonBackupInfoContext.SetCommonBackupInfo(value)
-			commonBackupInfoContext.Write(index)
-		}
-		return
+		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
+			fullCommonBackupInfoContext := *commonbackupinfo.NewFullCommonBackupInfoContext()
+			fullCommonBackupInfoContext.Output = os.Stdout
+			fullCommonBackupInfoContext.Format = commonbackupinfo.NewFullCommonBackupInfoFormat(
+				viper.GetString("output"))
+			for i, cbi := range r {
+				fullCommonBackupInfoContext.SetFullCommonBackupInfo(cbi)
+				fullCommonBackupInfoContext.Write(i)
+			}
 
+			return
+		}
+
+		commonBackupInfoCtx := formatter.Context{
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  commonbackupinfo.NewCommonBackupInfoFormat(viper.GetString("output")),
+		}
+		commonbackupinfo.Write(commonBackupInfoCtx, r)
 	},
 }
 

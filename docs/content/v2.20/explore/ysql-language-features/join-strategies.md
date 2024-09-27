@@ -215,8 +215,6 @@ To reduce the number of requests sent across the nodes during the Nested loop jo
 
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 
-To enable the query planner's use of BNL, use the YB-TServer flag, [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl).
-
 To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute the following:
 
 ```sql

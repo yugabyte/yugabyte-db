@@ -380,14 +380,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
     }
 
-    // Handle Namespaced services ownership change/delete
-    addHandleKubernetesNamespacedServices(
-            false /* readReplicaDelete */,
-            taskParams(),
-            taskParams().getUniverseUUID(),
-            true /* handleOwnershipChanges */)
-        .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
-
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -483,6 +475,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // If tservers have been added, we wait for the load to balance.
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
+
+    // Handle Namespaced services ownership change/delete
+    addHandleKubernetesNamespacedServices(
+            false /* readReplicaDelete */,
+            taskParams(),
+            taskParams().getUniverseUUID(),
+            true /* handleOwnershipChanges */)
+        .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
     Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;

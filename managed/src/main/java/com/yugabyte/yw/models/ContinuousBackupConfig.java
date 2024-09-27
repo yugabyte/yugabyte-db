@@ -69,6 +69,10 @@ public class ContinuousBackupConfig extends Model {
     return cbConfig;
   }
 
+  public static Optional<ContinuousBackupConfig> get() {
+    return find.query().where().findOneOrEmpty();
+  }
+
   public static Optional<ContinuousBackupConfig> get(UUID uuid) {
     return Optional.ofNullable(find.byId(uuid));
   }
