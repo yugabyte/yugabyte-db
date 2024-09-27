@@ -7,6 +7,8 @@ menu:
     identifier: diagnostics-report
     parent: reference-voyager
     weight: 104
+aliases:
+  - /preview/yugabyte-voyager/diagnostics-report/
 type: docs
 ---
 
