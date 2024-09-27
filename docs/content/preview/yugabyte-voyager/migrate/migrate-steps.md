@@ -253,6 +253,10 @@ Note that there are some special cases involving sequences such as the following
 
 {{< /note >}}
 
+{{< note title= "Migrating the source databases with large row sizes" >}}
+If a table's row size on the source database is too large, and exceeds the default [RPC message size](../../../reference/configuration/all-flags-yb-master/#rpc-max-message-size), import data will fail with the error `ERROR: Sending too long RPC message..`. So, you need to migrate those tables separately after removing the large rows.
+{{< /note >}}
+
 #### Export data status
 
 Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
@@ -326,6 +330,15 @@ When importing a very large database, run the import data command in a `screen` 
 If the `yb-voyager import data` command terminates before completing the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
 
 {{< /tip >}}
+
+{{< note title= "Migrating the source databases with large row sizes" >}}
+When exporting data using the `BETA_FAST_DATA_EXPORT` flag, the import data process has a default row size limit of 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
+
+```sh
+export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
+```
+
+{{< /note >}}
 
 #### Import data status
 
