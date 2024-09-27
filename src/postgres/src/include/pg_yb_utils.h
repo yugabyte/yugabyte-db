@@ -558,6 +558,11 @@ extern int yb_toast_catcache_threshold;
  */
 extern int yb_parallel_range_size;
 
+/*
+ * Enable preloading of foreign key information into the relation cache.
+ */
+extern bool yb_enable_fkey_catcache;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

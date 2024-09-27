@@ -269,6 +269,7 @@ extern int yb_explicit_row_locking_batch_size;
 extern bool yb_lock_pk_single_rpc;
 
 extern int yb_toast_catcache_threshold;
+extern bool yb_enable_fkey_catcache;
 
 extern int	temp_file_limit;
 
