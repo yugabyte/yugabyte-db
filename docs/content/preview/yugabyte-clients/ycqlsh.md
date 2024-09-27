@@ -8,11 +8,6 @@ aliases:
   - /develop/tools/cqlsh/
   - /preview/develop/tools/cqlsh/
   - /preview/admin/ycqlsh/
-menu:
-  preview:
-    identifier: ycqlsh
-    parent: yugabyte-clients
-    weight: 20
 rightNav:
   hideH4: true
 type: docs

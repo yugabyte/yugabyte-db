@@ -8,11 +8,6 @@ aliases:
   - /develop/tools/ysqlsh/
   - /preview/develop/tools/ysqlsh/
   - /preview/admin/ysqlsh/
-menu:
-  preview:
-    identifier: ysqlsh
-    parent: yugabyte-clients
-    weight: 10
 type: docs
 ---
 

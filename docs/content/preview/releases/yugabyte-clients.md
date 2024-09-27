@@ -2,7 +2,7 @@
 title: YugabyteDB Client shells
 headerTitle: YugabyteDB Clients
 linkTitle: YugabyteDB Clients
-description: Use these shells to interact with YugabyteDB.
+description: Use these shells to interact with YugabyteDB
 image: fa-light fa-terminal
 headcontent: Shells for interacting with, configuring, and managing YugabyteDB
 showRightNav: true

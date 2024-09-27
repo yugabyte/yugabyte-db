@@ -99,7 +99,7 @@
 
 [[main]]
   name = "YugabyteDB Voyager"
-  weight = 4
+  weight = 5
   parent = "products"
   url = "/preview/yugabyte-voyager/"
   [main.params]
@@ -154,7 +154,7 @@
     imageUrl = "/icons/api.svg"
 
 [[main]]
-  name = "Management APIs"
+  name = "Clients"
   weight = 4
   parent = "yugabyte-apis"
   [main.params]
@@ -162,8 +162,34 @@
     excludeVersion = true
 
 [[main]]
-  name = "YugabyteDB Anywhere API"
+  name = "ysqlsh"
   weight = 5
+  identifier = "client-ysqlsh"
+  parent = "yugabyte-apis"
+  url = "/yugabyte-clients/ysqlsh/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
+
+[[main]]
+  name = "ycqlsh"
+  weight = 6
+  identifier = "client-ycqlsh"
+  parent = "yugabyte-apis"
+  url = "/yugabyte-clients/ycqlsh/"
+  [main.params]
+    imageUrl = "/icons/api.svg"
+
+[[main]]
+  name = "Management APIs"
+  weight = 7
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
+
+[[main]]
+  name = "YugabyteDB Anywhere API"
+  weight = 8
   identifier = "yugabytedb-anywhere-api"
   parent = "yugabyte-apis"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
@@ -173,7 +199,7 @@
 
 [[main]]
   name = "YugabyteDB Aeon API"
-  weight = 6
+  weight = 9
   identifier = "yugabytedb-anaged-api"
   parent = "yugabyte-apis"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
@@ -241,7 +267,7 @@
   weight = 5
   identifier = "yugabytedb-client-releases"
   parent = "releases"
-  url = "/preview/yugabyte-clients/"
+  url = "/preview/releases/yugabyte-clients/"
   [main.params]
     classes = "separator"
     excludeVersion = true
@@ -503,13 +529,13 @@
   [preview.params]
     showSection = true
 
-[[preview]]
-  name = "YugabyteDB Clients"
-  weight = 11
-  identifier = "yugabyte-clients"
-  url = "/preview/yugabyte-clients/"
-  [preview.params]
-    showSection = true
+# [[preview]]
+#   name = "YugabyteDB Clients"
+#   weight = 11
+#   identifier = "yugabyte-clients"
+#   url = "/preview/yugabyte-clients/"
+#   [preview.params]
+#     showSection = true
 
 [[preview]]
   name = "Reference"
@@ -725,24 +751,40 @@
 
 [[preview_api]]
   name = "YSQL"
-  weight = 3
+  weight = 10
   identifier = "api-ysql"
   url = "/preview/api/ysql/"
   [preview_api.params]
     showSection = true
 
 [[preview_api]]
+  name = "ysqlsh"
+  weight = 11
+  identifier = "ysqlsh"
+  url = "/preview/yugabyte-clients/ysqlsh/"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
   name = "YCQL"
-  weight = 4
+  weight = 20
   identifier = "api-cassandra"
   url = "/preview/api/ycql/"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/preview/yugabyte-clients/ycqlsh/"
   [preview_api.params]
     classes = "separator"
     showSection = true
 
 [[preview_api]]
   name = "YugabyteDB Anywhere API"
-  weight = 5
+  weight = 30
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [preview_api.params]
@@ -751,7 +793,7 @@
 
 [[preview_api]]
   name = "YugabyteDB Aeon API"
-  weight = 6
+  weight = 31
   identifier = "yugabytedb-managed-api"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   [preview_api.params]
@@ -816,12 +858,11 @@
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
-    classes = "separator"
     showSection = true
 
 [[preview_releases]]
   name = "YugabyteDB Aeon"
-  weight = 7
+  weight = 10
   identifier = "ybm-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [preview_releases.params]
@@ -829,7 +870,7 @@
 
 [[preview_releases]]
   name = "YugabyteDB Voyager"
-  weight = 8
+  weight = 11
   identifier = "voy-releases"
   url = "/preview/yugabyte-voyager/release-notes/"
   [preview_releases.params]
@@ -837,10 +878,11 @@
 
 [[preview_releases]]
   name = "YugabyteDB Clients"
-  weight = 9
+  weight = 7
   identifier = "yb-clients"
-  url = "/preview/yugabyte-clients/"
+  url = "/preview/releases/yugabyte-clients/"
   [preview_releases.params]
+    classes = "separator"
     showSection = true
 
 ########## Menus (in preview) for FAQ section
