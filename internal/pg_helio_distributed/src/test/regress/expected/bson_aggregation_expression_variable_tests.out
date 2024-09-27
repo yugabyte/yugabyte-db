@@ -1,0 +1,356 @@
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET citus.next_shard_id TO 4910000;
+SET helio_api.next_collection_id TO 4910;
+SET helio_api.next_collection_index_id TO 4910;
+-- $$ROOT as a variable.
+SELECT helio_api_catalog.bson_expression_get('{ "a": 1 }', '{ "c": "$$ROOT" }');
+            bson_expression_get             
+---------------------------------------------------------------------
+ { "c" : { "a" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a" }');
+                                      bson_expression_get                                       
+---------------------------------------------------------------------
+ { "c" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.a.b" }');
+                                 bson_expression_get                                  
+---------------------------------------------------------------------
+ { "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": "$$ROOT.c" }');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a.b" } }');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "c" : true }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$isArray": "$$ROOT.a" } }');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "c" : false }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": [ 1, 2, 3 ] } }', '{ "c": { "$size": "$$ROOT.a.b" } }');
+       bson_expression_get        
+---------------------------------------------------------------------
+ { "c" : { "$numberInt" : "3" } }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 2 ] } }');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "c" : true }
+(1 row)
+
+SELECT helio_api_catalog.bson_expression_get('{ "a": { "b": 2 } }', '{ "c": { "$eq": [ "$$ROOT.a.b", 3 ] } }');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "c" : false }
+(1 row)
+
+-- override $$CURRENT should change the meaning of path expressions since $a -> $$CURRENT.a
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"b": {"$filter": {"input": [{"a": 10, "b": 8}, {"a": 7, "b": 8}], "as": "CURRENT", "cond": {"$and": [{"$gt": ["$a", 8]}, {"$gt": ["$b", 7]}]}}}}');
+                              bson_dollar_project                              
+---------------------------------------------------------------------
+ { "b" : [ { "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "8" } } ] }
+(1 row)
+
+-- $reduce with multiple documents in a collection to ensure variable context is reset between every row evaluation
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 1, "a": ["a", "b", "c"]}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 2, "a": ["d", "e", "f"]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'variable_tests', '{"_id": 3, "a": ["g", "h", "i"]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }') from helio_api.collection('db', 'variable_tests');
+                 bson_dollar_project                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "result" : "abc" }
+ { "_id" : { "$numberInt" : "2" }, "result" : "def" }
+ { "_id" : { "$numberInt" : "3" }, "result" : "ghi" }
+(3 rows)
+
+-- $$REMOVE should not be written
+select bson_dollar_project('{}', '{"result": "$$REMOVE" }');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { }
+(1 row)
+
+select bson_dollar_project(document, '{"result": [ "$a", "$$REMOVE", "final" ]  }') from helio_api.collection('db', 'variable_tests');
+                                 bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "result" : [ [ "a", "b", "c" ], null, "final" ] }
+ { "_id" : { "$numberInt" : "2" }, "result" : [ [ "d", "e", "f" ], null, "final" ] }
+ { "_id" : { "$numberInt" : "3" }, "result" : [ [ "g", "h", "i" ], null, "final" ] }
+(3 rows)
+
+select bson_dollar_project(document, '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$REMOVE", "$$this"] } } } }') from helio_api.collection('db', 'variable_tests');
+                 bson_dollar_project                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "result" : null }
+ { "_id" : { "$numberInt" : "2" }, "result" : null }
+ { "_id" : { "$numberInt" : "3" }, "result" : null }
+(3 rows)
+
+-- $let aggregation operator
+-- verify that defined variables work
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": "$$foo"}}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : "this is my foo variable" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"sum": {"$add": ["$a", 10]}}, "in": "$$sum"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "20" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"sumValue": {"$add": ["$a", 10]}}, "in": "$$sumValue"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "20" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": "$a"}, "in": "$$value"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "10" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": "$$CURRENT"}, "in": "$$value"}}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "a" : { "$numberInt" : "10" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": "$$ROOT"}, "in": "$$value"}}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "a" : { "$numberInt" : "10" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": "$$REMOVE"}, "in": "$$value"}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"日本語": 10}, "in": "$$日本語"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "10" } }
+(1 row)
+
+-- verify nested let work and can also override variables
+SELECT * FROM bson_dollar_project('{ }', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo2": "$$foo"}, "in": {"a": "$$foo", "b": "$$foo2"}}}}}}');
+                                 bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "a" : "this is my foo variable", "b" : "this is my foo variable" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ }', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo": "$$foo"}, "in": {"a": "$$foo"}}}}}}');
+                bson_dollar_project                 
+---------------------------------------------------------------------
+ { "result" : { "a" : "this is my foo variable" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ }', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo": "this is a foo override"}, "in": {"a": "$$foo"}}}}}}');
+                bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "a" : "this is a foo override" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ }', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo2": "$$foo"}, "in": {"$let": {"vars": {"foo3": "this is my foo3 variable"}, "in": {"foo": "$$foo", "foo2": "$$foo2", "foo3": "$$foo3"}}}}}}}}');
+                                                      bson_dollar_project                                                      
+---------------------------------------------------------------------
+ { "result" : { "foo" : "this is my foo variable", "foo2" : "this is my foo variable", "foo3" : "this is my foo3 variable" } }
+(1 row)
+
+-- nested works with expressions that define variables
+SELECT * FROM bson_dollar_project('{ "input": [1, 2, 3, 4, 5]}', '{"result": {"$let": {"vars": {"value": "100"}, "in": {"$filter": {"input": "$input", "as": "value", "cond": {"$gte": ["$$value", 4]}}}}}}');
+                        bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "input": [1, 2, 3, 4, 5]}', '{"result": {"$let": {"vars": {"value": "100"}, "in": {"$filter": {"input": "$input", "as": "this", "cond": {"$gte": ["$$value", 4]}}}}}}');
+                                                            bson_dollar_project                                                            
+---------------------------------------------------------------------
+ { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "input": [1, 2, 3, 4, 5]}', '{"result": {"$filter": {"input": "$input", "as": "value", "cond": {"$let": {"vars": {"value": 100}, "in": {"$gte": ["$$value", 4]}}}}}}');
+                                                            bson_dollar_project                                                            
+---------------------------------------------------------------------
+ { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
+-- override current
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"CURRENT": {"a": "this is a in new current"}}, "in": "$a"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : "this is a in new current" }
+(1 row)
+
+-- use dotted paths on variable expressions
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": {"a": "value a field"}}, "in": "$$value.a"}}}');
+      bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : "value a field" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": [{"a": "nested field in array"}]}, "in": "$$value.a"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : [ "nested field in array" ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "a": 10}', '{"result": {"$let": {"vars": {"value": {"a": "value a field"}}, "in": "$$value.nonExistent"}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { }
+(1 row)
+
+-- test with multiple rows on a collection and a non constant spec such that caching is not in the picture to test we don't have memory corruption on the variable data itself
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 1, "name": "santi", "hobby": "running"}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 2, "name": "joe", "hobby": "soccer"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 3, "name": "daniel", "hobby": "painting"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 4, "name": "lucas", "hobby": "music"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 5, "name": "richard", "hobby": "running"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 6, "name": "daniela", "hobby": "reading"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 7, "name": "isabella", "hobby": "video games"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 8, "name": "daniel II", "hobby": "board games"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 9, "name": "jose", "hobby": "music"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'dollar_let_test', '{"_id": 10, "name": "camille", "hobby": "painting"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT bson_dollar_project(document, FORMAT('{"result": {"$let": {"vars": {"intro": "%s", "hobby_text": " , and my hobby is: "}, "in": {"$concat": ["$$intro", "$name", "$$hobby_text", "$hobby"]}}}}', 'Hello my name is: ')::bson)
+FROM helio_api.collection('db', 'dollar_let_test');
+                                             bson_dollar_project                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "result" : "Hello my name is: santi , and my hobby is: running" }
+ { "_id" : { "$numberInt" : "2" }, "result" : "Hello my name is: joe , and my hobby is: soccer" }
+ { "_id" : { "$numberInt" : "3" }, "result" : "Hello my name is: daniel , and my hobby is: painting" }
+ { "_id" : { "$numberInt" : "4" }, "result" : "Hello my name is: lucas , and my hobby is: music" }
+ { "_id" : { "$numberInt" : "5" }, "result" : "Hello my name is: richard , and my hobby is: running" }
+ { "_id" : { "$numberInt" : "6" }, "result" : "Hello my name is: daniela , and my hobby is: reading" }
+ { "_id" : { "$numberInt" : "7" }, "result" : "Hello my name is: isabella , and my hobby is: video games" }
+ { "_id" : { "$numberInt" : "8" }, "result" : "Hello my name is: daniel II , and my hobby is: board games" }
+ { "_id" : { "$numberInt" : "9" }, "result" : "Hello my name is: jose , and my hobby is: music" }
+ { "_id" : { "$numberInt" : "10" }, "result" : "Hello my name is: camille , and my hobby is: painting" }
+(10 rows)
+
+-- negative cases
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": [1, 2, 3]}}');
+ERROR:  $let only supports an object as its argument
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": true, "in": "a"}}}');
+ERROR:  invalid parameter: expected an object (vars)
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {}}}}');
+ERROR:  Missing 'in' parameter to $let
+SELECT * FROM bson_dollar_project('{"a": 10}', '{"result": {"$let": {"in": "$a"}}}');
+ERROR:  Missing 'vars' parameter to $let
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": [], "in": "$$123"}}}');
+ERROR:  invalid parameter: expected an object (vars)
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"123": "123 variable"}, "in": "$$123"}}}');
+ERROR:  '123' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"ROOT": "new root"}, "in": "$$ROOT"}}}');
+ERROR:  'ROOT' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"REMOVE": "new remove"}, "in": "$$REMOVE"}}}');
+ERROR:  'REMOVE' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"MyVariable": "MyVariable"}, "in": "$$MyVariable"}}}');
+ERROR:  'MyVariable' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"_variable": "_variable"}, "in": "$$_variable"}}}');
+ERROR:  '_variable' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"with space": "with space"}, "in": "$$with space"}}}');
+ERROR:  'with space' contains an invalid character for a variable name: ' '
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"hello!": "with space"}, "in": "$$FOO"}}}');
+ERROR:  'hello!' contains an invalid character for a variable name: '!'
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$_variable"}}}');
+ERROR:  '_variable' starts with an invalid character for a user variable name
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$with spaces"}}}');
+ERROR:  'with spaces' contains an invalid character for a variable name: ' '
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$hello!"}}}');
+ERROR:  'hello!' contains an invalid character for a variable name: '!'
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$FOO"}}}');
+ERROR:  Use of undefined variable: FOO
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$.a"}}}');
+ERROR:  empty variable names are not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"variable": "with space"}, "in": "$$variable."}}}');
+ERROR:  FieldPath must not end with a '.'.
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"a.b": "a.b"}, "in": "$$a.b"}}}');
+ERROR:  'a.b' contains an invalid character for a variable name: '.'
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$let": {"vars": {"foo": "this is my foo variable"}, "in": {"$let": {"vars": {"foo": "$$foo2"}, "in": {"a": "$$foo"}}}}}}');
+ERROR:  Use of undefined variable: foo2

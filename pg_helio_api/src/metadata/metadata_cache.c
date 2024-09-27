@@ -1621,8 +1621,13 @@ BsonLessThanEqualMatchIndexFunctionId(void)
 Oid
 BsonRangeMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonRangeMatchFunctionId,
-									   "bson_dollar_range", BsonTypeId(), BsonTypeId());
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonRangeMatchFunctionId,
+										ApiCatalogToApiInternalSchemaName,
+										"bson_dollar_range", nargs, argTypes,
+										missingOk);
 }
 
 
