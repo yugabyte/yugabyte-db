@@ -939,8 +939,11 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, Boolean.toString(true)));
           checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+          Provider primaryClusterProvider =
+              Provider.getOrBadRequest(UUID.fromString(primaryIntent.provider));
           String serviceScope =
-              confGetter.getGlobalConf(GlobalConfKeys.k8sUniverseDefaultServiceScope);
+              confGetter.getConfForScope(
+                  primaryClusterProvider, ProviderConfKeys.k8sUniverseDefaultServiceScope);
           if (KubernetesUtil.shouldConfigureNamespacedService(taskParams, universe.getConfig())) {
             if (serviceScope.equals("Namespaced")) {
               // Default service scope should be 'Namespaced'
