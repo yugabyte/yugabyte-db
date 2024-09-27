@@ -1,19 +1,21 @@
-## yba backup schedule
+## yba backup schedule list
 
-Manage YugabyteDB Anywhere universe backup schedules
+List YugabyteDB Anywhere universe backup schedules
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere universe backup schedules
+List backup schedules of a universe in YugabyteDB Anywhere
 
 ```
-yba backup schedule [flags]
+yba backup schedule list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for schedule
+      --universe-name string   [Required] Universe name whose backupSchedule schedules are to be listed.
+  -f, --force                  [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help                   help for list
 ```
 
 ### Options inherited from parent commands
@@ -32,9 +34,5 @@ yba backup schedule [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
-* [yba backup schedule create](yba_backup_schedule_create.md)	 - Create a YugabyteDB Anywhere universe backup schedule
-* [yba backup schedule delete](yba_backup_schedule_delete.md)	 - Delete a YugabyteDB Anywhere universe backup schedule
-* [yba backup schedule describe](yba_backup_schedule_describe.md)	 - Describe a YugabyteDB Anywhere universe backup schedule
-* [yba backup schedule list](yba_backup_schedule_list.md)	 - List YugabyteDB Anywhere universe backup schedules
+* [yba backup schedule](yba_backup_schedule.md)	 - Manage YugabyteDB Anywhere universe backup schedules
 
