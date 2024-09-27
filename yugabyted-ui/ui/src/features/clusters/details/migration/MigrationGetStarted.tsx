@@ -1,19 +1,17 @@
 import React, { FC } from "react";
 import { Box, Link, Paper, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import MigrateIcon from "@app/assets/migration48.svg";
 import BookIcon from "@app/assets/book.svg";
+import PlusIcon from '@app/assets/plus.svg';
 import { makeStyles } from "@material-ui/core";
 import { YBButton } from "@app/components";
-import RefreshIcon from "@app/assets/refresh.svg";
 
 const MIGRATIONS_DOCS = "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate-steps/";
 
 export const useStyles = makeStyles((theme) => ({
   paper: {
-    border: "1px dashed",
-    borderColor: theme.palette.primary[300],
-    backgroundColor: theme.palette.primary[100],
+    border: "none",
+    borderTop: `1px solid ${theme.palette.grey[300]}`,
     textAlign: "center",
   },
   icon: {
@@ -32,21 +30,19 @@ export const useStyles = makeStyles((theme) => ({
 
 type MigrationsGetStartedProps = {
   onRefresh?: () => void;
+  onNewMigration?: () => void;
 };
 
-export const MigrationsGetStarted: FC<MigrationsGetStartedProps> = ({ onRefresh }) => {
+export const MigrationsGetStarted: FC<MigrationsGetStartedProps> = ({
+    onNewMigration,
+}) => {
   const classes = useStyles();
   const theme = useTheme();
   const { t } = useTranslation();
 
   return (
     <Box>
-      <Box className={classes.refreshButton}>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefresh}>
-          {t("clusterDetail.performance.actions.refresh")}
-        </YBButton>
-      </Box>
-      <Paper className={classes.paper}>
+      <Paper className={classes.paper} square>
         <Box
           p={3}
           display="flex"
@@ -54,7 +50,6 @@ export const MigrationsGetStarted: FC<MigrationsGetStartedProps> = ({ onRefresh 
           alignItems="center"
           gridGap={theme.spacing(3)}
         >
-          <MigrateIcon className={classes.icon} />
           <Box
             display="flex"
             flexDirection="column"
@@ -67,6 +62,14 @@ export const MigrationsGetStarted: FC<MigrationsGetStartedProps> = ({ onRefresh 
             <Typography variant="body2" className={classes.message}>
               {t("clusterDetail.voyager.gettingStarted.noMigrationsDesc")}
             </Typography>
+            <YBButton
+              variant="primary"
+              onClick={onNewMigration}
+              startIcon={<PlusIcon />}
+            >
+              {t('clusterDetail.voyager.gettingStarted.migrateDatabase')}
+            </YBButton>
+
             <Box display="flex" gridGap={theme.spacing(1.5)} alignItems="center">
               <BookIcon />
               <Link href={MIGRATIONS_DOCS} target="_blank">

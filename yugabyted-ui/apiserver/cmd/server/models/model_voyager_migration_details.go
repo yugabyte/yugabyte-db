@@ -7,19 +7,25 @@ type VoyagerMigrationDetails struct {
 
     MigrationName string `json:"migration_name"`
 
+    MigrationType string `json:"migration_type"`
+
     MigrationPhase int32 `json:"migration_phase"`
 
     InvocationSequence int32 `json:"invocation_sequence"`
 
-    SourceDb string `json:"source_db"`
+    SourceDb VoyagerMigrationDetailsSourceDb `json:"source_db"`
+
+    Voyager VoyagerMigrationDetailsVoyager `json:"voyager"`
+
+    TargetCluster VoyagerMigrationDetailsTargetCluster `json:"target_cluster"`
 
     Complexity string `json:"complexity"`
 
-    DatabaseName string `json:"database_name"`
-
-    SchemaName string `json:"schema_name"`
-
     Status string `json:"status"`
 
+    Progress string `json:"progress"`
+
     InvocationTimestamp string `json:"invocation_timestamp"`
+
+    StartTimestamp string `json:"start_timestamp"`
 }

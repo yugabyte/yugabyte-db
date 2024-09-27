@@ -23,12 +23,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export interface VoyagerInstanceProps {
-  machineIP: string;
-  os: string;
-  totalDisk: string;
-  usedDisk: string;
-  exportDir: string;
-  exportedSchemaLocation: string;
+  machine_ip?: string;
+  os?: string;
+  avail_disk_bytes?: string;
+  export_dir?: string;
+  exported_schema_location?: string;
 }
 
 interface MigrationListVoyagerSidePanel extends VoyagerInstanceProps {
@@ -39,12 +38,11 @@ interface MigrationListVoyagerSidePanel extends VoyagerInstanceProps {
 export const MigrationListVoyagerSidePanel: FC<MigrationListVoyagerSidePanel> = ({
   open,
   onClose,
-  machineIP,
+  machine_ip,
   os,
-  totalDisk,
-  usedDisk,
-  exportDir,
-  exportedSchemaLocation,
+  avail_disk_bytes,
+  export_dir,
+  exported_schema_location,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -66,7 +64,7 @@ export const MigrationListVoyagerSidePanel: FC<MigrationListVoyagerSidePanel> = 
               {t("clusterDetail.voyager.voyagerSidePanel.machineIP")}
             </Typography>
             <Typography variant="body2" className={classes.value}>
-              {machineIP}
+              {machine_ip}
             </Typography>
           </Grid>
           <Grid item xs={6}>
@@ -82,18 +80,10 @@ export const MigrationListVoyagerSidePanel: FC<MigrationListVoyagerSidePanel> = 
           </Grid>
           <Grid item xs={6}>
             <Typography variant="subtitle2" className={classes.label}>
-              {t("clusterDetail.voyager.voyagerSidePanel.totalDiskSpace")}
+              {t("clusterDetail.voyager.voyagerSidePanel.availDiskSpace")}
             </Typography>
             <Typography variant="body2" className={classes.value}>
-              {totalDisk}
-            </Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="subtitle2" className={classes.label}>
-              {t("clusterDetail.voyager.voyagerSidePanel.usedDiskSpace")}
-            </Typography>
-            <Typography variant="body2" className={classes.value}>
-              {usedDisk}
+              {avail_disk_bytes}
             </Typography>
           </Grid>
           <Grid item xs={12} className={classes.dividerGridItem}>
@@ -104,7 +94,7 @@ export const MigrationListVoyagerSidePanel: FC<MigrationListVoyagerSidePanel> = 
               {t("clusterDetail.voyager.voyagerSidePanel.exportDirectory")}
             </Typography>
             <Typography variant="body2" className={classes.value}>
-              {exportDir}
+              {export_dir}
             </Typography>
           </Grid>
           <Grid item xs={12}>
@@ -112,7 +102,7 @@ export const MigrationListVoyagerSidePanel: FC<MigrationListVoyagerSidePanel> = 
               {t("clusterDetail.voyager.voyagerSidePanel.exportedSchemaLocation")}
             </Typography>
             <Typography variant="body2" className={classes.value}>
-              {exportedSchemaLocation}
+              {exported_schema_location}
             </Typography>
           </Grid>
         </Grid>

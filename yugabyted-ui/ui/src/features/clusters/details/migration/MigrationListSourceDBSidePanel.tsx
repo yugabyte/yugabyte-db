@@ -23,14 +23,12 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export interface SourceDBProps {
-  hostname: string;
-  ip: string;
-  port: string;
-  engine: string;
-  version: string;
-  auth: string;
-  database: string;
-  schema: string;
+  ip?: string;
+  port?: string;
+  engine?: string;
+  version?: string;
+  database?: string;
+  schema?: string;
 };
 
 interface MigrationListSourceDBSidePanel extends SourceDBProps {
@@ -41,12 +39,10 @@ interface MigrationListSourceDBSidePanel extends SourceDBProps {
 export const MigrationListSourceDBSidePanel: FC<MigrationListSourceDBSidePanel> = ({
   open,
   onClose,
-  hostname,
   ip,
   port,
   engine,
   version,
-  auth,
   database,
   schema,
 }) => {
@@ -65,14 +61,6 @@ export const MigrationListSourceDBSidePanel: FC<MigrationListSourceDBSidePanel> 
     >
       <Box my={2}>
         <Grid container spacing={4}>
-          <Grid item xs={12}>
-            <Typography variant="subtitle2" className={classes.label}>
-              {t("clusterDetail.voyager.sourceDBSidePanel.hostname")}
-            </Typography>
-            <Typography variant="body2" className={classes.value}>
-              {hostname}
-            </Typography>
-          </Grid>
           <Grid item xs={6}>
             <Typography variant="subtitle2" className={classes.label}>
               {t("clusterDetail.voyager.sourceDBSidePanel.ipAddress")}
@@ -110,14 +98,6 @@ export const MigrationListSourceDBSidePanel: FC<MigrationListSourceDBSidePanel> 
           </Grid>
           <Grid item xs={12} className={classes.dividerGridItem}>
             <Divider orientation="horizontal" />
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="subtitle2" className={classes.label}>
-              {t("clusterDetail.voyager.sourceDBSidePanel.authType")}
-            </Typography>
-            <Typography variant="body2" className={classes.value}>
-              {auth}
-            </Typography>
           </Grid>
           <Grid item xs={12} className={classes.dividerGridItem}>
             <Divider orientation="horizontal" />

@@ -59,36 +59,32 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
         },
       ],
     },
-    sourceDB: {
-      label: t("clusterDetail.voyager.listColumns.sourceDatabase"),
+    source_db: {
+      label: t("clusterDetail.voyager.listColumns.source"),
       columns: [
-        {
-          name: "hostname",
-          label: t("clusterDetail.voyager.listColumns.hostname"),
-        },
-        {
-          name: "host_ip",
-          label: t("clusterDetail.voyager.listColumns.hostIpAddrPort"),
-        },
         {
           name: "engineVersion",
           label: t("clusterDetail.voyager.listColumns.engineVersion"),
         },
         {
-          name: "database",
-          label: t("clusterDetail.voyager.listColumns.database"),
-        },
-        {
-          name: "schema",
-          label: t("clusterDetail.voyager.listColumns.schema"),
+          name: "host_ip",
+          label: t("clusterDetail.voyager.listColumns.hostIpAddrPort"),
         },
       ],
+    },
+    database: {
+        label: t("clusterDetail.voyager.listColumns.database"),
+        columns: [],
+    },
+    schema: {
+        label: t("clusterDetail.voyager.listColumns.schema"),
+        columns: [],
     },
     voyagerInstance: {
       label: t("clusterDetail.voyager.listColumns.voyagerInstance"),
       columns: [
         {
-          name: "machineIP",
+          name: "machine_ip",
           label: t("clusterDetail.voyager.listColumns.machineIP"),
         },
         {
@@ -106,67 +102,68 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
       ],
     },
     targetDB: {
-      label: t("clusterDetail.voyager.listColumns.targetDatabase"),
+      label: t("clusterDetail.voyager.listColumns.targetCluster"),
       columns: [
         {
-          name: "clusterUUID",
-          label: t("clusterDetail.voyager.listColumns.clusterUUID"),
+          name: "target_host_ip",
+          label: t("clusterDetail.voyager.listColumns.hostIpAddrPort"),
         },
         {
-          name: "ybaYbm",
-          label: t("clusterDetail.voyager.listColumns.ybaOrYbm"),
-        },
+          name: "target_engineVersion",
+          label: t("clusterDetail.voyager.listColumns.engineVersion"),
+        },  
       ],
     },
     complexity: {
       label: t("clusterDetail.voyager.listColumns.complexity"),
       columns: [],
     },
-    progress: {
-      label: t("clusterDetail.voyager.listColumns.progress"),
-      disabled: true,
+    start_timestamp: {
+      label: t("clusterDetail.voyager.listColumns.startedOn"),
       columns: [],
     },
+    progress: {
+        label: t("clusterDetail.voyager.listColumns.progress"),
+        disabled: true,
+        columns: [],
+      },  
   };
 
   const defaultValues: Record<string, boolean> = {
     // categories, for the edit columns modal
     general: true,
-    sourceDB: true,
-    voyagerInstance: true,
-    targetDB: true,
+    source_db: true,
+    voyagerInstance: false,
+    targetDB: false,
     complexity: true,
     progress: true,
     // columns, including parent and subcolumns
     migration_uuid: true,
     migration_type: true,
-    hostname: false,
     host_ip: true,
     engineVersion: true,
-    database: false,
-    schema: false,
-    machineIP: true,
+    database: true,
+    schema: true,
+    machine_ip: false,
     os: false,
     availableDiskSpace: false,
     exportDir: false,
-    clusterUUID: true,
-    ybaYbm: true,
+    target_host_ip: false,
+    target_engineVersion: false,
+    start_timestamp: true,
   };
 
   const CHECKBOX_PARENTS = {
     migration_uuid: "general",
     migration_type: "general",
-    hostname: "sourceDB",
-    host_ip: "sourceDB",
-    engineVersion: "sourceDB",
-    database: "sourceDB",
-    schema: "sourceDB",
-    machineIP: "voyagerInstance",
+    host_ip: "source_db",
+    engineVersion: "source_db",
+    machine_ip: "voyagerInstance",
     os: "voyagerInstance",
     availableDiskSpace: "voyagerInstance",
     exportDir: "voyagerInstance",
-    clusterUUID: "targetDB",
-    ybaYbm: "targetDB",
+    target_host_ip: "targetDB",
+    target_engineVersion: "targetDB",
   };
 
   const [columns, setColumns] = useState({
