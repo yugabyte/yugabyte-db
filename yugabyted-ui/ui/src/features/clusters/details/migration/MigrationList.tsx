@@ -570,13 +570,15 @@ export const MigrationList: FC<MigrationListProps> = ({
                 </Box>
               </Box>
               <Box>
-                <YBButton
-                  variant="primary"
-                  onClick={onNewMigration}
-                  startIcon={<PlusIcon />}
-                >
-                  {t('clusterDetail.voyager.gettingStarted.migrateDatabase')}
-                </YBButton>
+                {migrationDataProp?.length && (
+                  <YBButton
+                    variant="primary"
+                    onClick={onNewMigration}
+                    startIcon={<PlusIcon />}
+                  >
+                    {t('clusterDetail.voyager.gettingStarted.migrateDatabase')}
+                  </YBButton>
+                )}
                 <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefresh}>
                     {t("clusterDetail.performance.actions.refresh")}
                 </YBButton>
