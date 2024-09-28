@@ -14,6 +14,8 @@ SELECT * FROM test_view;
  5 | 5 | 5
 (5 rows)
 
+CREATE UNLOGGED VIEW unlogged_test_view AS SELECT * FROM test; -- fails
+ERROR:  views cannot be unlogged because they do not have storage
 -- Tests for ALTER VIEW.
 -- test ALTER VIEW ... ALTER COLUMN ... SET/DROP DEFAULT
 ALTER VIEW test_view ALTER COLUMN c SET DEFAULT 10;

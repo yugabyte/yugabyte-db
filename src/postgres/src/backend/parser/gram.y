@@ -2504,7 +2504,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET LOGGED  */
 			| SET LOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET LOGGED", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetLogged;
 					$$ = (Node *)n;
@@ -2512,10 +2511,17 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET UNLOGGED  */
 			| SET UNLOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET UNLOGGED", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_SetUnLogged;
-					$$ = (Node *)n;
+
+					/*
+					 * UNLOGGED persistence is NO-OP in YB.
+					 */
+					ereport(NOTICE,
+							(errmsg("unlogged option is currently ignored in YugabyteDB, "
+											"all non-temp tables will be logged")));
+					/* n->subtype = AT_SetUnLogged; */
+					n->subtype = AT_SetLogged;
+					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
 			| ENABLE_P TRIGGER name
@@ -2670,7 +2676,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET (...) */
 			| SET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetRelOptions;
 					n->def = (Node *)$2;
@@ -2679,7 +2684,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> RESET (...) */
 			| RESET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE RESET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ResetRelOptions;
 					n->def = (Node *)$2;
@@ -3649,9 +3653,9 @@ OptTemp:	TEMPORARY					{ $$ = RELPERSISTENCE_TEMP; }
 							 parser_errposition(@1)));
 					$$ = RELPERSISTENCE_TEMP;
 				}
+			/* CREATE UNLOGGED TABLE / SEQUENCE / VIEW */
 			| UNLOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "UNLOGGED database object", 1129);
 					$$ = RELPERSISTENCE_UNLOGGED;
 				}
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
@@ -4548,6 +4552,7 @@ create_mv_target:
 				}
 		;
 
+			/* CREATE UNLOGGED MATERIALIZED VIEW */
 OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
@@ -12541,6 +12546,7 @@ OptTempTableName:
 					$$ = $4;
 					$$->relpersistence = RELPERSISTENCE_TEMP;
 				}
+			/* SELECT ... INTO UNLOGGED <table-name> */
 			| UNLOGGED opt_table qualified_name
 				{
 					$$ = $3;

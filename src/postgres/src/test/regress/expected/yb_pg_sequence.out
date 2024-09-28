@@ -3,10 +3,7 @@
 --
 -- various error cases
 CREATE UNLOGGED SEQUENCE sequence_testx;
-ERROR:  UNLOGGED database object not supported yet
-LINE 1: CREATE UNLOGGED SEQUENCE sequence_testx;
-               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+ERROR:  unlogged sequences are not supported
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 ERROR:  INCREMENT must not be zero
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;

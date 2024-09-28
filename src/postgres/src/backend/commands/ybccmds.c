@@ -1622,6 +1622,19 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			break;
 		}
 
+		case AT_SetLogged:
+		case AT_SetUnLogged:
+			/* A NOTICE message is output from the grammar */
+			*needsYBAlter = false;
+			break;
+
+		case AT_SetRelOptions:
+		case AT_ResetRelOptions:
+			*needsYBAlter = false;
+			ereport(NOTICE,
+					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			break;
+
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("This ALTER TABLE command is not yet supported.")));
