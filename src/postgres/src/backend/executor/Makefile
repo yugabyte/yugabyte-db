@@ -17,6 +17,7 @@ OBJS = \
 	nodeYbBitmapIndexscan.o \
 	nodeYbBitmapTablescan.o \
 	nodeYbSeqscan.o \
+	ybInsertOnConflictBatchingMap.o \
 	ybOptimizeModifyTable.o \
 	ybcExpr.o \
 	ybcFunction.o \

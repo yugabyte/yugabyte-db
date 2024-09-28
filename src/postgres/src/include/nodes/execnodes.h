@@ -560,6 +560,30 @@ typedef struct ResultRelInfo
 	 * one of its ancestors; see ExecCrossPartitionUpdateForeignKey().
 	 */
 	List	   *ri_ancestorResultRels;
+
+	/*
+	 * YB batch insert stuff:
+	 * - batching mode:
+	 *   - ri_NumSlots: index of next slot to add to batch
+	 * - flushing mode:
+	 *   - ri_YbFlushCurrentSlotIdx: index of next slot to flush from batch
+	 *   - ri_YbFlushNumSlots: total number of slots to flush from batch.  It's
+	 *     a copy of ri_NumSlots before that overwritten.  0 <
+	 *     ri_YbFlushNumSlots < ri_BatchSize.
+	 *   - ri_YbFlushResultRelInfo: for partitioned tables, this is set on the
+	 *     root's ResultRelInfo to point to the partition that is in flushing
+	 *     mode.
+	 *   - ri_YbConflictMap: the map used for constraint checking of ON
+	 *     CONFLICT decisions.
+	 * If ri_NumSlots == ri_BatchSize when trying to add another slot to the
+	 * batch or ExecPendingInserts is requested, enter flushing mode.
+	 * ri_YbFlushCurrentSlotIdx > 0 indicates flushing mode is still ongoing.
+	 * If ri_YbFlushCurrentSlotIdx == ri_YbFlushNumSlots, exit flushing mode.
+	 */
+	int			ri_YbFlushCurrentSlotIdx;
+	int			ri_YbFlushNumSlots;
+	struct ResultRelInfo *ri_YbFlushResultRelInfo;
+	struct yb_insert_on_conflict_batching_hash **ri_YbConflictMap;
 } ResultRelInfo;
 
 /*
