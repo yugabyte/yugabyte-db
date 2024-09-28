@@ -6901,10 +6901,7 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 -- YB note: ERROR:  VIEW WITH CHECK OPTION not supported yet, reenable when supported
 CREATE TABLE base_tbl (a int, b int);
 ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
-                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS(table_name 'base_tbl');
 CREATE VIEW rw_view AS SELECT * FROM foreign_tbl
@@ -7913,10 +7910,7 @@ drop table loct2;
 -- ===================================================================
 create table loc2 (f1 int, f2 text);
 alter table loc2 set (autovacuum_enabled = 'false');
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table loc2 set (autovacuum_enabled = 'false');
-                         ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
 -- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
 select pg_sleep(1);

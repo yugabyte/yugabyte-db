@@ -6,6 +6,7 @@ CREATE TABLE test (a int, b int, c int DEFAULT 5);
 INSERT INTO test VALUES (generate_series(1, 5), generate_series(1, 5));
 CREATE VIEW test_view AS SELECT * FROM test ORDER BY a, b;
 SELECT * FROM test_view;
+CREATE UNLOGGED VIEW unlogged_test_view AS SELECT * FROM test; -- fails
 
 -- Tests for ALTER VIEW.
 -- test ALTER VIEW ... ALTER COLUMN ... SET/DROP DEFAULT

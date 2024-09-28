@@ -3230,16 +3230,15 @@ SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
 -- check that parallel execution produces the same result
 BEGIN;
 ALTER TABLE num_variance SET (parallel_workers = 4);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE num_variance SET (parallel_workers = 4);
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 SET LOCAL parallel_setup_cost = 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SET LOCAL max_parallel_workers_per_gather = 4;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ trim_scale
+------------
+         12
+(1 row)
+
 ROLLBACK;
 -- case where sum of squares would overflow but variance does not
 DELETE FROM num_variance;
@@ -3253,16 +3252,15 @@ SELECT variance(a) FROM num_variance;
 -- check that parallel execution produces the same result
 BEGIN;
 ALTER TABLE num_variance SET (parallel_workers = 4);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE num_variance SET (parallel_workers = 4);
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 SET LOCAL parallel_setup_cost = 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SET LOCAL max_parallel_workers_per_gather = 4;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT variance(a) FROM num_variance;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+      variance
+--------------------
+ 2.5000000000000000
+(1 row)
+
 ROLLBACK;
 DROP TABLE num_variance;
 --

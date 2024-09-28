@@ -760,6 +760,15 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Check consistency of arguments
 	 */
+	if (IsYugaByteEnabled() && stmt->relation->relpersistence == RELPERSISTENCE_UNLOGGED)
+	{
+		/* UNLOGGED persistence is NO-OP in YugabyteDB. */
+		ereport(NOTICE,
+				(errmsg("unlogged option is currently ignored in YugabyteDB, "
+								"all non-temp tables will be logged")));
+		stmt->relation->relpersistence = RELPERSISTENCE_PERMANENT;
+	}
+
 	if (stmt->oncommit != ONCOMMIT_NOOP
 		&& stmt->relation->relpersistence != RELPERSISTENCE_TEMP)
 		ereport(ERROR,

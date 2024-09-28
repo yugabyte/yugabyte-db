@@ -1860,10 +1860,7 @@ SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
 
 TRUNCATE TABLE toasttest;
 ALTER TABLE toasttest set (toast_tuple_target = 4080);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE toasttest set (toast_tuple_target = 4080);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
