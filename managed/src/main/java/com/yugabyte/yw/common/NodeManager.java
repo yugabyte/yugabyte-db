@@ -855,7 +855,8 @@ public class NodeManager extends DevopsBase {
         taskParam);
   }
 
-  private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
+  private List<String> getConfigureSubCommand(
+      AnsibleConfigureServers.Params taskParam, Map<String, String> sensitiveData) {
     Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     Config config = runtimeConfigFactory.forUniverse(universe);
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
@@ -1096,8 +1097,7 @@ public class NodeManager extends DevopsBase {
             }
             Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
-            subcommand.add("--gflags");
-            subcommand.add(Json.stringify(Json.toJson(gflags)));
+            sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
           } else if (taskSubType.equals(
               UpgradeTaskParams.UpgradeTaskSubType.YbcInstall.toString())) {
             subcommand.add("--tags");
@@ -1170,8 +1170,7 @@ public class NodeManager extends DevopsBase {
               }
             }
           }
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
+          sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
 
           subcommand.add("--tags");
           subcommand.add("override_gflags");
@@ -1283,8 +1282,7 @@ public class NodeManager extends DevopsBase {
                         universe,
                         Arrays.asList(GFlagsUtil.CERTS_DIR, GFlagsUtil.CERTS_FOR_CLIENT_DIR)));
                 processGFlags(config, universe, node, taskParam, gflags, useHostname);
-                subcommand.add("--gflags");
-                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
                 subcommand.add("--tags");
                 subcommand.add("override_gflags");
                 break;
@@ -1351,8 +1349,7 @@ public class NodeManager extends DevopsBase {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             }
             processGFlags(config, universe, node, taskParam, gflags, useHostname, true);
-            subcommand.add("--gflags");
-            subcommand.add(Json.stringify(Json.toJson(gflags)));
+            sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
 
             subcommand.add("--tags");
             subcommand.add("override_gflags");
@@ -1372,8 +1369,7 @@ public class NodeManager extends DevopsBase {
               log.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
-            subcommand.add("--gflags");
-            subcommand.add(Json.stringify(Json.toJson(gflags)));
+            sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
 
             subcommand.add("--tags");
             subcommand.add("override_gflags");
@@ -2126,7 +2122,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
-          commandArgs.addAll(getConfigureSubCommand(taskParam));
+          commandArgs.addAll(getConfigureSubCommand(taskParam, sensitiveData));
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
             commandArgs.add("--tags");
@@ -2582,6 +2578,10 @@ public class NodeManager extends DevopsBase {
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
     if (userIntent.providerType == CloudType.local) {
+      if (sensitiveData.containsKey("--gflags")) {
+        commandArgs.add("--gflags");
+        commandArgs.add(sensitiveData.get("--gflags"));
+      }
       return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
     }
     commandArgs.add(nodeTaskParam.nodeName);

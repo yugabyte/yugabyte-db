@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -47,12 +48,16 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -271,6 +276,8 @@ public class AppInit {
                 });
         armReleaseThread.start();
 
+        updateSensitiveGflagsforRedaction(gFlagsValidation);
+
         // initialize prometheus exports
         DefaultExports.initialize();
 
@@ -356,5 +363,20 @@ public class AppInit {
       log.error("caught error during app init ", t);
       throw t;
     }
+  }
+
+  private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (Release release : Release.getAll()) {
+      // Extract sensitive flags and cache in DB for later use.
+      if (release.getSensitiveGflags() == null) {
+        release.setSensitiveGflags(
+            gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
+        release.save();
+      }
+      sensitiveGflags.addAll(release.getSensitiveGflags());
+    }
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 }
