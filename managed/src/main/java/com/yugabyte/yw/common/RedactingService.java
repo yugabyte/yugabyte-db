@@ -8,6 +8,8 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.common.audit.AuditService;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 
@@ -91,7 +93,8 @@ public class RedactingService {
           // LDAP - DB Universe Sync
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
-          .add("$..ysql_hba_conf_csv")
+          // HA Config
+          .add("$..cluster_key")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -99,8 +102,9 @@ public class RedactingService {
   public static final List<JsonPath> SECRET_JSON_PATHS_APIS =
       SECRET_PATHS_FOR_APIS.stream().map(JsonPath::compile).collect(Collectors.toList());
 
-  public static final List<JsonPath> SECRET_JSON_PATHS_LOGS =
-      SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList());
+  public static Set<JsonPath> SECRET_JSON_PATHS_LOGS =
+      new CopyOnWriteArraySet<>(
+          SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     if (input == null) {

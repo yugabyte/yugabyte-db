@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -51,8 +53,11 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -263,6 +268,8 @@ public class AppInit {
                 });
         armReleaseThread.start();
 
+        updateSensitiveGflagsforRedaction(releaseManager, gFlagsValidation, configHelper);
+
         // initialize prometheus exports
         DefaultExports.initialize();
 
@@ -346,5 +353,29 @@ public class AppInit {
       log.error("caught error during app init ", t);
       throw t;
     }
+  }
+
+  private void updateSensitiveGflagsforRedaction(
+      ReleaseManager releaseManager, GFlagsValidation gFlagsValidation, ConfigHelper configHelper) {
+    Set<String> sensitiveGflags = new HashSet<>();
+    Map<String, Object> updatedReleases = new HashMap<>();
+    boolean update[] = {false};
+    releaseManager
+        .getReleaseMetadata()
+        .forEach(
+            (version, r) -> {
+              ReleaseMetadata rm = releaseManager.metadataFromObject(r);
+              if (rm.sensitiveGflags == null) {
+                update[0] = true;
+                rm.sensitiveGflags = gFlagsValidation.getSensitiveJsonPathsForVersion(version);
+              }
+              sensitiveGflags.addAll(rm.sensitiveGflags);
+              updatedReleases.put(version, rm);
+            });
+    if (update[0]) {
+      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+    }
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 }

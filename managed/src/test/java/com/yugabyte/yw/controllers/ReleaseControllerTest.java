@@ -286,7 +286,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         .addReleaseWithMetadata(any(), any());
     Result result = assertPlatformException(() -> createRelease(customer.getUuid(), body));
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockGFlagsValidation, times(0)).addDBMetadataFiles(any(), any());
+    verify(mockGFlagsValidation, times(1)).addDBMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.getUuid());
   }

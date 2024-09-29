@@ -122,6 +122,9 @@ public class ReleaseManager {
     @ApiModelProperty(value = "Release packages")
     public List<Package> packages;
 
+    @ApiModelProperty(value = "List of sensitive gflags")
+    public Set<String> sensitiveGflags;
+
     // Docker image tag corresponding to the release
     @ApiModelProperty(value = "Release image tag")
     public String imageTag;

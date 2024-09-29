@@ -5,8 +5,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
@@ -35,10 +37,12 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -95,14 +99,19 @@ public class ReleaseController extends AuthenticatedController {
     }
 
     try {
+      Set<String> sensitiveGflags = new HashSet<>();
       Map<String, ReleaseMetadata> releases =
           ReleaseManager.formDataToReleaseMetadata(versionDataList);
       releases.forEach(
           (version, metadata) -> {
-            releaseManager.addReleaseWithMetadata(version, metadata);
             gFlagsValidation.addDBMetadataFiles(version, metadata);
+            metadata.sensitiveGflags = gFlagsValidation.getSensitiveJsonPathsForVersion(version);
+            sensitiveGflags.addAll(metadata.sensitiveGflags);
+            releaseManager.addReleaseWithMetadata(version, metadata);
           });
       releaseManager.updateCurrentReleases();
+      RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+          sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
     } catch (RuntimeException re) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }

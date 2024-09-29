@@ -9318,6 +9318,14 @@
           "$ref" : "#/definitions/S3Location",
           "description" : "S3 link and credentials"
         },
+        "sensitiveGflags" : {
+          "description" : "List of sensitive gflags",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "state" : {
           "description" : "Release state",
           "enum" : [ "ACTIVE", "DISABLED", "DELETED" ],
