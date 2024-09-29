@@ -42,7 +42,7 @@ class AnsibleProcess(object):
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
-                                        "NODE_AGENT_AUTH_TOKEN"]
+                                        "NODE_AGENT_AUTH_TOKEN", "YCQL_LDAP", "YSQL_HBA_CONF"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -61,6 +61,8 @@ class AnsibleProcess(object):
         for key, value in playbook_args.items():
             if self.is_sensitive(key.upper()):
                 playbook_args[key] = self.REDACT_STRING
+            elif isinstance(value, dict):
+                playbook_args[key] = self.redact_sensitive_data(value)
         return playbook_args
 
     def run(self, filename, extra_vars=None, host_info=None, print_output=True,
