@@ -100,6 +100,30 @@ public class GFlagsValidation {
     this.releaseManager = releaseManager;
   }
 
+  /**
+   * Given a YBDB version, returns a set of JsonPaths containing the sensitive Master and Tserver
+   * Gflags.
+   */
+  public Set<String> getSensitiveJsonPathsForVersion(String version) {
+    LOG.info("Parsing sensitive gflags for DB version " + version);
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (ServerType server : ServerType.values()) {
+      if (!server.equals(ServerType.MASTER) && !server.equals(ServerType.TSERVER)) {
+        continue;
+      }
+      try {
+        for (GFlagDetails gflag : extractGFlags(version, server.name(), false)) {
+          if (gflag.tags.contains("sensitive_info")) {
+            sensitiveGflags.add("$.." + gflag.name);
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Error while fetching Gflags for db version " + version, e);
+      }
+    }
+    return sensitiveGflags;
+  }
+
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
       throws IOException {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);

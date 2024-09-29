@@ -1,10 +1,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
@@ -39,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -52,6 +56,7 @@ import play.mvc.Result;
 @Slf4j
 public class ReleasesController extends AuthenticatedController {
   @Inject ReleasesUtils releasesUtils;
+  @Inject GFlagsValidation gFlagsValidation;
 
   @ApiOperation(
       value = "Create a release",
@@ -115,6 +120,13 @@ public class ReleasesController extends AuthenticatedController {
                 BAD_REQUEST, "invalid artifact, no package url or package file id found");
           }
           release.addArtifact(artifact);
+          // Update sensitive gflags for redaction.
+          Set<String> sensitiveGflags =
+              gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
+          release.setSensitiveGflags(sensitiveGflags);
+          release.save();
+          RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+              sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
         }
       }
       transaction.commit();
