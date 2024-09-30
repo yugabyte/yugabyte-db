@@ -511,7 +511,7 @@ DEFINE_RUNTIME_bool(
     enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
-DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
+DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
