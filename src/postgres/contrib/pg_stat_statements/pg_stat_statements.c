@@ -3627,6 +3627,12 @@ yb_track_nested_queries(void)
 	return pgss_track == PGSS_TRACK_ALL;
 }
 
+/*
+ * Get the normalized query text from the pgss_query_texts.stat file
+ * and copy it to the normalized_query buffer.
+ * Note that normalized_query is expected to be a buffer of at least
+ * query_len + 1 bytes.
+ */
 static void
 YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query)
 {
