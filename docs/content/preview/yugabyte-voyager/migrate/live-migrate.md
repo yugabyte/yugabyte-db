@@ -785,7 +785,7 @@ yb-voyager export data from source --export-dir <EXPORT_DIR> \
 For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
 {{< /note >}}
 
-{{< note title= "Migrating the source databases with large row sizes" >}}
+{{< note title= "Migrating source databases with large row sizes" >}}
 If a table's row size on the source database is too large, and exceeds the default [RPC message size](../../../reference/configuration/all-flags-yb-master/#rpc-max-message-size), import data will fail with the error `ERROR: Sending too long RPC message..`. So, you need to migrate those tables separately after removing the large rows.
 {{< /note >}}
 

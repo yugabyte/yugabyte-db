@@ -941,7 +941,7 @@ yb-voyager export data from source --export-dir <EXPORT_DIR> \
 For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
 {{< /note >}}
 
-{{< note title= "Migrating the source databases with large row sizes" >}}
+{{< note title= "Migrating source databases with large row sizes" >}}
 If a table's row size on the source database is too large, and exceeds the default [RPC message size](../../../reference/configuration/all-flags-yb-master/#rpc-max-message-size), import data will fail with the error `ERROR: Sending too long RPC message..`. So, you need to migrate those tables separately after removing the large rows.
 {{< /note >}}
 
@@ -1032,7 +1032,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 {{< /tip >}}
 
 {{< note title= "Migrating Oracle source databases with large row sizes" >}}
-When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
+When migrating from Oracle source, during the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
 
 ```sh
 export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>

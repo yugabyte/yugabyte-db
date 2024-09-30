@@ -1021,7 +1021,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 {{< /tip >}}
 
 {{< note title= "Migrating Oracle source databases with large row sizes" >}}
-The default data import row size limit for for Oracle databases is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit by setting the following environment variable:
+When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit by setting the following environment variable:
 
 ```sh
 export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
