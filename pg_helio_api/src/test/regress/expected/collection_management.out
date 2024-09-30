@@ -194,3 +194,9 @@ EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count'
 -- SELECT helio_api.create_collection('db_collection_management', 'change_feed_collection2');
 -- SELECT helio_api.drop_collection('db_collection_management', 'change_feed_collection2');
 -- SELECT change_stream_response->>'ns' as ns, change_stream_response->>'operationType' as operation_type FROM helio_data.changes WHERE change_stream_response @@ '{"ns": { "$eq": {"db": "db_collection_management", "coll": "change_feed_collection2"}}}' order by operation_type;
+-- validate collection name for empty
+SELECT helio_api.create_collection('db', '');
+ERROR:  Invalid namespace specified 'db.'
+CONTEXT:  SQL statement "INSERT INTO helio_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SELECT helio_api.find_and_modify('', '{"findAndModify": "", "query": {"a": 1000}, "remove": 0.1, "sort": {"b": -1}}');
+ERROR:  Invalid empty namespace specified

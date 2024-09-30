@@ -249,6 +249,11 @@ ParseFindAndModifyMessage(pgbson *message)
 			}
 
 			spec.collectionName = bson_iter_dup_utf8(&messageIter, NULL);
+			if (strlen(spec.collectionName) == 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+								errmsg("Invalid empty namespace specified")));
+			}
 		}
 		else if (strcmp(key, "query") == 0)
 		{

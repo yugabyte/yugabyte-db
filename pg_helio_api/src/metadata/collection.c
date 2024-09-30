@@ -1135,6 +1135,12 @@ void
 ValidateCollectionNameForUnauthorizedSystemNs(const char *collectionName,
 											  Datum databaseNameDatum)
 {
+	/* Empty collection name*/
+	if (strlen(collectionName) == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+						errmsg("Invalid empty namespace specified")));
+	}
 	for (int i = 0; i < NonWritableSystemCollectionNamesLength; i++)
 	{
 		if (strcmp(collectionName, NonWritableSystemCollectionNames[i]) == 0)
@@ -1354,6 +1360,13 @@ GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews)
 bool
 CreateCollection(Datum dbNameDatum, Datum collectionNameDatum)
 {
+	char *collectionNameStr = TextDatumGetCString(collectionNameDatum);
+	if (collectionNameStr != NULL && strlen(collectionNameStr) == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+						errmsg("Invalid empty namespace specified")));
+	}
+
 	const char *cmdStr = FormatSqlQuery("SELECT %s.create_collection($1, $2)",
 										ApiSchemaName);
 

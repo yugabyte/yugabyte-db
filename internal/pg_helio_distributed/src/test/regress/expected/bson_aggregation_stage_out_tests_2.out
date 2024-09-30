@@ -717,3 +717,16 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                            Index Cond: (collection.shard_key_value = '9864'::bigint)
 (14 rows)
 
+-- simplest test case working with db database
+SELECT helio_api.insert('db', '{"insert":"source", "documents":[
+   { "_id" : 11, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+--validate empty collection check
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : ""} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Invalid empty namespace specified

@@ -191,3 +191,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 --3) sharded source
 SELECT helio_api.shard_collection('newdb', 'explainsrc', '{ "a": "hashed" }', false);
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "explainsrc", "pipeline": [{"$out" :  "target"} ] }');
+
+-- simplest test case working with db database
+SELECT helio_api.insert('db', '{"insert":"source", "documents":[
+   { "_id" : 11, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 }
+]}');
+
+--validate empty collection check
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : ""} ], "cursor": { "batchSize": 1 } }', 4294967294);
