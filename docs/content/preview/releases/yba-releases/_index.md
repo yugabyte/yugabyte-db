@@ -14,11 +14,11 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.23](v2.23/) <span class='tag release preview'>Preview</span> | {{< yb-eol-dates "v2.23" release >}} | n/a | n/a |
-| [v2024.1](v2024.1/) <span class='tag release sts'>STS</span> | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
-| [v2.20](v2.20/) <span class='tag release lts'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
-| [v2.18](v2.18/) <span class='tag release sts'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.14](../ybdb-releases/v2.14/) <span class='tag release lts'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
+| [v2.23](v2.23/) {{<tags/release/preview>}} | {{< yb-eol-dates "v2.23" release >}} | n/a | n/a |
+| [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
+| [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
+| [v2.18](v2.18/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
+| [v2.14](../ybdb-releases/v2.14/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 {{< warning title="Replicated end of life" >}}
 YugabyteDB Anywhere will end support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/). To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
