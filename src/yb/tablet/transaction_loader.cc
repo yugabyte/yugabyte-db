@@ -95,6 +95,8 @@ class TransactionLoader::Executor {
     Status status;
 
     auto se = ScopeExit([this, &status] {
+      regular_iterator_.Reset();
+      intents_iterator_.Reset();
       scoped_pending_operation_.Reset();
 
       loader_.FinishLoad(status);
