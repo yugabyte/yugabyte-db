@@ -197,10 +197,20 @@ public class DrConfigController extends AuthenticatedController {
                   targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
               .getSeconds();
       createForm.pitrParams.snapshotIntervalSec =
-          confGetter
-              .getConfForScope(
-                  targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
-              .getSeconds();
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
+    } else if (createForm.pitrParams.snapshotIntervalSec == 0L) {
+      createForm.pitrParams.snapshotIntervalSec =
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
     }
     validatePitrParams(createForm.pitrParams);
 
@@ -1708,6 +1718,11 @@ public class DrConfigController extends AuthenticatedController {
 
     if (formData.pitrParams != null) {
       changeInParams = true;
+      if (formData.pitrParams.snapshotIntervalSec == 0L) {
+        formData.pitrParams.snapshotIntervalSec =
+            Math.min(
+                formData.pitrParams.retentionPeriodSec - 1, drConfig.getPitrSnapshotIntervalSec());
+      }
       validatePitrParams(formData.pitrParams);
       Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
       Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
