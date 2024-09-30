@@ -1,30 +1,101 @@
-.metadata-tag-green,
-.metadata-tag-gray {
-  font-weight: 500;
-  font-size: 10px;
-  line-height: 16px;
-  text-transform: uppercase;
-  height: 20px;
-  color: #4e5f6d;
-  background: #e9eef2;
-  border-radius: 4px;
-  padding: 4px 6px;
-  margin: 0 6px;
-  border: 0 !important;
-}
+.td-content {
+  .tag {
+    display: inline-flex;
+    padding: 4px 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 16px;
+    text-transform: uppercase;
+    vertical-align: middle;
+    border-radius: 6px;
+    text-decoration: none;
+    background: #E8E9FE;
+    color: #4F4FA4;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    top: -2px;
 
-.metadata-tag-green {
-  background: #cdefe1;
-}
 
-a > {
-  .metadata-tag-green,
-  .metadata-tag-gray {
-    text-decoration: underline;
-    text-decoration-color: #e9eef2;
 
-    .metadata-tag-green {
-      text-decoration-color: #cdefe1;
+
+
+    &.early-access {
+      background: #E8E9FE;
+      color: #4F4FA4;
+    }
+
+    &.tech-preview {
+      background: #ffeec8;
+      color: #9D6C00;
+    }
+
+    &.general-availability {
+      background: #CDEFE1;
+      color: #097345;
+    }
+
+
+    &.ysql {
+      background: #3FC47E;
+      border: 1px solid #3FC47E;
+
+      &:hover,
+      &:focus,
+      &:active {
+        background: rgba(146, 237, 169, 0.8);
+      }
+    }
+
+    &.ycql {
+      background: #6198EA;
+      border: 1px solid #6198EA;
+
+      &:hover,
+      &:focus,
+      &:active {
+        background: rgba(97, 152, 234, 0.8);
+      }
+    }
+
+    &.release{
+      font-weight: 500;
+      font-size: 10px;
+      line-height: 16px;
+      text-transform: uppercase;
+      height: 20px;
+      color: #9D6C00;
+      background: #FFEEC8;
+      border-radius: 4px;
+      padding: 2px 6px;
+      margin: 0 6px;
+      border: 0 !important;
+
+      &.preview {
+        background: #FFEEC8;
+        color: #9D6C00;
+      }
+      .sts {
+        background: #CDEFE1;
+        color: #097345;
+      }
+      .lts {
+        background: #CDEFE1;
+        color: #097345;
+      }
     }
   }
+
+  a > {
+    .tag.release {
+      text-decoration: underline;
+      text-decoration-color: #e9eef2;
+
+      .preview {
+        text-decoration-color: #cdefe1;
+      }
+    }
+  }
+
+
 }

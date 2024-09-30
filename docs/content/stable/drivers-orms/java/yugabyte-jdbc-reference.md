@@ -3,7 +3,8 @@ title: YugabyteDB JDBC Smart Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: YugabyteDB JDBC Smart Driver for YSQL reference
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: JDBC Drivers

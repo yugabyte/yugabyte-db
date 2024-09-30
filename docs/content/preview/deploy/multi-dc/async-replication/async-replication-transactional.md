@@ -11,7 +11,8 @@ menu:
     parent: async-replication
     identifier: async-replication-transactional
     weight: 20
-badges: ysql
+tags:
+  other: ysql
 type: docs
 ---
 

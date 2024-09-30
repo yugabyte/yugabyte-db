@@ -22,7 +22,7 @@ Additionally, individual features may also be designated as tech preview or earl
 
 ## Stable releases
 
-Features in stable releases are considered to be {{<badge/ga>}} unless marked otherwise.
+Features in stable releases are considered to be {{<tags/feature/ga>}} unless marked otherwise.
 
 Stable release versions use the numbering format `YYYY.N.MAINTENANCE.PATCH` as follows:
 
@@ -45,7 +45,7 @@ On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are 
 
 ## Preview releases
 
-Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
+Features in preview releases are considered to be {{<tags/feature/tp>}} unless marked otherwise.
 
 Preview releases, which include features under active development, are recommended for development and testing only.
 
@@ -73,13 +73,13 @@ Preview releases use the numbering format `MAJOR.MINOR.PATCH.HOTFIX`, where non-
 
 YugabyteDB features are made available as one of the following:
 
-- {{<badge/tp>}} Tech Preview
-- {{<badge/ea>}} Early Access
-- {{<badge/ga>}} General Availability
+- {{<tags/feature/tp>}} Tech Preview
+- {{<tags/feature/ea>}} Early Access
+- {{<tags/feature/ga>}} General Availability
 
 Changes for EA and GA are always reported in the Release Notes.
 
-| Description | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | Deprecated |
+| Description | {{<tags/feature/tp>}} | {{<tags/feature/ea>}} | {{<tags/feature/ga>}} | Deprecated |
 | :--- | :--- | :--- | :--- | :--- |
 | Contact with Product Team | Y | Recommended | N | N/A |
 | Changes | Subject to change | Backwards compatible | Backwards compatible | N/A |

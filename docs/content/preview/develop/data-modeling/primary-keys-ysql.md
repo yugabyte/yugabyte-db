@@ -2,7 +2,8 @@
 title: Designing optimal primary keys in YugabyteDB
 headerTitle: Designing optimal primary keys
 linkTitle: Primary keys
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: data-modeling-pk

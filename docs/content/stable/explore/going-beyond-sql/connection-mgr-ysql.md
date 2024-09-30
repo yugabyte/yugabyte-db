@@ -4,7 +4,8 @@ headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-techPreview: /preview/releases/versioning/#feature-maturity
+tags:
+  feature: tech-preview
 menu:
   stable:
     name: Built-in connection pooling

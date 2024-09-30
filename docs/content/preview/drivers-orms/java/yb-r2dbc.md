@@ -3,7 +3,8 @@ title: YugabyteDB R2DBC Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB R2DBC Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: java-driver-2-r2dbc

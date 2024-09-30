@@ -16,11 +16,11 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.23](v2.23/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.23" release >}} | No support | n/a |
-| [v2024.1](v2024.1/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
-| [v2.20](v2.20/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
-| [v2.18](v2.18/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.14](v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
+| [v2.23](v2.23/) <span class='tag release preview'>Preview</span> | {{< yb-eol-dates "v2.23" release >}} | No support | n/a |
+| [v2024.1](v2024.1/) <span class='tag release sts'>STS</span> | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
+| [v2.20](v2.20/) <span class='tag release lts'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
+| [v2.18](v2.18/) <span class='tag release sts'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
+| [v2.14](v2.14/) <span class='tag release lts'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 {{< tip title="YugabyteDB Anywhere release notes have moved" >}}
 Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases/) have moved to their own page.
