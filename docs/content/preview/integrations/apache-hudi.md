@@ -134,9 +134,9 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 
 Launch the Confluent Control Center and verify the schema details and messages in the relevant topics.
 
-Access the Control Center at <http://{your_docker_container_IP_or_VM}:9021>.
+Access the Control Center at `http://<docker_container_IP_or_VM>:9021`.
 
-Start [populating the data from YugabyteDB](/preview/explore/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, <http://{your_docker_container_IP_or_VM}:9021/clusters/management/topics/cdc.public.cdctest/message-viewer>).
+Start [populating the data from YugabyteDB](/preview/explore/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, `http://172.18.0.2:9021/clusters/management/topics/cdc.public.cdctest/message-viewer`).
 
 ### Install Apache Hudi
 
