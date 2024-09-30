@@ -930,15 +930,6 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-voyager]]
-  name = "Monitor"
-  parent = "yugabytedb-voyager"
-  weight = 103
-  identifier = "monitor-voyager"
-  [preview_yugabyte-voyager.params]
-    showSection = true
-    hideLink = true
-
 ########## Menus for stable
 
 [[stable]]
