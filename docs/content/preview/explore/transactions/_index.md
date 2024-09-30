@@ -20,7 +20,7 @@ The following table summarizes the support for transactions across the YSQL and 
 | Property | YSQL | YCQL | Comments |
 | :------- | :--- | :--- | :------- |
 | Distributed transactions | Yes | Yes | Perform multi-row or multi-table transactions.<br/>An application can connect to any node of the cluster. |
-| Isolation levels | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
+| Isolation levels | Read Committed, Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
 | `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
 <!--
