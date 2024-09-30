@@ -284,17 +284,17 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRender: (sourceDB: (typeof migrationNewData)[number]["source_db"]) => {
           return (
             <Box>
-              {migrationColSettings.engineVersion && (
-                <Typography variant="body2">
-                  {getDbEngineString(sourceDB?.engine)} {sourceDB?.version}
-                </Typography>
-              )}
               {migrationColSettings.host_ip && (
                 <Link onClick={() => setSourceDBSelection(sourceDB)} >
                   <Typography variant="body2">
                     {sourceDB?.ip}{sourceDB?.port ? ":" + sourceDB.port : ""}
                   </Typography>
                 </Link>
+              )}
+              {migrationColSettings.engineVersion && (
+                <Typography variant="body2">
+                  {getDbEngineString(sourceDB?.engine)} {sourceDB?.version}
+                </Typography>
               )}
             </Box>
           );
@@ -380,15 +380,15 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRender: (targetCluster: (typeof migrationNewData)[number]["target_cluster"]) => {
           return (
             <Box>
-              {migrationColSettings.target_engineVersion && (
-                <Typography variant="body2">
-                  {getDbEngineString(targetCluster?.engine)} {targetCluster?.version}
-                </Typography>
-              )}
               {migrationColSettings.target_host_ip && (
                 <Typography variant="body2">
                   {targetCluster?.ip}
                   {targetCluster?.port ? ":" + targetCluster.port : ""}
+                </Typography>
+              )}
+              {migrationColSettings.target_engineVersion && (
+                <Typography variant="body2">
+                  {getDbEngineString(targetCluster?.engine)} {targetCluster?.version}
                 </Typography>
               )}
             </Box>
