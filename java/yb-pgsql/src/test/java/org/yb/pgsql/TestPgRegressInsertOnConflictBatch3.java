@@ -12,22 +12,16 @@
 //
 package org.yb.pgsql;
 
-import org.junit.Test;
+import java.util.Map;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
-/**
- * Runs the pg_regress test suite on YB code.
- */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressTypesNumeric extends BasePgRegressTest {
+public class TestPgRegressInsertOnConflictBatch3 extends TestPgRegressInsertOnConflict {
   @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
-  @Test
-  public void schedule() throws Exception {
-    runPgRegressTest("yb_types_numeric_schedule");
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    appendToYsqlPgConf(flags, YB_INSERT_ON_CONFLICT_BATCH_GUC + "=3");
+    return flags;
   }
 }

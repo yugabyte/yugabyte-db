@@ -16,18 +16,18 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
-/**
- * Runs the pg_regress test suite on YB code.
- */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressTypesNumeric extends BasePgRegressTest {
+public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
+  public static final String YB_INSERT_ON_CONFLICT_BATCH_GUC =
+      "yb_insert_on_conflict_read_batch_size";
+
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return 300;
   }
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_types_numeric_schedule");
+    runPgRegressTest("yb_insert_on_conflict_schedule");
   }
 }
