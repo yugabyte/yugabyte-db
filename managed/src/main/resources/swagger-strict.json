@@ -9286,11 +9286,6 @@
           "description" : "Retention period of a snapshot in seconds",
           "format" : "int64",
           "type" : "integer"
-        },
-        "snapshotIntervalSec" : {
-          "description" : "Time interval between snapshots in seconds",
-          "format" : "int64",
-          "type" : "integer"
         }
       },
       "type" : "object"

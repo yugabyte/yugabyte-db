@@ -1,5 +1,7 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -63,7 +65,11 @@ public class DrConfigCreateForm {
     @ApiModelProperty(value = "Retention period of a snapshot in seconds")
     public long retentionPeriodSec;
 
-    @ApiModelProperty(value = "Time interval between snapshots in seconds")
-    public long snapshotIntervalSec = 86400L;
+    @ApiModelProperty(
+        value =
+            "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Time interval"
+                + " between snapshots in seconds")
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
+    public long snapshotIntervalSec;
   }
 }
