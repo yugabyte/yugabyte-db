@@ -1,4 +1,7 @@
 .td-content {
+  h1 > .tag{
+    margin: 0 10px;
+  }
   .tag {
     display: inline-flex;
     padding: 4px 6px;
@@ -42,6 +45,9 @@
       background: #E5EDFF;
       color: #2B59C3;
     }
+  &:hover{
+    text-decoration: none !important  ;
+  }
   }
 }
 
@@ -52,6 +58,7 @@
   text-transform: uppercase;
   height: 20px;
   color: #9D6C00;
+  display: inline-block;
   background: #FFEEC8;
   border-radius: 4px;
   padding: 2px 6px;
@@ -74,13 +81,3 @@
   }
 }
 
-a > {
-  .tag.release {
-    text-decoration: underline;
-    text-decoration-color: #e9eef2;
-
-    &.preview {
-      text-decoration-color: #cdefe1;
-    }
-  }
-}
