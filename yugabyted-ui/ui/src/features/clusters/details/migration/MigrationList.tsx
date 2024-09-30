@@ -502,7 +502,7 @@ export const MigrationList: FC<MigrationListProps> = ({
 
         return true;
       }),
-    [search, migrationType, sourceEngine]
+    [search, migrationType, sourceEngine, migrationNewData]
   );
 
   const migrationData = React.useMemo(
@@ -577,7 +577,7 @@ export const MigrationList: FC<MigrationListProps> = ({
                 </Box>
               </Box>
               <Box>
-                {migrationDataProp?.length && (
+                {!!migrationDataProp?.length && (
                   <YBButton
                     variant="primary"
                     onClick={onNewMigration}

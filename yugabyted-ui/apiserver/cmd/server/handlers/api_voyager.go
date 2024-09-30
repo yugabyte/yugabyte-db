@@ -237,10 +237,6 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         Error:      nil,
     }
     
-    // TODO: remove this
-    // future <- voyagerMigrationsResponse
-    // return
-
     rows, err := conn.Query(context.Background(), RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL)
     if err != nil {
         log.Errorf(fmt.Sprintf("[%s] Error while executing query: [%s]",
