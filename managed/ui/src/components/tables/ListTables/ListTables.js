@@ -22,8 +22,8 @@ import { YBButton } from '../../../redesign/components';
 import {
   getTableName,
   getTableUuid,
-  isColocatedChildTable,
-  isColocatedParentTable
+  getIsColocatedChildTable,
+  getIsColocatedParentTable
 } from '../../../utils/tableUtils';
 import { SchemaChangeModeInfoModal } from '../../xcluster/sharedComponents/SchemaChangeInfoModal';
 import { getPrimaryCluster } from '../../../utils/universeUtilsTyped';
@@ -297,9 +297,9 @@ class ListTableGrid extends Component {
         tableName: getTableName(ybTable),
         status: 'success',
         isIndexTable: ybTable.isIndexTable,
-        sizeBytes: isColocatedChildTable(ybTable) ? '-' : ybTable.sizeBytes,
-        walSizeBytes: isColocatedChildTable(ybTable) ? '-' : ybTable.walSizeBytes,
-        isParentTable: isColocatedParentTable(ybTable)
+        sizeBytes: getIsColocatedChildTable(ybTable) ? '-' : ybTable.sizeBytes,
+        walSizeBytes: getIsColocatedChildTable(ybTable) ? '-' : ybTable.walSizeBytes,
+        isParentTable: getIsColocatedParentTable(ybTable)
       }));
     }
     const currentUniverseTasks = universeTasks.data[currentUniverse.universeUUID];

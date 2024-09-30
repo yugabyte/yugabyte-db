@@ -681,8 +681,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
             <DrConfigOverview drConfig={drConfig} />
             <DrConfigDetails
               drConfig={drConfig}
-              isTableInfoError={drConfigFullQuery.isError}
-              isTableInfoLoading={drConfigFullQuery.isLoading}
+              isTableInfoIncludedInConfig={drConfigFullQuery.isSuccess}
             />
           </Box>
           {isSwitchoverModalOpen && (

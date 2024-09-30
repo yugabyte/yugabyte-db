@@ -1173,6 +1173,7 @@
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
             "Dropped": "Dropped from DB",
+            "TableInfoMissing": "Table Info Missing",
             "ExtraTableOnSource": "Extra Table On Source",
             "ExtraTableOnTarget": "Extra Table on Target",
             "DroppedFromSource": "Dropped From Source",
