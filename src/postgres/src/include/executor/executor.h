@@ -632,4 +632,8 @@ extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 extern void CheckSubscriptionRelkind(char relkind, const char *nspname,
 						 const char *relname);
 
+extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										EState *estate,
+										List *arbiterIndexes);
+
 #endif							/* EXECUTOR_H  */
