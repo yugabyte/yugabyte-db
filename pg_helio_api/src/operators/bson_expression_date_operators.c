@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_date_operators.c
+ * src/operators/bson_expression_date_operators.c
  *
  * Object Operator expression implementations of BSON.
  *
@@ -389,9 +389,10 @@ static void HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, co
 static void HandleCommonPreParsedForDateAddSubtract(char *opName, bool isDateAdd,
 													pgbson *doc, void *arguments,
 													ExpressionResult *expressionResult);
-static void HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
-								   ExpressionResult *expressionResult,
-								   const char *operatorName, DatePart datePart);
+static void ParseDatePartOperator(const bson_value_t *argument,
+								  const char *operatorName,
+								  DatePart datePart, AggregationExpressionData *data,
+								  ParseAggregationExpressionContext *context);
 static bool ParseDatePartOperatorArgument(const bson_value_t *operatorValue,
 										  const char *operatorName,
 										  bson_value_t *dateExpression,
@@ -435,8 +436,23 @@ static inline void ParseUtcOffsetForDateString(char *dateString, int sizeOfDateS
 											   char *timezoneOffset,
 											   int *timezoneOffsetLen, bool
 											   isOnErrorPresent, bool *isInputValid);
+static void HandlePreParsedDatePartOperator(pgbson *doc, void *arguments, const
+											char *operatorName, DatePart datePart,
+											ExpressionResult *expressionResult);
+static void ProcessDollarDateToString(const bson_value_t *dateValue, ExtensionTimezone
+									  timezoneToApply, StringView formatString,
+									  bson_value_t *result);
+static void ProcessDollarDateToParts(const bson_value_t *dateValue, bool isIsoRequested,
+									 ExtensionTimezone timezoneToApply,
+									 bson_value_t *result);
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 													  ExtensionTimezone timezone);
+static void GetDatePartResult(bson_value_t *dateValue, ExtensionTimezone timezone,
+							  DatePart datePart,
+							  bson_value_t *result);
+static bool GetTimezoneToApply(const bson_value_t *timezoneValue, const
+							   char *operatorName, ExtensionTimezone *timezoneToApply);
+static bool GetIsIsoRequested(bson_value_t *isoValue, bool *isIsoRequested);
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
 static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
 										  StringView format);
@@ -657,172 +673,297 @@ ValidateDateValueIsInRange(uint32_t value)
 
 
 /*
- * Evaluates the output of a $hour expression.
- * Since a $hour is expressed as { "$hour": <dateExpression> }
+ * Parses a $hour expression.
+ * $hour is expressed as { "$hour": <dateExpression> }
  * or { "$hour": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the hour part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarHour(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+ParseDollarHour(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$hour", DatePart_Hour);
+	ParseDatePartOperator(argument, "$hour", DatePart_Hour, data, context);
 }
 
 
 /*
- * Evaluates the output of a $minute expression.
- * Since a $minute is expressed as { "$minute": <dateExpression> }
+ * Handles executing a pre-parsed $hour expression.
+ */
+void
+HandlePreParsedDollarHour(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$hour", DatePart_Hour,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $minute expression.
+ * $minute is expressed as { "$minute": <dateExpression> }
  * or { "$minute": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the minute part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarMinute(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+ParseDollarMinute(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$minute",
-						   DatePart_Minute);
+	ParseDatePartOperator(argument, "$minute", DatePart_Minute, data, context);
 }
 
 
 /*
- * Evaluates the output of a $second expression.
- * Since a $second is expressed as { "$second": <dateExpression> }
+ * Handles executing a pre-parsed $minute expression.
+ */
+void
+HandlePreParsedDollarMinute(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$minute", DatePart_Minute,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $second expression.
+ * $second is expressed as { "$second": <dateExpression> }
  * or { "$second": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the second part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarSecond(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+ParseDollarSecond(const bson_value_t *argument,
+				  AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$second",
-						   DatePart_Second);
+	ParseDatePartOperator(argument, "$second", DatePart_Second, data, context);
 }
 
 
 /*
- * Evaluates the output of a $millisecond expression.
- * Since a $millisecond is expressed as { "$millisecond": <dateExpression> }
+ * Handles executing a pre-parsed $second expression.
+ */
+void
+HandlePreParsedDollarSecond(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$second", DatePart_Second,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $millisecond expression.
+ * $millisecond is expressed as { "$millisecond": <dateExpression> }
  * or { "$millisecond": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the millisecond part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarMillisecond(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
+ParseDollarMillisecond(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$millisecond",
-						   DatePart_Millisecond);
+	ParseDatePartOperator(argument, "$millisecond", DatePart_Millisecond, data, context);
 }
 
 
 /*
- * Evaluates the output of a $year expression.
- * Since a $year is expressed as { "$year": <dateExpression> }
+ * Handles executing a pre-parsed $millisecond expression.
+ */
+void
+HandlePreParsedDollarMillisecond(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$millisecond", DatePart_Millisecond,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $year expression.
+ * $year is expressed as { "$year": <dateExpression> }
  * or { "$year": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the year part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarYear(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+ParseDollarYear(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$year", DatePart_Year);
+	ParseDatePartOperator(argument, "$year", DatePart_Year, data, context);
 }
 
 
 /*
- * Evaluates the output of a $month expression.
- * Since a $month is expressed as { "$month": <dateExpression> }
+ * Handles executing a pre-parsed $year expression.
+ */
+void
+HandlePreParsedDollarYear(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$year", DatePart_Year,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $month expression.
+ * $month is expressed as { "$month": <dateExpression> }
  * or { "$month": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the month part in the specified date expression with the specified timezone.
  */
 void
-HandleDollarMonth(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+ParseDollarMonth(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$month",
-						   DatePart_Month);
+	ParseDatePartOperator(argument, "$month", DatePart_Month, data, context);
 }
 
 
 /*
- * Evaluates the output of a $week expression.
- * Since a $week is expressed as { "$week": <dateExpression> }
+ * Handles executing a pre-parsed $month expression.
+ */
+void
+HandlePreParsedDollarMonth(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$month", DatePart_Month,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $week expression.
+ * $week is expressed as { "$week": <dateExpression> }
  * or { "$week": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the week number [0-53 (leap year)] in the specified date expression with the specified timezone.
  */
 void
-HandleDollarWeek(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+ParseDollarWeek(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$week", DatePart_Week);
+	ParseDatePartOperator(argument, "$week", DatePart_Week, data, context);
 }
 
 
 /*
- * Evaluates the output of a $dayOfYear expression.
- * Since a $dayOfYear is expressed as { "$dayOfYear": <dateExpression> }
+ * Handles executing a pre-parsed $week expression.
+ */
+void
+HandlePreParsedDollarWeek(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$week", DatePart_Week,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $dayOfYear expression.
+ * $dayOfYear is expressed as { "$dayOfYear": <dateExpression> }
  * or { "$dayOfYear": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the day of the year [1-366 (leap year)] in the specified date expression with the specified timezone.
  */
 void
-HandleDollarDayOfYear(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult)
+ParseDollarDayOfYear(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$dayOfYear",
-						   DatePart_DayOfYear);
+	ParseDatePartOperator(argument, "$dayOfYear", DatePart_DayOfYear, data, context);
 }
 
 
 /*
- * Evaluates the output of a $dayOfMonth expression.
- * Since a $dayOfMonth is expressed as { "$dayOfMonth": <dateExpression> }
+ * Handles executing a pre-parsed $dayOfYear expression.
+ */
+void
+HandlePreParsedDollarDayOfYear(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$dayOfYear", DatePart_DayOfYear,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $dayOfMonth expression.
+ * $dayOfMonth is expressed as { "$dayOfMonth": <dateExpression> }
  * or { "$dayOfMonth": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the day of the month [1-31] in the specified date expression with the specified timezone.
  */
 void
-HandleDollarDayOfMonth(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult)
+ParseDollarDayOfMonth(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$dayOfMonth",
-						   DatePart_DayOfMonth);
+	ParseDatePartOperator(argument, "$dayOfMonth", DatePart_DayOfMonth, data, context);
 }
 
 
 /*
- * Evaluates the output of a $dayOfWeek expression.
- * Since a $dayOfWeek is expressed as { "$dayOfWeek": <dateExpression> }
+ * Handles executing a pre-parsed $dayOfMonth expression.
+ */
+void
+HandlePreParsedDollarDayOfMonth(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$dayOfMonth", DatePart_DayOfMonth,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $dayOfWeek expression.
+ * $dayOfWeek is expressed as { "$dayOfWeek": <dateExpression> }
  * or { "$dayOfWeek": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the day of the week [1 (Sunday) - 7 (Saturday)] in the specified date expression with the specified timezone.
  */
 void
-HandleDollarDayOfWeek(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult)
+ParseDollarDayOfWeek(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$dayOfWeek",
-						   DatePart_DayOfWeek);
+	ParseDatePartOperator(argument, "$dayOfWeek", DatePart_DayOfWeek, data, context);
 }
 
 
 /*
- * Evaluates the output of a $isoWeekYear expression.
- * Since a $isoWeekYear is expressed as { "$isoWeekYear": <dateExpression> }
+ * Handles executing a pre-parsed $dayOfWeek expression.
+ */
+void
+HandlePreParsedDollarDayOfWeek(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$dayOfWeek", DatePart_DayOfWeek,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $isoWeekYear expression.
+ * $isoWeekYear is expressed as { "$isoWeekYear": <dateExpression> }
  * or { "$isoWeekYear": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the year based on the ISO 8601 week numbering in the specified date expression with the specified timezone.
  * In ISO 8601 the year starts with the Monday of week 1 and ends with the Sunday of the last week.
  * So in early January or late December the ISO year may be different from the Gregorian year. See HandleDollarIsoWeek summary for more details.
  */
 void
-HandleDollarIsoWeekYear(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
+ParseDollarIsoWeekYear(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$isoWeekYear",
-						   DatePart_IsoWeekYear);
+	ParseDatePartOperator(argument, "$isoWeekYear", DatePart_IsoWeekYear, data, context);
 }
 
 
 /*
- * Evaluates the output of a $isoWeek expression.
- * Since a $isoWeek is expressed as { "$isoWeek": <dateExpression> }
+ * Handles executing a pre-parsed $isoWeekYear expression.
+ */
+void
+HandlePreParsedDollarIsoWeekYear(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$isoWeekYear", DatePart_IsoWeekYear,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $isoWeek expression.
+ * $isoWeek is expressed as { "$isoWeek": <dateExpression> }
  * or { "$isoWeek": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the week based on the ISO 8601 week numbering in the specified date expression with the specified timezone.
  * Iso week start on Mondays and the first week of a year contains January 4 of that year. In other words, the first Thursday
@@ -831,224 +972,64 @@ HandleDollarIsoWeekYear(pgbson *doc, const bson_value_t *operatorValue,
  * in ISO 8601 is part of the 53rd week of year 2004
  */
 void
-HandleDollarIsoWeek(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult)
+ParseDollarIsoWeek(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$isoWeek",
-						   DatePart_IsoWeek);
+	ParseDatePartOperator(argument, "$isoWeek", DatePart_IsoWeek, data, context);
 }
 
 
 /*
- * Evaluates the output of a $isoDayOfWeek expression.
- * Since a $isoDayOfWeek is expressed as { "$isoDayOfWeek": <dateExpression> }
+ * Handles executing a pre-parsed $isoWeek expression.
+ */
+void
+HandlePreParsedDollarIsoWeek(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	HandlePreParsedDatePartOperator(doc, arguments, "$isoWeek", DatePart_IsoWeek,
+									expressionResult);
+}
+
+
+/*
+ * Parses a $isoDayOfWeek expression.
+ * $isoDayOfWeek is expressed as { "$isoDayOfWeek": <dateExpression> }
  * or { "$isoDayOfWeek": { date: <dateExpression>, timezone: <tzExpression> } }
  * We evaluate the inner expression and then return the day of week based on the ISO 8601 numbering in the specified date expression with the specified timezone.
  * ISO 8601 week start on Mondays (1) and end on Sundays (7).
  */
 void
-HandleDollarIsoDayOfWeek(pgbson *doc, const bson_value_t *operatorValue,
-						 ExpressionResult *expressionResult)
+ParseDollarIsoDayOfWeek(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
-	HandleDatePartOperator(doc, operatorValue, expressionResult, "$isoDayOfWeek",
-						   DatePart_IsoDayOfWeek);
+	ParseDatePartOperator(argument, "$isoDayOfWeek", DatePart_IsoDayOfWeek, data,
+						  context);
 }
 
 
 /*
- * Evaluates the output of a $dateToParts expression.
- * Since a $datToParts is expressed as { "$dateToParts": { date: <dateExpression>, [ timezone: <tzExpression>, iso8601: <boolExpression> ] } }
- * We validate the input document and return the date parts from the 'date' adjusted to the provided 'timezone'. The date parts that we return
- * depend on the iso8601 argument which defaults to false when not provided. This is the output based on is08601 value:
- *   True -> {"isoWeekYear": <val>, "isoWeek": <val>, "isoDayOfWeek": <val>, "hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }
- *   False -> {"year": <val>, "month": <val>, "day": <val>, hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }
+ * Handles executing a pre-parsed $isoDayOfWeek expression.
  */
 void
-HandleDollarDateToParts(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
+HandlePreParsedDollarIsoDayOfWeek(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
 {
-	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40524), errmsg(
-							"$dateToParts only supports an object as its argument")));
-	}
-
-	bson_value_t dateExpression = { 0 };
-	bson_value_t timezoneExpression = { 0 };
-	bson_value_t isoArgExpression = { 0 };
-	bson_iter_t documentIter = { 0 };
-	BsonValueInitIterator(operatorValue, &documentIter);
-
-	/* Parse the argument that should be in the following format:
-	 * {"date": <dateExpression>, ["timezone": <stringExpression>, "iso8601": <boolExpression>]}. */
-	while (bson_iter_next(&documentIter))
-	{
-		const char *key = bson_iter_key(&documentIter);
-		if (strcmp(key, "date") == 0)
-		{
-			dateExpression = *bson_iter_value(&documentIter);
-		}
-		else if (strcmp(key, "timezone") == 0)
-		{
-			timezoneExpression = *bson_iter_value(&documentIter);
-		}
-		else if (strcmp(key, "iso8601") == 0)
-		{
-			isoArgExpression = *bson_iter_value(&documentIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40520), errmsg(
-								"Unrecognized argument to $dateToParts: %s", key),
-							errdetail_log(
-								"Unrecognized argument to $dateToParts, Unexpected key found in input")));
-		}
-	}
-
-	if (dateExpression.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40522), errmsg(
-							"Missing 'date' parameter to $dateToParts")));
-	}
-
-	bool isNullOnEmpty = false;
-	bson_value_t nullValue;
-	nullValue.value_type = BSON_TYPE_NULL;
-
-	/* If no timezone is specified, we don't apply any offset as that's the default timezone, UTC. */
-	ExtensionTimezone timezoneToApply = {
-		.offsetInMs = 0,
-		.isUtcOffset = true,
-	};
-
-	/* A timezone was specified. */
-	if (timezoneExpression.value_type != BSON_TYPE_EOD)
-	{
-		bson_value_t evaluatedTz = EvaluateExpressionAndGetValue(doc, &timezoneExpression,
-																 expressionResult,
-																 isNullOnEmpty);
-
-		/* Match native mongo, if timezone resolves to null or undefined, we bail before
-		 * evaluating the other arguments and return null. */
-		if (IsExpressionResultNullOrUndefined(&evaluatedTz))
-		{
-			ExpressionResultSetValue(expressionResult, &nullValue);
-			return;
-		}
-
-		if (evaluatedTz.value_type != BSON_TYPE_UTF8)
-		{
-			ThrowLocation40517Error(evaluatedTz.value_type);
-		}
-
-		StringView timezoneToParse = {
-			.string = evaluatedTz.value.v_utf8.str,
-			.length = evaluatedTz.value.v_utf8.len
-		};
-
-		timezoneToApply = ParseTimezone(timezoneToParse);
-	}
-
-	bool isIsoRequested = false;
-
-	/* iso8601 argument was specified. */
-	if (isoArgExpression.value_type != BSON_TYPE_EOD)
-	{
-		bson_value_t evaluatedIsoArg = EvaluateExpressionAndGetValue(doc,
-																	 &isoArgExpression,
-																	 expressionResult,
-																	 isNullOnEmpty);
-
-		/* Match native mongo, if iso8601 resolves to null or undefined, we bail before
-		 * evaluating the other arguments and return null. */
-		if (IsExpressionResultNullOrUndefined(&evaluatedIsoArg))
-		{
-			ExpressionResultSetValue(expressionResult, &nullValue);
-			return;
-		}
-
-		if (evaluatedIsoArg.value_type != BSON_TYPE_BOOL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40521), errmsg(
-								"iso8601 must evaluate to a bool, found %s",
-								BsonTypeName(evaluatedIsoArg.value_type)),
-							errdetail_log("iso8601 must evaluate to a bool, found %s",
-										  BsonTypeName(evaluatedIsoArg.value_type))));
-		}
-
-		isIsoRequested = evaluatedIsoArg.value.v_bool;
-	}
-
-	bson_value_t evaluatedDate = EvaluateExpressionAndGetValue(doc, &dateExpression,
-															   expressionResult,
-															   isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(&evaluatedDate))
-	{
-		ExpressionResultSetValue(expressionResult, &nullValue);
-		return;
-	}
-
-	int64_t dateInMs = BsonValueAsDateTime(&evaluatedDate);
-	Datum pgTimestamp = GetPgTimestampFromEpochWithTimezone(dateInMs, timezoneToApply);
-
-	/* Get date parts and write them to the result. */
-	pgbson_writer objectWriter;
-	pgbson_element_writer *elementWriter =
-		ExpressionResultGetElementWriter(expressionResult);
-
-	PgbsonElementWriterStartDocument(elementWriter, &objectWriter);
-
-	/* If iso8601 is true we should return an object in the following shape:
-	 * {"isoWeekYear": <val>, "isoWeek": <val>, "isoDayOfWeek": <val>, "hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }.
-	 *
-	 * If it is false we should return an oject with the following shape:
-	 * {"year": <val>, "month": <val>, "day": <val>, hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }. */
-
-	if (isIsoRequested)
-	{
-		int isoWeekY = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoWeekYear);
-		int isoWeek = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoWeek);
-		int isoDoW = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoDayOfWeek);
-		PgbsonWriterAppendInt32(&objectWriter, "isoWeekYear", 11, isoWeekY);
-		PgbsonWriterAppendInt32(&objectWriter, "isoWeek", 7, isoWeek);
-		PgbsonWriterAppendInt32(&objectWriter, "isoDayOfWeek", 12, isoDoW);
-	}
-	else
-	{
-		int year = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Year);
-		int month = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Month);
-		int dom = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_DayOfMonth);
-		PgbsonWriterAppendInt32(&objectWriter, "year", 4, year);
-		PgbsonWriterAppendInt32(&objectWriter, "month", 5, month);
-		PgbsonWriterAppendInt32(&objectWriter, "day", 3, dom);
-	}
-
-	int hour = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Hour);
-	int minute = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Minute);
-	int second = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Second);
-	int ms = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Millisecond);
-	PgbsonWriterAppendInt32(&objectWriter, "hour", 4, hour);
-	PgbsonWriterAppendInt32(&objectWriter, "minute", 6, minute);
-	PgbsonWriterAppendInt32(&objectWriter, "second", 6, second);
-	PgbsonWriterAppendInt32(&objectWriter, "millisecond", 11, ms);
-
-	PgbsonElementWriterEndDocument(elementWriter, &objectWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
+	HandlePreParsedDatePartOperator(doc, arguments, "$isoDayOfWeek",
+									DatePart_IsoDayOfWeek, expressionResult);
 }
 
 
 /*
- * Evaluates the output of a $dateToString expression.
- * Since a $datToString is expressed as { "$dateToString": { date: <dateExpression>, [ format: <strExpression>, timezone: <tzExpression>, onNull: <expression> ] } }
+ * Parses a $dateToString expression.
+ * $datToString is expressed as { "$dateToString": { date: <dateExpression>, [ format: <strExpression>, timezone: <tzExpression>, onNull: <expression> ] } }
  * We validate the input document and return the string with the specified timezone using the specified format if any.
  * If no format is specified the default format is: %Y-%m-%dT%H:%M:%S.%LZ
  */
 void
-HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
-						 ExpressionResult *expressionResult)
+ParseDollarDateToString(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
-	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18629), errmsg(
 							"$dateToString only supports an object as its argument")));
@@ -1059,7 +1040,7 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 	bson_value_t timezoneExpression = { 0 };
 	bson_value_t onNullExpression = { 0 };
 	bson_iter_t documentIter;
-	BsonValueInitIterator(operatorValue, &documentIter);
+	BsonValueInitIterator(argument, &documentIter);
 
 	while (bson_iter_next(&documentIter))
 	{
@@ -1095,46 +1076,58 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 							"Missing 'date' parameter to $dateToString")));
 	}
 
-	bool isNullOnEmpty = false;
+	bool allArgumentsConstant = true;
+
+	/* The arguments will be in the order [date, format, timezone, onNull]*/
+	List *parsedArguments = NIL;
 
 	/* onNull is only used for when 'date' argument is null or undefined, so we default it to null for the other arguments. */
 	bson_value_t onNullResult;
 	onNullResult.value_type = BSON_TYPE_NULL;
 
-	/* Initialize to keep compiler happy even though we only use it if a the format argument was specified, which initializes it. */
+	/* A format string was specified as an argument. */
+	AggregationExpressionData *formatData = NULL;
+	if (formatExpression.value_type != BSON_TYPE_EOD)
+	{
+		formatData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(formatData, &formatExpression, context);
+
+		if (IsAggregationExpressionConstant(formatData))
+		{
+			/* Match native mongo, if any argument is null when evaluating, bail and don't evaluate the rest of the args. */
+			if (IsExpressionResultNullOrUndefined(&formatData->value))
+			{
+				data->value = onNullResult;
+				data->kind = AggregationExpressionKind_Constant;
+				return;
+			}
+
+			if (formatData->value.value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18533), errmsg(
+									"$dateToString requires that 'format' be a string, found: %s with value %s",
+									BsonTypeName(formatData->value.value_type),
+									BsonValueToJsonForLogging(&formatData->value)),
+								errdetail_log(
+									"$dateToString requires that 'format' be a string, found: %s",
+									BsonTypeName(formatData->value.value_type))));
+			}
+		}
+
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			formatData);
+	}
+
+	parsedArguments = list_make1(formatData);
+
 	StringView formatString = {
 		.length = 0,
 		.string = NULL,
 	};
-
-	/* A format string was specified as an argument. */
-	if (formatExpression.value_type != BSON_TYPE_EOD)
+	if (formatData != NULL)
 	{
-		bson_value_t evaluatedFormat = EvaluateExpressionAndGetValue(doc,
-																	 &formatExpression,
-																	 expressionResult,
-																	 isNullOnEmpty);
-
-		/* Match native mongo, if any argument is null when evaluating, bail and don't evaluate the rest of the args. */
-		if (IsExpressionResultNullOrUndefined(&evaluatedFormat))
-		{
-			ExpressionResultSetValue(expressionResult, &onNullResult);
-			return;
-		}
-
-		if (evaluatedFormat.value_type != BSON_TYPE_UTF8)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18533), errmsg(
-								"$dateToString requires that 'format' be a string, found: %s with value %s",
-								BsonTypeName(evaluatedFormat.value_type),
-								BsonValueToJsonForLogging(&evaluatedFormat)),
-							errdetail_log(
-								"$dateToString requires that 'format' be a string, found: %s",
-								BsonTypeName(evaluatedFormat.value_type))));
-		}
-
-		formatString.length = evaluatedFormat.value.v_utf8.len;
-		formatString.string = evaluatedFormat.value.v_utf8.str;
+		formatString.length = formatData->value.value.v_utf8.len;
+		formatString.string = formatData->value.value.v_utf8.str;
 	}
 
 	/* If no timezone is specified, we don't apply any offset as the default should be UTC. */
@@ -1143,134 +1136,197 @@ HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,
 		.offsetInMs = 0,
 	};
 
-	/* A timezone was specified. */
+	AggregationExpressionData *timezoneData = NULL;
 	if (timezoneExpression.value_type != BSON_TYPE_EOD)
 	{
-		bson_value_t evaluatedTimezone = EvaluateExpressionAndGetValue(doc,
-																	   &timezoneExpression,
-																	   expressionResult,
-																	   isNullOnEmpty);
+		timezoneData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(timezoneData, &timezoneExpression, context);
 
-		/* Match native mongo, if any argument is null when evaluating, bail and don't evaluate the rest of the args. */
-		if (IsExpressionResultNullOrUndefined(&evaluatedTimezone))
+		if (IsAggregationExpressionConstant(timezoneData))
+		{
+			if (IsExpressionResultNullOrUndefined(&timezoneData->value))
+			{
+				data->value = onNullResult;
+				data->kind = AggregationExpressionKind_Constant;
+				return;
+			}
+
+			if (timezoneData->value.value_type != BSON_TYPE_UTF8)
+			{
+				ThrowLocation40517Error(timezoneData->value.value_type);
+			}
+
+			if (!GetTimezoneToApply(&timezoneData->value, "$dateToString",
+									&timezoneToApply))
+			{
+				bson_value_t nullResult;
+				nullResult.value_type = BSON_TYPE_NULL;
+				data->value = nullResult;
+				data->kind = AggregationExpressionKind_Constant;
+
+				pfree(timezoneData);
+				if (formatData != NULL)
+				{
+					pfree(formatData);
+				}
+				return;
+			}
+		}
+
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			timezoneData);
+	}
+
+	parsedArguments = lappend(parsedArguments, timezoneData);
+
+	AggregationExpressionData *onNullData = NULL;
+
+	/* onNull argument was specified. */
+	if (onNullExpression.value_type != BSON_TYPE_EOD)
+	{
+		onNullData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(onNullData, &onNullExpression, context);
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			onNullData);
+	}
+
+	parsedArguments = lappend(parsedArguments, onNullData);
+
+	AggregationExpressionData *dateData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(dateData, &dateExpression, context);
+
+	bool evaluatedOnConstants = false;
+	parsedArguments = list_insert_nth(parsedArguments, 0, dateData);
+
+	if (IsAggregationExpressionConstant(dateData))
+	{
+		if (IsExpressionResultNullOrUndefined(&dateData->value))
+		{
+			/*onNull argument was specified but evaluates to EOD, i.e: non existent path in the document,
+			 * the result should be empty, so just bail. */
+			if (onNullData != NULL && IsAggregationExpressionConstant(onNullData))
+			{
+				if (onNullData->value.value_type == BSON_TYPE_EOD)
+				{
+					FreeVariableLengthArgs(parsedArguments);
+					evaluatedOnConstants = true;
+					return;
+				}
+				else
+				{
+					onNullResult = onNullData->value;
+				}
+
+				data->value = onNullResult;
+				data->kind = AggregationExpressionKind_Constant;
+				FreeVariableLengthArgs(parsedArguments);
+				evaluatedOnConstants = true;
+				return;
+			}
+		}
+
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			dateData);
+
+		if (allArgumentsConstant)
+		{
+			ProcessDollarDateToString(&dateData->value, timezoneToApply, formatString,
+									  &data->value);
+			data->kind = AggregationExpressionKind_Constant;
+			FreeVariableLengthArgs(parsedArguments);
+			evaluatedOnConstants = true;
+			return;
+		}
+	}
+
+	if (!evaluatedOnConstants)
+	{
+		data->operator.arguments = parsedArguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $dateToString expression.
+ */
+void
+HandlePreParsedDollarDateToString(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	/* Arguments are in the order: [date, format, timezone, onNull] */
+	List *parsedArguments = (List *) arguments;
+
+	bool hasNullOrUndefined = false;
+	bson_value_t onNullResult;
+	onNullResult.value_type = BSON_TYPE_NULL;
+
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	AggregationExpressionData *formatData = (AggregationExpressionData *) list_nth(
+		parsedArguments, 1);
+
+	if (formatData != NULL)
+	{
+		EvaluateAggregationExpressionData(formatData, doc, &childResult,
+										  hasNullOrUndefined);
+
+		if (IsExpressionResultNullOrUndefined(&childResult.value))
 		{
 			ExpressionResultSetValue(expressionResult, &onNullResult);
 			return;
 		}
 
-		if (evaluatedTimezone.value_type != BSON_TYPE_UTF8)
+		if (formatData->value.value_type != BSON_TYPE_UTF8)
 		{
-			ThrowLocation40517Error(evaluatedTimezone.value_type);
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION18533), errmsg(
+								"$dateToString requires that 'format' be a string, found: %s with value %s",
+								BsonTypeName(formatData->value.value_type),
+								BsonValueToJsonForLogging(&formatData->value)),
+							errdetail_log(
+								"$dateToString requires that 'format' be a string, found: %s",
+								BsonTypeName(formatData->value.value_type))));
 		}
 
-		StringView timezoneToParse = {
-			.string = evaluatedTimezone.value.v_utf8.str,
-			.length = evaluatedTimezone.value.v_utf8.len,
-		};
-
-		timezoneToApply = ParseTimezone(timezoneToParse);
+		ExpressionResultReset(&childResult);
 	}
 
-	bson_value_t evaluatedDate = EvaluateExpressionAndGetValue(doc, &dateExpression,
-															   expressionResult,
-															   isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(&evaluatedDate))
-	{
-		/* onNull argument was specified. */
-		if (onNullExpression.value_type != BSON_TYPE_EOD)
-		{
-			/* The onNull expression is only used if the 'date' argument is null. */
-			bson_value_t evaluatedOnNull = EvaluateExpressionAndGetValue(doc,
-																		 &onNullExpression,
-																		 expressionResult,
-																		 isNullOnEmpty);
-
-			/* If the onNull expression evaluates to EOD, i.e: non existent path in the document,
-			 * the result should be empty, so just bail. */
-			if (evaluatedOnNull.value_type == BSON_TYPE_EOD)
-			{
-				return;
-			}
-
-			onNullResult = evaluatedOnNull;
-		}
-
-		ExpressionResultSetValue(expressionResult, &onNullResult);
-		return;
-	}
-
-	int64_t dateTimeInMs = BsonValueAsDateTime(&evaluatedDate);
-
-	StringView stringResult;
-	if (formatExpression.value_type != BSON_TYPE_EOD)
-	{
-		stringResult =
-			GetDateStringWithFormat(dateTimeInMs, timezoneToApply, formatString);
-	}
-	else
-	{
-		stringResult = GetDateStringWithDefaultFormat(dateTimeInMs, timezoneToApply,
-													  DateStringFormatCase_UpperCase);
-	}
-
-	bson_value_t result = {
-		.value_type = BSON_TYPE_UTF8,
-		.value.v_utf8.str = (char *) stringResult.string,
-		.value.v_utf8.len = stringResult.length,
+	StringView formatString = {
+		.length = 0,
+		.string = NULL,
 	};
 
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/* --------------------------------------------------------- */
-/* private helper methods. */
-/* --------------------------------------------------------- */
-
-/* Common method for operators that return a single date part. This method parses and validates the arguments and
- * sets the result into the specified ExpressionResult. For more details about every operator, see its
- * HandleDollar* method description. */
-static void
-HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult, const char *operatorName,
-					   DatePart datePart)
-{
-	bson_value_t dateExpression;
-	bson_value_t timezoneExpression;
-	bool isTimezoneSpecified = ParseDatePartOperatorArgument(operatorValue, operatorName,
-															 &dateExpression,
-															 &timezoneExpression);
-	bool isNullOnEmpty = false;
-	bson_value_t evaluatedDate = EvaluateExpressionAndGetValue(doc, &dateExpression,
-															   expressionResult,
-															   isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(&evaluatedDate))
+	if (formatData != NULL)
 	{
-		bson_value_t nullResult;
-		nullResult.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &nullResult);
-		return;
+		formatString.length = formatData->value.value.v_utf8.len;
+		formatString.string = formatData->value.value.v_utf8.str;
 	}
 
-	int64_t dateTimeInMs = BsonValueAsDateTime(&evaluatedDate);
-
-	/* In case no timezone is specified we just apply a 0 offset to get the default timezone which is UTC.*/
 	ExtensionTimezone timezoneToApply = {
-		.offsetInMs = 0,
 		.isUtcOffset = true,
+		.offsetInMs = 0,
 	};
 
-	/* If a timezone was specified, we need to evaluate the expression, validate, parse and apply it. */
-	if (isTimezoneSpecified)
+	AggregationExpressionData *timezoneData = (AggregationExpressionData *) list_nth(
+		parsedArguments, 2);
+	if (timezoneData != NULL)
 	{
-		bson_value_t evaluatedTimezone = EvaluateExpressionAndGetValue(doc,
-																	   &timezoneExpression,
-																	   expressionResult,
-																	   isNullOnEmpty);
+		EvaluateAggregationExpressionData(timezoneData, doc, &childResult,
+										  hasNullOrUndefined);
 
-		if (IsExpressionResultNullOrUndefined(&evaluatedTimezone))
+		bson_value_t timezoneValue = childResult.value;
+		if (IsExpressionResultNullOrUndefined(&timezoneValue))
+		{
+			ExpressionResultSetValue(expressionResult, &onNullResult);
+			return;
+		}
+
+		if (timezoneValue.value_type != BSON_TYPE_UTF8)
+		{
+			ThrowLocation40517Error(timezoneValue.value_type);
+		}
+
+		if (!GetTimezoneToApply(&timezoneValue, "$dateToString", &timezoneToApply))
 		{
 			bson_value_t nullResult;
 			nullResult.value_type = BSON_TYPE_NULL;
@@ -1278,43 +1334,438 @@ HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
 			return;
 		}
 
-		if (evaluatedTimezone.value_type != BSON_TYPE_UTF8)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40533), errmsg(
-								"%s requires a string for the timezone argument, but was given a %s (%s)",
-								operatorName, BsonTypeName(evaluatedTimezone.value_type),
-								BsonValueToJsonForLogging(&evaluatedTimezone)),
-							errdetail_log(
-								"'%s' requires a string for the timezone argument, but was given a %s",
-								operatorName, BsonTypeName(
-									evaluatedTimezone.value_type))));
-		}
-
-		StringView timezone = {
-			.string = evaluatedTimezone.value.v_utf8.str,
-			.length = evaluatedTimezone.value.v_utf8.len,
-		};
-
-		timezoneToApply = ParseTimezone(timezone);
+		ExpressionResultReset(&childResult);
 	}
 
-	Datum pgTimestamp = GetPgTimestampFromEpochWithTimezone(dateTimeInMs,
-															timezoneToApply);
-	uint32_t datePartResult = GetDatePartFromPgTimestamp(pgTimestamp, datePart);
-
-	bson_value_t result;
-	if (datePart == DatePart_IsoWeekYear)
+	bson_value_t onNullValue = { 0 };
+	AggregationExpressionData *onNullData = (AggregationExpressionData *) list_nth(
+		parsedArguments, 3);
+	if (onNullData != NULL)
 	{
-		/* $isoWeekYear is a long in native mongo */
-		result.value_type = BSON_TYPE_INT64;
-		result.value.v_int64 = (int64_t) datePartResult;
+		EvaluateAggregationExpressionData(onNullData, doc, &childResult,
+										  hasNullOrUndefined);
+		onNullValue = childResult.value;
+		ExpressionResultReset(&childResult);
+	}
+
+	AggregationExpressionData *dateData = (AggregationExpressionData *) list_nth(
+		parsedArguments, 0);
+	EvaluateAggregationExpressionData(dateData, doc, &childResult, hasNullOrUndefined);
+	bson_value_t dateValue = childResult.value;
+
+	if (IsExpressionResultNullOrUndefined(&dateValue))
+	{
+		/*onNull argument was specified but evaluates to EOD, i.e: non existent path in the document,
+		 * the result should be empty, so just bail. */
+		if (onNullData != NULL)
+		{
+			if (onNullValue.value_type == BSON_TYPE_EOD)
+			{
+				return;
+			}
+			else
+			{
+				onNullResult = onNullValue;
+			}
+
+			ExpressionResultSetValue(expressionResult, &onNullResult);
+			return;
+		}
+	}
+
+	bson_value_t result = { 0 };
+	ProcessDollarDateToString(&dateValue, timezoneToApply, formatString,
+							  &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $dateToParts expression.
+ * $datToParts is expressed as { "$dateToParts": { date: <dateExpression>, [ timezone: <tzExpression>, iso8601: <boolExpression> ] } }
+ * We validate the input document and return the date parts from the 'date' adjusted to the provided 'timezone'. The date parts that we return
+ * depend on the iso8601 argument which defaults to false when not provided. This is the output based on is08601 value:
+ *   True -> {"isoWeekYear": <val>, "isoWeek": <val>, "isoDayOfWeek": <val>, "hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }
+ *   False -> {"year": <val>, "month": <val>, "day": <val>, hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }
+ */
+void
+ParseDollarDateToParts(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40524), errmsg(
+							"$dateToParts only supports an object as its argument")));
+	}
+
+	bson_value_t dateExpression = { 0 };
+	bson_value_t timezoneExpression = { 0 };
+	bson_value_t isoArgExpression = { 0 };
+	bson_iter_t documentIter = { 0 };
+	BsonValueInitIterator(argument, &documentIter);
+
+	/* Parse the argument that should be in the following format:
+	 * {"date": <dateExpression>, ["timezone": <stringExpression>, "iso8601": <boolExpression>]}. */
+	while (bson_iter_next(&documentIter))
+	{
+		const char *key = bson_iter_key(&documentIter);
+		if (strcmp(key, "date") == 0)
+		{
+			dateExpression = *bson_iter_value(&documentIter);
+		}
+		else if (strcmp(key, "timezone") == 0)
+		{
+			timezoneExpression = *bson_iter_value(&documentIter);
+		}
+		else if (strcmp(key, "iso8601") == 0)
+		{
+			isoArgExpression = *bson_iter_value(&documentIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40520), errmsg(
+								"Unrecognized argument to $dateToParts: %s", key),
+							errdetail_log(
+								"Unrecognized argument to $dateToParts, Unexpected key found in input")));
+		}
+	}
+
+	if (dateExpression.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40522), errmsg(
+							"Missing 'date' parameter to $dateToParts")));
+	}
+
+	bson_value_t nullValue;
+	nullValue.value_type = BSON_TYPE_NULL;
+
+	bool allArgumentsConstant = true;
+
+	/* If no timezone is specified, we don't apply any offset as that's the default timezone, UTC. */
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	AggregationExpressionData *timezoneData = NULL;
+	if (timezoneExpression.value_type != BSON_TYPE_EOD)
+	{
+		timezoneData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(timezoneData, &timezoneExpression, context);
+
+		if (IsAggregationExpressionConstant(timezoneData))
+		{
+			if (IsExpressionResultNullOrUndefined(&timezoneData->value))
+			{
+				data->value = nullValue;
+				data->kind = AggregationExpressionKind_Constant;
+				return;
+			}
+
+			if (timezoneData->value.value_type != BSON_TYPE_UTF8)
+			{
+				ThrowLocation40517Error(timezoneData->value.value_type);
+			}
+
+			if (!GetTimezoneToApply(&timezoneData->value, "$dateToParts",
+									&timezoneToApply))
+			{
+				bson_value_t nullResult;
+				nullResult.value_type = BSON_TYPE_NULL;
+				data->value = nullResult;
+				data->kind = AggregationExpressionKind_Constant;
+
+				pfree(timezoneData);
+				return;
+			}
+		}
+
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			timezoneData);
+	}
+
+	bool isIsoRequested = false;
+	AggregationExpressionData *isoData = NULL;
+	if (isoArgExpression.value_type != BSON_TYPE_EOD)
+	{
+		isoData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(isoData, &isoArgExpression, context);
+
+		if (IsAggregationExpressionConstant(isoData))
+		{
+			/* Match native mongo, if iso8601 resolves to null or undefined, we bail before
+			 * evaluating the other arguments and return null. */
+			if (!GetIsIsoRequested(&isoData->value, &isIsoRequested))
+			{
+				data->value = nullValue;
+				data->kind = AggregationExpressionKind_Constant;
+				return;
+			}
+		}
+
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			isoData);
+	}
+
+	AggregationExpressionData *dateData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(dateData, &dateExpression, context);
+
+	List *parsedArguments = list_make3(dateData, timezoneData, isoData);
+	bool evaluatedOnConstants = false;
+
+	if (IsAggregationExpressionConstant(dateData))
+	{
+		if (IsExpressionResultNullOrUndefined(
+				&dateData->value))
+		{
+			data->value = nullValue;
+			data->kind = AggregationExpressionKind_Constant;
+			FreeVariableLengthArgs(parsedArguments);
+			evaluatedOnConstants = true;
+			return;
+		}
+
+		if (allArgumentsConstant)
+		{
+			ProcessDollarDateToParts(&dateData->value, isIsoRequested, timezoneToApply,
+									 &data->value);
+			data->kind = AggregationExpressionKind_Constant;
+			FreeVariableLengthArgs(parsedArguments);
+			evaluatedOnConstants = true;
+		}
+	}
+
+	if (!evaluatedOnConstants)
+	{
+		data->operator.arguments = parsedArguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $dateToParts expression.
+ */
+void
+HandlePreParsedDollarDateToParts(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
+{
+	/* Args are in the order: date, timezone, iso8601 */
+	List *argumentsList = (List *) arguments;
+	bool hasNullOrUndefined = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	bson_value_t nullValue;
+	nullValue.value_type = BSON_TYPE_NULL;
+
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	AggregationExpressionData *timezoneData = list_nth(argumentsList, 1);
+	bson_value_t timezoneValue = { 0 };
+
+	if (timezoneData != NULL)
+	{
+		childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(timezoneData, doc, &childResult,
+										  hasNullOrUndefined);
+		timezoneValue = childResult.value;
+		ExpressionResultReset(&childResult);
+
+		if (IsExpressionResultNullOrUndefined(&timezoneValue))
+		{
+			ExpressionResultSetValue(expressionResult, &nullValue);
+			return;
+		}
+
+		if (timezoneValue.value_type != BSON_TYPE_UTF8)
+		{
+			ThrowLocation40517Error(timezoneValue.value_type);
+		}
+
+		if (!GetTimezoneToApply(&timezoneValue, "$dateToParts", &timezoneToApply))
+		{
+			ExpressionResultSetValue(expressionResult, &nullValue);
+			return;
+		}
+	}
+
+	AggregationExpressionData *isoData = list_nth(argumentsList, 2);
+	bool isIsoRequested = false;
+
+	if (isoData != NULL)
+	{
+		childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(isoData, doc, &childResult,
+										  hasNullOrUndefined);
+
+		/* Match native mongo, if iso8601 resolves to null or undefined, we bail before
+		 * evaluating the other arguments and return null. */
+		if (!GetIsIsoRequested(&childResult.value, &isIsoRequested))
+		{
+			ExpressionResultSetValue(expressionResult, &nullValue);
+			return;
+		}
+
+		ExpressionResultReset(&childResult);
+	}
+
+	AggregationExpressionData *dateData = list_nth(argumentsList, 0);
+	EvaluateAggregationExpressionData(dateData, doc, &childResult, hasNullOrUndefined);
+
+	bson_value_t dateValue = childResult.value;
+
+	if (IsExpressionResultNullOrUndefined(&dateValue))
+	{
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	bson_value_t result = { 0 };
+	ProcessDollarDateToParts(&dateValue, isIsoRequested, timezoneToApply,
+							 &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* --------------------------------------------------------- */
+/* Parser and Handle Pre-parser helper functions. */
+/* --------------------------------------------------------- */
+
+/* Common method for operators that return a single date part. This method parses and validates the arguments and
+ * sets the result into the specified ExpressionResult. For more details about every operator, see its
+ * HandleDollar* method description. */
+static void
+ParseDatePartOperator(const bson_value_t *argument,
+					  const char *operatorName,
+					  DatePart datePart, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
+{
+	bson_value_t dateExpression;
+	bson_value_t timezoneExpression;
+	bool isTimezoneSpecified = ParseDatePartOperatorArgument(argument, operatorName,
+															 &dateExpression,
+															 &timezoneExpression);
+
+	AggregationExpressionData *dateData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(dateData, &dateExpression, context);
+	if (IsAggregationExpressionConstant(dateData) && IsExpressionResultNullOrUndefined(
+			&dateData->value))
+	{
+		bson_value_t nullResult;
+		nullResult.value_type = BSON_TYPE_NULL;
+		data->value = nullResult;
+
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateData);
+		return;
+	}
+
+
+	/* In case no timezone is specified we just apply a 0 offset to get the default timezone which is UTC.*/
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	AggregationExpressionData *timezoneData = NULL;
+	if (isTimezoneSpecified)
+	{
+		timezoneData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(timezoneData, &timezoneExpression, context);
+
+		if (IsAggregationExpressionConstant(timezoneData))
+		{
+			if (!GetTimezoneToApply(&timezoneData->value, operatorName, &timezoneToApply))
+			{
+				bson_value_t nullResult;
+				nullResult.value_type = BSON_TYPE_NULL;
+				data->value = nullResult;
+				data->kind = AggregationExpressionKind_Constant;
+
+				pfree(dateData);
+				pfree(timezoneData);
+				return;
+			}
+		}
+	}
+
+
+	if (IsAggregationExpressionConstant(dateData) &&
+		(timezoneData == NULL || IsAggregationExpressionConstant(timezoneData)))
+	{
+		GetDatePartResult(&dateData->value, timezoneToApply, datePart, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateData);
+		if (timezoneData != NULL)
+		{
+			pfree(timezoneData);
+		}
 	}
 	else
 	{
-		result.value_type = BSON_TYPE_INT32;
-		result.value.v_int32 = datePartResult;
+		List *argumentsList = list_make2(dateData, timezoneData);
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Helper to handle executing a pre-parsed date part operator expressions.
+ */
+static void
+HandlePreParsedDatePartOperator(pgbson *doc, void *arguments, const char *operatorName,
+								DatePart datePart, ExpressionResult *expressionResult)
+{
+	List *argumentsList = (List *) arguments;
+	bool hasNullOrUndefined = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	AggregationExpressionData *dateData = list_nth(argumentsList, 0);
+	EvaluateAggregationExpressionData(dateData, doc, &childResult, hasNullOrUndefined);
+
+	bson_value_t dateValue = childResult.value;
+	ExpressionResultReset(&childResult);
+
+	if (IsExpressionResultNullOrUndefined(&dateValue))
+	{
+		bson_value_t nullValue;
+		nullValue.value_type = BSON_TYPE_NULL;
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
 	}
 
+	ExtensionTimezone timezoneToApply = {
+		.offsetInMs = 0,
+		.isUtcOffset = true,
+	};
+
+	AggregationExpressionData *timezoneData = list_nth(argumentsList, 1);
+	bson_value_t timezoneValue = { 0 };
+
+	if (timezoneData != NULL)
+	{
+		childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(timezoneData, doc, &childResult,
+										  hasNullOrUndefined);
+		timezoneValue = childResult.value;
+		ExpressionResultReset(&childResult);
+
+		if (!GetTimezoneToApply(&timezoneValue, operatorName, &timezoneToApply))
+		{
+			bson_value_t nullResult;
+			nullResult.value_type = BSON_TYPE_NULL;
+			ExpressionResultSetValue(expressionResult, &nullResult);
+			return;
+		}
+	}
+
+	bson_value_t result = { 0 };
+	GetDatePartResult(&dateValue, timezoneToApply, datePart, &result);
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -1416,6 +1867,194 @@ ParseDatePartOperatorArgument(const bson_value_t *operatorValue, const char *ope
 	}
 
 	return isTimezoneSpecified;
+}
+
+
+/* --------------------------------------------------------- */
+/* Process operator helper functions. */
+/* --------------------------------------------------------- */
+
+static void
+ProcessDollarDateToString(const bson_value_t *dateValue, ExtensionTimezone
+						  timezoneToApply, StringView formatString, bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(dateValue))
+	{
+		bson_value_t nullResult;
+		nullResult.value_type = BSON_TYPE_NULL;
+		*result = nullResult;
+		return;
+	}
+
+	int64_t dateTimeInMs = BsonValueAsDateTime(dateValue);
+
+	StringView stringResult;
+	if (formatString.length != 0)
+	{
+		stringResult = GetDateStringWithFormat(dateTimeInMs, timezoneToApply,
+											   formatString);
+	}
+	else
+	{
+		stringResult = GetDateStringWithDefaultFormat(dateTimeInMs, timezoneToApply,
+													  DateStringFormatCase_UpperCase);
+	}
+
+	bson_value_t stringValue = {
+		.value_type = BSON_TYPE_UTF8,
+		.value.v_utf8.str = (char *) stringResult.string,
+		.value.v_utf8.len = stringResult.length,
+	};
+
+	*result = stringValue;
+}
+
+
+/* Eexecutes the core logic for a $dateToParts operation. */
+static void
+ProcessDollarDateToParts(const bson_value_t *dateValue, bool isIsoRequested,
+						 ExtensionTimezone timezoneToApply, bson_value_t *result)
+{
+	int64_t dateInMs = BsonValueAsDateTime(dateValue);
+	Datum pgTimestamp = GetPgTimestampFromEpochWithTimezone(dateInMs, timezoneToApply);
+
+	/* Get date parts and write them to the result. */
+	pgbson_writer objectWriter;
+	PgbsonWriterInit(&objectWriter);
+
+	pgbson_element_writer elementWriter;
+	PgbsonInitObjectElementWriter(&objectWriter, &elementWriter, "", 0);
+
+	pgbson_writer childWriter;
+	PgbsonElementWriterStartDocument(&elementWriter, &childWriter);
+
+	/* If iso8601 is true we should return an object in the following shape:
+	 * {"isoWeekYear": <val>, "isoWeek": <val>, "isoDayOfWeek": <val>, "hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }.
+	 *
+	 * If it is false we should return an oject with the following shape:
+	 * {"year": <val>, "month": <val>, "day": <val>, hour": <val>, "minute": <val>, "second": <val>, "millisecond": <val> }. */
+
+	if (isIsoRequested)
+	{
+		int isoWeekY = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoWeekYear);
+		int isoWeek = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoWeek);
+		int isoDoW = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_IsoDayOfWeek);
+		PgbsonWriterAppendInt32(&childWriter, "isoWeekYear", 11, isoWeekY);
+		PgbsonWriterAppendInt32(&childWriter, "isoWeek", 7, isoWeek);
+		PgbsonWriterAppendInt32(&childWriter, "isoDayOfWeek", 12, isoDoW);
+	}
+	else
+	{
+		int year = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Year);
+		int month = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Month);
+		int dom = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_DayOfMonth);
+		PgbsonWriterAppendInt32(&childWriter, "year", 4, year);
+		PgbsonWriterAppendInt32(&childWriter, "month", 5, month);
+		PgbsonWriterAppendInt32(&childWriter, "day", 3, dom);
+	}
+
+	int hour = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Hour);
+	int minute = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Minute);
+	int second = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Second);
+	int ms = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_Millisecond);
+	PgbsonWriterAppendInt32(&childWriter, "hour", 4, hour);
+	PgbsonWriterAppendInt32(&childWriter, "minute", 6, minute);
+	PgbsonWriterAppendInt32(&childWriter, "second", 6, second);
+	PgbsonWriterAppendInt32(&childWriter, "millisecond", 11, ms);
+
+	PgbsonElementWriterEndDocument(&elementWriter, &childWriter);
+	const bson_value_t bsonValue = PgbsonElementWriterGetValue(&elementWriter);
+
+	pgbson *pgbson = BsonValueToDocumentPgbson(&bsonValue);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(pgbson, &element);
+	*result = element.bsonValue;
+}
+
+
+static bool
+GetIsIsoRequested(bson_value_t *isoValue, bool *isIsoRequested)
+{
+	if (IsExpressionResultNullOrUndefined(isoValue))
+	{
+		return false;
+	}
+
+	if (isoValue->value_type != BSON_TYPE_BOOL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40521), errmsg(
+							"iso8601 must evaluate to a bool, found %s",
+							BsonTypeName(isoValue->value_type)),
+						errdetail_log("iso8601 must evaluate to a bool, found %s",
+									  BsonTypeName(isoValue->value_type))));
+	}
+
+	*isIsoRequested = isoValue->value.v_bool;
+	return true;
+}
+
+
+static bool
+GetTimezoneToApply(const bson_value_t *timezoneValue, const char *operatorName,
+				   ExtensionTimezone *timezoneToApply)
+{
+	if (IsExpressionResultNullOrUndefined(timezoneValue))
+	{
+		return false;
+	}
+
+	if (timezoneValue->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40533), errmsg(
+							"%s requires a string for the timezone argument, but was given a %s (%s)",
+							operatorName, BsonTypeName(
+								timezoneValue->value_type),
+							BsonValueToJsonForLogging(timezoneValue)),
+						errdetail_log(
+							"'%s' requires a string for the timezone argument, but was given a %s",
+							operatorName, BsonTypeName(
+								timezoneValue->value_type))));
+	}
+
+	StringView timezone = {
+		.string = timezoneValue->value.v_utf8.str,
+		.length = timezoneValue->value.v_utf8.len,
+	};
+
+	*timezoneToApply = ParseTimezone(timezone);
+	return true;
+}
+
+
+static void
+GetDatePartResult(bson_value_t *dateValue, ExtensionTimezone timezone, DatePart datePart,
+				  bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(dateValue))
+	{
+		bson_value_t nullResult;
+		nullResult.value_type = BSON_TYPE_NULL;
+		*result = nullResult;
+		return;
+	}
+
+
+	int64_t dateTimeInMs = BsonValueAsDateTime(dateValue);
+	Datum pgTimestamp = GetPgTimestampFromEpochWithTimezone(dateTimeInMs,
+															timezone);
+	uint32_t datePartResult = GetDatePartFromPgTimestamp(pgTimestamp, datePart);
+
+	if (datePart == DatePart_IsoWeekYear)
+	{
+		/* $isoWeekYear is a long in native mongo */
+		result->value_type = BSON_TYPE_INT64;
+		result->value.v_int64 = (int64_t) datePartResult;
+	}
+	else
+	{
+		result->value_type = BSON_TYPE_INT32;
+		result->value.v_int32 = datePartResult;
+	}
 }
 
 

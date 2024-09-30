@@ -254,16 +254,18 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  &HandlePreParsedDollarDateFromString, FEATURE_AGG_OPERATOR_DATEFROMSTRING },
 	{ "$dateSubtract", NULL, &ParseDollarDateSubtract, &HandlePreParsedDollarDateSubtract,
 	  FEATURE_AGG_OPERATOR_DATESUBTRACT },
-	{ "$dateToParts", &HandleDollarDateToParts, NULL, NULL,
+	{ "$dateToParts", NULL, &ParseDollarDateToParts, &HandlePreParsedDollarDateToParts,
 	  FEATURE_AGG_OPERATOR_DATETOPARTS },
-	{ "$dateToString", &HandleDollarDateToString, NULL, NULL,
+	{ "$dateToString", NULL, &ParseDollarDateToString, &HandlePreParsedDollarDateToString,
 	  FEATURE_AGG_OPERATOR_DATETOSTRING },
 	{ "$dateTrunc", NULL, &ParseDollarDateTrunc, &HandlePreParsedDollarDateTrunc,
 	  FEATURE_AGG_OPERATOR_DATETRUNC },
-	{ "$dayOfMonth", &HandleDollarDayOfMonth, NULL, NULL,
+	{ "$dayOfMonth", NULL, &ParseDollarDayOfMonth, &HandlePreParsedDollarDayOfMonth,
 	  FEATURE_AGG_OPERATOR_DAYOFMONTH },
-	{ "$dayOfWeek", &HandleDollarDayOfWeek, NULL, NULL, FEATURE_AGG_OPERATOR_DAYOFWEEK },
-	{ "$dayOfYear", &HandleDollarDayOfYear, NULL, NULL, FEATURE_AGG_OPERATOR_DAYOFYEAR },
+	{ "$dayOfWeek", NULL, &ParseDollarDayOfWeek, &HandlePreParsedDollarDayOfWeek,
+	  FEATURE_AGG_OPERATOR_DAYOFWEEK },
+	{ "$dayOfYear", NULL, &ParseDollarDayOfYear, &HandlePreParsedDollarDayOfYear,
+	  FEATURE_AGG_OPERATOR_DAYOFYEAR },
 	{ "$degreesToRadians", NULL, &ParseDollarDegreesToRadians,
 	  &HandlePreParsedDollarDegreesToRadians,
 	  FEATURE_AGG_OPERATOR_DEGREESTORADIANS },
@@ -285,7 +287,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$gt", NULL, &ParseDollarGt, &HandlePreParsedDollarGt, FEATURE_AGG_OPERATOR_GT },
 	{ "$gte", NULL, &ParseDollarGte, &HandlePreParsedDollarGte,
 	  FEATURE_AGG_OPERATOR_GTE },
-	{ "$hour", &HandleDollarHour, NULL, NULL, FEATURE_AGG_OPERATOR_HOUR },
+	{ "$hour", NULL, &ParseDollarHour, &HandlePreParsedDollarHour,
+	  FEATURE_AGG_OPERATOR_HOUR },
 	{ "$ifNull", NULL, &ParseDollarIfNull, &HandlePreParsedDollarIfNull,
 	  FEATURE_AGG_OPERATOR_IFNULL },
 	{ "$in", &HandleDollarIn, NULL, NULL, FEATURE_AGG_OPERATOR_IN },
@@ -296,10 +299,11 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$indexOfCP", &HandleDollarIndexOfCP, NULL, NULL, FEATURE_AGG_OPERATOR_INDEXOFCP },
 	{ "$isArray", &HandleDollarIsArray, NULL, NULL, FEATURE_AGG_OPERATOR_ISARRAY },
 	{ "$isNumber", &HandleDollarIsNumber, NULL, NULL, FEATURE_AGG_OPERATOR_ISNUMBER },
-	{ "$isoDayOfWeek", &HandleDollarIsoDayOfWeek, NULL, NULL,
+	{ "$isoDayOfWeek", NULL, &ParseDollarIsoDayOfWeek, &HandlePreParsedDollarIsoDayOfWeek,
 	  FEATURE_AGG_OPERATOR_ISODAYOFWEEK },
-	{ "$isoWeek", &HandleDollarIsoWeek, NULL, NULL, FEATURE_AGG_OPERATOR_ISOWEEK },
-	{ "$isoWeekYear", &HandleDollarIsoWeekYear, NULL, NULL,
+	{ "$isoWeek", NULL, &ParseDollarIsoWeek, &HandlePreParsedDollarIsoWeek,
+	  FEATURE_AGG_OPERATOR_ISOWEEK },
+	{ "$isoWeekYear", NULL, &ParseDollarIsoWeekYear, &HandlePreParsedDollarIsoWeekYear,
 	  FEATURE_AGG_OPERATOR_ISOWEEKYEAR },
 	{ "$last", &HandleDollarLast, NULL, NULL, FEATURE_AGG_OPERATOR_LAST },
 	{ "$lastN", NULL, &ParseDollarLastN, &HandlePreParsedDollarLastN,
@@ -328,16 +332,18 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_MERGEOBJECTS },
 	{ "$meta", NULL, &ParseDollarMeta, &HandlePreParsedDollarMeta,
 	  FEATURE_AGG_OPERATOR_META },
-	{ "$millisecond", &HandleDollarMillisecond, NULL, NULL,
+	{ "$millisecond", NULL, &ParseDollarMillisecond, &HandlePreParsedDollarMillisecond,
 	  FEATURE_AGG_OPERATOR_MILLISECOND },
 	{ "$min", NULL, &ParseDollarMin, &HandlePreParsedDollarMin,
 	  FEATURE_AGG_OPERATOR_MIN },
 	{ "$minN", NULL, &ParseDollarMinN, &HandlePreParsedDollarMaxMinN,
 	  FEATURE_AGG_OPERATOR_MINN },
-	{ "$minute", &HandleDollarMinute, NULL, NULL, FEATURE_AGG_OPERATOR_MINUTE },
+	{ "$minute", NULL, &ParseDollarMinute, &HandlePreParsedDollarMinute,
+	  FEATURE_AGG_OPERATOR_MINUTE },
 	{ "$mod", NULL, &ParseDollarMod, &HandlePreParsedDollarMod,
 	  FEATURE_AGG_OPERATOR_MOD },
-	{ "$month", &HandleDollarMonth, NULL, NULL, FEATURE_AGG_OPERATOR_MONTH },
+	{ "$month", NULL, &ParseDollarMonth, &HandlePreParsedDollarMonth,
+	  FEATURE_AGG_OPERATOR_MONTH },
 	{ "$multiply", NULL, &ParseDollarMultiply, &HandlePreParsedDollarMultiply,
 	  FEATURE_AGG_OPERATOR_MULTIPLY },
 	{ "$ne", NULL, &ParseDollarNe, &HandlePreParsedDollarNe, FEATURE_AGG_OPERATOR_NE },
@@ -373,7 +379,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$round", NULL, &ParseDollarRound, &HandlePreParsedDollarRound,
 	  FEATURE_AGG_OPERATOR_ROUND },
 	{ "$rtrim", &HandleDollarRtrim, NULL, NULL, FEATURE_AGG_OPERATOR_RTRIM },
-	{ "$second", &HandleDollarSecond, NULL, NULL, FEATURE_AGG_OPERATOR_SECOND },
+	{ "$second", NULL, &ParseDollarSecond, &HandlePreParsedDollarSecond,
+	  FEATURE_AGG_OPERATOR_SECOND },
 	{ "$setDifference", NULL, &ParseDollarSetDifference,
 	  &HandlePreParsedDollarSetDifference,
 	  FEATURE_AGG_OPERATOR_SETDIFFERENCE },
@@ -445,8 +452,10 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$type", &HandleDollarType, NULL, NULL, FEATURE_AGG_OPERATOR_TYPE },
 	{ "$unsetField", NULL, &ParseDollarUnsetField, &HandlePreParsedDollarUnsetField,
 	  FEATURE_AGG_OPERATOR_UNSETFIELD },
-	{ "$week", &HandleDollarWeek, NULL, NULL, FEATURE_AGG_OPERATOR_WEEK },
-	{ "$year", &HandleDollarYear, NULL, NULL, FEATURE_AGG_OPERATOR_YEAR },
+	{ "$week", NULL, &ParseDollarWeek, &HandlePreParsedDollarWeek,
+	  FEATURE_AGG_OPERATOR_WEEK },
+	{ "$year", NULL, &ParseDollarYear, &HandlePreParsedDollarYear,
+	  FEATURE_AGG_OPERATOR_YEAR },
 	{ "$zip", NULL, &ParseDollarZip, &HandlePreParsedDollarZip, FEATURE_AGG_OPERATOR_ZIP }
 };
 
@@ -1762,7 +1771,7 @@ GetAndEvaluateOperator(pgbson *document,
 			{
 				case AggregationExpressionArgumentsKind_List:
 				{
-					list_free_deep(expressionData->operator.arguments);
+					FreeVariableLengthArgs(expressionData->operator.arguments);
 					break;
 				}
 
@@ -2847,10 +2856,13 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 
 		case AggregationExpressionKind_Constant:
 		{
-			pgbson_element_writer elementWriter;
-			PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
-										  path.length);
-			PgbsonElementWriterWriteValue(&elementWriter, &expressionData->value);
+			if (expressionData->value.value_type != BSON_TYPE_EOD)
+			{
+				pgbson_element_writer elementWriter;
+				PgbsonInitObjectElementWriter(writer, &elementWriter, path.string,
+											  path.length);
+				PgbsonElementWriterWriteValue(&elementWriter, &expressionData->value);
+			}
 			break;
 		}
 
