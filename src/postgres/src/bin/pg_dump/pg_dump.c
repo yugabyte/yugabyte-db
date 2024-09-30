@@ -909,7 +909,7 @@ main(int argc, char **argv)
 	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
 	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
 
-	/* 
+	/*
 	 * Cache (1) whether the dumped database is a colocated database and
 	 * (2) whether the dumped database is a legacy colocated database
 	 * in global variables.
@@ -16993,49 +16993,6 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 				appendPQExpBufferChar(q, ')');
 			}
-
-			/* Get the table and index properties from YB, if relevant. */
-			YbTableProperties yb_table_properties = NULL;
-			YbTableProperties yb_index_properties = NULL;
-			if (dopt->include_yb_metadata &&
-				(coninfo->contype == 'u'))
-			{
-				yb_table_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
-				yb_index_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
-			}
-			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
-			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
-			getYbTablePropertiesAndReloptions(fout, yb_table_properties, yb_table_reloptions,
-				tbinfo->dobj.catId.oid, tbinfo->dobj.name, tbinfo->relkind);
-			getYbTablePropertiesAndReloptions(fout, yb_index_properties, yb_index_reloptions,
-				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
-
-#ifdef YB_TODO
-			/* Need rework to match Pg15 */
-			/*
-			 * Issue #11600: if tablegroups mismatch between the table and its
-			 * constraint, we cannot currently replicate that.
-			 * We have to fail to prevent inconsistency upon yb_backup restore.
-			 */
-			if (dopt->include_yb_metadata &&
-				OidIsValid(yb_table_properties->tablegroup_oid) &&
-				yb_index_properties->tablegroup_oid != yb_table_properties->tablegroup_oid)
-			{
-				fatal("table %s and its constraint %s have mismatching tablegroups!\n"
-					  "This case cannot currently be handled, see issue "
-					  "https://github.com/yugabyte/yugabyte-db/issues/11600\n",
-					  tbinfo->dobj.name,
-					  coninfo->dobj.name);
-			}
-#endif
-
-			YbAppendReloptions2(q, false /* newline_before*/,
-				indxinfo->indreloptions, "",
-				yb_index_reloptions->data, "",
-				fout);
-
-			destroyPQExpBuffer(yb_table_reloptions);
-			destroyPQExpBuffer(yb_index_reloptions);
 
 			if (coninfo->condeferrable)
 			{
