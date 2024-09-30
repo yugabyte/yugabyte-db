@@ -21,7 +21,6 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
 
     // Disable pg replication command support to ensure that consistent snapshot feature
     // works independently.
