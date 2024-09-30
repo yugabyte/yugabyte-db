@@ -43,7 +43,7 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @YBADeprecated(sinceYBAVersion = "2.20.3", sinceDate = "2024-04-10")
   @ApiModelProperty
   @EditableInUseProvider(name = "IMDSv2 Required", allowed = false)
-  public Boolean useIMDSv2;
+  public Boolean useIMDSv2 = true;
 
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty

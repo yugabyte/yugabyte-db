@@ -5,8 +5,10 @@ description: Sending diagnostics information to Yugabyte.
 menu:
   preview_yugabyte-voyager:
     identifier: diagnostics-report
-    parent: yugabytedb-voyager
+    parent: reference-voyager
     weight: 104
+aliases:
+  - /preview/yugabyte-voyager/diagnostics-report/
 type: docs
 ---
 

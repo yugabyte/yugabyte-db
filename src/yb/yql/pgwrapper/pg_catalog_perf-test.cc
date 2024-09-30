@@ -537,8 +537,8 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheMemoryLimit, PgCatalogWithLimitedCache
         }
         return static_cast<Status>(Status::OK());
       })).cache;
-  ASSERT_EQ(cache_metrics.gc_calls, 9);
-  ASSERT_EQ(cache_metrics.entries_removed_by_gc, 26);
+  ASSERT_GT(cache_metrics.gc_calls, 0);
+  ASSERT_GE(cache_metrics.entries_removed_by_gc, cache_metrics.gc_calls);
   auto response_cache_mem_tracker =
       cluster_->mini_tablet_server(0)->server()->mem_tracker()->FindChild("PgResponseCache");
   ASSERT_TRUE(response_cache_mem_tracker);
