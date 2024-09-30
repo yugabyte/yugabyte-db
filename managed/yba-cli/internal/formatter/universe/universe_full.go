@@ -25,7 +25,7 @@ const (
 		"\t{{.CPUArchitecture}}"
 	universeDetails2 = "table {{.EnableYSQL}}\t{{.YSQLAuthEnabled}}\t{{.EnableYCQL}}" +
 		"\t{{.YCQLAuthEnabled}}\t{{.UseSystemd}}"
-	encryptionRestDetails    = "table {{.KMSEnabled}}\t{{.KMSConfigName}}\t{{.EncryptionRestType}}"
+	encryptionRestDetails    = "table {{.KMSEnabled}}\t{{.KMSConfig}}\t{{.EncryptionRestType}}"
 	encryptionTransitDetails = "table {{.NtoNTLS}}\t{{.NtoNCert}}\t{{.CtoNTLS}}\t{{.CtoNCert}}"
 	universeOverridesTable   = "table {{.UniverseOverrides}}"
 	azOverridesTable         = "table {{.AZOverrides}}"
@@ -38,7 +38,7 @@ var Certificates []ybaclient.CertificateInfoExt
 var Providers []ybaclient.Provider
 
 // KMSConfigs hold kms configs declared under the current customer
-var KMSConfigs []map[string]interface{}
+var KMSConfigs []util.KMSConfig
 
 // FullUniverseContext to render Universe Details output
 type FullUniverseContext struct {
