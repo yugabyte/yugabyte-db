@@ -7373,18 +7373,19 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // Update a task to rollback alter if the corresponding YSQL transaction
   // rolls back.
   TransactionMetadata txn;
+  TransactionId txn_id = TransactionId::Nil();
   bool schedule_ysql_txn_verifier = false;
+  bool need_remove_ddl_state = false;
   // DDL rollback is not applicable for the alter change that sets wal_retention_secs.
   if (!req->has_wal_retention_secs()) {
     if (!req->ysql_yb_ddl_rollback_enabled()) {
       // If DDL rollback is no longer enabled, make sure that there is no transaction
       // verification state present.
       if (l->has_ysql_ddl_txn_verifier_state()) {
-        auto txn_id =
-            VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction())).transaction_id;
+        txn_id = VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction())).transaction_id;
         LOG(INFO) << "Clearing ysql_ddl_txn_verifier state for table " << table->ToString();
         table_pb.clear_ysql_ddl_txn_verifier_state();
-        RemoveDdlTransactionState(table->id(), {txn_id});
+        need_remove_ddl_state = true;
       }
     } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!l->has_ysql_ddl_txn_verifier_state()) {
@@ -7403,6 +7404,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
+
+  if (need_remove_ddl_state) {
+    RemoveDdlTransactionState(table->id(), {txn_id});
+  }
 
   // Verify Transaction gets committed, which occurs after table alter finishes.
   if (schedule_ysql_txn_verifier) {
@@ -13406,6 +13411,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     auto res = table->LockForRead()->GetCurrentDdlTransactionId();
     WARN_NOT_OK(
         res, "Failed to get current DDL transaction for table " + table->ToString());
+    bool need_remove_ddl_state = false;
     if (res.ok() && res.get() != TransactionId::Nil()) {
       // When deleting an index, we also need to update the indexed table
       // to remove this index from it. Updating the indexed table involves
@@ -13438,7 +13444,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
           Format("fully_applied_schema of $0 fail to clear", table_id));
       }
       VLOG(3) << "Check table deleted " << table->id();
-      RemoveDdlTransactionState(table->id(), {res.get()});
+      need_remove_ddl_state = true;
       lock.mutable_data()->pb.clear_ysql_ddl_txn_verifier_state();
       lock.mutable_data()->pb.clear_transaction();
     }
@@ -13450,6 +13456,9 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       return;
     }
     lock.Commit();
+    if (need_remove_ddl_state) {
+      RemoveDdlTransactionState(table->id(), {res.get()});
+    }
   }), "Failed to submit update table task");
 }
 
