@@ -28,16 +28,16 @@ menu:
     href="datatype-mapping-mysql/"
     icon="/images/section_icons/reference/connectors/ecosystem-integrations.png">}}
 
+  {{<index/item
+    title="Tune performance"
+    body="Optimize migration job performance using tuneable parameters with yb-voyager."
+    href="performance/"
+    icon="fa-light fa-chart-line-up">}}
+
    {{<index/item
     title="Diagnostics reporting"
     body="Monitor migration diagnostics securely with yb-voyager commands."
     href="diagnostics-report/"
     icon="fa-sharp fa-light fa-stethoscope">}}
-
-   {{<index/item
-    title="Tune performance"
-    body="Optimize migration job performance using tuneable parameters with yb-voyager."
-    href="performance/"
-    icon="fa-light fa-chart-line-up">}}
 
 {{</index/block>}}

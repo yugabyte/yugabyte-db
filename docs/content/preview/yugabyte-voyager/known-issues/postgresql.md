@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: postgresql-issues
     parent: known-issues
-    weight: 102
+    weight: 101
 type: docs
 rightNav:
   hideH3: true

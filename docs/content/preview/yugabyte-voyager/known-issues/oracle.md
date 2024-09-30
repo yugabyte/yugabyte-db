@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: oracle-issues
     parent: known-issues
-    weight: 101
+    weight: 102
 type: docs
 rightNav:
   hideH3: true

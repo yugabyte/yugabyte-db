@@ -36,12 +36,6 @@ Currently, yb-voyager doesn't support the following features:
 {{<index/block>}}
 
   {{<index/item
-    title="MySQL"
-    body="Explore workarounds for limitations associated with MySQL as the source database."
-    href="mysql/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-  {{<index/item
     title="PostgreSQL"
     body="Explore workarounds for limitations associated with PostgreSQL as the source database."
     href="postgresql/"
@@ -51,6 +45,12 @@ Currently, yb-voyager doesn't support the following features:
     title="Oracle"
     body="Explore workarounds for limitations associated with Oracle as the source database."
     href="oracle/"
+    icon="/images/section_icons/architecture/concepts.png">}}
+
+  {{<index/item
+    title="MySQL"
+    body="Explore workarounds for limitations associated with MySQL as the source database."
+    href="mysql/"
     icon="/images/section_icons/architecture/concepts.png">}}
 
 {{</index/block>}}

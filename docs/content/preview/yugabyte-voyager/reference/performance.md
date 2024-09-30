@@ -6,7 +6,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: performance
     parent: reference-voyager
-    weight: 105
+    weight: 104
 aliases:
   - /preview/yugabyte-voyager/performance/
   - /preview/yugabyte-voyager/monitor/performance/

@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: mysql-issues
     parent: known-issues
-    weight: 101
+    weight: 103
 type: docs
 rightNav:
   hideH3: true
