@@ -13,19 +13,23 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
 	// Backup details
-	defaultFullBackupGeneral = "table {{.BackupUUID}}\t{{.BackupType}}\t{{.State}}"
+	defaultFullBackupGeneral = "table {{.BackupUUID}}\t{{.BackupType}}\t{{.Category}}\t{{.State}}"
 	backupDetails1           = "table {{.Universe}}\t{{.ScheduleName}}\t{{.HasIncrementalBackups}}"
-	backupDetails2           = "table {{.StorageConfig}}\t{{.StorageConfigType}}"
+	backupDetails2           = "table {{.StorageConfig}}\t{{.StorageConfigType}}\t{{.KMSConfig}}"
 	backupDetails3           = "table {{.CreateTime}}\t{{.CompletionTime}}\t{{.ExpiryTime}}"
 )
 
 // StorageConfigs hold storage config for the backup
 var StorageConfigs []ybaclient.CustomerConfigUI
+
+// KMSConfigs hold kms configs declared under the current customer
+var KMSConfigs []util.KMSConfig
 
 // FullBackupContext to render backup Details output
 type FullBackupContext struct {

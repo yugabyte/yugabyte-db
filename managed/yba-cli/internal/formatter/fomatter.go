@@ -56,6 +56,8 @@ const (
 	StatusHeader = "Status"
 	// InUseHeader
 	InUseHeader = "In Use"
+	// KMSConfigHeader
+	KMSConfigHeader = "KMS configuration"
 
 	// GreenColor for colored output
 	GreenColor = "green"
