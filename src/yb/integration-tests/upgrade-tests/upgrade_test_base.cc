@@ -186,17 +186,30 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
-// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
-// insert a new entry.
-void AddUnDefOkFlag(std::vector<std::string>& flag_list, const std::string& flag_name) {
+void AddFlagToCsvFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_to_add) {
   for (auto& flag : flag_list) {
-    if (flag.find("--undefok=")) {
-      flag += Format(",$0", flag_name);
+    if (flag.starts_with(Format("--$0=", flag_name))) {
+      flag += Format(",$0", flag_to_add);
       return;
     }
   }
-  flag_list.push_back(Format("--undefok=$0", flag_name));
+  flag_list.push_back(Format("--$0=$1", flag_name, flag_to_add));
+}
+
+// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
+// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
+// insert a new entry.
+void AddUnDefOkAndSetFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_value) {
+  AddFlagToCsvFlag(flag_list, "undefok", flag_name);
+  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
+}
+
+void AddAllowedPreviewFlag(std::vector<std::string>& flag_list, const std::string& flag_name) {
+  AddFlagToCsvFlag(flag_list, "allowed_preview_flags_csv", flag_name);
 }
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
@@ -219,19 +232,23 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (old_version_info_.version != kBuild_2_20_2_4) {
+    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2_20_2_4;
   }
 
   if (IsSanitizer()) {
+    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
   if (old_version_info_.version.empty()) {
+    test_skipped_ = true;
     CHECK(false) << "Build info for old version not set";
     return;
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
+    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
@@ -257,10 +274,19 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   opts.daemon_bin_path = VERIFY_RESULT(DownloadAndGetBinPath(old_version_info_));
 
   // Disable TEST_always_return_consensus_info_for_succeeded_rpc since it is not upgrade safe.
-  AddUnDefOkFlag(opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc");
-  opts.extra_master_flags.push_back("--TEST_always_return_consensus_info_for_succeeded_rpc=false");
-  AddUnDefOkFlag(opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc");
-  opts.extra_tserver_flags.push_back("--TEST_always_return_consensus_info_for_succeeded_rpc=false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+
+  // YB_TODO: Enable ysql_enable_db_catalog_version_mode since it is not major version upgrade
+  // safe.
+  if (old_version_info_.version == kBuild_2_20_2_4) {
+    AddAllowedPreviewFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode");
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode", "true");
+    AddAllowedPreviewFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode");
+    AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode", "true");
+  }
 
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
@@ -284,6 +310,19 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
       cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
   is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
                                    current_version_info_.ysql_major_version();
+
+  if (IsYsqlMajorVersionUpgrade()) {
+    // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
+    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+  }
+
+  if (old_version_info_.version == kBuild_2_20_2_4) {
+    // YB_TODO: Remove when the min upgrade-from version is 2024.1+.
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
+    RETURN_NOT_OK(conn.Fetch("SELECT yb_fix_catalog_version_table(true)"));
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=false"));
+  }
 
   return Status::OK();
 }
@@ -539,12 +578,12 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Rolling back upgrade";
 
-  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersion(), "Failed to run ysql major version rollback");
-
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInOldVersion(delay_between_nodes), "Failed to restart tservers");
+
+  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersion(), "Failed to run ysql major version rollback");
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
