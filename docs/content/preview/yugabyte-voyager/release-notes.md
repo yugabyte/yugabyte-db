@@ -24,12 +24,12 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
   - Materialized views and their associated indexes are now considered when sizing clusters from a PostgreSQL source.
 
 - The analyze-schema command now generates both HTML and JSON format reports by default unless the `output-format` flag is used, in which case only the specified format will be generated.
-- Voyager's [diagnostic service](/preview/yugabyte-voyager/diagnostics-report/) (callhome) is updated to use a secure port for enhanced data security.
+- Voyager's [diagnostic service](/preview/yugabyte-voyager/diagnostics-report/) (callhome) now uses a secure port for enhanced data security.
 - The installer script now installs the `jq` package on all supported operating systems and verifies that the installed Java version is between 17 and 19 (inclusive).
 
 ### Bug fix
 
-- Fixed an issue during the streaming phase of the import-data command, where the process would hang on resumption if conflicts arose due to unique constraints between events.
+- Fixed an issue during the streaming phase of the import data command, where the process would hang on resumption if conflicts arose due to unique constraints between events.
 
 ## v1.8.1 - September 17, 2024
 
