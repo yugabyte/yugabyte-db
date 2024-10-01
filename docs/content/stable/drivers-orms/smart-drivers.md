@@ -212,7 +212,7 @@ When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as foll
 | true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
 | only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster (all zones)</li><li>If none, fail |
 | only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster (all zones)</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then Read Replica nodes in entire cluster |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
 | prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
 {{% /tab %}}
@@ -225,7 +225,7 @@ When topology keys are specified as zoneA:1, zoneB:2, and fallback to topology k
 | true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then fail |
 | only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, fail |
 | only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then Read Replica nodes in entire cluster |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
 | prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
 {{% /tab %}}
