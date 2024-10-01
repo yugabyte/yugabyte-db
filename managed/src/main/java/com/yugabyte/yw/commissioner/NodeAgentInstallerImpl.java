@@ -52,11 +52,6 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
 
   @Override
   public boolean install(UUID customerUuid, UUID universeUuid, NodeDetails nodeDetails) {
-    if (isOnPremFullyManual(universeUuid, nodeDetails)) {
-      // TODO Need to revisit this for on-prem installation once the user-level systemd changes are
-      // done.
-      return false;
-    }
     InstallNodeAgent task = AbstractTaskBase.createTask(InstallNodeAgent.class);
     task.initialize(createInstallParams(customerUuid, universeUuid, nodeDetails, false));
     waitForNodeAgent(task.install());
@@ -66,11 +61,6 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
   @Override
   public boolean reinstall(
       UUID customerUuid, UUID universeUuid, NodeDetails nodeDetails, NodeAgent nodeAgent) {
-    if (isOnPremFullyManual(universeUuid, nodeDetails)) {
-      // TODO Need to revisit this for on-prem installation once the user-level systemd changes are
-      // done.
-      return false;
-    }
     State state = nodeAgent.getState();
     if (state == State.REGISTERING) {
       InstallNodeAgent task = AbstractTaskBase.createTask(InstallNodeAgent.class);
@@ -141,9 +131,14 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
     params.setUniverseUUID(universe.getUniverseUUID());
     params.nodeAgentInstallDir = installPath;
     params.nodeAgentPort = serverPort;
-    params.reinstall = reinstall;
     if (StringUtils.isNotEmpty(nodeDetails.sshUserOverride)) {
       params.sshUser = nodeDetails.sshUserOverride;
+    }
+    if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
+      params.sudoAccess = false;
+      params.nodeAgentInstallDir = provider.getYbHome();
+    } else {
+      params.sudoAccess = true;
     }
     return params;
   }
@@ -151,15 +146,5 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
   private void waitForNodeAgent(NodeAgent nodeAgent) {
     nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
     nodeAgent.saveState(State.READY);
-  }
-
-  private boolean isOnPremFullyManual(UUID universeUuid, NodeDetails nodeDetails) {
-    Universe universe = Universe.getOrBadRequest(universeUuid);
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      return false;
-    }
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-    return provider.getDetails().skipProvisioning;
   }
 }

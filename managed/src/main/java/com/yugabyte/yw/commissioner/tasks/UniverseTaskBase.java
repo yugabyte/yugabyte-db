@@ -2144,6 +2144,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.nodeAgentInstallDir = installPath;
               params.nodeAgentPort = serverPort;
               params.reinstall = reinstall;
+              params.sudoAccess = true;
               if (StringUtils.isNotEmpty(n.sshUserOverride)) {
                 params.sshUser = n.sshUserOverride;
               }
