@@ -4359,5 +4359,20 @@ CREATE TYPE base_type (
   ASSERT_OK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
 }
 
+TEST_F(PgLibPqTest, CollationWithPartitionedTable) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE n_tablespace LOCATION '/data_n'"));
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE e_tablespace LOCATION '/data_e'"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE a"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+  ASSERT_OK(conn.Execute("CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a text NOT NULL collate numeric) PARTITION BY RANGE(a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_n PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('A') TO ('Lzzzzz') TABLESPACE n_tablespace"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_e PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('M') TO ('Zzzzzz') TABLESPACE e_tablespace"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+}
+
 } // namespace pgwrapper
 } // namespace yb
