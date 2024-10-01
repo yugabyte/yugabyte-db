@@ -86,7 +86,7 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 2
+PER_PROCESS_VERSION = 3
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -1849,11 +1849,11 @@ class NodeChecker():
             stat = res['total_stat']
             self.current_process_results[process_name] = res
             self._dump_per_process_results()
-
-            metrics[0].add_value(stat['user_cpu_seconds'], labels=[process,
-                                                                   Label('type', 'user')])
-            metrics[0].add_value(stat['system_cpu_seconds'], labels=[process,
-                                                                     Label('type', 'system')])
+            ticks = int(os.sysconf("SC_CLK_TCK"))
+            metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
+                                                                            Label('type', 'user')])
+            metrics[0].add_value(stat['system_cpu_seconds'] // ticks,
+                                 labels=[process, Label('type', 'system')])
             metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
                                                                         Label('type', 'resident')])
             metrics[1].add_value(stat['proportional_memory_kb'], labels=[
@@ -1995,10 +1995,9 @@ class NodeChecker():
         cmd = 'cat /proc/{}/stat'.format(pid)
         stat = self._check_output(cmd).strip()
         stat_list = stat.split(" ")
-        ticks = int(os.sysconf("SC_CLK_TCK"))
         if len(stat_list) > 0:
-            res['user_cpu_seconds'] = int(stat_list[13]) // ticks
-            res['system_cpu_seconds'] = int(stat_list[14]) // ticks
+            res['user_cpu_seconds'] = int(stat_list[13])
+            res['system_cpu_seconds'] = int(stat_list[14])
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
