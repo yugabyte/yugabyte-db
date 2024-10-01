@@ -74,7 +74,6 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 #include "utils/typcache.h"
-#include "utils/lsyscache.h"
 
 #include "io/helio_bson_core.h"
 #include "aggregation/bson_project.h"
@@ -1611,23 +1610,10 @@ command_update_worker(PG_FUNCTION_ARGS)
 	memset(&params, 0, sizeof(WorkerUpdateParam));
 	DeserializeUpdateWorkerSpec(updateInternalSpec, &params);
 
-	const char *shardTableName = NULL;
-	if (shardOid != InvalidOid && UseLocalExecutionShardQueries)
-	{
-		shardTableName = get_rel_name(shardOid);
-	}
-
 	MongoCollection mongoCollection = { 0 };
-	mongoCollection.collectionId = collectionId;
+	UpdateMongoCollectionUsingIds(&mongoCollection, collectionId, shardOid);
 	mongoCollection.shardKey = params.shardKeyBson;
 
-	if (shardTableName != NULL)
-	{
-		strcpy(mongoCollection.shardTableName, shardTableName);
-	}
-
-	snprintf(mongoCollection.tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
-			 collectionId);
 	if (params.isUpdateOne)
 	{
 		UpdateOneResult result;

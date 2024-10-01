@@ -1892,3 +1892,28 @@ ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelN
 							validationLevel, validationLevelName)));
 	}
 }
+
+
+/*
+ * This utility function updates the `MongCollection` struct using the `collectionId` and `shardOid`.
+ */
+void
+UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 collectionId, Oid
+							  shardOid)
+{
+	const char *shardTableName = NULL;
+	if (shardOid != InvalidOid && UseLocalExecutionShardQueries)
+	{
+		shardTableName = get_rel_name(shardOid);
+	}
+
+	mongoCollection->collectionId = collectionId;
+
+	if (shardTableName != NULL)
+	{
+		strcpy(mongoCollection->shardTableName, shardTableName);
+	}
+
+	snprintf(mongoCollection->tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+			 collectionId);
+}

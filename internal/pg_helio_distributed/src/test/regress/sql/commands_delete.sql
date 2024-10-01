@@ -1,6 +1,7 @@
-SET search_path TO helio_api,helio_core,helio_api_catalog;
-SET helio_api.next_collection_id TO 2500;
-SET helio_api.next_collection_index_id TO 2500;
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET citus.next_shard_id TO 639000;
+SET helio_api.next_collection_id TO 6390;
+SET helio_api.next_collection_index_id TO 6390;
 
 -- Call delete for a non existent collection.
 -- Note that this should not report any logs related to collection catalog lookup.
@@ -122,9 +123,17 @@ select helio_api.shard_collection('db', 'removeme', '{"a":"hashed"}', false);
 
 -- make sure we get the expected results after sharding a collection
 begin;
-select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":5}},"limit":0}]}');
+select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":3}},"limit":0}]}');
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":1}';
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":10}';
+select count(*) from helio_api.collection('db', 'removeme');
+rollback;
+
+
+-- delete with oject_id and no shard_key works
+BEGIN;
+select count(*) from helio_api.collection('db', 'removeme');
+select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":{"$eq":5}},"limit":0}], "ordered": false }');
 select count(*) from helio_api.collection('db', 'removeme');
 rollback;
 
@@ -251,8 +260,6 @@ SELECT helio_api_internal.delete_worker(
     p_transaction_id=>null::text
 ) FROM helio_api.collection('delete', 'test_sort_returning');
 
-
-
 -- sort by multiple fields (i) and return deleted document
 BEGIN;
 
@@ -346,3 +353,52 @@ SELECT helio_api.delete(
         "ordered": false
      }'
 );
+
+-- _id test using $in opearator with explain plan
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":1,"_id":1}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":2,"_id":2}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":3,"_id":3}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":4,"_id":4}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":5,"_id":5}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":6,"_id":6}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":7,"_id":7}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":8,"_id":8}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":9,"_id":9}');
+select 1 from helio_api.insert_one('db', 'explainTest', '{"a":10,"_id":10}');
+
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT helio_api.delete(
+    'db',
+    '{
+        "delete": "explainTest",
+        "deletes": [
+            {"q": {"_id": {"$in" : [2,4,6,8,10] } }, "limit": 0 }
+        ],
+        "ordered": true
+     }'
+);
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT helio_api.delete(
+    'db',
+    '{
+        "delete": "explainTest",
+        "deletes": [
+            {"q": {"_id": {"$in" : [2,4,6,8,10] } }, "limit": 0 }
+        ],
+        "ordered": true
+     }'
+);
+
+SELECT helio_api.delete(
+    'db',
+    '{
+        "delete": "explainTest",
+        "deletes": [
+            {"q": {"_id": {"$in" : [2,4,6,8,10] } }, "limit": 0 }
+        ],
+        "ordered": true
+     }'
+);
+
+select document from helio_api.collection('db', 'explainTest') order by 1;
+

@@ -245,4 +245,6 @@ char * ParseAndGetValidationLevelOption(bson_iter_t *iter, const
 										char *validationLevelName, bool *hasValue);
 char * ParseAndGetValidationActionOption(bson_iter_t *iter, const
 										 char *validationActionName, bool *hasValue);
+void UpdateMongoCollectionUsingIds(MongoCollection *mongoCollection, uint64 collectionId,
+								   Oid shardOid);
 #endif

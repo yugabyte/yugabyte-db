@@ -100,6 +100,7 @@ test: bson_update_positional_all
 test: bson_update_positional_arrayFilters
 test: bson_update_positional_queryFilters
 test: bson_query_operator_geospatial_runtime_validation
+test: commands_delete
 
 test: bson_query_operator_tests_explain_runtime
 test: bson_query_operator_tests_explain_index

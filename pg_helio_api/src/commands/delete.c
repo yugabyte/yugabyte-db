@@ -89,6 +89,7 @@ typedef struct
 	List *writeErrors;
 } BatchDeletionResult;
 
+extern bool UseLocalExecutionShardQueries;
 
 PG_FUNCTION_INFO_V1(command_delete);
 PG_FUNCTION_INFO_V1(command_delete_one);
@@ -113,15 +114,17 @@ static uint64 ProcessDeletion(MongoCollection *collection, DeletionSpec *deletio
 static uint64 DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *query,
 										 bool hasShardKeyValueFilter,
 										 int64 shardKeyHash);
-static void DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
-							  int64 shardKeyHash, DeleteOneResult *result);
+static void DeleteOneInternal(MongoCollection *collection,
+							  DeleteOneParams *deleteOneParams,
+							  int64 shardKeyHash,
+							  DeleteOneResult *result);
 static void DeleteOneObjectId(MongoCollection *collection,
 							  DeleteOneParams *deleteOneParams,
 							  bson_value_t *objectId, bool forceInlineWrites,
 							  text *transactionId, DeleteOneResult *result);
 static List * ValidateQueryDocuments(BatchDeletionSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchDeletionResult *batchResult);
-static void DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
+static void DeleteOneInternalCore(MongoCollection *collection, int64 shardKeyHash,
 								  DeleteOneParams *deleteOneParams,
 								  text *transactionId, DeleteOneResult *deleteOneResult);
 static pgbson * CallDeleteWorker(MongoCollection *collection,
@@ -720,11 +723,22 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	uint64 planId = QUERY_DELETE_WITH_FILTER;
 	SPI_connect();
 	initStringInfo(&deleteQuery);
+	appendStringInfo(&deleteQuery, "DELETE FROM ");
+
+	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	{
+		appendStringInfo(&deleteQuery, " %s.%s", ApiDataSchemaName,
+						 collection->shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&deleteQuery, " %s.documents_" UINT64_FORMAT, ApiDataSchemaName,
+						 collectionId);
+	}
+
 	appendStringInfo(&deleteQuery,
-					 "DELETE FROM %s.documents_" UINT64_FORMAT
 					 " WHERE document OPERATOR(%s.@@) $1::%s",
-					 ApiDataSchemaName, collectionId, ApiCatalogSchemaName,
-					 FullBsonTypeName);
+					 ApiCatalogSchemaName, FullBsonTypeName);
 
 	/* we use bytea because bson may not have the same OID on all nodes */
 	argTypes[0] = BYTEAOID;
@@ -768,8 +782,9 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	char *argNulls = NULL;
 	bool readOnly = false;
 	long maxTupleCount = 0;
-	SPIPlanPtr plan = GetSPIQueryPlan(collectionId, planId,
-									  deleteQuery.data, argTypes, argCount);
+	SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId,
+													collection->shardTableName, planId,
+													deleteQuery.data, argTypes, argCount);
 
 	SPI_execute_plan(plan, argValues, argNulls, readOnly, maxTupleCount);
 	rowsDeleted = SPI_processed;
@@ -794,7 +809,7 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	if (DefaultInlineWriteOperations || collection->shardTableName[0] != '\0' ||
 		forceInlineWrites)
 	{
-		DeleteOneInternalCore(collection->collectionId, shardKeyHash, deleteOneParams,
+		DeleteOneInternalCore(collection, shardKeyHash, deleteOneParams,
 							  transactionId, result);
 	}
 	else
@@ -877,7 +892,7 @@ CallDeleteWorker(MongoCollection *collection,
 
 
 static void
-DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
+DeleteOneInternalCore(MongoCollection *collection, int64 shardKeyHash,
 					  DeleteOneParams *deleteOneParams,
 					  text *transactionId, DeleteOneResult *deleteOneResult)
 {
@@ -889,7 +904,8 @@ DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 		/*
 		 * If a retry record exists, delete it since only a single retry is allowed.
 		 */
-		if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
+		if (DeleteRetryRecord(collection->collectionId, shardKeyHash, transactionId,
+							  &writeResult))
 		{
 			/*
 			 * Get rows affected from the retry record.
@@ -903,14 +919,14 @@ DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 			/*
 			 * No retry record exists, delete the row and get the object ID.
 			 */
-			DeleteOneInternal(collectionId, deleteOneParams, shardKeyHash,
+			DeleteOneInternal(collection, deleteOneParams, shardKeyHash,
 							  deleteOneResult);
 
 			/*
 			 * Remember that we performed a retryable write with the given
 			 * transaction ID.
 			 */
-			InsertRetryRecord(collectionId, shardKeyHash, transactionId,
+			InsertRetryRecord(collection->collectionId, shardKeyHash, transactionId,
 							  deleteOneResult->objectId, deleteOneResult->isRowDeleted,
 							  deleteOneResult->resultDeletedDocument);
 		}
@@ -920,7 +936,7 @@ DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 		/*
 		 * No transaction ID specified, do regular delete.
 		 */
-		DeleteOneInternal(collectionId, deleteOneParams, shardKeyHash, deleteOneResult);
+		DeleteOneInternal(collection, deleteOneParams, shardKeyHash, deleteOneResult);
 	}
 }
 
@@ -931,87 +947,7 @@ DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 Datum
 command_delete_one(PG_FUNCTION_ARGS)
 {
-	if (PG_ARGISNULL(0))
-	{
-		ereport(ERROR, (errmsg("p_collection_id cannot be NULL")));
-	}
-	uint64 collectionId = PG_GETARG_INT64(0);
-
-	if (PG_ARGISNULL(1))
-	{
-		ereport(ERROR, (errmsg("p_shard_key_value cannot be NULL")));
-	}
-	int64 shardKeyHash = PG_GETARG_INT64(1);
-
-	if (PG_ARGISNULL(2))
-	{
-		ereport(ERROR, (errmsg("p_query cannot be NULL")));
-	}
-	pgbson *query = PG_GETARG_PGBSON(2);
-
-	if (PG_ARGISNULL(4))
-	{
-		ereport(ERROR, (errmsg("p_return_document cannot be NULL")));
-	}
-
-	/* fetch TupleDesc for return value, not interested in resultTypeId */
-	Oid *resultTypeId = NULL;
-	TupleDesc resultTupDesc;
-	TypeFuncClass resultTypeClass =
-		get_call_result_type(fcinfo, resultTypeId, &resultTupDesc);
-
-	if (resultTypeClass != TYPEFUNC_COMPOSITE)
-	{
-		ereport(ERROR, (errmsg("return type must be a row type")));
-	}
-
-	pgbson *sort = !PG_ARGISNULL(3) ? PG_GETARG_PGBSON(3) : NULL;
-	bool returnDeletedDocument = PG_GETARG_BOOL(4);
-	pgbson *returnFields = !PG_ARGISNULL(5) ? PG_GETARG_PGBSON(5) : NULL;
-
-	if (returnFields != NULL && !returnDeletedDocument)
-	{
-		ereport(ERROR, (errmsg("returnFields was given but old document was "
-							   "not requested")));
-	}
-
-	DeleteOneResult deleteOneResult;
-	memset(&deleteOneResult, 0, sizeof(deleteOneResult));
-
-	DeleteOneParams deleteOneParams = {
-		.query = query,
-		.sort = sort,
-		.returnDeletedDocument = returnDeletedDocument,
-		.returnFields = returnFields
-	};
-
-	text *transactionId = PG_ARGISNULL(6) ? NULL : PG_GETARG_TEXT_PP(6);
-
-	DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
-						  &deleteOneResult);
-
-	/* prepare result tuple */
-	Datum values[2];
-	bool isNulls[2];
-
-	/* o_is_row_deleted */
-	values[0] = BoolGetDatum(deleteOneResult.isRowDeleted);
-	isNulls[0] = false;
-
-	/* o_result_deleted_document */
-	if (deleteOneResult.resultDeletedDocument != NULL)
-	{
-		values[1] = PointerGetDatum(deleteOneResult.resultDeletedDocument);
-		isNulls[1] = false;
-	}
-	else
-	{
-		values[1] = 0;
-		isNulls[1] = true;
-	}
-
-	HeapTuple resultTuple = heap_form_tuple(resultTupDesc, values, isNulls);
-	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
+	ereport(ERROR, (errmsg("This function is deprecated and should not be called")));
 }
 
 
@@ -1049,7 +985,11 @@ command_delete_worker(PG_FUNCTION_ARGS)
 		DeleteOneResult result;
 		memset(&result, 0, sizeof(result));
 
-		DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
+		MongoCollection mongoCollection = { 0 };
+		UpdateMongoCollectionUsingIds(&mongoCollection, collectionId, shardOid);
+
+		DeleteOneInternalCore(&mongoCollection, shardKeyHash, &deleteOneParams,
+							  transactionId,
 							  &result);
 
 		serializedResult = SerializeDeleteOneResult(&result);
@@ -1063,11 +1003,8 @@ command_delete_worker(PG_FUNCTION_ARGS)
 												&batchDeletionSpec);
 		batchDeletionSpec.deletionSequence = specDocuments;
 
-		MongoCollection mongoCollection = {
-			.collectionId = collectionId, .shardKey = NULL
-		};
-		snprintf(mongoCollection.tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
-				 collectionId);
+		MongoCollection mongoCollection = { 0 };
+		UpdateMongoCollectionUsingIds(&mongoCollection, collectionId, InvalidOid);
 
 		bool forceInline = true;
 		ProcessBatchDeletion(&mongoCollection, &batchDeletionSpec, forceInline,
@@ -1091,9 +1028,10 @@ command_delete_worker(PG_FUNCTION_ARGS)
  * Returns 1 if a row was deleted, and 0 if no row matched the query.
  */
 static void
-DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
+DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 				  int64 shardKeyHash, DeleteOneResult *result)
 {
+	uint64 planId = QUERY_DELETE_ONE;
 	List *sortFieldDocuments = deleteOneParams->sort == NULL ? NIL :
 							   PgbsonDecomposeFields(deleteOneParams->sort);
 
@@ -1125,16 +1063,27 @@ DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
 	 */
 	StringInfoData selectQuery;
 	initStringInfo(&selectQuery);
+	appendStringInfo(&selectQuery, "WITH s AS MATERIALIZED (SELECT ctid FROM ");
+
+	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	{
+		appendStringInfo(&selectQuery, " %s.%s", ApiDataSchemaName,
+						 collection->shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&selectQuery, " %s.documents_" UINT64_FORMAT, ApiDataSchemaName,
+						 collection->collectionId);
+	}
+
 	appendStringInfo(&selectQuery,
-					 "WITH s AS MATERIALIZED ("
-					 " SELECT ctid FROM %s.documents_" UINT64_FORMAT
 					 " WHERE document OPERATOR(%s.@@) $2::%s"
 					 " AND shard_key_value = $1",
-					 ApiDataSchemaName, collectionId, ApiCatalogSchemaName,
-					 FullBsonTypeName);
+					 ApiCatalogSchemaName, FullBsonTypeName);
 
 	if (objectIdFilter != NULL)
 	{
+		planId = QUERY_DELETE_ONE_ID;
 		appendStringInfo(&selectQuery,
 						 " AND object_id OPERATOR(%s.=) $%d::%s",
 						 CoreSchemaName, (varArgPosition + 1), FullBsonTypeName);
@@ -1171,12 +1120,28 @@ DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
 
 	StringInfoData deleteQuery;
 	initStringInfo(&deleteQuery);
+	appendStringInfo(&deleteQuery, "%s DELETE FROM", selectQuery.data);
+
+	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	{
+		appendStringInfo(&deleteQuery, " %s.%s", ApiDataSchemaName,
+						 collection->shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&deleteQuery, " %s.documents_" UINT64_FORMAT, ApiDataSchemaName,
+						 collection->collectionId);
+	}
+
 	appendStringInfo(&deleteQuery,
-					 "%s DELETE FROM %s.documents_" UINT64_FORMAT
 					 " d USING s WHERE d.ctid = s.ctid AND shard_key_value = $1"
-					 " RETURNING object_id %s",
-					 selectQuery.data, ApiDataSchemaName, collectionId,
-					 deleteOneParams->returnDeletedDocument ? ", document" : "");
+					 " RETURNING object_id");
+
+	if (deleteOneParams->returnDeletedDocument)
+	{
+		planId = QUERY_DELETE_ONE_ID_RETURN_DOCUMENT;
+		appendStringInfo(&deleteQuery, ", document");
+	}
 
 	argTypes[0] = INT8OID;
 	argValues[0] = Int64GetDatum(shardKeyHash);
@@ -1189,9 +1154,25 @@ DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOneParams,
 	bool readOnly = false;
 	long maxTupleCount = 0;
 
-	SPI_execute_with_args(deleteQuery.data, argCount, argTypes, argValues, argNulls,
-						  readOnly, maxTupleCount);
 
+	if (list_length(sortFieldDocuments) > 0)
+	{
+		/* we can't cache sort query */
+		SPI_execute_with_args(deleteQuery.data, argCount, argTypes, argValues, argNulls,
+							  readOnly, maxTupleCount);
+	}
+	else
+	{
+		SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collection->collectionId,
+														collection->shardTableName,
+														planId, deleteQuery.data,
+														argTypes,
+														argCount);
+
+		SPI_execute_plan(plan, argValues, argNulls, readOnly, maxTupleCount);
+	}
+
+	pfree(deleteQuery.data);
 	uint64 rowsDeleted = SPI_processed;
 	Assert(rowsDeleted <= 1);
 
