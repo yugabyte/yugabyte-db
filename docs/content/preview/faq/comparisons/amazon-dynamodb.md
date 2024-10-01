@@ -15,17 +15,17 @@ type: docs
 
 ## Architecture
 
-**YugabyteDB**: A distributed SQL database similar to Google Spanner. It offers strong consistency, [ACID](../../../architecture/key-concepts#acid) transactions, and supports SQL. It's great for applications that need relational data integrity, complex transactions, hybrid cloud setups, and deployments across multiple regions.
+**YugabyteDB**: A distributed SQL database similar to Google Spanner. It offers strong consistency, [ACID](../../../architecture/key-concepts/#acid) transactions, and supports SQL. It's great for applications that need relational data integrity, complex transactions, hybrid cloud setups, and deployments across multiple regions.
 
 **DynamoDB**: A NoSQL key-value store focused on high performance and scalability. It uses eventual consistency and works well for key-value or document-based data with predictable access patterns. It's often used in web applications, caching, and systems that require large-scale, fast operations.
 
-## SQL Compatibility
+## SQL compatibility
 
 **YugabyteDB**: Fully compatible with PostgreSQL, allowing you to use familiar SQL queries and tools.
 
-**DynamoDB**: Doesn’t support SQL directly and requires learning its own query language.
+**DynamoDB**: Doesn't support SQL directly and requires learning its own query language.
 
-## Data Model and APIs
+## Data model and APIs
 
 **YugabyteDB**: Supports multiple APIs, including {{<product "ysql">}} (compatible with PostgreSQL) for relational data and {{<product "ycql">}} for wide-column data storage. This gives flexibility in handling different types of data.
 
@@ -35,7 +35,7 @@ type: docs
 
 **YugabyteDB**: Provides strong consistency with distributed [ACID](../../../architecture/key-concepts#acid) transactions, ensuring data integrity across nodes. {{<product "ysql">}} only supports strong consistency, while {{<product "ycql">}} supports both strong and eventual consistency.
 
-**DynamoDB**: Uses eventual consistency by default but offers the option for strong consistency on reads. It doesn’t provide strong consistency across the board.
+**DynamoDB**: Uses eventual consistency by default, but offers the option for strong consistency on reads. It doesn't provide strong consistency across the board.
 
 ## Transactions
 
@@ -63,9 +63,9 @@ type: docs
 
 ## Costs
 
-**YugabyteDB**: Costs depend on your infrastructure if self-hosted or based on usage if managed. It offers better cost control since you can optimize based on your hardware and deployment choices. Being open source, the software itself doesn’t have inherent costs.
+**YugabyteDB**: Costs depend on your infrastructure if self-hosted or based on usage if managed. It offers better cost control as you can optimize based on your hardware and deployment choices. Being open source, the software itself doesn't have inherent costs.
 
-**DynamoDB**: Costs are based on the number of read and write requests, storage, and optional features like backups. It’s cost-effective if your workload is predictable, but on-demand pricing can get expensive with sudden traffic spikes.
+**DynamoDB**: Costs are based on the number of read and write requests, storage, and optional features like backups. It's cost-effective if your workload is predictable, but on-demand pricing can get expensive with sudden traffic spikes.
 
 ## Learn more
 
