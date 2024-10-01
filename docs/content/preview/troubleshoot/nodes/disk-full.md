@@ -44,42 +44,44 @@ IO error (yb/tserver/tablet_service.cc:2288): Write to tablet 749e4d78244c43d2bb
 
 ## Recommended recovery actions
 
-**Option 1**: Increase capacity
+##### Option 1: Increase capacity
 
 YugabyteDB allows you to expand the cluster in an online manner. There are two ways to scale the cluster:
 
 - Scale up
-    You can scale up by switching to bigger machines, or by adding more storage disks. If you are using YugabyteDB Anywhere, follow the instructions in [expanding universe node disk capacity with YugabyteDB Anywhere](https://support.yugabyte.com/hc/en-us/articles/5463616207757-Expanding-universe-node-disk-capacity-with-YugabyteDB-Anywhere-platform)
+
+    You can scale up by switching to bigger machines, or by adding more storage disks. If you are using YugabyteDB Anywhere, follow the instructions in [Expanding universe node disk capacity with YugabyteDB Anywhere](https://support.yugabyte.com/hc/en-us/articles/5463616207757-Expanding-universe-node-disk-capacity-with-YugabyteDB-Anywhere-platform).
 
 - Scale out
+
     You can scale out by adding more nodes to the cluster. This will cause the YugabyteDB load balancer to rebalance the tablets and the data across more nodes.
 
-**Option 2**: Remove unnecessary files from the nodes
+##### Option 2: Remove unnecessary files from the nodes
 
-Sometimes, unnecessary files can accumulate on the nodes including, large log files, or older core dumps.
+Unnecessary files can accumulate on the nodes, including large log files or older core dumps.
 
 Do not modify or remove the YugabyteDB data, bin, or config directories and files. Damage or loss of these files can result in unavailability and data loss.
 
-**Option 3** Drop unnecessary tables and databases/namespaces
+##### Option 3: Drop unnecessary tables and databases/namespaces
 
 Dropping large tables, YSQL databases, or YCQL namespaces that are no longer necessary will help recover disk space.
 
-When dropping tables on a database/namespace with [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) enabled, the tables will be set in a HIDDEN state. It will not be cleaned up until all its snapshot schedules have expired.
+When dropping tables on a database/namespace with [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) enabled, the tables will be set in a HIDDEN state and won't be cleaned up until all their snapshot schedules have expired.
 
-Dropping YSQL tables require the YB-Master to have sufficient disk space, as it involves updating the YSQL catalog tables.
+When dropping YSQL tables, ensure the YB-Master has enough disk space, as this involves updating the YSQL catalog tables.
 
-**Option 4** Disable database features that require more disk space
+##### Option 4: Disable database features that require more disk space
 
-The following features result in more disk space usage. You can disable or turn these features off to reclaim space on the nodes.
+The following features require more disk space. You can disable or turn these features off to reclaim space on the nodes.
 
 - Time-to-live (TTL)
 - Point-in-time recovery (PITR)
 - xCluster
 - Change Data Capture (CDC)
 
-**Option 5** Run manual compaction
+##### Option 5: Run manual compaction
 
-YugabyteDB performs automatic compaction of the data to keep the database running efficiently, and reduce disk space. Certain operations like bulk load of data, or deleting a large number of rows can cause a temporary spike in disk usage. If waiting for the automatic compaction task is not an option, then you can manually run the compaction task using the following:
+YugabyteDB automatically compacts data to keep the database running efficiently and reduce disk use. Certain operations, like bulk load of data or deleting a large number of rows, can cause a temporary spike in disk usage. If waiting for the automatic compaction task is not an option, you can manually run the compaction task using the following commands:
 
 - [Compact individual tables](../../../admin/yb-admin/#compact-table)
 - [Compact individual tablets](../../../admin/yb-ts-cli/#compact-tablet)
