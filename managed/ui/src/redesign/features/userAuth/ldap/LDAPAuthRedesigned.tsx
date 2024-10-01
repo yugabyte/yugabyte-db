@@ -236,7 +236,7 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables }), TOAST_OPTIONS);
+        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'update' }), TOAST_OPTIONS);
       }
     }
   );
@@ -247,7 +247,7 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables }), TOAST_OPTIONS);
+        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'delete' }), TOAST_OPTIONS);
       }
     }
   );
