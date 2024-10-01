@@ -1,19 +1,56 @@
 ---
 title: Connect a YCQL Java application
-headerTitle: Connect a YCQL Java application
-linkTitle: Connect a YCQL Java application
-description: Build a sample Java application for YugabyteDB Aeon with the Yugabyte Java Driver for YCQL v4.6.
+headerTitle: Connect an application
+linkTitle: Connect an app
+description: Connect a Java application using YCQL 4.15 driver and SSL.
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
+  - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
 menu:
-  preview_yugabyte-cloud:
-    parent: cloud-examples
+  preview:
+    parent: java
     identifier: connect-ycql-application
     weight: 200
 type: docs
 ---
 
-The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL v4.6.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../yugabyte-jdbc/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 3.10
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-4.x/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 4.15
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 4.15 with SSL
+    </a>
+  </li>
+</ul>
+
+[YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL with SSL.
 
 ## Maven
 
@@ -23,7 +60,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
+   <version>4.15.0-yb-1</version>
  </dependency>
 ```
 
@@ -252,17 +289,17 @@ To use the application, run the following command.
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
     com.yugabyte.sample.apps.YBCqlHelloWorld \
-    [YUGABYTE_CLOUD_HOSTNAME] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
+    [HOST] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
 ```
 
 Replace the following command line variables with the appropriate connection parameters and database credentials:
 
 | Variable | Description |
 | :------- | :---------- |
-| YUGABYTE_CLOUD_HOSTNAME | The hostname of your YugabyteDB Aeon cluster |
+| HOST | The hostname of your YugabyteDB Aeon cluster |
 | ROOT_CERT_PATH | The path to root.crt |
-| YCQL_USER | Your Yugabyte database username |
-| YCQL_PASSWORD | Your Yugabyte database password |
+| YCQL_USER | Your database username |
+| YCQL_PASSWORD | Your database password |
 
 For example:
 
