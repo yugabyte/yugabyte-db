@@ -87,18 +87,6 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
           name: "machine_ip",
           label: t("clusterDetail.voyager.listColumns.machineIP"),
         },
-        {
-          name: "os",
-          label: t("clusterDetail.voyager.listColumns.os"),
-        },
-        {
-          name: "availableDiskSpace",
-          label: t("clusterDetail.voyager.listColumns.availableDiskSpace"),
-        },
-        {
-          name: "exportDir",
-          label: t("clusterDetail.voyager.listColumns.exportDirectory"),
-        },
       ],
     },
     targetDB: {
@@ -145,9 +133,6 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
     database: true,
     schema: true,
     machine_ip: false,
-    os: false,
-    availableDiskSpace: false,
-    exportDir: false,
     target_host_ip: false,
     target_engineVersion: false,
     start_timestamp: true,
@@ -159,9 +144,6 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
     host_ip: "source_db",
     engineVersion: "source_db",
     machine_ip: "voyagerInstance",
-    os: "voyagerInstance",
-    availableDiskSpace: "voyagerInstance",
-    exportDir: "voyagerInstance",
     target_host_ip: "targetDB",
     target_engineVersion: "targetDB",
   };

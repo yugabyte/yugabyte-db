@@ -352,18 +352,6 @@ export const MigrationList: FC<MigrationListProps> = ({
                   </Typography>
                 </Link>
               )}
-              {migrationColSettings.os && <Typography variant="body2">{voyager?.os}</Typography>}
-              {migrationColSettings.availableDiskSpace && (
-                <Typography variant="body2">
-                  {getMemorySizeUnits(parseInt(voyager?.avail_disk_bytes ?? "")) == '-' ?
-                    "" :
-                    getMemorySizeUnits(parseInt(voyager?.avail_disk_bytes ?? "")) + " " +
-                      t('clusterDetail.voyager.availDiskLower')}
-                </Typography>
-              )}
-              {migrationColSettings.exportDir && (
-                <Typography variant="body2">{voyager?.export_dir}</Typography>
-              )}
             </Box>
           );
         },
