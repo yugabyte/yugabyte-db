@@ -72,6 +72,11 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
                          EState *estate);
 
 /*
+ * Whether INSERT ON CONFLICT read batching is enabled.
+ */
+extern bool YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo);
+
+/*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
  *
@@ -237,3 +242,9 @@ extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
+
+/*
+ * Returns whether the current slot satisfies the partial index's predicate.
+ */
+extern bool YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo,
+											   EState *estate);

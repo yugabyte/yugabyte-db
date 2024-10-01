@@ -777,6 +777,8 @@ public class HealthChecker {
                 confGetter.getConfForScope(
                     params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
           }
+        } else {
+          nodeInfo.setClockSyncServiceRequired(false);
         }
         if (params.universe.isYbcEnabled()) {
           nodeInfo

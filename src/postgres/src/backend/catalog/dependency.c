@@ -1179,7 +1179,7 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Relation index = RelationIdGetRelation(object->objectId);
 
-					if (IsYBRelation(index) && !index->rd_index->indisprimary)
+					if (IsYBRelation(index) && !YBIsCoveredByMainTable(index))
 						YBCDropIndex(index);
 
 					RelationClose(index);

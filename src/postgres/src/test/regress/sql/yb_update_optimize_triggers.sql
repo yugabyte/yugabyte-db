@@ -60,3 +60,101 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1, v2 = v2
 SELECT * FROM mchairs_table ORDER BY h;
 
 DROP TABLE mchairs_table;
+
+---
+--- Test to validate the behavior of after row triggers that are conditional on
+--- specific columns (AFTER UPDATE OF <col-list>).
+---
+DROP TABLE IF EXISTS t_simple;
+CREATE TABLE t_simple (h INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE INDEX NONCONCURRENTLY ON t_simple (v1);
+CREATE INDEX NONCONCURRENTLY ON t_simple (v2, v3);
+INSERT INTO t_simple (SELECT i, i, i, i, i FROM generate_series(1, 10) AS i);
+
+CREATE OR REPLACE FUNCTION update_v1() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'update_v1 invoked with v1 = % where h = %', NEW.v1, NEW.h;
+	NEW.v1 = NEW.v1 + 1;
+	RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION notice_v1_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'New value of v1 = % where h = %', NEW.v1, NEW.h;
+	RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION update_v2() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'update_v2 invoked with v2 = % where h = %', NEW.v2, NEW.h;
+	NEW.v2 = NEW.v2 + 1;
+	RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION notice_v2_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'New value of v2 = % where h = %',  NEW.v2, NEW.h;
+	RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER after_update_v1 AFTER UPDATE OF v1 ON t_simple FOR EACH ROW EXECUTE FUNCTION notice_v1_update();
+CREATE TRIGGER after_update_v2 AFTER UPDATE OF v2 ON t_simple FOR EACH ROW EXECUTE FUNCTION notice_v2_update();
+
+-- Appropriate AFTER ROW triggers fire when columns are mentioned in the SET clause.
+UPDATE t_simple SET v1 = v1 + 1 WHERE h = 1;
+UPDATE t_simple SET v1 = v1 + 1, v2 = v2 + 1 WHERE h = 2;
+-- It shouldn't matter that the columns are unmodified by the query. If they are
+-- in the set clause, appropriate triggers should fire.
+UPDATE t_simple SET v2 = v2 WHERE h = 3;
+UPDATE t_simple SET v1 = v2, v2 = v1 WHERE h = 4;
+
+-- AFTER ROW triggers do not fire in any of the cases below.
+UPDATE t_simple SET v3 = v3 + 1 WHERE h = 5;
+UPDATE t_simple SET v4 = v1, v3 = v2 WHERE h = 6;
+UPDATE t_simple SET h = h + 10 WHERE h > 9;
+
+CREATE TRIGGER update_v1 BEFORE UPDATE ON t_simple FOR EACH ROW EXECUTE FUNCTION update_v1();
+CREATE TRIGGER update_v2 BEFORE UPDATE ON t_simple FOR EACH ROW EXECUTE FUNCTION update_v2();
+UPDATE t_simple SET v3 = v3 + 1 WHERE h = 7;
+UPDATE t_simple SET v4 = v1 + 1 WHERE h = 8;
+UPDATE t_simple SET h = h + 10, v4 = v4 + 1 WHERE h = 9;
+
+-- AFTER ROW triggers should fire in the following cases even though the
+-- BEFORE ROW triggers nullify the modification.
+UPDATE t_simple SET v1 = v1 - 1 WHERE h = 1;
+UPDATE t_simple SET v2 = 2 WHERE h = 2;
+UPDATE t_simple SET v1 = v2 - 1, v2 = v1 - 1 WHERE h = 3;
+UPDATE t_simple SET v1 = h, v2 = v1 WHERE h IN (4, 5, 6);
+
+SELECT * FROM t_simple ORDER BY h;
+
+---
+--- Test to validate the behavior of statement triggers.
+---
+CREATE OR REPLACE FUNCTION update_statement_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	-- Should be all NULLs
+	RAISE NOTICE 'statement trigger (%) invoked with row = %', TG_ARGV[0], NEW;
+	RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER before_update_statement BEFORE UPDATE ON t_simple FOR EACH STATEMENT EXECUTE FUNCTION update_statement_trigger('BEFORE');
+-- No AFTER ROW triggers should fire.
+UPDATE t_simple SET v3 = v3 - 1 WHERE h = 4;
+
+-- Appropriate AFTER ROW triggers should fire.
+CREATE TRIGGER after_update_statement_v1_v2 AFTER UPDATE OF v1, v2 ON t_simple FOR EACH STATEMENT EXECUTE FUNCTION update_statement_trigger('AFTER v1, v2');
+UPDATE t_simple SET v1 = v1 + 1 WHERE h = 5;
+UPDATE t_simple SET v1 = v2, v2 = v1 WHERE h = 6;
+UPDATE t_simple SET v1 = 7, v2 = 7, v3 = 7 WHERE h = 7;
+UPDATE t_simple SET h = h + 10, v4 = v4 + 1 WHERE h = 8;
+
+-- Test the behavior of triggers when multiple rows are involved.
+UPDATE t_simple SET v1 = v2 - 1, v2 = v3 - 1, v3 = v1 - 1 WHERE h > 7;
+
+SELECT * FROM t_simple ORDER BY h;

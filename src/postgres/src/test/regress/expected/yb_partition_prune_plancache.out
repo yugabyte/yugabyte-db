@@ -59,9 +59,9 @@ PREPARE t2(int) AS UPDATE np SET d = 1 FROM lp WHERE lp.a = np.a AND lp.a = $1;
 EXPLAIN EXECUTE t2(1);
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
- Update on np  (cost=0.00..232.80 rows=1000000 width=140)
-   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
-         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+ Update on np  (cost=0.00..232.80 rows=1000000 width=236)
+   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=236)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=168)
                Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
                ->  Append  (cost=0.00..5.27 rows=10 width=40)
@@ -72,9 +72,9 @@ EXPLAIN EXECUTE t2(1);
 EXPLAIN EXECUTE t2(1);
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
- Update on np  (cost=0.00..232.80 rows=1000000 width=140)
-   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
-         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+ Update on np  (cost=0.00..232.80 rows=1000000 width=236)
+   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=236)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=168)
                Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
                ->  Append  (cost=0.00..5.27 rows=10 width=40)

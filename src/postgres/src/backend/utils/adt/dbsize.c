@@ -397,8 +397,8 @@ calculate_table_size(Relation rel)
 
 	if (IsYBRelation(rel))
 	{
-		/* Primary index relation doesn't have dedicated table in DocDB */
-		if (rel->rd_index && rel->rd_index->indisprimary)
+		/* Covered index relations don't have a dedicated table in DocDB */
+		if (rel->rd_index && YBIsCoveredByMainTable(rel))
 			return -1;
 
 		/* Colcoated tables do not have size info */

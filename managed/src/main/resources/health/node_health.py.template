@@ -86,7 +86,7 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 1
+PER_PROCESS_VERSION = 2
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -1869,6 +1869,43 @@ class NodeChecker():
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
+    def check_systemd_unit_preexec_present(self):
+        e = self._new_entry("Systemd unit preexec check")
+        services = ["yb-master.service", "yb-tserver.service"]
+        errors = []
+        for service in services:
+            root_cmd = "systemctl list-unit-files %s" % service
+            user_cmd = "systemctl --user list-unit-files %s" % service
+            root_out = self._check_output(root_cmd)
+            user_out = self._check_output(user_cmd)
+            success = True
+            if "0 unit files listed" not in root_out:
+                if not self._check_unit_for_preexec(service, user=False):
+                    errors.append("%s has no clock_sync script ExecStartPre" % service)
+            elif "0 unit files listed" not in user_out:
+                if not self._check_unit_for_preexec(service, user=True):
+                    errors.append("%s has no clock_sync script ExecStartPre" % service)
+            else:
+                logging.info("no systemd units found, skipping")
+                return e.ignore_check()
+        return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+
+    def _check_unit_for_preexec(self, service, user=True):
+        cmd = ""
+        if user:
+            cmd = "systemctl --user show --no-pager %s" % service
+        else:
+            cmd = "systemctl show --no-pager %s" % service
+        out = self._check_output(cmd)
+        if out.startswith("Error"):
+            logging.error("Error from systemctl: %s" % out)
+            return False
+        for line in out.splitlines():
+            # Found execstartpre, which has clock_sync script
+            if "ExecStartPre=" in line:
+                return True
+        return False
+
     def _load_per_process_metrics(self, process_name):
         root_pid = self.get_process_pid_by_name(process_name)
         if root_pid is None:
@@ -1978,9 +2015,9 @@ class NodeChecker():
         stat = self._check_output(cmd).strip()
         stat_list = stat.split("\n")
         for lst in stat_list:
-            if "read_bytes" in lst:
+            if lst.startswith("read_bytes:"):
                 res['io_read_kb'] = int(lst.split(" ")[1]) // 1024
-            if "write_bytes:" in lst:
+            if lst.startswith("write_bytes:"):
                 res['io_write_kb'] = int(lst.split(" ")[1]) // 1024
 
         cmd = 'ls /proc/{}/fd/ | wc -l'.format(pid)
@@ -2078,9 +2115,14 @@ def _chrony_get_clock_drift_ms():
     if "Error" not in chrony_out and "Active: active" in chrony_out:
         # Check drift using chrony
         out = check_output("chronyc tracking", env)
-        match = re.search("System time.*: (.*) second", out, re.MULTILINE)
-        if match:
-          return float(match.group(1))*1000 # Convert seconds to milliseconds
+        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
+        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
+        if skew_match and delay_match and dispersion_match:
+            skew = float(skew_match.group(1))
+            delay = float(delay_match.group(1))
+            dispersion = float(dispersion_match.group(1))
+            return skew + dispersion + (.5 * delay)
     return "Failed to get clock drift from chrony"
 
 def _ntp_get_clock_drift_ms():
@@ -2384,6 +2426,7 @@ def main():
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
         coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
+        coordinator.add_check(checker, "check_systemd_unit_preexec_present")
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)

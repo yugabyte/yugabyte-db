@@ -511,7 +511,7 @@ DEFINE_RUNTIME_bool(
     enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
-DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
+DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
@@ -526,6 +526,15 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
                            "The number of tablet servers that have not responded or done a "
                            "heartbeat in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
+
+METRIC_DEFINE_gauge_uint64(cluster, max_follower_heartbeat_delay, "The maximum heartbeat delay "
+                           "among all master followers",
+                           yb::MetricUnit::kMilliseconds,
+                           "The number of milliseconds since the master leader has ACK'd a "
+                           "heartbeat from all peers of the system catalog tablet. The master "
+                           "leader does not ACK heartbeats from peers that have fallen behind due "
+                           "to WAL GC so such peers will cause this metric to increase "
+                           "indefinitely.");
 
 METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
@@ -975,6 +984,9 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
+
+  metric_max_follower_heartbeat_delay_ =
+    METRIC_max_follower_heartbeat_delay.Instantiate(master_->metric_entity_cluster(), 0);
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
@@ -11679,6 +11691,22 @@ void CatalogManager::ReportMetrics() {
   auto num_servers = master_->ts_manager()->NumDescriptors();
   metric_num_tablet_servers_dead_->set_value(
       narrow_cast<uint32_t>(num_servers - num_live_servers));
+
+  // Report the max master follower heartbeat delay.
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (consensus_result) {
+    MonoTime earliest_time = MonoTime::kUninitialized;
+    for (const auto& last_communication_time :
+         (*consensus_result)->GetFollowerCommunicationTimes()) {
+      earliest_time.MakeAtMost(last_communication_time.last_successful_communication);
+    }
+    int64_t time_in_ms =
+        earliest_time ? MonoTime::Now().GetDeltaSince(earliest_time).ToMilliseconds() : 0;
+    if (time_in_ms < 0) {
+      time_in_ms = 0;
+    }
+    metric_max_follower_heartbeat_delay_->set_value(static_cast<uint64_t>(time_in_ms));
+  }
 }
 
 void CatalogManager::ResetMetrics() {
@@ -13021,6 +13049,53 @@ Result<TablegroupId> CatalogManager::GetTablegroupId(const TableId& table_id) {
   const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
   SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
   return tablegroup->id();
+}
+
+Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver() const {
+  ServerRegistrationPB local_registration;
+  RETURN_NOT_OK(master_->GetMasterRegistration(&local_registration));
+
+  std::unordered_set<std::string> local_hosts;
+  for (const auto& addr : local_registration.private_rpc_addresses()) {
+    local_hosts.insert(addr.host());
+  }
+
+  const auto& local_cloud_info = local_registration.cloud_info();
+
+  TSDescriptorVector descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, VERIFY_RESULT(placement_uuid()));
+
+  auto best_score = CatalogManagerUtil::CloudInfoSimilarity::NO_MATCH;
+  TSDescriptorPtr best_tserver;
+  for (const auto& desc : descs) {
+    const auto& ts_info = desc->GetTSInformationPB();
+    DCHECK(ts_info.has_registration());
+    if (!ts_info.has_registration()) {
+      continue;
+    }
+
+    const auto& ts_cloud_info = ts_info.registration().common().cloud_info();
+    auto ts_score = CatalogManagerUtil::ComputeCloudInfoSimilarity(ts_cloud_info, local_cloud_info);
+    if (ts_score < best_score) {
+      continue;
+    }
+
+    if (ts_score == CatalogManagerUtil::CloudInfoSimilarity::ZONE_MATCH) {
+      // If this tserver is on the same node as master pick it.
+      for (const auto& addr : ts_info.registration().common().private_rpc_addresses()) {
+        if (local_hosts.contains(addr.host())) {
+          return desc;
+        }
+      }
+    }
+
+    best_score = ts_score;
+    best_tserver = desc;
+  }
+
+  SCHECK(best_tserver, NotFound, "Couldn't find a live tablet server to connect to");
+
+  return best_tserver;
 }
 
 }  // namespace master

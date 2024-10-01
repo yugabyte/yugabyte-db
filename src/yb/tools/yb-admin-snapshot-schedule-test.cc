@@ -2371,8 +2371,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAddUnique
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(asrivastava): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropUniqueConstraint) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropUniqueConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 

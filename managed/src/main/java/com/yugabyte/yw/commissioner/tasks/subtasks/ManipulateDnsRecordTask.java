@@ -64,13 +64,21 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
               nodeIpCsv)
           .processErrors();
     } catch (Exception e) {
-      if (taskParams().type != DnsManager.DnsCommandType.Delete || !taskParams().isForceDelete) {
+      if (taskParams().type != DnsManager.DnsCommandType.Delete) {
         throw e;
-      } else {
+      }
+      if (taskParams().isForceDelete) {
         log.info(
             "Ignoring error in dns record deletion for {} due to isForceDelete being set.",
             taskParams().domainNamePrefix,
             e);
+      } else if (e.getMessage().toLowerCase().contains("not found")) {
+        log.info(
+            "Ignoring error in dns record deletion for {} as it may have already been deleted.",
+            taskParams().domainNamePrefix,
+            e);
+      } else {
+        throw e;
       }
     }
   }

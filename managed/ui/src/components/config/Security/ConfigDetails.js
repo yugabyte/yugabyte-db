@@ -60,6 +60,7 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
 
   const getForHashicorp = () => {
     const {
+      HC_VAULT_KEY_NAME,
       HC_VAULT_ADDRESS,
       HC_VAULT_TOKEN,
       HC_VAULT_AUTH_NAMESPACE,
@@ -71,6 +72,10 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       HC_VAULT_TTL_EXPIRY
     } = credentials;
     const data = [
+      {
+        label: 'Key Name',
+        value: HC_VAULT_KEY_NAME
+      },
       {
         label: 'Vault Address',
         value: HC_VAULT_ADDRESS

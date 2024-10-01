@@ -430,6 +430,13 @@ typedef struct ResultRelInfo
 	/* true when modifying foreign table directly */
 	bool		ri_usesFdwDirectModify;
 
+	/* batch insert stuff */
+	int			ri_NumSlots;	/* number of slots in the array */
+	int			ri_NumSlotsInitialized; /* number of initialized slots */
+	int			ri_BatchSize;	/* max slots inserted in a single batch */
+	TupleTableSlot **ri_Slots;	/* input tuples for batch insert */
+	TupleTableSlot **ri_PlanSlots;
+
 	/* list of WithCheckOption's to be checked */
 	List	   *ri_WithCheckOptions;
 
@@ -470,6 +477,30 @@ typedef struct ResultRelInfo
 
 	/* true if ready for tuple routing */
 	bool		ri_PartitionReadyForRouting;
+
+	/*
+	 * YB batch insert stuff:
+	 * - batching mode:
+	 *   - ri_NumSlots: index of next slot to add to batch
+	 * - flushing mode:
+	 *   - ri_YbFlushCurrentSlotIdx: index of next slot to flush from batch
+	 *   - ri_YbFlushNumSlots: total number of slots to flush from batch.  It's
+	 *     a copy of ri_NumSlots before that overwritten.  0 <
+	 *     ri_YbFlushNumSlots < ri_BatchSize.
+	 *   - ri_YbFlushResultRelInfo: for partitioned tables, this is set on the
+	 *     root's ResultRelInfo to point to the partition that is in flushing
+	 *     mode.
+	 *   - ri_YbConflictMap: the map used for constraint checking of ON
+	 *     CONFLICT decisions.
+	 * If ri_NumSlots == ri_BatchSize when trying to add another slot to the
+	 * batch or ExecPendingInserts is requested, enter flushing mode.
+	 * ri_YbFlushCurrentSlotIdx > 0 indicates flushing mode is still ongoing.
+	 * If ri_YbFlushCurrentSlotIdx == ri_YbFlushNumSlots, exit flushing mode.
+	 */
+	int			ri_YbFlushCurrentSlotIdx;
+	int			ri_YbFlushNumSlots;
+	struct ResultRelInfo *ri_YbFlushResultRelInfo;
+	struct yb_insert_on_conflict_batching_hash **ri_YbConflictMap;
 } ResultRelInfo;
 
 /* ----------------
@@ -585,6 +616,13 @@ typedef struct EState
 	int			es_jit_flags;
 	struct JitContext *es_jit;
 	struct JitInstrumentation *es_jit_worker_instr;
+
+	/*
+	 * Lists of ResultRelInfos for foreign tables on which batch-inserts are
+	 * to be executed and owning ModifyTableStates, stored in the same order.
+	 */
+	List	   *es_insert_pending_result_relations;
+	List	   *es_insert_pending_modifytables;
 
 	/*
 	 * YugaByte-specific fields

@@ -1453,7 +1453,7 @@ templates:
       server_type="yb_ysqlserver",service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m]))
       / sum by (universe_uuid, service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m])))
-      {{ query_condition }} {{ query_threshold }}
+      / 1000 {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ysql_opavg_latency
@@ -1499,7 +1499,7 @@ templates:
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m]))
       / sum by (service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m])))
-      {{ query_condition }} {{ query_threshold }}
+      / 1000 {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ycql_opavg_latency
@@ -1521,7 +1521,7 @@ templates:
     description: P99 latency of YCQL operations is above threshold
     queryTemplate: max by (universe_uuid)(rpc_latency{universe_uuid="__universeUuid__",server_type="yb_cqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction",quantile="p99"})
-      {{ query_condition }} {{ query_threshold }}
+      /1000 {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ycql_p99_latency
@@ -1533,7 +1533,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)(rpc_latency{universe_uuid='{{ $labels.universe_uuid }}',server_type='yb_cqlserver',
         service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction',quantile='p99'})
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         YCQL P99 latency for universe '{{ $labels.source_name }}' is
@@ -1690,7 +1690,7 @@ templates:
     description: Average read latency of tablet server is above threshold
     queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])))
       / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])) * 1000)
-      {{ query_condition }} {{ query_threshold }}
+      / 1000 {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       SEVERE:
@@ -1704,7 +1704,7 @@ templates:
         {{ range $index, $element := query "
         (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])))
         / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])) * 1000)
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average read latency of tablet server for universe '{{ $labels.source_name }}'
@@ -1718,7 +1718,7 @@ templates:
     description: Average write latency of tablet server is above threshold
     queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])))
       / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])) * 1000)
-      {{ query_condition }} {{ query_threshold }}
+      / 1000 {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       SEVERE:
@@ -1732,7 +1732,7 @@ templates:
         {{ range $index, $element := query "
         (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])))
         / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])) * 1000)
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average write latency of tablet server for universe '{{ $labels.source_name }}'
@@ -1921,7 +1921,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
         (yb_node_clock_drift_check_ms{universe_uuid='{{ $labels.universe_uuid }}'})
-        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Clock drift is high for universe '{{ $labels.source_name }}'.

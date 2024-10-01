@@ -1667,6 +1667,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
       QLWriteRequestPB::QLStmtType op_type);
 
+  Result<TSDescriptorPtr> GetClosestLiveTserver() const override;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2376,6 +2378,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
+
+  scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 
   friend class ClusterLoadBalancer;
 

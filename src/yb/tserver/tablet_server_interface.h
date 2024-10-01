@@ -36,6 +36,10 @@ namespace yb {
 
 class MemTracker;
 
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+
 namespace server {
 class RpcAndWebServerBase;
 class YCQLStatementStatsProvider;
@@ -115,6 +119,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
+
+  virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
 };
 
 } // namespace tserver

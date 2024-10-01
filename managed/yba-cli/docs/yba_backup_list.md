@@ -15,6 +15,7 @@ yba backup list [flags]
 ```
       --universe-uuids string   [Optional] Comma separated list of universe uuids
       --universe-names string   [Optional] Comma separated list of universe names
+  -f, --force                   [Optional] Bypass the prompt for non-interactive usage.
   -h, --help                    help for list
 ```
 

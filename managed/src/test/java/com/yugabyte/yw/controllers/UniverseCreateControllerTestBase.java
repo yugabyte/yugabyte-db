@@ -28,6 +28,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -46,11 +47,15 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -117,6 +122,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   public abstract Result sendCreateRequest(ObjectNode bodyJson);
+
+  public abstract Result sendCreateRequestWithNodeDetailsSet(ObjectNode bodyJson);
 
   public abstract Result sendPrimaryCreateConfigureRequest(ObjectNode topJson);
 
@@ -770,7 +777,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
             Json.fromJson(userIntentJson, UserIntent.class));
     cluster.placementInfo =
-        constructPlacementInfoObject(Collections.singletonMap(az1.getUuid(), 1));
+        ModelFactory.constructPlacementInfoObject(Collections.singletonMap(az1.getUuid(), 1));
     NodeDetails node = new NodeDetails();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.instance_type = i.getInstanceTypeCode();
@@ -1593,5 +1600,560 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String url = "/api/customers/" + customer.getUuid() + "/universes";
     return doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+  }
+
+  // Kubernetes service overrides test
+
+  // SEO: ServiceEndpointOverrides
+  @Test
+  public void testCreateK8sUniverseMatchingSEOSingleNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 3 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    List<AvailabilityZone> zones = pair.getSecond();
+    // Same overrides in all 3
+    for (AvailabilityZone az : zones) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(az, azConfig);
+      az.save();
+    }
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseEmptyArraySEOSingleNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 3 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseNoSEOSingleNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // No AZ Overrides
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseMatchingSEOMultiNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+
+    // Same Overrides in AZ for "ns-1"
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBENAMESPACE", "ns-1");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+
+    // Different override in AZ for "ns-2"
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    azConfig.put("KUBENAMESPACE", "ns-2");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+    // Should succeed since overrides are same in given namespace.
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseWithRRMatchingSEOSameNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 4 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, true /* createRR */, customer, createValidDeviceInfo(kubernetes));
+
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    List<AvailabilityZone> zones = pair.getSecond();
+    for (AvailabilityZone az : zones) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(az, azConfig);
+      az.save();
+    }
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseWithRRMatchingSEOMultiNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, true /* createRR */, customer, createValidDeviceInfo(kubernetes));
+
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+
+    // AZ overrides same in "ns-1"
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBENAMESPACE", "ns-1");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+
+    // Different NS "ns-2"
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    azConfig.put("KUBENAMESPACE", "ns-2");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(3), azConfig);
+    zones.get(3).save();
+    // Should succeed since overrides are same in given namespace.
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseMCSMatchingSEOSameNSMultiAZSuccess() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 4 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+
+    // Kubeconfigs
+    String clusterConfig1 = TestUtils.readResource("kubernetes/cluster-1-kubeconfig.conf");
+    String clusterConfig2 = TestUtils.readResource("kubernetes/cluster-2-kubeconfig.conf");
+    createTempFile("/tmp/yugaware_tests", "cluster-1.conf", clusterConfig1);
+    createTempFile("/tmp/yugaware_tests", "cluster-2.conf", clusterConfig2);
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+
+    // Namespace is default in both clusters
+    // Zone 1 and Zone 2 belong to same cluster: same overrides
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBECONFIG", "/tmp/yugaware_tests/cluster-1.conf");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+
+    // Zone 3 belongs to different cluster: different overrides
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    azConfig.put("KUBECONFIG", "/tmp/yugaware_tests/cluster-2.conf");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+
+    // Succeed since different overrides are in different clusters
+    Result result = sendCreateRequestWithNodeDetailsSet(pair.getFirst());
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateK8sUniverseMismatchSEOMultiNSMultiAZFail() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 3 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBENAMESPACE", "ns-1");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    // Conflicting overrides in same Namespace "ns-1"
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+
+    azConfig.put("KUBENAMESPACE", "ns-2");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class, () -> sendCreateRequestWithNodeDetailsSet(pair.getFirst()));
+    assertTrue(
+        ex.getMessage().contains("::ns-1 has conflicting namespace scope service overrides"));
+  }
+
+  @Test
+  public void testCreateK8sUniverseMCSMismatchSEOSingleNSMultiAZFail() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 4 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+
+    // Kubeconfigs
+    String clusterConfig1 = TestUtils.readResource("kubernetes/cluster-1-kubeconfig.conf");
+    String clusterConfig2 = TestUtils.readResource("kubernetes/cluster-2-kubeconfig.conf");
+    createTempFile("/tmp/yugaware_tests", "cluster-1.conf", clusterConfig1);
+    createTempFile("/tmp/yugaware_tests", "cluster-2.conf", clusterConfig2);
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+
+    // Zone 1 and Zone 2 belong to same cluster, same NS: conflicting overrides
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBECONFIG", "/tmp/yugaware_tests/cluster-1.conf");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+
+    // Zone 3 belongs to different cluster
+    azConfig.put("KUBECONFIG", "/tmp/yugaware_tests/cluster-2.conf");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+
+    String nodePrefix = Util.getNodePrefix(customer.getId(), "K8sUniverseNewStyle");
+    String namespace =
+        KubernetesUtil.getKubernetesNamespace(true, nodePrefix, "az-2", azConfig, true, false);
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class, () -> sendCreateRequestWithNodeDetailsSet(pair.getFirst()));
+    assertTrue(
+        ex.getMessage()
+            .contains(
+                String.format(
+                    "cluster-1::%s has conflicting namespace scope service overrides", namespace)));
+  }
+
+  @Test
+  public void testCreateK8sUniverseWithRRMismatchSEOSingleNSMultiAZFail() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 4 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, true /* createRR */, customer, createValidDeviceInfo(kubernetes));
+
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+
+    // All AZs in one NS "ns-1"
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    azConfig.put("KUBENAMESPACE", "ns-1");
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+
+    // Conflicting override in az-4
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(3), azConfig);
+    zones.get(3).save();
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class, () -> sendCreateRequestWithNodeDetailsSet(pair.getFirst()));
+    assertTrue(ex.getMessage().contains("ns-1 has conflicting namespace scope service overrides"));
+  }
+
+  @Test
+  public void testCreateK8sUniverseMismatchSEOSingleNSMultiAZFail() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 3 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    String serviceEndpoint = TestUtils.readResource("kubernetes/service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+
+    // Same override in az-1, az-2
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(0), azConfig);
+    zones.get(0).save();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(1), azConfig);
+    zones.get(1).save();
+
+    // Conflicting override
+    azConfig.put("OVERRIDES", "serviceEndpoints: []");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(zones.get(2), azConfig);
+    zones.get(2).save();
+
+    String nodePrefix = Util.getNodePrefix(customer.getId(), "K8sUniverseNewStyle");
+    String namespace =
+        KubernetesUtil.getKubernetesNamespace(true, nodePrefix, "az-3", azConfig, true, false);
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class, () -> sendCreateRequestWithNodeDetailsSet(pair.getFirst()));
+    assertTrue(
+        ex.getMessage()
+            .contains(
+                String.format(
+                    "::%s has conflicting namespace scope service overrides", namespace)));
+  }
+
+  @Test
+  public void testCreateK8sUniverseConflictingSameNameSEOFail() {
+    String ybVersion = "2024.2.0.0-b2";
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    when(mockRuntimeConfig.getString("yb.universe.default_service_scope_for_k8s"))
+        .thenReturn("Namespaced");
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(
+            ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    // AZ overrides for serviceEndpoints are same in all 3 AZs
+    Pair<ObjectNode, List<AvailabilityZone>> pair =
+        ModelFactory.addClusterAndNodeDetailsK8s(
+            ybVersion, false /* createRR */, customer, createValidDeviceInfo(kubernetes));
+    String serviceEndpoint =
+        TestUtils.readResource("kubernetes/repeated_service_endpoint_overrides.yaml");
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", serviceEndpoint);
+    List<AvailabilityZone> zones = pair.getSecond();
+    // Same overrides in all 3
+    for (AvailabilityZone az : zones) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(az, azConfig);
+      az.save();
+    }
+
+    // Fail since overrides have repeated service endpoint name
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class, () -> sendCreateRequestWithNodeDetailsSet(pair.getFirst()));
+    assertTrue(
+        ex.getMessage()
+            .contains("Overrides contain same service name 'yb-tserver-service' twice!"));
   }
 }

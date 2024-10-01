@@ -216,6 +216,14 @@ extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
+ * These functions return whether an index relation is "covered" by the main
+ * table. A YB index is said to be covered if it shares the same YB storage
+ * as the main table. Primary indexes are by default covered.
+ */
+bool YBIsOidCoveredByMainTable(Oid index_oid);
+bool YBIsCoveredByMainTable(Relation rel);
+
+/*
  * Check if a relation has row triggers that may reference the old row.
  * Specifically for an update/delete DML (where there actually is an old row).
  */
@@ -558,6 +566,16 @@ extern int yb_toast_catcache_threshold;
  */
 extern int yb_parallel_range_size;
 
+/*
+ * Enable preloading of foreign key information into the relation cache.
+ */
+extern bool yb_enable_fkey_catcache;
+
+/*
+ * INSERT ON CONFLICT batching read batch size.
+ */
+extern int yb_insert_on_conflict_read_batch_size;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -658,6 +676,7 @@ extern bool yb_use_hash_splitting_by_default;
 
 typedef struct YBUpdateOptimizationOptions
 {
+	bool has_infra;
 	bool is_enabled;
 	int num_cols_to_compare;
 	int max_cols_size_to_compare;
