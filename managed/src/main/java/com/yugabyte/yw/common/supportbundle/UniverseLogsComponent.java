@@ -3,11 +3,14 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +34,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
   private final RuntimeConfGetter confGetter;
+  private final String LOG_DIR_GFLAG = "log_dir";
 
   @Inject
   UniverseLogsComponent(
@@ -95,6 +100,11 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     // Get and filter master log files that fall within given dates
     String masterLogsPath = nodeHomeDir + "/master/logs";
+    // Update logs path if overriden via Gflag.
+    String master_log_dir = getOverridenGflagValue(universe, ServerType.MASTER, LOG_DIR_GFLAG);
+    if (master_log_dir != null) {
+      masterLogsPath = master_log_dir;
+    }
     List<Path> masterLogFilePaths = new ArrayList<>();
     if (nodeUniverseManager.checkNodeIfFileExists(node, universe, masterLogsPath)) {
       masterLogFilePaths =
@@ -107,6 +117,11 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     // Get and filter tserver log files that fall within given dates
     String tserverLogsPath = nodeHomeDir + "/tserver/logs";
+    // Update logs path if overriden via Gflag.
+    String ts_log_dir = getOverridenGflagValue(universe, ServerType.TSERVER, LOG_DIR_GFLAG);
+    if (ts_log_dir != null) {
+      tserverLogsPath = ts_log_dir;
+    }
     List<Path> tserverLogFilePaths = new ArrayList<>();
     if (nodeUniverseManager.checkNodeIfFileExists(node, universe, tserverLogsPath)) {
       tserverLogFilePaths =
@@ -146,5 +161,25 @@ class UniverseLogsComponent implements SupportBundleComponent {
           startDate,
           endDate);
     }
+  }
+
+  private String getOverridenGflagValue(Universe universe, ServerType serverType, String gflag) {
+    String ret = null;
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (userIntent.specificGFlags == null
+        || userIntent.specificGFlags.getPerProcessFlags() == null) {
+      return ret;
+    }
+
+    Map<UniverseTaskBase.ServerType, Map<String, String>> specificGflags =
+        userIntent.specificGFlags.getPerProcessFlags().value;
+    if (specificGflags != null && specificGflags.containsKey(serverType)) {
+      Map<String, String> mp = specificGflags.get(serverType);
+      if (mp.containsKey(gflag)) {
+        ret = mp.get(gflag);
+      }
+    }
+    return ret;
   }
 }
