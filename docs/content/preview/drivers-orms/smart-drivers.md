@@ -47,7 +47,7 @@ YugabyteDB smart drivers have the following key features.
 
 ## Overview
 
-YugabyteDB is a distributed, fault tolerant, and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
+YugabyteDB is distributed, fault tolerant, and highly available. YugabyteDB automatically shards, replicates, and balances data across multiple nodes, which can be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
 
 You can load balance application connections to the database in the following ways:
 
@@ -87,7 +87,7 @@ In both cases, the driver attempts to connect to the least loaded server from th
 
 With cluster-aware (also referred to as uniform) connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
-For example, if a client application creates a hundred connections to a YugabyteDB universe consisting of ten nodes, then the driver creates ten connections to each node. If the number of connections is not exactly divisible by the number of servers, then some servers may have one less or one more connection than the others. This is the client view of the load, so the servers may not be well-balanced if other client applications are not using a smart driver
+For example, if a client application creates a hundred connections to a YugabyteDB universe consisting of ten nodes, then the driver creates ten connections to each node. If the number of connections is not exactly divisible by the number of servers, then some servers may have one less or one more connection than the others. This is the client view of the load, so the servers may not be well-balanced if other client applications are not using a smart driver.
 
 A connection works as follows:
 
@@ -205,28 +205,28 @@ When no topology keys are specified, nodes are selected as follows.
 {{% /tab %}}
 {{% tab header="Topology keys" lang="100-wh" %}}
 
-When topology keys are specified as zoneA:1,zoneB:2, nodes are selected as follows.
+When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
 | true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
 | only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster (all zones)</li><li>If none, fail |
-| only-rr | <ol><li>Read Replica nodes in zoneB</li><li>If none, Read Replica nodes in entire cluster (all zones)</li><li>If none, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster (all zones)</li><li>If none, fail |
 | prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then Read Replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read Replica nodes in zoneB</li><li>If none, Read Replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
 {{% /tab %}}
 {{% tab header="Fall back to topology keys" lang="100-wh" %}}
 
-When topology keys are specified as zoneA:1,zoneB:2, and fallback to topology keys only is true, nodes are selected as follows.
+When topology keys are specified as zoneA:1, zoneB:2, and fallback to topology keys only is true, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
 | true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then fail |
 | only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, fail |
-| only-rr | <ol><li>Read Replica nodes in zoneB</li><li>If none, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, fail |
 | prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then Read Replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read Replica nodes in zoneB</li><li>If none, Read Replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
 {{% /tab %}}
 {{</tabpane >}}

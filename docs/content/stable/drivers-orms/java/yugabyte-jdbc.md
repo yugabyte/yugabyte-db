@@ -115,16 +115,16 @@ The following table describes the connection parameters required to connect, inc
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false'
-| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300
-| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
-| `fallback-to-topology-keys-only` | Applicable only when `topology-keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology-keys` | Empty
-| `failed-host-reconnect-delay-secs` | The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if the time specified via this property has elapsed since the time it was last marked as a failed host. | 5 
+| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
+| port |  Listen port for YSQL | 5433 |
+| database | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
+| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300 |
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `fallback-to-topology-keys-only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
+| `failed-host-reconnect-delay-secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
 
 Starting with version 42.3.5-yb-7, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'. See the [smart driver page](../smart-drivers.md#read-replica-cluster-aware) for usage of these values.
 
@@ -161,10 +161,10 @@ The following table describes the connection parameters required to connect usin
 
 | JDBC Parameter | Description | Default |
 | :---------- | :---------- | :------ |
-| ssl  | Enable SSL client connection | false
-| sslmode | SSL mode | require
-| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
-| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier
+| ssl  | Enable SSL client connection | false |
+| sslmode | SSL mode | require |
+| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
+| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Aeon clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier |
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
