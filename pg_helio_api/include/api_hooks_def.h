@@ -155,5 +155,8 @@ extern GetDistributedApplicationName_HookType get_distributed_application_name_h
 typedef bool (*IsNtoReturnSupported_HookType)(void);
 extern IsNtoReturnSupported_HookType is_n_to_return_supported_hook;
 
+typedef void (*EnsureMetadataTableReplicated_HookType)(const char *);
+extern EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook;
+
 extern bool DefaultInlineWriteOperations;
 #endif

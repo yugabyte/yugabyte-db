@@ -85,6 +85,9 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
+	/* Allow for checking if reference metadata tables are correctly handled */
+	EnsureMetadataTableReplicated("collections");
+
 	const char *colocateWith = NULL;
 	const char *shardingColumn = "shard_key_value";
 	if (EnableNativeColocation)

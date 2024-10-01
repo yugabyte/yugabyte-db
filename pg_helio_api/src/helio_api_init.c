@@ -28,32 +28,6 @@
 /* --------------------------------------------------------- */
 
 /*
- * Possible read concern levels
- * Do not have an enum for write concern level
- * as it depends on number of nodes in the cluster
- */
-typedef enum ReadConcernLevel
-{
-	ReadConcernLevel_Undefined = 0,
-	ReadConcernLevel_LOCAL = 1,
-	ReadConcernLevel_AVAILABLE = 2,
-	ReadConcernLevel_MAJORITY = 3,
-	ReadConcernLevel_LINEARIZABLE = 4,
-	ReadConcernLevel_SNAPSHOT = 5
-} ReadConcernLevel;
-
-static const struct config_enum_entry READ_CONCERN_LEVEL_CONFIG_ENTRIES[] =
-{
-	{ "Undefined", ReadConcernLevel_Undefined, true },
-	{ "local", ReadConcernLevel_LOCAL, true },
-	{ "available", ReadConcernLevel_AVAILABLE, true },
-	{ "majority", ReadConcernLevel_MAJORITY, false },
-	{ "linearizable", ReadConcernLevel_LINEARIZABLE, true },
-	{ "snapshot", ReadConcernLevel_SNAPSHOT, true },
-	{ NULL, 0, false },
-};
-
-/*
  * Externally defined GUC constants
  * TODO(OSS): Move these as appropriate.
  */
@@ -179,13 +153,6 @@ int MaxNumActiveUsersIndexBuilds = DEFAULT_MAX_NUM_ACTIVE_USERS_INDEX_BUILDS;
 
 #define DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL false
 bool HelioPGReadOnlyForDiskFull = DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL;
-
-/* GUCs for cluster-wide read-write concern */
-#define DEFAULT_READ_CONCERN_LEVEL ReadConcernLevel_MAJORITY
-int DefaultReadConcernLevel = DEFAULT_READ_CONCERN_LEVEL;
-
-#define DEFAULT_WRITE_CONCERN_LEVEL "majority"
-char *DefaultWriteConcernLevel = DEFAULT_WRITE_CONCERN_LEVEL;
 
 /*
  * GUC for "Count Policy" change Threshold for collStats DB command
@@ -569,19 +536,6 @@ InitApiConfigurations(char *prefix)
 			"Determines whether postgres is in readonly mode since disk is full"),
 		NULL, &HelioPGReadOnlyForDiskFull, DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL,
 		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomEnumVariable(
-		psprintf("%s.defaultReadConcern", prefix),
-		gettext_noop("Cluster-wide read concern; set via marlin."),
-		NULL, &DefaultReadConcernLevel, DEFAULT_READ_CONCERN_LEVEL,
-		READ_CONCERN_LEVEL_CONFIG_ENTRIES,
-		PGC_SUSET, 0, NULL, NULL, NULL);
-
-	DefineCustomStringVariable(
-		psprintf("%s.defaultWriteConcern", prefix),
-		gettext_noop("Cluster-wide write concern; set via marlin."),
-		NULL, &DefaultWriteConcernLevel, DEFAULT_WRITE_CONCERN_LEVEL,
-		PGC_SUSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableIndexBuildBackground", prefix),

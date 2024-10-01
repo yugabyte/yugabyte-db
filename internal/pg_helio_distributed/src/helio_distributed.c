@@ -10,9 +10,13 @@
 #include <fmgr.h>
 #include <miscadmin.h>
 #include <bson.h>
+#include <utils/guc.h>
 #include <access/xact.h>
 #include <utils/version_utils.h>
 #include "distributed_hooks.h"
+#include "helio_distributed_init.h"
+
+extern bool SkipHelioApiLoad;
 
 PG_MODULE_MAGIC;
 
@@ -26,6 +30,11 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
+	if (SkipHelioApiLoad)
+	{
+		return;
+	}
+
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
@@ -36,6 +45,8 @@ _PG_init(void)
 	}
 
 	InitializeHelioDistributedHooks();
+	InitHelioDistributedConfigurations();
+	MarkGUCPrefixReserved("helio_api_distributed");
 }
 
 

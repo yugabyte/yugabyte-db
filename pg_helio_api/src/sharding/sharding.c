@@ -78,6 +78,9 @@ command_shard_collection(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 
+	/* Allow for checking if reference metadata tables are correctly handled */
+	EnsureMetadataTableReplicated("collections");
+
 	MongoCollection *collection = GetMongoCollectionByNameDatum(
 		databaseDatum, collectionDatum, AccessShareLock);
 

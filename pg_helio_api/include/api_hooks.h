@@ -137,4 +137,9 @@ bool IsNtoReturnSupported(void);
  * Returns if the change stream feature is enabled.
  */
 bool IsChangeStreamFeatureAvailableAndCompatible(void);
+
+/*
+ * Ensure the given metadata catalog table is replicated.
+ */
+void EnsureMetadataTableReplicated(const char *tableName);
 #endif

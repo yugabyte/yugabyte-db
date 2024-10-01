@@ -32,6 +32,8 @@ extern bool UseLocalExecutionShardQueries;
 extern char *VersionRefreshQuery;
 extern char *ApiDistributedSchemaName;
 
+extern bool EnableMetadataReferenceTableSync;
+
 /* Cached value for the current Global PID - can cache once
  * Since nodeId, Pid are stable.
  */
@@ -378,6 +380,64 @@ GetDistributedApplicationNameCore(void)
 }
 
 
+static void
+EnsureMetadataTableReplicatedCore(const char *tableName)
+{
+	if (!EnableMetadataReferenceTableSync)
+	{
+		return;
+	}
+
+	/* First get the shard_id for the table */
+	StringInfo queryStringInfo = makeStringInfo();
+	appendStringInfo(queryStringInfo,
+					 "SELECT shardid FROM pg_catalog.pg_dist_shard WHERE logicalrelid = '%s.%s'::regclass",
+					 ApiCatalogSchemaName, tableName);
+
+	bool isNull = false;
+	Datum result = ExtensionExecuteQueryViaSPI(queryStringInfo->data, false,
+											   SPI_OK_SELECT, &isNull);
+
+	if (isNull)
+	{
+		return;
+	}
+
+	int64 shardId = DatumGetInt64(result);
+
+	/* Get the number of nodes for the primary group */
+	result = ExtensionExecuteQueryViaSPI(
+		"SELECT COUNT(*)::int4 FROM pg_catalog.pg_dist_node WHERE isactive AND noderole = 'primary'",
+		false, SPI_OK_SELECT, &isNull);
+	if (isNull)
+	{
+		return;
+	}
+
+	int numNodes = DatumGetInt32(result);
+
+	resetStringInfo(queryStringInfo);
+	appendStringInfo(queryStringInfo,
+					 "SELECT COUNT(*)::int4 FROM pg_catalog.pg_dist_placement WHERE shardid = %ld",
+					 shardId);
+	result = ExtensionExecuteQueryViaSPI(queryStringInfo->data, false, SPI_OK_SELECT,
+										 &isNull);
+	if (isNull)
+	{
+		return;
+	}
+
+	int numPlacements = DatumGetInt32(result);
+
+	if (numPlacements != numNodes)
+	{
+		/* There was an add node but the metadata table needed wasn't replicated: Call replicate_reference_tables first */
+		ExtensionExecuteQueryOnLocalhostViaLibPQ(
+			"SELECT pg_catalog.replicate_reference_tables()");
+	}
+}
+
+
 /*
  * Register hook overrides for Helio.
  */
@@ -396,6 +456,7 @@ InitializeHelioDistributedHooks(void)
 	try_get_shard_name_for_unsharded_collection_hook =
 		TryGetShardNameForUnshardedCollectionCore;
 	get_distributed_application_name_hook = GetDistributedApplicationNameCore;
+	ensure_metadata_table_replicated_hook = EnsureMetadataTableReplicatedCore;
 	UpdateColocationHooks();
 
 	/* Update the version check query to consider distributed versions */

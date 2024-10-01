@@ -39,6 +39,7 @@ TryGetShardNameForUnshardedCollection_HookType
 GetDistributedApplicationName_HookType get_distributed_application_name_hook = NULL;
 IsChangeStreamEnabledAndCompatible is_changestream_enabled_and_compatible_hook = NULL;
 IsNtoReturnSupported_HookType is_n_to_return_supported_hook = NULL;
+EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook = NULL;
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -296,4 +297,20 @@ IsNtoReturnSupported(void)
 	}
 
 	return true;
+}
+
+
+/*
+ * Ensure that the given metadata table is replicated on all nodes
+ * as applicable
+ */
+void
+EnsureMetadataTableReplicated(const char *tableName)
+{
+	if (ensure_metadata_table_replicated_hook != NULL)
+	{
+		return ensure_metadata_table_replicated_hook(tableName);
+	}
+
+	/* Single node default - it's always replicated */
 }
