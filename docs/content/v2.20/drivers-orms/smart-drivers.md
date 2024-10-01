@@ -38,11 +38,11 @@ YugabyteDB smart drivers have the following key features.
 | Feature | Notes |
 | :--- | :--- |
 | Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
-| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
-| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
+| [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Node type aware](#read-replica-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
+| [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
-| [Node type aware](#read-replica-cluster-aware) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 
 ## Overview
 
@@ -140,7 +140,7 @@ To support this, the load balance property accepts the following additional valu
 
 The default value for the load balance property remains `false`.
 
-### Topology-aware connection load balancing
+### Topology-aware load balancing
 
 For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
 
