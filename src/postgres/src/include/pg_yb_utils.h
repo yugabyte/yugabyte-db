@@ -668,6 +668,7 @@ extern bool yb_use_hash_splitting_by_default;
 
 typedef struct YBUpdateOptimizationOptions
 {
+	bool has_infra;
 	bool is_enabled;
 	int num_cols_to_compare;
 	int max_cols_size_to_compare;

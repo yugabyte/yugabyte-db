@@ -28,8 +28,7 @@ public class TestPgRegressUpdateOptimized extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_update_optimization_infra");
-    flagMap.put("ysql_yb_update_optimization_infra", "true");
+    flagMap.put("ysql_yb_skip_redundant_update_ops", "true");
     return flagMap;
   }
 
