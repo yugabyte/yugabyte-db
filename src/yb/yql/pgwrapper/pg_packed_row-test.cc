@@ -685,6 +685,10 @@ TEST_P(PgPackedRowTest, PackOverflow) {
   ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v2 TEXT"));
 
   ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v3 TIMESTAMP DEFAULT CURRENT_TIMESTAMP NULL"));
+
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 TEST_P(PgPackedRowTest, AddDropColumn) {

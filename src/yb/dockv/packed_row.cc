@@ -406,8 +406,8 @@ void RowPackerV1::Init(SchemaVersion version) {
   result_.Truncate(prefix_end_);
 }
 
-Result<bool> RowPackerV1::AddValue(ColumnId column_id, const QLValuePB& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
+Result<bool> RowPackerV1::AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size) {
+  return DoAddValue(column_id, value, tail_size);
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, const LWQLValuePB& value) {
@@ -489,8 +489,9 @@ Result<bool> RowPackerV2::AddValue(
   return DoAddValue(column_id, std::pair(value_prefix, value_suffix), tail_size);
 }
 
-Result<bool> RowPackerV2::AddValue(ColumnId column_id, const QLValuePB& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
+Result<bool> RowPackerV2::AddValue(
+    ColumnId column_id, const QLValuePB& value, ssize_t tail_size) {
+  return DoAddValue(column_id, value, tail_size);
 }
 
 Result<bool> RowPackerV2::AddValue(ColumnId column_id, const LWQLValuePB& value) {
