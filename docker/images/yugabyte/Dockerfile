@@ -41,8 +41,8 @@ ENV YB_DEVOPS_USE_PYTHON3=1
 WORKDIR $YB_HOME
 
 # Create some yum aliases for use in this Dockerfile
-ARG yum_install="yum install --disableplugin=subscription-manager"
-ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager"
+ARG yum_install="yum install --disableplugin=subscription-manager -y"
+ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager -y"
 
 # Add the almalinux8 package repo if we are building for ubi.
 RUN <<EOF
@@ -67,12 +67,12 @@ EOF
 
 # Install hostname for ubi8 images.
 RUN if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8/ubi"* ]]; then \
-  dnf install hostname; \
+  $yum_install hostname; \
   fi
 
 # Ensure our base system is fully up to date
 RUN set -x; \
-  $yum_upgrade -y \
+  $yum_upgrade \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
@@ -80,7 +80,7 @@ RUN set -x; \
 # this should leave us with python3.8 as the default python3
 # We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
 RUN set -x ; \
-   $yum_install -y  \
+   $yum_install  \
       python38-devel \
       python38-pip \
       python38-psutil \
