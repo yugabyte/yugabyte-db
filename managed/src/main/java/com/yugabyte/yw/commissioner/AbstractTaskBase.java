@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -91,6 +93,8 @@ public abstract class AbstractTaskBase implements ITask {
   protected final ImageBundleUtil imageBundleUtil;
   protected final ReleaseManager releaseManager;
   protected final YsqlQueryExecutor ysqlQueryExecutor;
+  protected final GFlagsValidation gFlagsValidation;
+  protected final NodeUniverseManager nodeUniverseManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -117,6 +121,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
     this.releaseManager = baseTaskDependencies.getReleaseManager();
     this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
+    this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
+    this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
   }
 
   protected ITaskParams taskParams() {
@@ -148,16 +154,19 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public synchronized void terminate() {
-    if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(
-          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-      executor = null;
+    if (getUserTaskUUID().equals(getTaskUUID())) {
+      if (executor != null && !executor.isShutdown()) {
+        log.info("Shutting down executor with name: {}", getExecutorPoolName());
+        MoreExecutors.shutdownAndAwaitTermination(
+            executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+        executor = null;
+      }
     }
   }
 
   protected synchronized ExecutorService getOrCreateExecutorService() {
     if (executor == null) {
-      log.info("Executor name: {}", getExecutorPoolName());
+      log.info("Creating executor with name: {}", getExecutorPoolName());
       ThreadFactory namedThreadFactory =
           new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
       executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);

@@ -147,8 +147,8 @@ clean_build() {
 
 format() {
     pushd "$project_dir"
-    go install github.com/segmentio/golines@latest
-    go install golang.org/x/tools/cmd/goimports@latest
+    go install github.com/segmentio/golines@v0.12.2
+    go install golang.org/x/tools/cmd/goimports@v0.24.0
     for dir in */ ; do
         # Remove trailing slash.
         dir=$(echo "${dir}" | sed 's/\/$//')

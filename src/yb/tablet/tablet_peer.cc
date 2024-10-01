@@ -943,7 +943,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<OpId> TabletPeer::MaxPersistentOpId() const {
-  auto flush_op_ids = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  auto tablet = shared_tablet();
+  if (!tablet) {
+    // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
+    return OpId::Min();
+  }
+  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
   return OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
 }
 

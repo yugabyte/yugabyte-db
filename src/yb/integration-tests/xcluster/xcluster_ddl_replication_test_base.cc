@@ -52,34 +52,6 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(bool is_colocated) {
   return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
 }
 
-Status XClusterDDLReplicationTestBase::EnableDDLReplicationExtension() {
-  // TODO(#19184): This will be done as part of creating the replication groups.
-  auto p_conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  RETURN_NOT_OK(p_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-  RETURN_NOT_OK(p_conn.ExecuteFormat(
-      "ALTER DATABASE $0 SET $1.replication_role = SOURCE", namespace_name,
-      xcluster::kDDLQueuePgSchemaName));
-  auto c_conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-  RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-  RETURN_NOT_OK(c_conn.ExecuteFormat(
-      "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
-      xcluster::kDDLQueuePgSchemaName));
-
-  // Ensure that tables are properly created with only one tablet each.
-  RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    for (const auto& table_name :
-         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
-      auto yb_table_name = VERIFY_RESULT(
-          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
-      std::shared_ptr<client::YBTable> table;
-      RETURN_NOT_OK(cluster->client_->OpenTable(yb_table_name, &table));
-      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
-    }
-    return Status::OK();
-  }));
-  return Status::OK();
-}
-
 Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetProducerTable(
     const client::YBTableName& producer_table_name) {
   std::shared_ptr<client::YBTable> producer_table;

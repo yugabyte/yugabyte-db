@@ -823,6 +823,8 @@ public class NodeManagerTest extends FakeDBApplication {
     List<String> expectedCommand = new ArrayList<>();
     expectedCommand.add("instance");
     expectedCommand.add(type.toString().toLowerCase());
+    boolean addGflags = false;
+    String gflagsToAdd = null;
     switch (type) {
       case List:
         expectedCommand.add("--as_json");
@@ -967,8 +969,8 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add("install-software");
               expectedCommand.add("--tags");
               expectedCommand.add("override_gflags");
-              expectedCommand.add("--gflags");
-              expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+              addGflags = true;
+              gflagsToAdd = Json.stringify(Json.toJson(gflags));
               break;
             case None:
               break;
@@ -1124,8 +1126,8 @@ public class NodeManagerTest extends FakeDBApplication {
                 if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                   gflagMap.put("certs_for_client_dir", certsForClientDir);
                 }
-                expectedCommand.add("--gflags");
-                expectedCommand.add(Json.stringify(Json.toJson(gflagMap)));
+                addGflags = true;
+                gflagsToAdd = Json.stringify(Json.toJson(gflagMap));
                 expectedCommand.add("--tags");
                 expectedCommand.add("override_gflags");
                 break;
@@ -1138,8 +1140,8 @@ public class NodeManagerTest extends FakeDBApplication {
             && configureParams.type != Certs
             && !(configureParams.type == ToggleTls
                 && configureParams.getProperty("taskSubType").equals("CopyCerts"))) {
-          expectedCommand.add("--gflags");
-          expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+          addGflags = true;
+          gflagsToAdd = Json.stringify(Json.toJson(gflags));
           if (canConfigureYbc) {
             expectedCommand.add("--ybc_flags");
             expectedCommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1291,6 +1293,10 @@ public class NodeManagerTest extends FakeDBApplication {
     expectedCommand.add("--remote_tmp_dir");
     expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
+    if (addGflags) {
+      expectedCommand.add("--gflags");
+      expectedCommand.add(gflagsToAdd);
+    }
     return expectedCommand;
   }
 
@@ -2233,8 +2239,19 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<ShellProcessContext> localContextCaptor =
+          ArgumentCaptor.forClass(ShellProcessContext.class);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), any(ShellProcessContext.class));
+          .run(localCaptor.capture(), localContextCaptor.capture());
+      List<String> commands = localCaptor.getAllValues().get(0);
+      Map<String, String> sensitiveData =
+          localContextCaptor.getAllValues().get(0).getSensitiveData();
+      if (sensitiveData.containsKey("--gflags")) {
+        commands.add("--gflags");
+        commands.add(sensitiveData.get("--gflags"));
+      }
+      assertEquals(expectedCommand, commands);
       idx++;
     }
   }
@@ -2293,8 +2310,19 @@ public class NodeManagerTest extends FakeDBApplication {
             nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
         reset(shellProcessHandler);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<ShellProcessContext> localContextCaptor =
+            ArgumentCaptor.forClass(ShellProcessContext.class);
         verify(shellProcessHandler, times(1))
-            .run(eq(expectedCommand), any(ShellProcessContext.class));
+            .run(localCaptor.capture(), localContextCaptor.capture());
+        List<String> commands = localCaptor.getAllValues().get(0);
+        Map<String, String> sensitiveData =
+            localContextCaptor.getAllValues().get(0).getSensitiveData();
+        if (sensitiveData.containsKey("--gflags")) {
+          commands.add("--gflags");
+          commands.add(sensitiveData.get("--gflags"));
+        }
+        assertEquals(expectedCommand, commands);
       }
       idx++;
     }
@@ -2360,9 +2388,16 @@ public class NodeManagerTest extends FakeDBApplication {
             .thenReturn(true);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
-        verify(shellProcessHandler, times(3)).run(captor.capture(), any(ShellProcessContext.class));
+        verify(shellProcessHandler, times(3)).run(captor.capture(), contextCaptor.capture());
 
-        Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
+        List<String> cmd1 = captor.getAllValues().get(1);
+        Map<String, String> sensitiveData1 = contextCaptor.getAllValues().get(1).getSensitiveData();
+        sensitiveData1.forEach(
+            (key, value) -> {
+              cmd1.add(key);
+              cmd1.add(value);
+            });
+        Map<String, String> gflagsProcessed = extractGFlags(cmd1);
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,master_join_existing_universe,enable_ysql");
         String jwksFileName1 = "";
@@ -2396,7 +2431,14 @@ public class NodeManagerTest extends FakeDBApplication {
         copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy, new TreeMap<>(gflagsProcessed));
 
-        Map<String, String> gflagsNotFiltered = extractGFlags(captor.getAllValues().get(2));
+        List<String> cmd2 = captor.getAllValues().get(2);
+        Map<String, String> sensitiveData2 = contextCaptor.getAllValues().get(2).getSensitiveData();
+        sensitiveData2.forEach(
+            (key, value) -> {
+              cmd2.add(key);
+              cmd2.add(value);
+            });
+        Map<String, String> gflagsNotFiltered = extractGFlags(cmd2);
         Map<String, String> copy2 = new TreeMap<>(params.gflags);
         copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,master_join_existing_universe,enable_ysql");
         copy2.put(
@@ -2419,7 +2461,14 @@ public class NodeManagerTest extends FakeDBApplication {
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
 
-        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
+        List<String> cmd0 = captor.getAllValues().get(0);
+        Map<String, String> sensitiveData0 = contextCaptor.getAllValues().get(2).getSensitiveData();
+        sensitiveData0.forEach(
+            (key, value) -> {
+              cmd0.add(key);
+              cmd0.add(value);
+            });
+        Map<String, String> cloudGflags = extractGFlags(cmd0);
         assertEquals(copy2, new TreeMap<>(cloudGflags)); // Non filtered as well
       }
     }
@@ -2515,8 +2564,19 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<ShellProcessContext> localContextCaptor =
+          ArgumentCaptor.forClass(ShellProcessContext.class);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), any(ShellProcessContext.class));
+          .run(localCaptor.capture(), localContextCaptor.capture());
+      List<String> commands = localCaptor.getAllValues().get(0);
+      Map<String, String> sensitiveData =
+          localContextCaptor.getAllValues().get(0).getSensitiveData();
+      if (sensitiveData.containsKey("--gflags")) {
+        commands.add("--gflags");
+        commands.add(sensitiveData.get("--gflags"));
+      }
+      assertEquals(expectedCommand, commands);
       idx++;
     }
   }
@@ -3140,8 +3200,19 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<ShellProcessContext> localContextCaptor =
+          ArgumentCaptor.forClass(ShellProcessContext.class);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), any(ShellProcessContext.class));
+          .run(localCaptor.capture(), localContextCaptor.capture());
+      List<String> commands = localCaptor.getAllValues().get(0);
+      Map<String, String> sensitiveData =
+          localContextCaptor.getAllValues().get(0).getSensitiveData();
+      if (sensitiveData.containsKey("--gflags")) {
+        commands.add("--gflags");
+        commands.add(sensitiveData.get("--gflags"));
+      }
+      assertEquals(expectedCommand, commands);
       idx++;
     }
   }
@@ -3338,8 +3409,19 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(
           nodeCommand(
               NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
+      ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<ShellProcessContext> localContextCaptor =
+          ArgumentCaptor.forClass(ShellProcessContext.class);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), any(ShellProcessContext.class));
+          .run(localCaptor.capture(), localContextCaptor.capture());
+      List<String> commands = localCaptor.getAllValues().get(0);
+      Map<String, String> sensitiveData =
+          localContextCaptor.getAllValues().get(0).getSensitiveData();
+      if (sensitiveData.containsKey("--gflags")) {
+        commands.add("--gflags");
+        commands.add(sensitiveData.get("--gflags"));
+      }
+      assertEquals(expectedCommand, commands);
       idx++;
     }
   }
@@ -3378,8 +3460,19 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(
           nodeCommand(
               NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
+      ArgumentCaptor<List<String>> localCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<ShellProcessContext> localContextCaptor =
+          ArgumentCaptor.forClass(ShellProcessContext.class);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), any(ShellProcessContext.class));
+          .run(localCaptor.capture(), localContextCaptor.capture());
+      List<String> commands = localCaptor.getAllValues().get(0);
+      Map<String, String> sensitiveData =
+          localContextCaptor.getAllValues().get(0).getSensitiveData();
+      if (sensitiveData.containsKey("--gflags")) {
+        commands.add("--gflags");
+        commands.add(sensitiveData.get("--gflags"));
+      }
+      assertEquals(expectedCommand, commands);
       idx++;
     }
   }

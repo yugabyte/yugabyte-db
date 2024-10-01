@@ -151,7 +151,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static boolean KEEP_FAILED_UNIVERSE = true;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -675,11 +675,14 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   }
 
   protected void initYSQL(Universe universe) {
-    initYSQL(universe, "some_table", false);
+    initYSQL(universe, "some_table");
   }
 
   protected void initYSQL(Universe universe, String tableName) {
-    initYSQL(universe, tableName, false);
+    initYSQL(
+        universe,
+        tableName,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
   protected void initYSQL(Universe universe, String tableName, boolean authEnabled) {
@@ -729,7 +732,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected void verifyYSQL(
       Universe universe, boolean readFromRR, String dbName, String tableName) {
-    verifyYSQL(universe, readFromRR, dbName, tableName, false);
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    verifyYSQL(universe, readFromRR, dbName, tableName, authEnabled);
   }
 
   protected void verifyYSQL(

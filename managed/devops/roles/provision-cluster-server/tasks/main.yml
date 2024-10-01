@@ -63,10 +63,50 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Create directory for core dumps
+    file:
+      path: "{{ yb_home_dir }}/cores/"
+      state: directory
+      mode: '0755'
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+    tags: yb-prebuilt-ami
+
+  - name: Ensure gzip is installed
+    command: which gzip
+    register: gzip_installed
+    ignore_errors: yes
+    tags: yb-prebuilt-ami
+
+  - name: Fail if gzip is not installed
+    fail:
+      msg: "gzip is not installed, please install it manually."
+    when: gzip_installed.rc != 0
+    tags: yb-prebuilt-ami
+
+  - name: Create core dump compression script
+    become: yes
+    become_method: sudo
+    copy:
+      dest: "{{ bin_path }}/compress_core.sh"
+      mode: '0755'
+      content: |
+        #!/bin/bash
+        DUMP_DIR="/home/yugabyte/cores/"
+        CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
+        GZIP_PATH=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" which gzip)
+        if [[ -z "$GZIP_PATH" ]]; then
+          echo "gzip not found, aborting." >> /home/yugabyte/cores/custom_core_dump.log
+          exit 1
+        fi
+        /usr/bin/gzip >> "$CORE_FILE"
+        chmod 644 "$CORE_FILE"
+    tags: yb-prebuilt-ami
+
   - name: Provision | Create core dump kernel pattern
     sysctl:
       name: kernel.core_pattern
-      value: "{{ yb_home_dir }}/cores/core_%p_%t_%E"
+      value: "|{{ bin_path }}/compress_core.sh {{ yb_home_dir }}/cores/core_yb.%e.%p"
       state: present
     tags: yb-prebuilt-ami
 
@@ -119,7 +159,8 @@
 - name: setup-postgres-cgroups
   include_role:
     name: setup-cgroup
-  when: not systemd_option
+  when: not systemd_option or (ansible_os_family == 'RedHat' and
+        ansible_distribution_major_version < "9")
 
 - name: Grant traverse permission on yb_home directory
   file:

@@ -295,6 +295,9 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
               "True to enable Query Diagnostics");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
+    "Enable preloading of foreign key information into the relation cache.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
   if (value != "database" && value != "tablet") {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";

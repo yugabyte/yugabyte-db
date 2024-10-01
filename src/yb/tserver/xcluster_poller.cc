@@ -115,7 +115,8 @@ XClusterPoller::XClusterPoller(
     rpc::Rpcs* rpcs, client::YBClient& local_client,
     const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
     XClusterConsumer* xcluster_consumer, SchemaVersion last_compatible_consumer_schema_version,
-    int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term)
+    int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term,
+    bool is_automatic_mode)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
@@ -124,6 +125,7 @@ XClusterPoller::XClusterPoller(
           producer_tablet_info.replication_group_id, consumer_tablet_info.table_id,
           producer_tablet_info.tablet_id, leader_term),
       auto_flags_version_(std::move(auto_flags_version)),
+      is_automatic_mode_(is_automatic_mode),
       op_id_(consensus::MinimumOpId()),
       validated_schema_version_(0),
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
@@ -145,12 +147,13 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
 
   output_client_ = CreateXClusterOutputClient(
       this, consumer_tablet_info_, producer_tablet_info_, local_client_, thread_pool_, rpcs_,
-      use_local_tserver, rate_limiter);
+      use_local_tserver, is_automatic_mode_, rate_limiter);
 }
 
 void XClusterPoller::InitDDLQueuePoller(
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
     TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func) {
+  DCHECK_EQ(is_automatic_mode_, true);
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
@@ -335,7 +338,7 @@ void XClusterPoller::DoPoll() {
       auto se = ScopeExit([this]() { ANNOTATE_UNPROTECTED_WRITE(TEST_is_sleeping_) = false; });
       UniqueLock shutdown_l(shutdown_mutex_);
       if (shutdown_cv_.wait_for(
-              GetLockForCondition(&shutdown_l), delay * 1ms, [this] { return IsOffline(); })) {
+              GetLockForCondition(shutdown_l), delay * 1ms, [this] { return IsOffline(); })) {
         return;
       }
 

@@ -28,7 +28,7 @@ public class TestPgRegressUpdateOptimized extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_skip_row_lock_for_update", "false");
+    flagMap.put("ysql_yb_skip_redundant_update_ops", "true");
     return flagMap;
   }
 

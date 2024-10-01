@@ -49,7 +49,7 @@ public class ImageBundleDetails {
 
   @ApiModelProperty private String sshUser;
   @ApiModelProperty private Integer sshPort;
-  @ApiModelProperty public boolean useIMDSv2 = false;
+  @ApiModelProperty public boolean useIMDSv2 = true;
 
   public void setSshUser(String sshUser) {
     this.sshUser = sshUser;

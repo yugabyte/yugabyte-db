@@ -5,7 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.models.common.YbaApi;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -45,7 +45,7 @@ public class FailedSubtasks {
     @ApiModelProperty(
         value = "WARNING: This is a preview API that could change. Subtask error code")
     @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.0.0")
-    public TaskErrorCode errorCode;
+    public Code errorCode;
   }
 
   public static SubtaskData toSubtaskData(SubTaskFormData subTaskFormData) {

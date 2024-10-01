@@ -461,4 +461,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "OpenTelemetry metrics port",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> k8sUniverseDefaultServiceScope =
+      new ConfKeyInfo<>(
+          "yb.universe.default_service_scope_for_k8s",
+          ScopeType.PROVIDER,
+          "Default service scope for K8s universe",
+          "The default service scope for K8s service endpoints. Can be AZ/Namespaced. 'AZ' will"
+              + " create a service in each Availability zone, whereas 'Namespaced' will create one"
+              + " service per Namespace",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

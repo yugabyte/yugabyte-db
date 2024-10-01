@@ -1931,12 +1931,6 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	else if (!jumblequery && pstate && pstate->p_sourcetext != p &&
 			 strcmp(pstate->p_sourcetext, p) != 0)
 		p = NULL;
-	/*
-	 * YB note: don't assume it is the top-level query when pstate is NULL and
-	 * the query tree does not have the source location.
-	 */
-	else if (!pstate && query->stmt_location <= 0 && query->stmt_len <= 0)
-		p = NULL;
 
 	return p;
 }
@@ -2900,6 +2894,14 @@ get_current_hint_string(ParseState *pstate, Query *query)
 		char		   *normalized_query = NULL;
 
 		query_str = get_query_string(pstate, query, &jumblequery);
+
+		/*
+		 * YB note: don't assume it is the top-level query when pstate is NULL
+		 * and the query tree does not have the source location.
+		 */
+		if (!pstate && query->stmt_location <= 0 && query->stmt_len <= 0 &&
+			query_str == debug_query_string)
+			query_str = NULL;
 
 		/* If this query is not for hint, just return */
 		if (!query_str)
@@ -4674,67 +4676,13 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		return;
 
 	/*
-	 * We can accept only plain relations, foreign tables and table saples are
+	 * We can accept only plain relations, foreign tables and table samples are
 	 * also unacceptable. See set_rel_pathlist.
 	 */
-	if ((rel->rtekind != RTE_RELATION &&
-		 rel->rtekind != RTE_SUBQUERY)||
+	if (rel->rtekind != RTE_RELATION ||
 		rte->relkind == RELKIND_FOREIGN_TABLE ||
 		rte->tablesample != NULL)
 		return;
-
-	/*
-	 * Even though UNION ALL node doesn't have particular name so usually it is
-	 * unhintable, turn on parallel when it contains parallel nodes.
-	 */
-	if (rel->rtekind == RTE_SUBQUERY)
-	{
-		ListCell *lc;
-		bool	inhibit_nonparallel = false;
-
-		if (rel->partial_pathlist == NIL)
-			return;
-
-		foreach(lc, rel->partial_pathlist)
-		{
-			ListCell *lcp;
-			AppendPath *apath = (AppendPath *) lfirst(lc);
-			int		parallel_workers = 0;
-
-			if (!IsA(apath, AppendPath))
-				continue;
-
-			foreach (lcp, apath->subpaths)
-			{
-				Path *spath = (Path *) lfirst(lcp);
-
-				if (spath->parallel_aware &&
-					parallel_workers < spath->parallel_workers)
-					parallel_workers = spath->parallel_workers;
-			}
-
-			apath->path.parallel_workers = parallel_workers;
-			inhibit_nonparallel = true;
-		}
-
-		if (inhibit_nonparallel)
-		{
-			ListCell *lc;
-
-			foreach(lc, rel->pathlist)
-			{
-				Path *path = (Path *) lfirst(lc);
-
-				if (path->startup_cost < disable_cost)
-				{
-					path->startup_cost += disable_cost;
-					path->total_cost += disable_cost;
-				}
-			}
-		}
-
-		return;
-	}
 
 	/* We cannot handle if this requires an outer */
 	if (rel->lateral_relids)

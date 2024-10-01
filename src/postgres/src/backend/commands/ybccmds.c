@@ -1214,8 +1214,7 @@ static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
 						YBCPgStatement* rollbackHandle,
-						bool isPartitionOfAlteredTable,
-						int rewrite)
+						bool isPartitionOfAlteredTable)
 {
 	Oid relationId = RelationGetRelid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1421,13 +1420,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 								cmd->name, RelationGetRelationName(rel))));
 				}
 				ReleaseSysCache(typeTuple);
-
-				/*
-				 * If this ALTER TYPE operation doesn't require a rewrite
-				 * we do not need to increment the schema version.
-				 */
-				if (!(rewrite & AT_REWRITE_COLUMN_REWRITE))
-					break;
 			}
 			/*
 			 * For these cases a YugaByte metadata does not need to be updated
@@ -1638,8 +1630,7 @@ YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YBCPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable,
-					 int rewriteState)
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1667,7 +1658,7 @@ YBCPrepareAlterTable(List** subcmds,
 			handles = YBCPrepareAlterTableCmd(
 						(AlterTableCmd *) lfirst(lcmd), rel, handles,
 						&col, &needsYBAlter, rollbackHandle,
-						isPartitionOfAlteredTable, rewriteState);
+						isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -2058,14 +2049,32 @@ YBCDropReplicationSlot(const char *slot_name)
 		YBCPgExecDropReplicationSlot(handle), error_message);
 }
 
+/*
+ * Returns an of relfilenodes corresponding to input table_oids array.
+ */
+static Oid *
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+{
+	Oid			*relfilenodes;
+
+	relfilenodes = palloc(sizeof(Oid) * num_relations);
+	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
+		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
+
+	return relfilenodes;
+}
+
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations)
 {
 	Assert(MyDatabaseId);
 
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
-											 numrelations));
+											 relfilenodes, numrelations));
 }
 
 void
@@ -2074,7 +2083,11 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 {
 	Assert(MyDatabaseId);
 
-	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId, relations,
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
+	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
+												   relations, relfilenodes,
 												   numrelations));
 }
 

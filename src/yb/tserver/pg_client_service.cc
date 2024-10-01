@@ -25,7 +25,6 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -61,6 +60,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -69,6 +69,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -81,12 +82,13 @@
 #include "yb/util/thread.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+
 using namespace std::literals;
 
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug && !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -126,6 +128,11 @@ DEFINE_RUNTIME_int32(
     "Interval at which pg object id allocators are checked for dropped databases.");
 TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
+
+METRIC_DEFINE_event_stats(
+    server, pg_client_exchange_response_size,
+    "The size of PgClient exchange response in bytes", yb::MetricUnit::kBytes,
+    "The size of PgClient exchange response in bytes");
 
 namespace yb::tserver {
 namespace {
@@ -404,12 +411,13 @@ class PgClientServiceImpl::Impl {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, const std::string& permanent_uuid,
+      const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
+        messenger_(*messenger),
         table_cache_(client_future),
         check_expired_sessions_(&messenger->scheduler()),
         check_object_id_allocators_(&messenger->scheduler()),
@@ -417,25 +425,35 @@ class PgClientServiceImpl::Impl {
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
+        shared_mem_pool_(parent_mem_tracker, instance_id_),
+        stats_exchange_response_size_(
+            METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
-    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
-        "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-        permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
-    cdc_state_client_init_->Start();
-    cdc_state_table_ =
-        std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_->get_client_future());
+    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(client_future);
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
+    shared_mem_pool_.Start(messenger->scheduler());
   }
 
   ~Impl() {
     cdc_state_table_.reset();
-    cdc_state_client_init_->Shutdown();
+    std::vector<SessionInfoPtr> sessions;
+    {
+      std::lock_guard lock(mutex_);
+      sessions.reserve(sessions_.size());
+      for (const auto& session : sessions_) {
+        sessions.push_back(session);
+      }
+    }
+    for (const auto& session : sessions) {
+      session->session().Shutdown();
+    }
+    sessions.clear();
     check_expired_sessions_.Shutdown();
     check_object_id_allocators_.Shutdown();
   }
@@ -455,7 +473,8 @@ class PgClientServiceImpl::Impl {
         &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms,
         transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
+        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
+        stats_exchange_response_size_, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -1700,6 +1719,58 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ServersMetrics(
+      const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
+      rpc::RpcContext* context) {
+
+    std::vector<tserver::PgServerMetricsInfoPB> result;
+    std::vector<std::future<Status>> status_futures;
+    std::vector<std::shared_ptr<GetMetricsResponsePB>> node_responses;
+
+    GetMetricsRequestPB metrics_req;
+    const auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    status_futures.reserve(remote_tservers.size());
+    node_responses.reserve(remote_tservers.size());
+
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetMetricsResponsePB>();
+      node_responses.push_back(node_resp);
+
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      controller->set_timeout(MonoDelta::FromMilliseconds(5000));
+
+      proxy->GetMetricsAsync(metrics_req, node_resp.get(), controller.get(),
+      [controller, status_promise] {
+        status_promise->set_value(controller->status());
+      });
+    }
+    for (size_t i = 0; i < status_futures.size(); ++i) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      tserver::PgServerMetricsInfoPB server_metrics;
+      server_metrics.set_uuid(remote_tservers[i]->permanent_uuid());
+      if (!s.ok()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(s.ToUserMessage());
+      } else if (node_resp->has_error()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(node_resp->error().status().message());
+      } else {
+        server_metrics.mutable_metrics()->Swap(node_resp->mutable_metrics());
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::OK);
+        server_metrics.set_error("");
+      }
+      result.emplace_back(std::move(server_metrics));
+    }
+
+    *resp->mutable_servers_metrics() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -1775,32 +1846,43 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
-    std::vector<uint64_t> expired_sessions;
-    std::lock_guard lock(mutex_);
-    while (!session_expiration_queue_.empty()) {
-      auto& top = session_expiration_queue_.top();
-      if (top.first > now) {
-        break;
-      }
-      auto id = top.second;
-      session_expiration_queue_.pop();
-      auto it = sessions_.find(id);
-      if (it != sessions_.end()) {
-        auto current_expiration = (**it).session().expiration();
-        if (current_expiration > now) {
-          session_expiration_queue_.push({current_expiration, id});
-        } else {
-          expired_sessions.push_back(id);
-          sessions_.erase(it);
+    std::vector<SessionInfoPtr> expired_sessions;
+    {
+      std::lock_guard lock(mutex_);
+      while (!session_expiration_queue_.empty()) {
+        auto& top = session_expiration_queue_.top();
+        if (top.first > now) {
+          break;
+        }
+        auto id = top.second;
+        session_expiration_queue_.pop();
+        auto it = sessions_.find(id);
+        if (it != sessions_.end()) {
+          auto current_expiration = (**it).session().expiration();
+          if (current_expiration > now) {
+            session_expiration_queue_.push({current_expiration, id});
+          } else {
+            expired_sessions.push_back(*it);
+            sessions_.erase(it);
+          }
         }
       }
+      ScheduleCheckExpiredSessions(now);
+    }
+    if (expired_sessions.empty()) {
+      return;
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
     if (cdc_service) {
-      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
+      std::vector<uint64_t> expired_session_ids;
+      expired_session_ids.reserve(expired_sessions.size());
+      for (auto& session : expired_sessions) {
+        expired_session_ids.push_back(session->id());
+      }
+      expired_sessions.clear();
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
     }
-    ScheduleCheckExpiredSessions(now);
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
@@ -1866,6 +1948,7 @@ class PgClientServiceImpl::Impl {
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
   TransactionPoolProvider transaction_pool_provider_;
+  rpc::Messenger& messenger_;
   PgTableCache table_cache_;
   rw_spinlock mutex_;
 
@@ -1894,7 +1977,6 @@ class PgClientServiceImpl::Impl {
   rpc::ScheduledTaskTracker check_expired_sessions_;
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   const TserverXClusterContextIf* xcluster_context_;
@@ -1906,6 +1988,10 @@ class PgClientServiceImpl::Impl {
   PgSequenceCache sequence_cache_;
 
   const std::string instance_id_;
+
+  PgSharedMemoryPool shared_mem_pool_;
+
+  EventStatsPtr stats_exchange_response_size_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;

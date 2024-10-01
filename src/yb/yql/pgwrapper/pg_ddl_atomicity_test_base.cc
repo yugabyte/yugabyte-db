@@ -26,6 +26,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
@@ -84,6 +85,11 @@ Status PgDdlAtomicityTestBase::RunAllDdls(PGConn* conn) {
 }
 
 Status PgDdlAtomicityTestBase::RunAllDdlsWithErrorInjection(PGConn* conn) {
+  const char* func = __FUNCTION__;
+  LOG(INFO) << func << " start";
+  auto se = ScopeExit([func] {
+    LOG(INFO) << func << " done";
+  });
   for (const auto& ddl : GetAllDDLs()) {
     RETURN_NOT_OK(conn->TestFailDdl(ddl));
   }
@@ -147,6 +153,11 @@ Status PgDdlAtomicityTestBase::VerifyRowsAfterDdlSuccess(PGConn* conn, const int
 
 Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsNotRolledBack(client::YBClient* client,
                                                                  const string& database) {
+  const char* func = __FUNCTION__;
+  LOG(INFO) << func << " start";
+  auto se = ScopeExit([func] {
+    LOG(INFO) << func << " done";
+  });
   // Verify that all the DDLs that were run as part of 'RunAllDdlsWithErrorInjection' are
   // not yet rolled back.
   // Tables that failed creation will still be around as they have not been rolled back.
@@ -185,6 +196,11 @@ Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsNotRolledBack(client::YBClien
 Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsRolledBack(PGConn *conn,
                                                               client::YBClient* client,
                                                               const string& database) {
+  const char* func = __FUNCTION__;
+  LOG(INFO) << func << " start";
+  auto se = ScopeExit([func] {
+    LOG(INFO) << func << " done";
+  });
   // Verify that all the DDLs that were run as part of 'RunAllDdlsWithErrorInjection' are
   // rolled back successfully.
 
@@ -233,6 +249,11 @@ Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsRolledBack(PGConn *conn,
 
 Status PgDdlAtomicityTestBase::VerifyRowsAfterDdlErrorInjection(PGConn* conn,
                                                                 const int expected_rows) {
+  const char* func = __FUNCTION__;
+  LOG(INFO) << func << " start";
+  auto se = ScopeExit([func] {
+    LOG(INFO) << func << " done";
+  });
   // Verify that all the tables have their data intact.
   static const vector<string>& tables_to_check = {kRenameTable, kRenameCol, kAddCol, kDropCol,
                                                   kIndexedTable, kDropTable, kAddPk, kDropPk};

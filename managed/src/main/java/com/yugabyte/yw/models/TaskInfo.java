@@ -18,8 +18,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.helpers.TaskDetails;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
@@ -185,7 +185,7 @@ public class TaskInfo extends Model {
 
   @JsonIgnore
   public String getErrorMessage() {
-    TaskError error = getTaskError();
+    YBAError error = getTaskError();
     if (error != null) {
       return error.getMessage();
     }
@@ -193,11 +193,11 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
-  public synchronized TaskError getTaskError() {
+  public synchronized YBAError getTaskError() {
     if (taskState == State.Success || details == null) {
       return null;
     }
-    TaskError error = details.getError();
+    YBAError error = details.getError();
     if (error == null || error.getCode() == null) {
       return null;
     }
@@ -205,7 +205,7 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
-  public synchronized void setTaskError(TaskError error) {
+  public synchronized void setTaskError(YBAError error) {
     if (details == null) {
       details = new TaskDetails();
     }

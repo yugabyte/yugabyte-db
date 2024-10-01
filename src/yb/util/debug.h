@@ -20,4 +20,10 @@ constexpr bool kIsDebug = false;
 constexpr bool kIsDebug = true;
 #endif
 
+#if defined(__APPLE__)
+constexpr bool kIsMac = true;
+#else
+constexpr bool kIsMac = false;
+#endif
+
 } // namespace yb

@@ -1009,10 +1009,13 @@ index_create(Relation heapRelation,
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
 	/*
-	 * Create index in YugaByte only if it is a secondary index. Primary key is
+	 * Create index in YugaByte only if it is a secondary non-covered index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */
-	if (IsYBRelation(indexRelation) && !isprimary)
+	 IndexAmRoutine *amroutine =
+		GetIndexAmRoutineByAmId(indexInfo->ii_Am, true);
+	if (IsYBRelation(indexRelation) &&
+		!isprimary && !(amroutine && amroutine->yb_amiscoveredbymaintable))
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
@@ -4074,11 +4077,11 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 				 errmsg("cannot reindex temporary tables of other sessions")));
 
 	/*
-	 * YB pk indexes share the same storage as their tables, so it is not
+	 * YB covered indexes share the same storage as their tables, so it is not
 	 * possible to reindex them. However, this code-path may be internally
 	 * invoked by table rewrite, and we need to reset the index's reltuples.
 	 */
-	if (!is_yb_table_rewrite && iRel->rd_index->indisprimary &&
+	if (!is_yb_table_rewrite && YBIsCoveredByMainTable(iRel) &&
 		IsYBRelation(iRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -4419,14 +4422,15 @@ reindex_relation(Oid relid, int flags, int options, bool is_yb_table_rewrite,
 				RelationSetIndexList(rel, doneIndexes, InvalidOid);
 			if (IsYBRelation(iRel))
 			{
-				if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
+				if (!is_yb_table_rewrite && !YBIsCoveredByMainTable(iRel))
 					/*
 					* Drop the old DocDB table associated with this index.
-					* This is only required for secondary indexes, because a
-					* primary index in YB doesn't have a DocDB table separate
-					* from the base relation's table.
-					* If this is a table rewrite, the indexes on the table
-					* will automatically be dropped when the table is dropped.
+					* This is only required for uncovered
+					* secondary indexes, because a primary index in YB doesn't
+					* have a DocDB table separate from the base relation's
+					* table. If this is a table rewrite, the indexes on the
+					* table will automatically be dropped when the table is
+					* dropped.
 					* Note: The drop isn't finalized until after the txn
 					* commits/aborts.
 					*/

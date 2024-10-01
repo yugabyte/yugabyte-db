@@ -59,7 +59,7 @@ public class EnableNodeAgentInUniverse extends UniverseDefinitionTaskBase {
       createUpdateUniverseFieldsTask(
           u -> {
             UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-            universeDetails.disableNodeAgent = false;
+            universeDetails.installNodeAgent = false;
           });
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();

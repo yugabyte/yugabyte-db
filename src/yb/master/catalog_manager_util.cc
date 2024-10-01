@@ -10,15 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/dockv/partition.h"
-#include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager_util.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
 
+#include "yb/dockv/partition.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/ysql_tablespace_manager.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
@@ -579,6 +586,40 @@ int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement
 
 const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader) {
   return blacklist_leader ? pb.leader_blacklist() : pb.server_blacklist();
+}
+
+Status ExecutePgsqlStatements(
+    const std::string& database_name, const std::vector<std::string>& statements,
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback) {
+  SCHECK(!database_name.empty(), InvalidArgument, "Database name is empty");
+  if (statements.empty()) {
+    return Status::OK();
+  }
+
+  auto closest_tserver = VERIFY_RESULT(catalog_manager.GetClosestLiveTserver());
+  std::shared_ptr<tserver::TabletServerServiceProxy> proxy;
+  RETURN_NOT_OK(closest_tserver->GetProxy(&proxy));
+
+  tserver::AdminExecutePgsqlRequestPB req;
+  req.set_database_name(database_name);
+  for (const auto& statement : statements) {
+    req.add_pgsql_statements(statement);
+  }
+
+  auto resp = std::make_shared<tserver::AdminExecutePgsqlResponsePB>();
+  auto controller = std::make_shared<rpc::RpcController>();
+  controller->set_deadline(deadline);
+
+  proxy->AdminExecutePgsqlAsync(
+      req, resp.get(), controller.get(), [controller, resp, cb = std::move(callback)]() {
+        Status status = controller->status();
+        if (status.ok() && resp->has_error()) {
+          status = StatusFromPB(resp->error().status());
+        }
+        cb(status);
+      });
+
+  return Status::OK();
 }
 
 } // namespace master

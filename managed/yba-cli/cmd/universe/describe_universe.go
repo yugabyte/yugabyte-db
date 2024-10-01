@@ -60,11 +60,20 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universe.KMSConfigs, response, err = authAPI.ListKMSConfigs().Execute()
+		universe.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
 				"Universe", "Describe - Get KMS Configurations")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			universe.KMSConfigs = append(universe.KMSConfigs, kmsConfig)
 		}
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {

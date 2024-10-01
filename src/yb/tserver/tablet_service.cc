@@ -3103,6 +3103,19 @@ void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthR
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
+                                   GetMetricsResponsePB* resp,
+                                   rpc::RpcContext context) {
+  auto result = server_->GetMetrics();
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  vector<TserverMetricsInfoPB> metrics = result.get();
+  *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
@@ -3399,6 +3412,28 @@ void TabletServiceImpl::ReleaseObjectLocks(
   auto s = ts_local_lock_manager->ReleaseObjectLocks(*req);
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::AdminExecutePgsql(
+    const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
+    const auto& deadline = context.GetClientDeadline();
+    auto pg_conn = VERIFY_RESULT(server->CreateInternalPGConn(req->database_name(), deadline));
+    for (const auto& stmt : req->pgsql_statements()) {
+      SCHECK_LT(
+          CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");
+      RETURN_NOT_OK(pg_conn.Execute(stmt));
+    }
+    return Status::OK();
+  };
+
+  auto status = execute_pg_sql();
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
   } else {
     context.RespondSuccess();
   }

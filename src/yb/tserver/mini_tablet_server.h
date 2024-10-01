@@ -155,6 +155,7 @@ class MiniTabletServer {
 
   FsManager& fs_manager() const;
   MetricEntity& metric_entity() const;
+  const MemTrackerPtr& mem_tracker() const;
 
  private:
   bool started_;

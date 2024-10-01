@@ -26,6 +26,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 
 DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
@@ -172,15 +173,24 @@ class SharedExchangeHeader {
 
   Status SendRequest(bool failed_previous_request, size_t size) {
     auto state = state_.load(std::memory_order_acquire);
-    if (!ReadyToSend(failed_previous_request)) {
+    if (!ReadyToSend(state, failed_previous_request)) {
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
     }
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_pg_client_crash_on_shared_memory_send)) {
       LOG(FATAL) << "For test: crashing while sending request";
     }
-    state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(state, SharedExchangeState::kRequestSent));
     data_size_ = size;
     return request_semaphore_.Post();
+  }
+
+  Status TransferState(SharedExchangeState old_state, SharedExchangeState new_state) {
+    SharedExchangeState actual_state = old_state;
+    if (state_.compare_exchange_strong(actual_state, new_state, std::memory_order_acq_rel)) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(
+        IllegalState, "Wrong state, $0 expected, but $1 found", old_state, actual_state);
   }
 
   bool ResponseReady() {
@@ -189,7 +199,7 @@ class SharedExchangeHeader {
 
   Result<size_t> FetchResponse(std::chrono::system_clock::time_point deadline) {
     RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
-    state_.store(SharedExchangeState::kIdle, std::memory_order_release);
+    RETURN_NOT_OK(TransferState(SharedExchangeState::kResponseSent, SharedExchangeState::kIdle));
     return data_size_;
   }
 
@@ -202,7 +212,9 @@ class SharedExchangeHeader {
     }
 
     data_size_ = size;
-    state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
+    WARN_NOT_OK(
+        TransferState(SharedExchangeState::kRequestSent, SharedExchangeState::kResponseSent),
+        "Transfer state failed");
     WARN_NOT_OK(response_semaphore_.Post(), "Respond failed");
   }
 
@@ -261,7 +273,8 @@ class SharedExchange::Impl {
  public:
   template <class T>
   Impl(T type, const std::string& instance_id, uint64_t session_id)
-      : session_id_(session_id),
+      : instance_id_(instance_id),
+        session_id_(session_id),
         owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
         shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
                               boost::interprocess::read_write) {
@@ -293,6 +306,10 @@ class SharedExchange::Impl {
       return nullptr;
     }
     return header->data();
+  }
+
+  const std::string& instance_id() const {
+    return instance_id_;
   }
 
   uint64_t session_id() const {
@@ -346,6 +363,7 @@ class SharedExchange::Impl {
     return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
   }
 
+  const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
   boost::interprocess::shared_memory_object shared_memory_object_;
@@ -419,6 +437,10 @@ void SharedExchange::SignalStop() {
   impl_->SignalStop();
 }
 
+const std::string& SharedExchange::instance_id() const {
+  return impl_->instance_id();
+}
+
 uint64_t SharedExchange::session_id() const {
   return impl_->session_id();
 }
@@ -454,4 +476,9 @@ bool TServerSharedData::IsCronLeader() const {
   auto lease_end = cron_leader_lease_.load();
   return lease_end.Initialized() && lease_end > MonoTime::Now();
 }
+
+std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {
+  return MakeSharedMemoryPrefix(instance_id) + "_big_" + std::to_string(id);
+}
+
 } // namespace yb::tserver

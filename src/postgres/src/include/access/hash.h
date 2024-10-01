@@ -380,6 +380,7 @@ extern IndexBulkDeleteResult *hashvacuumcleanup(IndexVacuumInfo *info,
 extern bytea *hashoptions(Datum reloptions, bool validate);
 extern bool hashvalidate(Oid opclassoid);
 
+extern uint32 hash_bytes(const unsigned char *k, int keylen);
 extern Datum hash_any(register const unsigned char *k, register int keylen);
 extern Datum hash_any_extended(register const unsigned char *k,
 				  register int keylen, uint64 seed);

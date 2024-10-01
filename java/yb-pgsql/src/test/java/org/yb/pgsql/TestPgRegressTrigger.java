@@ -42,6 +42,10 @@ public class TestPgRegressTrigger extends BasePgRegressTest {
 
   @Test
   public void testPgRegressTrigger() throws Exception {
+    // (DB-12699) Test triggers are not realised on randomly allocated backend
+    // processes when Connection Manager is enabled, allow the test to run
+    // without a warmed up pool of connections.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_triggers_schedule");
   }
 }

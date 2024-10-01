@@ -164,7 +164,7 @@ vault lease revoke <lease-ID>
 
 To allow YSQL Hashicorp Vault plugin to communicate securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 To start a secure local YugabyteDB cluster using `yugabyted`, refer to [Create a local multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster).
 

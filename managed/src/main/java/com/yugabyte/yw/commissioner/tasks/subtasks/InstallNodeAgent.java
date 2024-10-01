@@ -17,6 +17,8 @@ import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -177,8 +179,27 @@ public class InstallNodeAgent extends AbstractTaskBase {
     }
     command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    try {
+      nodeUniverseManager
+          .runCommand(node, universe, command, shellContext)
+          .processErrors("Installation failed");
+    } catch (RuntimeException e) {
+      nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
+      throw e;
+    }
     nodeAgent.saveState(State.REGISTERED);
+    log.debug("Waiting for node agent service to be running");
+    command =
+        ImmutableList.of(
+            "sudo", "-H", "/bin/bash", "-c", "systemctl is-active --quiet yb-node-agent");
+    try {
+      nodeUniverseManager
+          .runCommand(node, universe, command, shellContext)
+          .processErrors("Service startup failed");
+    } catch (RuntimeException e) {
+      nodeAgent.updateLastError(new YBAError(Code.SERVICE_START_ERROR, e.getMessage()));
+      throw e;
+    }
     return nodeAgent;
   }
 

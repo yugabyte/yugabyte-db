@@ -12,7 +12,6 @@
 
 #pragma once
 
-#include "yb/master/master.h"
 #include "yb/server/call_home.h"
 
 namespace yb {
