@@ -42,7 +42,7 @@ var startCmd = &cobra.Command{
 		// Initialize if it has not already happened. Do this instead of normal start workflow
 		if !state.Initialized {
 			// Run preflight check for data directory size if we have to initialize.
-			results := preflight.Run([]preflight.Check{checks.DiskAvail})
+			results := preflight.Run([]preflight.Check{checks.DiskAvail}, skippedPreflightChecks...)
 			preflight.PrintPreflightResults(results)
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
@@ -169,4 +169,6 @@ var restartCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
+	startCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip by name")
 }
