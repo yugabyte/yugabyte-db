@@ -175,7 +175,9 @@ public class ReleasesUtils {
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
           tarInput.read(fileContent, 0, fileContent.length);
-          log.trace("read version_metadata.json string: {}", new String(fileContent));
+          if (log.isTraceEnabled()) {
+            log.trace("read version_metadata.json string: {}", new String(fileContent));
+          }
           JsonNode node = Json.parse(fileContent);
           metadata.minimumYbaVersion = getAndValidateYbaMinimumVersion(node);
           metadata.yb_type = Release.YbType.YBDB;

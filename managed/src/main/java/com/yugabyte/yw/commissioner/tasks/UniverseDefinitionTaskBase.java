@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
+import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -38,7 +39,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
@@ -85,6 +85,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -333,7 +334,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       keys.add(match);
     }
-    log.trace("Found tags keys : " + keys);
+    log.trace("Found tags keys : {}", keys);
 
     if (!tagValue.contains(TemplatedTags.INSTANCE_ID)) {
       throw new IllegalArgumentException(
@@ -959,19 +960,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
-  }
-
-  public SubTaskGroup createUpdateUniverseFieldsTask(Consumer<Universe> fieldModifer) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseFields");
-    UpdateUniverseFields.Params params = new UpdateUniverseFields.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.fieldModifier = fieldModifer;
-    UpdateUniverseFields task = createTask(UpdateUniverseFields.class);
-    task.initialize(params);
-    // Add it to the task list.
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
@@ -3426,5 +3414,97 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
     }
     return rollMaxBatchSize;
+  }
+
+  public void createResumeUniverseTasks(Universe universe, UUID customerUUID) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Collection<NodeDetails> nodes = universe.getNodes();
+
+    if (!universeDetails.isImportedUniverse()) {
+      // Create tasks to resume the existing nodes.
+      createResumeServerTasks(universe).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+    }
+
+    List<NodeDetails> tserverNodeList = universe.getTServers();
+    List<NodeDetails> masterNodeList = universe.getMasters();
+
+    if (universeDetails.getPrimaryCluster().userIntent.providerType == CloudType.azu) {
+      createServerInfoTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    }
+
+    // Optimistically rotate node-to-node server certificates before starting DB processes
+    // Also see CertsRotate
+    if (universeDetails.rootCA != null) {
+      CertificateInfo rootCert = CertificateInfo.get(universeDetails.rootCA);
+
+      if (rootCert == null) {
+        log.error("Root certificate not found for {}", universe.getUniverseUUID());
+      } else if (rootCert.getCertType() == CertConfigType.SelfSigned) {
+        SubTaskGroupType certRotate = RotatingCert;
+        taskParams().rootCA = universeDetails.rootCA;
+        taskParams().setClientRootCA(universeDetails.getClientRootCA());
+        createCertUpdateTasks(
+            masterNodeList,
+            tserverNodeList,
+            certRotate,
+            CertsRotateParams.CertRotationType.ServerCert,
+            CertsRotateParams.CertRotationType.None);
+        createUniverseSetTlsParamsTask(certRotate);
+      }
+    }
+
+    // Make sure clock skew is low enough on the master nodes.
+    createWaitForClockSyncTasks(universe, masterNodeList)
+        .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    createStartMasterProcessTasks(masterNodeList);
+    for (NodeDetails nodeDetails : masterNodeList) {
+      createWaitForServerReady(nodeDetails, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    }
+
+    // Make sure clock skew is low enough on the tserver nodes.
+    createWaitForClockSyncTasks(universe, tserverNodeList)
+        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+    createStartTServerTasks(tserverNodeList)
+        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    createWaitForServersTasks(tserverNodeList, ServerType.TSERVER)
+        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    for (NodeDetails nodeDetails : tserverNodeList) {
+      createWaitForServerReady(nodeDetails, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    }
+
+    if (universe.isYbcEnabled()) {
+      createStartYbcTasks(tserverNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for yb-controller to be responsive on each node.
+      createWaitForYbcServerTask(new HashSet<>(tserverNodeList))
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Set the node state to live.
+    Set<NodeDetails> nodesToMarkLive =
+        nodes.stream().filter(node -> node.isMaster || node.isTserver).collect(Collectors.toSet());
+    createSetNodeStateTasks(nodesToMarkLive, NodeDetails.NodeState.Live)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Create alert definition files.
+    createUnivManageAlertDefinitionsTask(true).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+    createSwamperTargetUpdateTask(false);
+    // Mark universe task state to success.
+
+    createMarkSourceMetricsTask(universe, MetricSourceState.ACTIVE)
+        .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+    createUpdateUniverseFieldsTask(
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.universePaused = false;
+          u.setUniverseDetails(details);
+        });
   }
 }

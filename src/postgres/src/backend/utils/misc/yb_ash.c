@@ -196,7 +196,9 @@ void
 YbAshInit(void)
 {
 	YbAshInstallHooks();
-	query_id_stack.top_index = -1;
+	/* Keep the default query id in the stack */
+	query_id_stack.top_index = 0;
+	query_id_stack.query_ids[0] = YBCGetQueryIdForCatalogRequests();
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 
@@ -243,7 +245,7 @@ yb_ash_cb_max_entries(void)
 static bool
 YbAshNestedQueryIdStackPush(uint64 query_id)
 {
-	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL)
+	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL - 1)
 	{
 		query_id_stack.query_ids[++query_id_stack.top_index] = query_id;
 		return true;
@@ -256,7 +258,7 @@ YbAshNestedQueryIdStackPush(uint64 query_id)
 }
 
 /*
- * Pop a query id from the stack
+ * Pop and return the top query id from the stack
  */
 static uint64
 YbAshNestedQueryIdStackPop(uint64 query_id)
@@ -271,9 +273,9 @@ YbAshNestedQueryIdStackPop(uint64 query_id)
 	 * When an extra ExecutorEnd is called during PortalCleanup,
 	 * we shouldn't pop the incorrect query_id from the stack.
 	 */
-	if (query_id_stack.top_index >= 0 &&
+	if (query_id_stack.top_index > 0 &&
 		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
-		return query_id_stack.query_ids[query_id_stack.top_index--];
+		return query_id_stack.query_ids[--query_id_stack.top_index];
 
 	return 0;
 }
@@ -491,7 +493,7 @@ YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		if (YbAshNestedQueryIdStackPush(MyProc->yb_ash_metadata.query_id))
+		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 			MyProc->yb_ash_metadata.query_id = query_id;
@@ -518,8 +520,8 @@ YbAshResetQueryId(uint64 query_id)
 void
 YbAshSetMetadata(void)
 {
-	/* The stack must be empty at the start of a request */
-	Assert(query_id_stack.top_index == -1);
+	/* The stack should have the default query id at the start of a request */
+	Assert(query_id_stack.top_index == 0);
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
@@ -534,7 +536,7 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
-	query_id_stack.top_index = -1;
+	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
