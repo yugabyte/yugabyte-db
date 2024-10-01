@@ -90,12 +90,14 @@
 #include "storage/smgr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/partcache.h"
+#include "utils/relcache.h"
 #include "utils/relmapper.h"
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
@@ -1907,7 +1909,7 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	{
 		pfree(constr);
 		relation->rd_att->constr = NULL;
-	}
+	}	
 
 	/* Fetch rules and triggers that affect this relation */
 	if (relation->rd_rel->relhasrules)
@@ -2354,7 +2356,7 @@ YbGetPrefetchableTableInfoImpl(YbPFetchTable table)
 			{ RelationRelationId, RELOID, RELNAMENSP };
 	case YB_PFETCH_TABLE_PG_CONSTRAINT:
 		return (YbPFetchTableInfo)
-			{ ConstraintRelationId, CONSTROID, YB_INVALID_CACHE_ID };
+			{ ConstraintRelationId, CONSTROID, YBCONSTRAINTRELIDTYPIDNAME };
 	case YB_PFETCH_TABLE_PG_DATABASE:
 		return (YbPFetchTableInfo)
 			{ DatabaseRelationId, DATABASEOID, YB_INVALID_CACHE_ID };
@@ -6145,6 +6147,8 @@ RelationGetFKeyList(Relation relation)
 	HeapTuple	htup;
 	List	   *oldlist;
 	MemoryContext oldcxt;
+	YbCatCListIterator iterator;
+	bool use_catcache;
 
 	/* Quick exit if we already computed the list. */
 	if (relation->rd_fkeyvalid)
@@ -6163,17 +6167,24 @@ RelationGetFKeyList(Relation relation)
 	 */
 	result = NIL;
 
-	/* Prepare to scan pg_constraint for entries having conrelid = this rel. */
-	ScanKeyInit(&skey,
+	use_catcache = IsYugaByteEnabled() && yb_enable_fkey_catcache;
+
+	if (use_catcache)
+	{
+		iterator = YbCatCListIteratorBegin(SearchSysCacheList1(YBCONSTRAINTRELIDTYPIDNAME, RelationGetRelid(relation)));
+	}
+	else
+	{
+		/* Prepare to scan pg_constraint for entries having conrelid = this rel. */
+		ScanKeyInit(&skey,
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(RelationGetRelid(relation)));
-
-	conrel = heap_open(ConstraintRelationId, AccessShareLock);
-	conscan = systable_beginscan(conrel, ConstraintRelidTypidNameIndexId, true,
+		conrel = heap_open(ConstraintRelationId, AccessShareLock);
+		conscan = systable_beginscan(conrel, ConstraintRelidTypidNameIndexId, true,
 								 NULL, 1, &skey);
-
-	while (HeapTupleIsValid(htup = systable_getnext(conscan)))
+	}
+	while (HeapTupleIsValid(htup = use_catcache ? YbCatCListIteratorGetNext(&iterator) : systable_getnext(conscan)))
 	{
 		Form_pg_constraint constraint = (Form_pg_constraint) GETSTRUCT(htup);
 		ForeignKeyCacheInfo *info;
@@ -6197,8 +6208,13 @@ RelationGetFKeyList(Relation relation)
 		result = lappend(result, info);
 	}
 
-	systable_endscan(conscan);
-	heap_close(conrel, AccessShareLock);
+	if (use_catcache)
+		YbCatCListIteratorFree(&iterator);
+	else
+	{
+		systable_endscan(conscan);
+		heap_close(conrel, AccessShareLock);
+	}
 
 	/* Now save a copy of the completed list in the relcache entry. */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);

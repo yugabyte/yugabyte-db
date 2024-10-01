@@ -265,6 +265,7 @@ extern bool  yb_bnl_optimize_first_batch;
 extern bool  yb_bnl_enable_hashing;
 
 extern bool yb_lock_pk_single_rpc;
+extern bool yb_enable_fkey_catcache;
 
 extern int	temp_file_limit;
 

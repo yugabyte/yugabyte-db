@@ -215,6 +215,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
 DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
+    "Enable preloading of foreign key information into the relation cache.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(

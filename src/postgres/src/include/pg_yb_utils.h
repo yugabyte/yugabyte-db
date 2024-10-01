@@ -526,6 +526,11 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
+/*
+ * Enable preloading of foreign key information into the relation cache.
+ */
+extern bool yb_enable_fkey_catcache;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

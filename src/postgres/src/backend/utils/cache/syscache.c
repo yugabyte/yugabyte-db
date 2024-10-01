@@ -1269,6 +1269,26 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				}
 				break;
 			}
+			case CONSTROID:
+			{
+				/*
+				 * Add a cache list for YBCONSTRAINTRELIDTYPIDNAME for lookup by conrelid only.
+				 */
+				if (!yb_enable_fkey_catcache)
+				{
+					is_add_to_list_required = false;
+					break;
+				}
+				if (dest_list)
+				{
+					HeapTuple ltp = llast(dest_list);
+					Form_pg_constraint ltp_struct = (Form_pg_constraint) GETSTRUCT(ltp);
+					Form_pg_constraint ntp_struct = (Form_pg_constraint) GETSTRUCT(ntp);
+					if (ntp_struct->conrelid != ltp_struct->conrelid)
+						dest_list = NIL;
+				}
+				break;
+			}
 			default:
 				is_add_to_list_required = false;
 				break;
@@ -1302,6 +1322,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		switch(cache_id)
 		{
 			case PROCOID:
+			case CONSTROID:
 				Assert(idx_cache);
 				dest_cache = idx_cache;
 				break;
