@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-[Yugabyte Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 
