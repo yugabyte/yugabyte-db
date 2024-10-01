@@ -169,17 +169,27 @@ For an example of how connection pooling reduces latencies, see [Database Connec
 
 ## Using smart drivers with YugabyteDB Aeon
 
-[YugabyteDB Aeon](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Aeon creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
+[YugabyteDB Aeon](/preview/yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Aeon creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
 When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
 If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
-YugabyteDB Aeon clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
+YugabyteDB Aeon clusters also support topology-aware load balancing. If the cluster has a [preferred region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
-Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Aeon, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+### Deploying applications
 
-For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been [peered with the cluster VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/). For applications that access the cluster from outside the peered network or using private endpoints via a private link, set the load balance connection parameter to `false`; in this case, the cluster performs the load balancing.
+
+Applications that use smart drivers from outside the peered network with load balance on will try to connect to the inaccessible nodes before falling back to the upstream driver behavior. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing. To avoid the added latency incurred, turn load balance off.
+
+For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 ### SSL/TLS verify-full support
 
