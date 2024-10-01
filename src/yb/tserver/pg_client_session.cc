@@ -1926,7 +1926,7 @@ Status PgClientSession::ReadSequenceTuple(
     rpc::RpcContext* context) {
   using pggate::PgDocData;
   using pggate::PgWireDataHeader;
-
+  VLOG(5) << Format("Servicing ReadSequenceTuple RPC: $0", req.ShortDebugString());
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
@@ -1953,8 +1953,13 @@ Status PgClientSession::ReadSequenceTuple(
       table->schema().ColumnId(kPgSequenceLastValueColIdx));
   read_request->add_col_refs()->set_column_id(
       table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  std::optional<uint64_t> read_time = std::nullopt;
+  if (req.read_time() != 0) {
+    read_time = req.read_time();
+  }
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
+  auto& session =
+      EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline(), read_time);
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
 
@@ -1966,7 +1971,6 @@ Status PgClientSession::ReadSequenceTuple(
   if (row_count == 0) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-
   if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
@@ -2113,12 +2117,26 @@ void PgClientSession::GetTableKeyRanges(
 }
 
 client::YBSessionPtr& PgClientSession::EnsureSession(
-    PgClientSessionKind kind, CoarseTimePoint deadline) {
+    PgClientSessionKind kind, CoarseTimePoint deadline, std::optional<uint64_t> read_time) {
   auto& session = Session(kind);
   if (!session) {
     session = CreateSession(&client_, deadline, clock_);
   } else {
     session->SetDeadline(deadline);
+  }
+  if (read_time) {
+    // Set the read_time only for sequence YBSession. Other types of seesions set their read_time
+    // differently.
+    DCHECK(kind == PgClientSessionKind::kSequence);
+    VLOG(4) << Format(
+        "Setting read_time of sequences_data table to: $0", ReadHybridTime::FromMicros(*read_time));
+    session->SetReadPoint(ReadHybridTime::FromMicros(*read_time));
+  } else {
+    // Reset the read_time for sequence queries to read recent data. This is required in case the
+    // user reset yb_read_time to 0 in a session.
+    if (kind == PgClientSessionKind::kSequence) {
+      session->SetReadPoint({});
+    }
   }
   return session;
 }

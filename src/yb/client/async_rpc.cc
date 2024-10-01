@@ -388,10 +388,11 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   bool has_read_time = false;
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
-    // Set read time for consistent read only if the table is transaction-enabled and
-    // consistent read is required.
-    if (data.need_consistent_read &&
-        table()->InternalSchema().table_properties().is_transactional()) {
+    // Set read time for consistent read only for sequences_data table or if the table is
+    // transaction-enabled and consistent read is required.
+    if (table()->id() == kPgSequencesDataTableId ||
+        (data.need_consistent_read &&
+         table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
       if (read_time) {
         has_read_time = true;
