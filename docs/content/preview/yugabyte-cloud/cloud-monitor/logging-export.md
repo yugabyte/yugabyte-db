@@ -14,8 +14,8 @@ type: docs
 
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
-- Database query logging. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
-- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
+- [Database query logging](#database-query-logging). This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
+- [Database audit logging](#database-audit-logging). Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
 Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
 
@@ -43,7 +43,7 @@ To enable database query logging for a cluster, do the following:
 
 YugabyteDB Aeon begins the (rolling) restart.
 
-Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log-line-prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
+Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log-line-prefix) so that you can filter them further by cloud, region, availability zone, cluster ID, node type, and node name. Depending on your tool, you can also perform text searches of the logs.
 
 ### Logging settings
 
@@ -130,11 +130,11 @@ Log all connection attempts, along with successfully completed client authentica
 
 Log session termination and duration of the session.
 
-## Database Audit Log
+## Database Audit Logging
 
 To enable database audit logging for a cluster, do the following:
 
-1. On the cluster **Settings** tab, select **Database Audit Log**.
+1. On the cluster **Settings** tab, select **Database Audit Logging**.
 1. Click **Enable Database Audit Logging**.
 1. Select the YSQL statements to log.
 
@@ -145,7 +145,7 @@ To enable database audit logging for a cluster, do the following:
     - **DDL** - All DDL that is not included in the ROLE class.
     - **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, and SET.
 
-1. Configure the [YSQL audit log settings](#ysql-audit-log-settings).
+1. Configure the [YSQL audit log settings](#ysql-audit-loggng-settings).
 
 1. Select the export configuration to use.
 
@@ -153,7 +153,7 @@ To enable database audit logging for a cluster, do the following:
 
 YugabyteDB Aeon begins the rolling restart.
 
-### YSQL audit log settings
+### YSQL audit logging settings
 
 The YSQL audit logging settings are derived from the settings for logging used by the pgaudit extension. Statements are always logged.
 
