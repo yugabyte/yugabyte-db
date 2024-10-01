@@ -627,6 +627,8 @@ bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
 void YbSetIsGlobalDDL();
+void YBAddModificationAspects(bool is_catalog_version_increment,
+							  bool is_breaking_catalog_change);
 void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 								bool is_breaking_catalog_change);
 void YBDecrementDdlNestingLevel();

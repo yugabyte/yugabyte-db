@@ -1516,6 +1516,13 @@ void YbSetIsGlobalDDL() {
 }
 
 void
+YBAddModificationAspects(bool is_catalog_version_increment,
+						 bool is_breaking_catalog_change) {
+	ddl_transaction_state.is_catalog_version_increment |= is_catalog_version_increment;
+	ddl_transaction_state.is_breaking_catalog_change |= is_breaking_catalog_change;
+}
+
+void
 YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 						   bool is_breaking_catalog_change)
 {
@@ -1533,8 +1540,8 @@ YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 	* The is_catalog_version_increment and is_breaking_catalog_change flags
 	* should only be set if it is not already true.
 	*/
-	ddl_transaction_state.is_catalog_version_increment |= is_catalog_version_increment;
-	ddl_transaction_state.is_breaking_catalog_change |= is_breaking_catalog_change;
+	YBAddModificationAspects(is_catalog_version_increment,
+							 is_breaking_catalog_change);
 }
 
 void
