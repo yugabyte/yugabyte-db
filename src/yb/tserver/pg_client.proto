@@ -770,6 +770,7 @@ message PgReadSequenceTupleRequestPB {
   int64 seq_oid = 3;
   uint64 ysql_catalog_version = 4;
   uint64 ysql_db_catalog_version = 5;
+  uint64 read_time = 6;
 }
 
 message PgReadSequenceTupleResponsePB {

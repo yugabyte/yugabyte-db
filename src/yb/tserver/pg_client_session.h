@@ -204,7 +204,9 @@ class PgClientSession {
       ClampUncertaintyWindow clamp);
 
   client::YBClient& client();
-  client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);
+  client::YBSessionPtr& EnsureSession(
+      PgClientSessionKind kind, CoarseTimePoint deadline,
+      std::optional<uint64_t> read_time = std::nullopt);
 
   template <class T>
   static auto& DoSessionData(T* that, PgClientSessionKind kind) {
