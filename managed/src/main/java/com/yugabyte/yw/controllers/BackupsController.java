@@ -1132,7 +1132,7 @@ public class BackupsController extends AuthenticatedController {
       return YBPSuccess.empty();
     }
     YBPError ybpError = new YBPError();
-    ybpError.error = "Some objects cannot be restored";
+    ybpError.error = "Restore not possible because objects are not in restorable time window";
     ybpError.errorJson = Json.toJson(Json.toJson(response.getSecond()));
     return PlatformResults.withData(ybpError);
   }

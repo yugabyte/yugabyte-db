@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -108,6 +109,29 @@ public class ScheduleUtil {
     } while (currentTime.after(nextIncrementScheduleTaskTime));
 
     return nextIncrementScheduleTaskTime;
+  }
+
+  /**
+   * Get schedule retention from base backup
+   *
+   * @param baseBackupUUID
+   * @return
+   */
+  public static Duration getScheduleRetention(UUID baseBackupUUID) {
+    Optional<Backup> baseBackupOpt = Backup.maybeGet(baseBackupUUID);
+    if (!baseBackupOpt.isPresent()) {
+      return Duration.ofMillis(0);
+    }
+    Backup baseBackup = baseBackupOpt.get();
+    if (baseBackup.getScheduleUUID() != null) {
+      Optional<Schedule> scheduleOpt = Schedule.maybeGet(baseBackup.getScheduleUUID());
+      if (scheduleOpt.isPresent()) {
+        BackupRequestParams params =
+            Json.fromJson(scheduleOpt.get().getTaskParams(), BackupRequestParams.class);
+        return getBackupIntervalForPITRestore(params);
+      }
+    }
+    return Duration.ofMillis(0);
   }
 
   // Get PIT retention required based on full backup frequency/cron. If
