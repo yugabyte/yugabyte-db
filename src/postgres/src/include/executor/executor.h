@@ -699,4 +699,8 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 											   bool missing_ok,
 											   bool update_cache);
 
+extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										EState *estate,
+										List *arbiterIndexes);
+
 #endif							/* EXECUTOR_H  */

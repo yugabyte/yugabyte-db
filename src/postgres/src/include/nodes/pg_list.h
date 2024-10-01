@@ -609,4 +609,13 @@ extern void list_sort(List *list, list_sort_comparator cmp);
 extern int	list_int_cmp(const ListCell *p1, const ListCell *p2);
 extern int	list_oid_cmp(const ListCell *p1, const ListCell *p2);
 
+/*
+ * YB: foreach_delete_current for forboth.  Order of 1 and 2 should match the
+ * order used in forboth!  Assigns lst1 and lst2 to the updated lists.
+ */
+#define yb_forboth_delete_current(lst1, cell1, lst2, cell2)	\
+	(cell1##__state.i--, \
+	 lst1 = (List *) (cell1##__state.l1 = list_delete_cell(lst1, cell1)), \
+	 lst2 = (List *) (cell1##__state.l2 = list_delete_cell(lst2, cell2)))
+
 #endif							/* PG_LIST_H */
