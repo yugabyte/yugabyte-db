@@ -451,6 +451,13 @@ TypeCreate(Oid newTypeOid,
 								replaces);
 
 		CatalogTupleUpdate(pg_type_desc, &tup->t_self, tup);
+		if (IsYugaByteEnabled())
+			/*
+			 * Update existing shell type requires catalog version increment
+			 * so that if a session has cached the shell type it can get
+			 * refreshed to get the newly defined type.
+			 */
+			YBAddModificationAspects(YB_DDL_MODE_VERSION_INCREMENT);
 
 		typeObjectId = HeapTupleGetOid(tup);
 

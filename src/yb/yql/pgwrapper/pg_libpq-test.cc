@@ -4315,5 +4315,49 @@ TEST_F(PgPostmasterExitTest, SignalIdleBackendOnPostmasterDeath) {
   ASSERT_OK(TestPostmasterExit());
 }
 
+TEST_F(PgLibPqTest, FillShellTypeDefinition) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  // Create a shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type; -- create shell type
+CREATE FUNCTION base_type_in(cstring) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2in';
+CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
+CREATE FUNCTION base_type_recv(internal) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
+CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
+      )#"));
+
+  // Using a shell type as column type is an error. Note that shell type is now
+  // cached in conn2.
+  ASSERT_NOK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+
+  // Fill the definition of the shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type (
+   INPUT = base_type_in,
+   OUTPUT = base_type_out,
+   RECEIVE = base_type_recv,
+   SEND = base_type_send,
+   LIKE = smallint,
+   CATEGORY = 'N',
+   PREFERRED = FALSE,
+   DELIMITER = ',',
+   COLLATABLE = FALSE
+); -- fill definition
+      )#"));
+  // Wait for heartbeat to propagate the new catalog version to trigger
+  // catalog cache refresh on conn2.
+  SleepFor(2s);
+
+  // Now that the shell type definition is filled, we should not get an error any more.
+  ASSERT_OK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

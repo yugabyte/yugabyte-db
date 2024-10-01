@@ -757,6 +757,7 @@ typedef struct YbDdlModeOptional
 
 YbDdlModeOptional YbGetDdlMode(
 	PlannedStmt *pstmt, ProcessUtilityContext context);
+void YBAddModificationAspects(YbDdlMode mode);
 
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
