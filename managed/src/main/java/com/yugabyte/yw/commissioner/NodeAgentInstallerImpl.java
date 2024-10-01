@@ -131,6 +131,7 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
     params.setUniverseUUID(universe.getUniverseUUID());
     params.nodeAgentInstallDir = installPath;
     params.nodeAgentPort = serverPort;
+    params.reinstall = reinstall;
     if (StringUtils.isNotEmpty(nodeDetails.sshUserOverride)) {
       params.sshUser = nodeDetails.sshUserOverride;
     }
