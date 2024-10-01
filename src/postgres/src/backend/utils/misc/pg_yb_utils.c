@@ -1610,6 +1610,11 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+void
+YBAddModificationAspects(YbDdlMode mode) {
+	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+}
+
 static YbDdlMode
 YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 {
