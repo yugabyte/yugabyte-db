@@ -158,6 +158,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
@@ -4106,6 +4107,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     Universe universe = Universe.getOrBadRequest(backupParams.getUniverseUUID());
     YbcBackupNodeRetriever nodeRetriever = new YbcBackupNodeRetriever(universe, parallelDBBackups);
+    Duration scheduleRetention = ScheduleUtil.getScheduleRetention(backupParams.baseBackupUUID);
     nodeRetriever.initializeNodePoolForBackups(backupParams.backupDBStates);
     Backup previousBackup =
         (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
@@ -4128,6 +4130,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               backupYbcParams.taskID =
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
+              backupYbcParams.scheduleRetention = scheduleRetention;
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(getUserTaskUUID());
               subTaskGroup.addSubTask(task);

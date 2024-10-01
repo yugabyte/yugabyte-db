@@ -13,9 +13,18 @@ public class BackupPointInTimeRestoreWindow {
   public long timestampRetentionWindowEndMillis;
 
   public BackupPointInTimeRestoreWindow(YbcBackupResponse.RestorableWindow restorableWindow) {
+    this(restorableWindow, 0L /* scheduleBackupRetention */);
+  }
+
+  public BackupPointInTimeRestoreWindow(
+      YbcBackupResponse.RestorableWindow restorableWindow, long scheduleBackupRetention) {
     this.timestampRetentionWindowEndMillis = restorableWindow.getTimestampSnapshotCreationMillis();
     this.timestampRetentionWindowStartMillis =
         restorableWindow.getTimestampSnapshotCreationMillis()
-            - restorableWindow.getTimestampHistoryRetentionMillis();
+            - (scheduleBackupRetention == 0L
+                ? restorableWindow.getTimestampHistoryRetentionMillis()
+                : Math.min(
+                    restorableWindow.getTimestampHistoryRetentionMillis(),
+                    scheduleBackupRetention));
   }
 }
