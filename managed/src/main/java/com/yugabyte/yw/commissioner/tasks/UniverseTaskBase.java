@@ -659,7 +659,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Returns the allowed task object when the universe is in a frozen failed state.
+   * Returns the allowed task object when the universe is in a frozen failed state. This does not
+   * check universe specific states. Consider using {@link #validateAllowedTasksOnFailure(Universe,
+   * TaskType)} if universe specific checks are required.
    *
    * @param lockedPlacementModificationTaskUuid the placement modification task UUID.
    * @return the allowed tasks.
@@ -680,40 +682,45 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return getAllowedTasksOnFailure(optional.get());
   }
 
-  public AllowedTasks getAllowedTasksOnFailure(Universe universe, TaskType taskType) {
+  /**
+   * Validate and get the allowed tasks on a universe. This also checks universe specific states by
+   * calling {@link #checkSafeToRunOnRestriction(Universe, TaskInfo)}.
+   *
+   * @param universe the given universe.
+   * @param taskType the task type to be checked.
+   * @return the allowed tasks if validation passes.
+   */
+  public AllowedTasks validateAllowedTasksOnFailure(Universe universe, TaskType taskType) {
+    Consumer<AllowedTasks> errorHandler =
+        allowedTasks -> {
+          log.error(
+              "Task {} cannot be run because a previously failed task {}({}) has frozen the"
+                  + " universe",
+              getUserTaskUUID(),
+              universe.getUniverseDetails().placementModificationTaskUuid,
+              allowedTasks.lockedTaskType);
+          throw new RuntimeException(
+              String.format(
+                  "Task %s cannot be run because a previous task %s failed on the universe."
+                      + " Please retry the previous task first to fix the universe.",
+                  taskType, allowedTasks.lockedTaskType));
+        };
     AllowedTasks allowedTasks =
         getAllowedTasksOnFailure(universe.getUniverseDetails().placementModificationTaskUuid);
     if (allowedTasks.isRestricted() && !allowedTasks.getTaskTypes().contains(taskType)) {
-      String msg =
-          String.format(
-              "Universe %s placement update failed - can't run %s task until"
-                  + " placement update succeeds",
-              universe.getUniverseUUID(), taskType.name());
-      log.error(msg);
-      throw new RuntimeException(msg);
+      errorHandler.accept(allowedTasks);
     }
     if (universe.getUniverseDetails().placementModificationTaskUuid != null) {
-      Optional<TaskInfo> optPlacementModificationTask =
-          TaskInfo.maybeGet(universe.getUniverseDetails().placementModificationTaskUuid);
-      if (optPlacementModificationTask.isPresent()
-          && !checkSafeToRunOnRestriction(universe, optPlacementModificationTask.get())) {
-        String msg =
-            String.format(
-                "Universe %s cannot run restricted %s task",
-                universe.getUniverseUUID(), taskType.name());
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      TaskInfo.maybeGet(universe.getUniverseDetails().placementModificationTaskUuid)
+          .ifPresent(
+              t -> {
+                if (!checkSafeToRunOnRestriction(universe, t, allowedTasks)) {
+                  errorHandler.accept(allowedTasks);
+                }
+              });
     }
     return allowedTasks;
   }
-
-  /**
-   * Validator method which is invoked when a re-run of a task is performed.
-   *
-   * @param previousTaskInfo the task info of the previous task for which the re-run is submitted.
-   */
-  protected void validateRerunParams(TaskInfo previousTaskInfo) {}
 
   @Override
   public void validateParams(boolean isFirstTry) {
@@ -728,13 +735,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .ifPresent(
               universe -> {
                 if (isFirstTry) {
-                  UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-                  AllowedTasks allowedTasks = getAllowedTasksOnFailure(universe, taskType);
-                  if (allowedTasks.isRerun()) {
-                    // Invoke the re-run validator.
-                    TaskInfo.maybeGet(universeDetails.placementModificationTaskUuid)
-                        .ifPresent(taskInfo -> validateRerunParams(taskInfo));
-                  }
+                  validateAllowedTasksOnFailure(universe, taskType);
                   Consumer<Universe> validator = getAdditionalValidator();
                   if (validator != null) {
                     validator.accept(universe);
@@ -772,7 +773,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * task.
    */
   protected boolean checkSafeToRunOnRestriction(
-      Universe universe, TaskInfo placementModificationTaskInfo) {
+      Universe universe, TaskInfo placementModificationTaskInfo, AllowedTasks allowedTasks) {
     return true;
   }
 
@@ -871,20 +872,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         } else if (universeDetails.placementModificationTaskUuid != null) {
           // If we're in the middle of placement modification task (failed and waiting to be
           // retried), only allow subset of safe to execute tasks.
-          AllowedTasks allowedTasks =
-              getAllowedTasksOnFailure(universeDetails.placementModificationTaskUuid);
-          boolean isSafeToRun =
-              !allowedTasks.isRestricted() || allowedTasks.getTaskTypes().contains(owner);
-          if (!isSafeToRun) {
-            String msg =
-                "Universe "
-                    + universe.getUniverseUUID()
-                    + " placement update failed - can't run "
-                    + owner.name()
-                    + " task until placement update succeeds";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
+          validateAllowedTasksOnFailure(universe, owner);
         }
         markUniverseUpdateInProgress(owner, universe, getConfig());
       }
