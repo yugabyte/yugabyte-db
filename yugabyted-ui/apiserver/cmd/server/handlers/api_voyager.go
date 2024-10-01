@@ -250,11 +250,14 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
 
     var allVoyagerMigrationsList []AllVoyagerMigrations
     for rows.Next() {
-        rowStruct := AllVoyagerMigrations{}
-        err := rows.Scan(&rowStruct.migrationUuid, &rowStruct.exportMigrationPhase,
-            &rowStruct.exportInvocationSeq, &rowStruct.importMigrationPhase,
-            &rowStruct.importInvocationSeq, &rowStruct.lowestMigrationPhase,
-            &rowStruct.lowestInvocationSeq,
+        allVoyagerMigrationsStruct := AllVoyagerMigrations{}
+        err := rows.Scan(&allVoyagerMigrationsStruct.migrationUuid,
+            &allVoyagerMigrationsStruct.exportMigrationPhase,
+            &allVoyagerMigrationsStruct.exportInvocationSeq,
+            &allVoyagerMigrationsStruct.importMigrationPhase,
+            &allVoyagerMigrationsStruct.importInvocationSeq,
+            &allVoyagerMigrationsStruct.lowestMigrationPhase,
+            &allVoyagerMigrationsStruct.lowestInvocationSeq,
         )
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
@@ -262,7 +265,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             log.Errorf(err.Error())
             continue
         }
-        allVoyagerMigrationsList = append(allVoyagerMigrationsList, rowStruct)
+        allVoyagerMigrationsList = append(allVoyagerMigrationsList, allVoyagerMigrationsStruct)
     }
 
     for _, allVoyagerMigration := range allVoyagerMigrationsList {
@@ -274,10 +277,11 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         // Update migration data struct using most recent import and export step.
         // This is done since source db info is only in export rows, target db info in import rows.
         // Info from import rows will overwrite info from export rows.
-        rowStruct := models.VoyagerMigrationDetails{}
+        migrationDetailsStruct := models.VoyagerMigrationDetails{}
         if allVoyagerMigration.exportMigrationPhase.Status == pgtype.Present &&
             allVoyagerMigration.exportInvocationSeq.Status == pgtype.Present {
-            err := updateRowStruct(log, conn, &rowStruct, allVoyagerMigration.migrationUuid,
+            err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
+                allVoyagerMigration.migrationUuid,
                 allVoyagerMigration.exportMigrationPhase.Int,
                 allVoyagerMigration.exportInvocationSeq.Int)
             if err != nil {
@@ -287,7 +291,8 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         }
         if allVoyagerMigration.importMigrationPhase.Status == pgtype.Present &&
             allVoyagerMigration.importInvocationSeq.Status == pgtype.Present {
-            err := updateRowStruct(log, conn, &rowStruct, allVoyagerMigration.migrationUuid,
+            err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
+                allVoyagerMigration.migrationUuid,
                 allVoyagerMigration.importMigrationPhase.Int,
                 allVoyagerMigration.importInvocationSeq.Int)
             if err != nil {
@@ -297,7 +302,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         }
         if allVoyagerMigration.lowestMigrationPhase.Status == pgtype.Present &&
             allVoyagerMigration.lowestInvocationSeq.Status == pgtype.Present {
-            err := updateRowStructStartTimestamp(log, conn, &rowStruct,
+            err := updateMigrationDetailStructStartTimestamp(log, conn, &migrationDetailsStruct,
                 allVoyagerMigration.migrationUuid,
                 allVoyagerMigration.lowestMigrationPhase.Int,
                 allVoyagerMigration.lowestInvocationSeq.Int)
@@ -308,23 +313,23 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         }
 
         // Get complexity from assessment if it exists.
-        rowStruct.Complexity = "N/A"
+        migrationDetailsStruct.Complexity = "N/A"
         assessment := <-assessmentFuture
         if assessment.Error != nil {
             log.Errorf("[%s] Error getting migration assessment",
                 LOGGER_FILE_NAME)
         } else {
-            rowStruct.Complexity = assessment.Report.MigrationComplexity
+            migrationDetailsStruct.Complexity = assessment.Report.MigrationComplexity
         }
         voyagerMigrationsResponse.Migrations = append(
-            voyagerMigrationsResponse.Migrations, rowStruct)
+            voyagerMigrationsResponse.Migrations, migrationDetailsStruct)
     }
     future <- voyagerMigrationsResponse
 }
 
-func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
-    rowStruct *models.VoyagerMigrationDetails, migrationUuid string, migrationPhase int32,
-    invocationSeq int32) error {
+func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
+    migrationDetailsStruct *models.VoyagerMigrationDetails, migrationUuid string,
+    migrationPhase int32, invocationSeq int32) error {
 
     voyagerDetailsrows, err := conn.Query(context.Background(),
         RETRIEVE_VOYAGER_MIGRATION_DETAILS, migrationUuid, migrationPhase, invocationSeq)
@@ -348,9 +353,9 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
         var dbType pgtype.Text
         var dbVersion pgtype.Text
 
-        rowStruct.MigrationUuid = migrationUuid
-        rowStruct.MigrationPhase = migrationPhase
-        rowStruct.InvocationSequence = invocationSeq
+        migrationDetailsStruct.MigrationUuid = migrationUuid
+        migrationDetailsStruct.MigrationPhase = migrationPhase
+        migrationDetailsStruct.InvocationSequence = invocationSeq
         err = voyagerDetailsrows.Scan(&database, &schema,
             &status, &invocation_ts, &complexity, &dbType,
             &exportDir, &dbIp, &dbPort,
@@ -363,24 +368,24 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
         }
 
         if database.Status == pgtype.Present && database.String != "" {
-            rowStruct.SourceDb.Database = database.String
+            migrationDetailsStruct.SourceDb.Database = database.String
         }
         if schema.Status == pgtype.Present && schema.String != "" {
-            rowStruct.SourceDb.Schema = schema.String
+            migrationDetailsStruct.SourceDb.Schema = schema.String
         }
         if status.Status == pgtype.Present && status.String != "" {
-            rowStruct.Status = status.String
+            migrationDetailsStruct.Status = status.String
         }
         if exportDir.Status == pgtype.Present && exportDir.String != "" {
-            rowStruct.Voyager.ExportDir = exportDir.String
+            migrationDetailsStruct.Voyager.ExportDir = exportDir.String
         }
 
         // Use rowStruct.Status, fall back to invocationSeq, assume >= 2 means completed.
         isCompleted := false
-        if rowStruct.Status == "" {
+        if migrationDetailsStruct.Status == "" {
             isCompleted = invocationSeq >= 2
         } else {
-            isCompleted = rowStruct.Status == "COMPLETED"
+            isCompleted = migrationDetailsStruct.Status == "COMPLETED"
         }
 
         // If migration assessment is completed => Assessment
@@ -388,45 +393,47 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
         // If data migration not completed => Data migration
         // Otherwise migration is complete => Completed
         if migrationPhase <= 1 {
-            rowStruct.Progress = "Assessment"
+            migrationDetailsStruct.Progress = "Assessment"
         } else if migrationPhase < 5 || (migrationPhase <= 5 && !isCompleted) {
-            rowStruct.Progress = "Schema migration"
+            migrationDetailsStruct.Progress = "Schema migration"
         } else if migrationPhase < 6 || (migrationPhase <= 6 && !isCompleted) {
-            rowStruct.Progress = "Data migration"
+            migrationDetailsStruct.Progress = "Data migration"
         } else {
-            rowStruct.Progress = "Completed"
+            migrationDetailsStruct.Progress = "Completed"
         }
 
-        rowStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
-        rowStruct.MigrationName = "Migration_" +
-            strings.Split(rowStruct.MigrationUuid, "-")[4]
+        migrationDetailsStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
+        migrationDetailsStruct.MigrationName = "Migration_" +
+            strings.Split(migrationDetailsStruct.MigrationUuid, "-")[4]
         
         if dbIp.Status == pgtype.Present {
             // dbIp determines whether port and db type are for source or target
             var dbIpStruct DbIp
             err = json.Unmarshal([]byte(dbIp.String), &dbIpStruct)
             if dbIpStruct.SourceDbIp != "" {
-                rowStruct.SourceDb.Ip = dbIpStruct.SourceDbIp
+                migrationDetailsStruct.SourceDb.Ip = dbIpStruct.SourceDbIp
                 if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
-                    rowStruct.SourceDb.Port = strconv.FormatInt(int64(dbPort.Int), 10)
+                    migrationDetailsStruct.SourceDb.Port =
+                        strconv.FormatInt(int64(dbPort.Int), 10)
                 }
                 if dbType.Status == pgtype.Present && dbType.String != "" {
-                    rowStruct.SourceDb.Engine = dbType.String
+                    migrationDetailsStruct.SourceDb.Engine = dbType.String
                 }
                 if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
-                    rowStruct.SourceDb.Version = dbVersion.String
+                    migrationDetailsStruct.SourceDb.Version = dbVersion.String
                 }
             }
             if dbIpStruct.TargetDbIp != "" {
-                rowStruct.TargetCluster.Ip = dbIpStruct.TargetDbIp
+                migrationDetailsStruct.TargetCluster.Ip = dbIpStruct.TargetDbIp
                 if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
-                    rowStruct.TargetCluster.Port = strconv.FormatInt(int64(dbPort.Int), 10)
+                    migrationDetailsStruct.TargetCluster.Port =
+                        strconv.FormatInt(int64(dbPort.Int), 10)
                 }
                 if dbType.Status == pgtype.Present && dbType.String != "" {
-                    rowStruct.TargetCluster.Engine = dbType.String
+                    migrationDetailsStruct.TargetCluster.Engine = dbType.String
                 }
                 if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
-                    rowStruct.TargetCluster.Version = dbVersion.String
+                    migrationDetailsStruct.TargetCluster.Version = dbVersion.String
                 }
             }
         }
@@ -434,39 +441,41 @@ func updateRowStruct(log logger.Logger, conn *pgxpool.Pool,
         if voyagerInfo.Status == pgtype.Present {
             var voyagerInfoStruct VoyagerInfo
             err = json.Unmarshal([]byte(voyagerInfo.String), &voyagerInfoStruct)
-            rowStruct.Voyager.MachineIp = voyagerInfoStruct.Ip
-            rowStruct.Voyager.Os = voyagerInfoStruct.Os
-            rowStruct.Voyager.AvailDiskBytes = strconv.FormatUint(voyagerInfoStruct.AvailDisk, 10)
+            migrationDetailsStruct.Voyager.MachineIp = voyagerInfoStruct.Ip
+            migrationDetailsStruct.Voyager.Os = voyagerInfoStruct.Os
+            migrationDetailsStruct.Voyager.AvailDiskBytes =
+                strconv.FormatUint(voyagerInfoStruct.AvailDisk, 10)
 
             // This is hard-coded in yb-voyager as the schema export directory
-            if rowStruct.MigrationPhase >= 2 {
-                rowStruct.Voyager.ExportedSchemaLocation =
-                    filepath.Join(rowStruct.Voyager.ExportDir, "schema")
+            if migrationDetailsStruct.MigrationPhase >= 2 {
+                migrationDetailsStruct.Voyager.ExportedSchemaLocation =
+                    filepath.Join(migrationDetailsStruct.Voyager.ExportDir, "schema")
             }
         }
 
         // For now, only support offline migrations
-        rowStruct.MigrationType = "Offline"
+        migrationDetailsStruct.MigrationType = "Offline"
 
         // This value will be overwritten by the complexity in the migration assessment
-        rowStruct.Complexity = "N/A"
+        migrationDetailsStruct.Complexity = "N/A"
         if complexity.Status == pgtype.Present {
-            rowStruct.Complexity = complexity.String
+            migrationDetailsStruct.Complexity = complexity.String
         } else {
             log.Infof(fmt.Sprintf("Complexity not set for migration uuid: [%s]",
-                rowStruct.MigrationUuid))
-            if rowStruct.MigrationPhase >= 1 && rowStruct.InvocationSequence >= 2 {
+                migrationDetailsStruct.MigrationUuid))
+            if migrationDetailsStruct.MigrationPhase >= 1 &&
+                migrationDetailsStruct.InvocationSequence >= 2 {
                 go helpers.CalculateAndUpdateComplexity(log, conn,
-                    rowStruct.MigrationUuid, 1, 2)
+                    migrationDetailsStruct.MigrationUuid, 1, 2)
             }
         }
     }
     return nil
 }
 
-func updateRowStructStartTimestamp(log logger.Logger, conn *pgxpool.Pool,
-    rowStruct *models.VoyagerMigrationDetails, migrationUuid string, migrationPhase int32,
-    invocationSeq int32) error {
+func updateMigrationDetailStructStartTimestamp(log logger.Logger, conn *pgxpool.Pool,
+    migrationDetailsStruct *models.VoyagerMigrationDetails, migrationUuid string,
+    migrationPhase int32, invocationSeq int32) error {
 
     voyagerDetailsrows, err := conn.Query(context.Background(),
         RETRIEVE_VOYAGER_MIGRATION_START_TIMESTAMP, migrationUuid, migrationPhase, invocationSeq)
@@ -487,7 +496,7 @@ func updateRowStructStartTimestamp(log logger.Logger, conn *pgxpool.Pool,
             log.Errorf(err.Error())
             continue
         }
-        rowStruct.StartTimestamp = start_ts.Format("2006-01-02 15:04:05")
+        migrationDetailsStruct.StartTimestamp = start_ts.Format("2006-01-02 15:04:05")
     }
     return nil
 }
