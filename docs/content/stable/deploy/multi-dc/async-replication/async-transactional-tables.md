@@ -9,7 +9,8 @@ menu:
     parent: async-replication-transactional
     identifier: async-transactional-tables
     weight: 50
-badges: ysql
+tags:
+  other: ysql
 type: docs
 ---
 
@@ -101,7 +102,7 @@ CREATE TABLE order_changes (
   change_date date,
   type text,
   description text)
-  PARTITION BY RANGE (change_date);  
+  PARTITION BY RANGE (change_date);
 ```
 
 ```sql

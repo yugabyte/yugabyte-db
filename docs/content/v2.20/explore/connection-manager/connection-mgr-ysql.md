@@ -4,7 +4,8 @@ headerTitle: YSQL Connection Manager
 linkTitle: YSQL Connection Manager
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-techPreview: /preview/releases/versioning/#feature-availability
+tags:
+  feature: tech-preview
 menu:
   v2.20:
     name: YSQL Connection Manager

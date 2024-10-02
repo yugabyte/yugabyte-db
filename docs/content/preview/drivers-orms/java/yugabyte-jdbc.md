@@ -3,7 +3,8 @@ title: JDBC smart driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB JDBC Smart Driver
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /develop/client-drivers/java/
   - /preview/develop/client-drivers/java/
