@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_string_operators.c
+ * src/operators/bson_expression_string_operators.c
  *
  * String Operator expression implementations of BSON.
  *
@@ -28,6 +28,12 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
+typedef void (*ProcessStringOperatorOneOperand)(const bson_value_t *currentValue,
+												bson_value_t *result);
+typedef void (*ProcessStringOperatorTwoOperands)(void *state, bson_value_t *result);
+typedef void (*ProcessStringOperatorThreeOperands)(void *state, bson_value_t *result);
+typedef bool (*ProcessStringOperatorVariableOperands)(const bson_value_t *currentValue,
+													  void *state, bson_value_t *result);
 
 typedef struct DollarConcatOperatorState
 {
@@ -73,37 +79,63 @@ typedef struct DollarReplaceArguments
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static bool ProcessDollarConcatElement(bson_value_t *result,
-									   const bson_value_t *currentElement,
-									   bool isFieldPathExpression, void *state);
-static bool ProcessDollarToUpperElement(bson_value_t *result,
-										const bson_value_t *currentElement,
-										bool isFieldPathExpression,
-										void *state);
-static bool ProcessDollarToLowerElement(bson_value_t *result,
-										const bson_value_t *currentElement,
-										bool isFieldPathExpression,
-										void *state);
-static bool ProcessDollarStrLenBytesElement(bson_value_t *result,
-											const bson_value_t *currentElement,
-											bool isFieldPathExpression, void *state);
-static bool ProcessDollarStrLenCPElement(bson_value_t *result,
-										 const bson_value_t *currentElement,
-										 bool isFieldPathExpression, void *state);
+static void ParseStringOperatorOneOperand(const bson_value_t *argument,
+										  AggregationExpressionData *data, const
+										  char *operatorName,
+										  ProcessStringOperatorOneOperand
+										  processOperatorFunc,
+										  ParseAggregationExpressionContext *context);
+static void ParseStringOperatorTwoOperands(const bson_value_t *argument,
+										   AggregationExpressionData *data, const
+										   char *operatorName,
+										   ProcessStringOperatorTwoOperands
+										   processOperatorFunc,
+										   ParseAggregationExpressionContext *context);
+static void ParseStringOperatorThreeOperands(const bson_value_t *argument,
+											 AggregationExpressionData *data, const
+											 char *operatorName,
+											 ProcessStringOperatorThreeOperands
+											 processOperatorFunc,
+											 ParseAggregationExpressionContext *
+											 context);
+static void ParseStringOperatorVariableOperands(const bson_value_t *argument,
+												void *state,
+												AggregationExpressionData *data,
+												ProcessStringOperatorVariableOperands
+												processOperatorFunc,
+												ParseAggregationExpressionContext *context);
+static void ParseDollarIndexOfBytesAndIndexOfCP(const bson_value_t *argument,
+												AggregationExpressionData *data, const
+												char *operatorName,
+												bool isIndexOfCP,
+												ParseAggregationExpressionContext *
+												context);
+static void HandlePreParsedStringOperatorcOneOperand(pgbson *doc, void *arguments,
+													 ExpressionResult *expressionResult,
+													 ProcessStringOperatorOneOperand
+													 processOperatorFunc);
+static void HandlePreParsedStringOperatorTwoOperands(pgbson *doc, void *arguments,
+													 ExpressionResult *expressionResult,
+													 ProcessStringOperatorTwoOperands
+													 processOperatorFunc);
+static void HandlePreParsedStringOperatorThreeOperands(pgbson *doc, void *arguments,
+													   ExpressionResult *expressionResult,
+													   ProcessStringOperatorThreeOperands
+													   processOperatorFunc);
+static void HandlePreParsedIndexOfBytesAndIndexOfCP(pgbson *doc, void *arguments,
+													ExpressionResult *expressionResult,
+													bool isIndexOfCP);
+static void HandlePreParsedStringOperatorcVariableOperands(pgbson *doc, void *arguments,
+														   void *state,
+														   bson_value_t *result,
+														   ExpressionResult *
+														   expressionResult,
+														   ProcessStringOperatorVariableOperands
+														   processOperatorFunc);
 
-static void ProcessDollarSplitResult(bson_value_t *result, void *state);
-static void ProcessDollarConcatResult(bson_value_t *result, void *state);
-static void ProcessDollarIndexOfBytes(bson_value_t *result, void *state);
-static void ProcessDollarIndexOfCP(bson_value_t *result, void *state);
-static void ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
-											   bool isIndexOfBytesOp, int *startIndex,
-											   int *endIndex);
-static void WriteDollarTrimResult(bson_value_t *result, bson_value_t *input,
-								  int startIndex, int endIndex,
-								  ExpressionResult *expressionResult);
-static bool ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument,
-								 bson_value_t *input, bson_value_t *chars,
-								 ExpressionResult *expressionResult, const char *opName);
+static void ParseDollarTrimCore(const bson_value_t *argument,
+								AggregationExpressionData *data, const char *opName,
+								ParseAggregationExpressionContext *context);
 static bool ParseDollarRegexInput(const bson_value_t *operatorValue,
 								  AggregationExpressionData *data,
 								  bson_value_t *input,
@@ -112,7 +144,26 @@ static bool ParseDollarRegexInput(const bson_value_t *operatorValue,
 								  bool enableNoAutoCapture,
 								  bool *isNullOrUndefinedInput,
 								  ParseAggregationExpressionContext *context);
-static void ProcessDollarStrCaseCmpResult(bson_value_t *result, void *state);
+static void HandlePreParsedDollarTrimCore(pgbson *doc, void *arguments, const
+										  char *opName,
+										  ExpressionResult *expressionResult);
+
+static bool ProcessDollarConcatElement(const bson_value_t *currentValue, void *state,
+									   bson_value_t *result);
+static void ProcessDollarToUpper(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarToLower(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarStrLenBytes(const bson_value_t *currentValue,
+									 bson_value_t *result);
+static void ProcessDollarStrLenCP(const bson_value_t *currentValue,
+								  bson_value_t *result);
+static void ProcessDollarSplit(void *state, bson_value_t *result);
+static void ProcessDollarConcatResult(void *state, bson_value_t *result);
+static void ProcessDollarIndexOfBytes(void *state, bson_value_t *result);
+static void ProcessDollarIndexOfCP(void *state, bson_value_t *result);
+static void ProcessDollarIndexOfCore(FourArgumentExpressionState *input,
+									 bool isIndexOfBytesOp, int *startIndex,
+									 int *endIndex);
+static void ProcessDollarStrCaseCmp(void *state, bson_value_t *result);
 static void ProcessCoersionForStrCaseCmp(bson_value_t *element);
 static void ProcessDollarReplace(bson_value_t *input,
 								 bson_value_t *result,
@@ -120,14 +171,15 @@ static void ProcessDollarReplace(bson_value_t *input,
 								 bson_value_t *replacement,
 								 const char *opName,
 								 bool isDollarReplaceOne);
-static void ProcessDollarSubstrCP(bson_value_t *firstValue,
-								  bson_value_t *secondValue,
-								  bson_value_t *thirdValue,
-								  bson_value_t *result);
-static void ProcessDollarSubstrBytes(bson_value_t *firstValue,
-									 bson_value_t *secondValue,
-									 bson_value_t *thirdValue,
-									 bson_value_t *result);
+static void ProcessDollarSubstrCP(void *state, bson_value_t *result);
+static void ProcessDollarSubstrBytes(void *state, bson_value_t *result);
+static void ProcessDollarTrim(const bson_value_t *inputValue, const
+							  bson_value_t *charsValue, bson_value_t *result, const bool
+							  providedChars, const
+							  char *opName);
+
+static void WriteDollarTrimResult(const bson_value_t *input, bson_value_t *result,
+								  int startIndex, int endIndex);
 static void WriteOutputOfDollarRegexFindAll(bson_value_t *input, RegexData *regexData,
 											bson_value_t *result);
 static bool ValidateEvaluatedRegexInput(bson_value_t *input, bson_value_t *regex,
@@ -153,7 +205,7 @@ static void ValidateParsedInputForDollarReplace(bson_value_t *input,
 												const char *opName);
 
 static bool ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
-													 const bson_value_t *currentElement,
+													 const bson_value_t *currentValue,
 													 DateStringFormatCase formatCase);
 static inline StringView * AllocateStringViewFromBsonValueString(const
 																 bson_value_t *element);
@@ -173,14 +225,168 @@ static inline void FillLookUpTableWithWhiteSpaceChars(HTAB *charsHashTable);
 static inline int FindEndIndexDollarTrim(HTAB *charsHashTable,
 										 const bson_value_t *input);
 
+
+/* --------------------------------------------------------- */
+/* Parse and Handle Pre-parse functions */
+/* --------------------------------------------------------- */
+
 /*
- * Evaluates the output of an $concat expression.
- * Since $concat is expressed as { "$concat": [ "string1", "string2" ,... ] }
- * We evaluate the inner expressions and then return the concatenation of them.
+ * Parses a $toUpper expression.
+ * $toUpper is expressed as { "$toUpper": <expression> }
  */
 void
-HandleDollarConcat(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+ParseDollarToUpper(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorOneOperand(argument, data, "$toUpper", ProcessDollarToUpper,
+								  context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $toUpper expression.
+ */
+void
+HandlePreParsedDollarToUpper(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorcOneOperand(doc, arguments, expressionResult,
+											 ProcessDollarToUpper);
+}
+
+
+/*
+ * Parses a $toLower expression.
+ * $toLower is expressed as { "$toLower": <expression> }
+ */
+void
+ParseDollarToLower(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorOneOperand(argument, data, "$toLower", ProcessDollarToLower,
+								  context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $toLower expression.
+ */
+void
+HandlePreParsedDollarToLower(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorcOneOperand(doc, arguments, expressionResult,
+											 ProcessDollarToLower);
+}
+
+
+/*
+ * Parses a $strLenBytes expression.
+ * $strLenBytes is expressed as { "$strLenBytes": <expression> }
+ */
+void
+ParseDollarStrLenBytes(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorOneOperand(argument, data, "$strLenBytes",
+								  ProcessDollarStrLenBytes, context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $strLenBytes expression.
+ */
+void
+HandlePreParsedDollarStrLenBytes(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorcOneOperand(doc, arguments, expressionResult,
+											 ProcessDollarStrLenBytes);
+}
+
+
+/*
+ * Parses a $strLenCP expression.
+ * $strLenCP is expressed as { "$strLenCP": <expression> }
+ */
+void
+ParseDollarStrLenCP(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorOneOperand(argument, data, "$strLenCP",
+								  ProcessDollarStrLenCP, context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $strLenCP expression.
+ */
+void
+HandlePreParsedDollarStrLenCP(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorcOneOperand(doc, arguments, expressionResult,
+											 ProcessDollarStrLenCP);
+}
+
+
+/*
+ * Parses a $split expression.
+ * $split is expressed as { "$split": [ <string>, <delimiter> ] }
+ */
+void
+ParseDollarSplit(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorTwoOperands(argument, data, "$split",
+								   ProcessDollarSplit, context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $split expression.
+ */
+void
+HandlePreParsedDollarSplit(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorTwoOperands(doc, arguments, expressionResult,
+											 ProcessDollarSplit);
+}
+
+
+/*
+ * Parses a $strCaseCmp expression.
+ * $strCaseCmp is expressed as { "$strCaseCmp": [ <string1>, <string2> ] }
+ */
+void
+ParseDollarStrCaseCmp(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorTwoOperands(argument, data, "$strCaseCmp",
+								   ProcessDollarStrCaseCmp, context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $strCaseCmp expression.
+ */
+void
+HandlePreParsedDollarStrCaseCmp(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorTwoOperands(doc, arguments, expressionResult,
+											 ProcessDollarStrCaseCmp);
+}
+
+
+/*
+ * Parses an $concat expression.
+ * $concat is expressed as { "$concat": [ "string1", "string2" ,... ] }
+ */
+void
+ParseDollarConcat(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
 	DollarConcatOperatorState state =
 	{
@@ -188,316 +394,1183 @@ HandleDollarConcat(pgbson *doc, const bson_value_t *operatorValue,
 		.totalSize = 0,
 	};
 
-	ExpressionArgumentHandlingContext context =
+	data->value.value_type = BSON_TYPE_UTF8;
+	ParseStringOperatorVariableOperands(argument, &state, data,
+										ProcessDollarConcatElement,
+										context);
+
+	if (data->kind == AggregationExpressionKind_Constant)
 	{
-		.processElementFunc = ProcessDollarConcatElement,
-		.processExpressionResultFunc = ProcessDollarConcatResult,
-		.state = &state,
-	};
-
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_UTF8;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+		ProcessDollarConcatResult(&state, &data->value);
+	}
 }
 
 
 /*
- * Evaluates the output of an $toUpper expression.
- * Since $toUpper is expressed as { "$toUpper": <expression> } it has only single parameter.
- * We evaluate the inner expressions and then return the value.
+ * Handles executing a pre-parsed $concat expression.
  */
 void
-HandleDollarToUpper(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult)
+HandlePreParsedDollarConcat(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context = {
-		.processElementFunc = ProcessDollarToUpperElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$toUpper", &context);
-}
-
-
-/*
- * Evaluates the output of an $toLower expression.
- * Since $toLower is expressed as { "$toLower": <expression> } it has only single parameter.
- * We evaluate the inner expressions and then return the value.
- */
-void
-HandleDollarToLower(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult)
-{
-	ExpressionArgumentHandlingContext context = {
-		.processElementFunc = ProcessDollarToLowerElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL
-	};
-
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult, 1, "$toLower",
-								  &context);
-}
-
-
-/*
- * Evaluates the output of an $split expression.
- * Since $split is expressed as { "$split": [ <string expression>, <delimiter> ] }
- * We evaluate the inner expressions and Divides a string into an array of substrings based on a delimiter.
- */
-void
-HandleDollarSplit(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
-{
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
+	DollarConcatOperatorState state =
 	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarSplitResult,
-		.state = &state,
+		.stringList = NIL,
+		.totalSize = 0,
 	};
 
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$split", &context);
-}
+	bson_value_t result = { .value_type = BSON_TYPE_UTF8 };
+	HandlePreParsedStringOperatorcVariableOperands(doc, arguments, &state, &result,
+												   expressionResult,
+												   ProcessDollarConcatElement);
 
-
-/*
- * Evaluates the output of an $strLenBytes expression.
- * Since $strLenBytes is expressed as { "$strLenBytes": <string expression> }
- * We evaluate the inner expressions and count number of UTF-8 encoded bytes in the specified string.
- */
-void
-HandleDollarStrLenBytes(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
-{
-	ExpressionArgumentHandlingContext context =
+	if (result.value_type != BSON_TYPE_NULL)
 	{
-		.processElementFunc = ProcessDollarStrLenBytesElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$strLenBytes", &context);
-}
-
-
-/*
- * Evaluates the output of an $strLenCP expression.
- * Since $strLenCP is expressed as { "$strLenCP": <string expression> }
- * We evaluate the inner expressions and count number of UTF-8 encoded code points in the specified string.
- */
-void
-HandleDollarStrLenCP(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult)
-{
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarStrLenCPElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$strLenCP", &context);
-}
-
-
-/*
- * Evaluates the output of an $trim expression.
- * Since $trim is expressed as { "$trim": <string expression> }
- * We evaluate the inner expressions and trim UTF-8 encoded code points from both side of string.
- */
-void
-HandleDollarTrim(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
-{
-	bson_value_t input = { 0 };
-	bson_value_t chars = { 0 };
-	bson_value_t result;
-	result.value_type = BSON_TYPE_UTF8;
-
-	if (!ParseDollarTrimInput(doc, operatorValue, &input, &chars, expressionResult,
-							  "trim"))
-	{
-		result.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
+		ProcessDollarConcatResult(&state, &result);
 	}
 
-	HTAB *charsHashTable = CreateStringViewHashSet();
-
-	FillLookUpTableDollarTrim(charsHashTable, &chars);
-
-	uint32_t startIndex = FindStartIndexDollarTrim(charsHashTable, &input);
-	int endIndex = FindEndIndexDollarTrim(charsHashTable, &input);
-	WriteDollarTrimResult(&result, &input, startIndex, endIndex, expressionResult);
-	hash_destroy(charsHashTable);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
 /*
- * Evaluates the output of an $ltrim expression.
- * Since $ltrim is expressed as { "$ltrim": <string expression> }
- * We evaluate the inner expressions and trim UTF-8 encoded code points from left side of string.
+ * Parses an $substrBytes expression.
+ * $substrBytes is expressed as { "$substrBytes": [<string>, <offset>, <length>] }
  */
 void
-HandleDollarLtrim(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+ParseDollarSubstrBytes(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
 {
-	bson_value_t input = { 0 };
-	bson_value_t chars = { 0 };
-	bson_value_t result;
-	result.value_type = BSON_TYPE_UTF8;
-
-	if (!ParseDollarTrimInput(doc, operatorValue, &input, &chars, expressionResult,
-							  "ltrim"))
-	{
-		result.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
-	}
-
-	HTAB *charsHashTable = CreateStringViewHashSet();
-
-	FillLookUpTableDollarTrim(charsHashTable, &chars);
-
-	uint32_t startIndex = FindStartIndexDollarTrim(charsHashTable, &input);
-	int endIndex = input.value.v_utf8.len - 1;
-	WriteDollarTrimResult(&result, &input, startIndex, endIndex, expressionResult);
-	hash_destroy(charsHashTable);
+	ParseStringOperatorThreeOperands(argument, data, "$substrBytes",
+									 ProcessDollarSubstrBytes, context);
 }
 
 
 /*
- * Evaluates the output of an $rtrim expression.
- * Since $rtrim is expressed as { "$rtrim": <string expression> }
- * We evaluate the inner expressions and trim UTF-8 encoded code points from right side of string.
+ * Handles executing a pre-parsed $substr/$substrBytes expression.
  */
 void
-HandleDollarRtrim(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
 {
-	bson_value_t input = { 0 };
-	bson_value_t chars = { 0 };
-	bson_value_t result;
-	result.value_type = BSON_TYPE_UTF8;
-
-	if (!ParseDollarTrimInput(doc, operatorValue, &input, &chars, expressionResult,
-							  "rtrim"))
-	{
-		result.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
-	}
-
-	HTAB *charsHashTable = CreateStringViewHashSet();
-
-	FillLookUpTableDollarTrim(charsHashTable, &chars);
-
-	uint32_t startIndex = 0;
-	int endIndex = FindEndIndexDollarTrim(charsHashTable, &input);
-	WriteDollarTrimResult(&result, &input, startIndex, endIndex, expressionResult);
-	hash_destroy(charsHashTable);
+	HandlePreParsedStringOperatorThreeOperands(doc, arguments, expressionResult,
+											   ProcessDollarSubstrBytes);
 }
 
 
 /*
- * Evaluates the output of a $indexOfBytes expression.
+ * Parses an $substrCP expression.
+ * $substrCP is expressed as { "$substrCP": [<string>, <offset>, <length>] }
+ */
+void
+ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
+{
+	ParseStringOperatorThreeOperands(argument, data, "$substrCP",
+									 ProcessDollarSubstrCP, context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $substrCP expression.
+ */
+void
+HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
+{
+	HandlePreParsedStringOperatorThreeOperands(doc, arguments, expressionResult,
+											   ProcessDollarSubstrCP);
+}
+
+
+/*
+ * Parses a $trim expression.
+ * $trim is expressed as { "$trim": { input: <string>, chars: <string> } }
+ * chars is optional and if not provided, it defaults to whitespace characters.
+ */
+void
+ParseDollarTrim(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	ParseDollarTrimCore(argument, data, "$trim", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $trim expression.
+ */
+void
+HandlePreParsedDollarTrim(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarTrimCore(doc, arguments, "$trim", expressionResult);
+}
+
+
+/*
+ * Parses a $ltrim expression.
+ * $ltrim is expressed as { "$ltrim": { input: <string>, chars: <string> } }
+ * chars is optional and if not provided, it defaults to whitespace characters.
+ */
+void
+ParseDollarLtrim(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseDollarTrimCore(argument, data, "$ltrim", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $ltrim expression.
+ */
+void
+HandlePreParsedDollarLtrim(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarTrimCore(doc, arguments, "$ltrim", expressionResult);
+}
+
+
+/*
+ * Parses a $rtrim expression.
+ * $rtrim is expressed as { "$rtrim": { input: <string>, chars: <string> } }
+ * chars is optional and if not provided, it defaults to whitespace characters.
+ */
+void
+ParseDollarRtrim(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseDollarTrimCore(argument, data, "$rtrim", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $rtrim expression.
+ */
+void
+HandlePreParsedDollarRtrim(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarTrimCore(doc, arguments, "$rtrim", expressionResult);
+}
+
+
+/*
+ * Parses a $indexOfBytes expression.
  * $indexOfBytes is expressed as { "$indexOfBytes": [ <string>,<substring>,<startIndex>,<endIndex> ] }
- * We find first occurrence of substring in string using $indexOfBytes.
  */
 void
-HandleDollarIndexOfBytes(pgbson *doc, const bson_value_t *operatorValue,
-						 ExpressionResult *expressionResult)
+ParseDollarIndexOfBytes(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
-	FourArgumentExpressionState state;
-	memset(&state, 0, sizeof(FourArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessFourArgumentElement,
-		.processExpressionResultFunc = ProcessDollarIndexOfBytes,
-		.state = &state,
-	};
-
-	int minRequiredArgs = 2;
-	int maxRequiredArgs = 4;
-
-	HandleRangedArgumentExpression(doc, operatorValue, expressionResult,
-								   minRequiredArgs, maxRequiredArgs, "$indexOfBytes",
-								   &context);
+	ParseDollarIndexOfBytesAndIndexOfCP(argument, data, "$indexOfBytes",
+										false, context);
 }
 
 
 /*
- * Evaluates the output of a $indexOfCP expression.
+ * Handles executing a pre-parsed $indexOfBytes expression.
+ */
+void
+HandlePreParsedDollarIndexOfBytes(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	HandlePreParsedIndexOfBytesAndIndexOfCP(doc, arguments, expressionResult,
+											false);
+}
+
+
+/*
+ * Parses a $indexOfCP expression.
  * $indexOfCP is expressed as { "$indexOfCP": [ <string>,<substring>,<startIndex>,<endIndex> ] }
- * We find first occurrence of utf8 codepoint substring in string using $indexOfCP.
  */
 void
-HandleDollarIndexOfCP(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult)
+ParseDollarIndexOfCP(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
 {
-	FourArgumentExpressionState state;
-	memset(&state, 0, sizeof(FourArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessFourArgumentElement,
-		.processExpressionResultFunc = ProcessDollarIndexOfCP,
-		.state = &state,
-	};
-
-	int minRequiredArgs = 2;
-	int maxRequiredArgs = 4;
-
-	HandleRangedArgumentExpression(doc, operatorValue, expressionResult,
-								   minRequiredArgs, maxRequiredArgs, "$indexOfCP",
-								   &context);
+	ParseDollarIndexOfBytesAndIndexOfCP(argument, data, "$indexOfCP",
+										true, context);
 }
 
 
 /*
- * Evaluates the output of an $strCaseCmp expression.
- * Since $strCaseCmp is expressed as { $strcasecmp: [ <expression1>, <expression2> ] }
- * We evaluate the inner expressions and compare chars as part of the specified string.
+ * Handles executing a pre-parsed $indexOfCP expression.
  */
 void
-HandleDollarStrCaseCmp(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult)
+HandlePreParsedDollarIndexOfCP(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
 {
+	HandlePreParsedIndexOfBytesAndIndexOfCP(doc, arguments, expressionResult,
+											true);
+}
+
+
+/*
+ * Parses an $regexFind expression.
+ * $regexFind is expressed as { "$regexFind": { "input" : <string>, "regex" : <string>, "options": <string>}}
+ */
+void
+ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
+{
+	bson_value_t input = { 0 };
+	RegexData regexData = { 0 };
+	bool enableNoAutoCapture = false;
+	bool isNullOrUndefinedInput = false;
+
+	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFind",
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
+	{
+		if (isNullOrUndefinedInput || !CompareRegexTextMatch(&input, &regexData))
+		{
+			data->value.value_type = BSON_TYPE_NULL;
+			FreePcreData(regexData.pcreData);
+			return;
+		}
+
+		size_t *outputVector = GetResultVectorUsingPcreData(regexData.pcreData);
+		int outputLen = GetResultLengthUsingPcreData(regexData.pcreData);
+		int ignorePreviousMatchCP = 0;
+
+		data->value = ConstructResultForDollarRegex(&regexData, &input, outputVector,
+													outputLen,
+													&ignorePreviousMatchCP);
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $regexFind expression.
+ * $regexFind is expressed as { "$regexFind": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
+ */
+void
+HandlePreParsedDollarRegexFind(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t input = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t regex = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t options = childResult.value;
+	bson_value_t resultValue = { .value_type = BSON_TYPE_NULL };
+	RegexData regexData = { 0 };
+	bool isRegexAlreadyCompiled = false;
+	bool enableNoAutoCapture = false;
+
+	if (regexArgs->pcreData)
+	{
+		isRegexAlreadyCompiled = true;
+		regexData.pcreData = regexArgs->pcreData;
+	}
+
+	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData, "$regexFind",
+									 enableNoAutoCapture))
+	{
+		ExpressionResultSetValue(expressionResult, &resultValue);
+		return;
+	}
+
+	if (!CompareRegexTextMatch(&input, &regexData))
+	{
+		ExpressionResultSetValue(expressionResult, &resultValue);
+		return;
+	}
+
+	size_t *outputVector = GetResultVectorUsingPcreData(regexData.pcreData);
+	int outputLen = GetResultLengthUsingPcreData(regexData.pcreData);
+	int ignorePreviousMatchCP = 0;
+
+	resultValue = ConstructResultForDollarRegex(&regexData, &input, outputVector,
+												outputLen,
+												&ignorePreviousMatchCP);
+	ExpressionResultSetValue(expressionResult, &resultValue);
+
+	if (!isRegexAlreadyCompiled)
+	{
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/*
+ * Parses an $regexMatch expression.
+ * $regexMatch is expressed as { "$regexMatch": { "input" : <string>, "regex" : <string>, "options": <string>}}
+ */
+void
+ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
+{
+	bson_value_t input = { 0 };
+	RegexData regexData = { 0 };
+	bool enableNoAutoCapture = true;
+	bool isNullOrUndefinedInput = false;
+
+	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexMatch",
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
+	{
+		if (isNullOrUndefinedInput)
+		{
+			data->value.value_type = BSON_TYPE_BOOL;
+			data->value.value.v_bool = false;
+			return;
+		}
+
+		data->value.value_type = BSON_TYPE_BOOL;
+		data->value.value.v_bool = CompareRegexTextMatch(&input, &regexData);
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $regexMatch expression.
+ * $regexMatch is expressed as { "$regexMatch": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
+ */
+void
+HandlePreParsedDollarRegexMatch(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult)
+{
+	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t input = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t regex = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t options = childResult.value;
+	RegexData regexData = { 0 };
+	bool isRegexAlreadyCompiled = false;
+	bool enableNoAutoCapture = true;
+
+	if (regexArgs->pcreData)
+	{
+		isRegexAlreadyCompiled = true;
+		regexData.pcreData = regexArgs->pcreData;
+	}
+
+	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData, "$regexMatch",
+									 enableNoAutoCapture))
+	{
+		bson_value_t falseValue = {
+			.value_type = BSON_TYPE_BOOL,
+			.value.v_bool = false
+		};
+
+		ExpressionResultSetValue(expressionResult, &falseValue);
+		return;
+	}
+
+	bson_value_t resultValue = { .value_type = BSON_TYPE_BOOL };
+	resultValue.value.v_bool = CompareRegexTextMatch(&input, &regexData);
+	ExpressionResultSetValue(expressionResult, &resultValue);
+
+	if (!isRegexAlreadyCompiled)
+	{
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/*
+ * Parses an $regexFindAll expression.
+ * $regexFindAll is expressed as { "$regexFindAll": { "input" : <string>, "regex" : <string>, "options": <string>}}
+ */
+void
+ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
+{
+	bson_value_t input = { 0 };
+	RegexData regexData = { 0 };
+	bool enableNoAutoCapture = false;
+	bool isNullOrUndefinedInput = false;
+
+	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFindAll",
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
+	{
+		if (isNullOrUndefinedInput)
+		{
+			InitBsonValueAsEmptyArray(&(data->value));
+			return;
+		}
+
+		WriteOutputOfDollarRegexFindAll(&input, &regexData, &data->value);
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $regexFindAll expression.
+ * $regexFindAll is expressed as { "$regexFindAll": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
+ */
+void
+HandlePreParsedDollarRegexFindAll(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t input = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t regex = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t options = childResult.value;
+	bson_value_t result;
+	RegexData regexData = { 0 };
+	bool isRegexAlreadyCompiled = false;
+	bool enableNoAutoCapture = false;
+
+	if (regexArgs->pcreData)
+	{
+		isRegexAlreadyCompiled = true;
+		regexData.pcreData = regexArgs->pcreData;
+	}
+
+	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData,
+									 "$regexFindAll", enableNoAutoCapture))
+	{
+		InitBsonValueAsEmptyArray(&result);
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	WriteOutputOfDollarRegexFindAll(&input, &regexData, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+
+	if (!isRegexAlreadyCompiled)
+	{
+		FreePcreData(regexData.pcreData);
+	}
+}
+
+
+/* --------------------------------------------------------- */
+/* Parse and Handle Pre-parse helper functions */
+/* --------------------------------------------------------- */
+
+/* Helper to parse arithmetic operators that take strictly 1 operand. */
+static void
+ParseStringOperatorOneOperand(const bson_value_t *argument,
+							  AggregationExpressionData *data, const
+							  char *operatorName,
+							  ProcessStringOperatorOneOperand
+							  processOperatorFunc,
+							  ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 1;
+	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
+																			 numOfRequiredArgs,
+																			 operatorName,
+																			 &data->
+																			 operator.
+																			 argumentsKind,
+																			 context);
+
+	/* If the arguments is constant: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(parsedData))
+	{
+		processOperatorFunc(&parsedData->value, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(parsedData);
+	}
+	else
+	{
+		data->operator.arguments = parsedData;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take strictly 1 operand. */
+static void
+HandlePreParsedStringOperatorcOneOperand(pgbson *doc, void *arguments,
+										 ExpressionResult *expressionResult,
+										 ProcessStringOperatorOneOperand
+										 processOperatorFunc)
+{
+	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(argument, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t currentValue = childResult.value;
+
+	bson_value_t result = { .value_type = BSON_TYPE_UTF8 };
+	processOperatorFunc(&currentValue, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Helper to parse string operators that take strictly two arguments. */
+static void
+ParseStringOperatorTwoOperands(const bson_value_t *argument,
+							   AggregationExpressionData *data, const
+							   char *operatorName,
+							   ProcessStringOperatorTwoOperands
+							   processOperatorFunc,
+							   ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 2;
+	List *arguments = ParseFixedArgumentsForExpression(argument,
+													   numOfRequiredArgs,
+													   operatorName,
+													   &data->operator.argumentsKind,
+													   context);
+
+	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+
+	/* If both arguments are constants: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		DualArgumentExpressionState state;
+		memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
+											  &state);
+		processOperatorFunc(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of string operators that take strictly two operands. */
+static void
+HandlePreParsedStringOperatorTwoOperands(pgbson *doc, void *arguments,
+										 ExpressionResult *expressionResult,
+										 ProcessStringOperatorTwoOperands
+										 processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
+	AggregationExpressionData *secondArg = list_nth(argumentList, 1);
+
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t firstValue = childResult.value;
+	hasFieldExpression = childResult.isFieldPathExpression;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
+	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
+
+	bson_value_t secondValue = childResult.value;
+
+	bson_value_t result = { 0 };
 	DualArgumentExpressionState state;
 	memset(&state, 0, sizeof(DualArgumentExpressionState));
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarStrCaseCmpResult,
-		.state = &state,
-	};
 
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$strcasecmp", &context);
+	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
+										  &state);
+	processOperatorFunc(&state, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
+
+/* Helper to parse arithmetic operators that take exactly three operands. */
+void
+ParseStringOperatorThreeOperands(const bson_value_t *argument,
+								 AggregationExpressionData *data,
+								 const char *operatorName,
+								 ProcessStringOperatorThreeOperands
+								 processOperatorFunc,
+								 ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 3;
+	List *arguments = ParseFixedArgumentsForExpression(argument,
+													   numOfRequiredArgs,
+													   operatorName,
+													   &data->operator.argumentsKind,
+													   context);
+
+	AggregationExpressionData *first = list_nth(arguments, 0);
+	AggregationExpressionData *second = list_nth(arguments, 1);
+	AggregationExpressionData *third = list_nth(arguments, 2);
+
+	if (IsAggregationExpressionConstant(first) &&
+		IsAggregationExpressionConstant(second) &&
+		IsAggregationExpressionConstant(third))
+	{
+		ThreeArgumentExpressionState state = {
+			.firstArgument = first->value,
+			.secondArgument = second->value,
+			.thirdArgument = third->value
+		};
+
+		processOperatorFunc(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(arguments);
+
+		return;
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take exactly three operands. */
+static void
+HandlePreParsedStringOperatorThreeOperands(pgbson *doc, void *arguments,
+										   ExpressionResult *expressionResult,
+										   ProcessStringOperatorThreeOperands
+										   processOperatorFunc)
+{
+	List *argList = arguments;
+
+	AggregationExpressionData *first = list_nth(argList, 0);
+	AggregationExpressionData *second = list_nth(argList, 1);
+	AggregationExpressionData *third = list_nth(argList, 2);
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(first, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t firstValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(second, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t secondValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(third, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t thirdValue = childResult.value;
+
+	bson_value_t result;
+	ThreeArgumentExpressionState state = {
+		.firstArgument = firstValue,
+		.secondArgument = secondValue,
+		.thirdArgument = thirdValue
+	};
+	processOperatorFunc(&state, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Helper to parse arithmetic operators that take variable number of operands. */
+void
+ParseStringOperatorVariableOperands(const bson_value_t *argument,
+									void *state,
+									AggregationExpressionData *data,
+									ProcessStringOperatorVariableOperands
+									processOperatorFunc,
+									ParseAggregationExpressionContext *context)
+{
+	bool areArgumentsConstant;
+	List *argumentsList = ParseVariableArgumentsForExpression(argument,
+															  &areArgumentsConstant,
+															  context);
+
+	if (areArgumentsConstant)
+	{
+		int idx = 0;
+		while (argumentsList != NIL && idx < argumentsList->length)
+		{
+			AggregationExpressionData *currentData = list_nth(argumentsList, idx);
+
+			bool continueEnumerating = processOperatorFunc(&currentData->value,
+														   state,
+														   &data->value);
+			if (!continueEnumerating)
+			{
+				break;
+			}
+
+			idx++;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take variable number of operands. */
+static void
+HandlePreParsedStringOperatorcVariableOperands(pgbson *doc, void *arguments, void *state,
+											   bson_value_t *result,
+											   ExpressionResult *expressionResult,
+											   ProcessStringOperatorVariableOperands
+											   processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+
+	int idx = 0;
+	while (argumentList != NIL && idx < argumentList->length)
+	{
+		AggregationExpressionData *currentData = list_nth(argumentList, idx);
+
+		bool isNullOnEmpty = false;
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
+
+		bson_value_t currentValue = childResult.value;
+
+		bool continueEnumerating = processOperatorFunc(&currentValue, state, result);
+		if (!continueEnumerating)
+		{
+			return;
+		}
+
+		idx++;
+	}
+}
+
+
+/*
+ * Helper to evaluate pre-parsed expressions of $indexOfBytes and $indexOfCP.
+ */
+static void
+ParseDollarIndexOfBytesAndIndexOfCP(const bson_value_t *argument,
+									AggregationExpressionData *data,
+									const char *operatorName,
+									bool isIndexOfCP,
+									ParseAggregationExpressionContext *context)
+{
+	int minRequiredArgs = 2;
+	int maxRequiredArgs = 4;
+
+	AggregationExpressionArgumentsKind argumentsKind;
+	List *arguments = ParseRangeArgumentsForExpression(argument,
+													   minRequiredArgs,
+													   maxRequiredArgs,
+													   operatorName,
+													   &argumentsKind,
+													   context);
+
+	/* Creating a constant argument list of size 4. */
+	int numArgs = arguments->length;
+	while (arguments->length < maxRequiredArgs)
+	{
+		arguments = lappend(arguments, NULL);
+	}
+
+
+	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+	AggregationExpressionData *thirdArg = list_nth(arguments, 2);
+	AggregationExpressionData *fourthArg = list_nth(arguments, 3);
+
+	bool evaluatedOnConstants = false;
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		bool hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstArg->value) ||
+								  IsExpressionResultNullOrUndefined(&secondArg->value);
+
+		bool allArgumentsConstant = numArgs == 2;
+		FourArgumentExpressionState state = {
+			.firstArgument = firstArg->value,
+			.secondArgument = secondArg->value
+		};
+
+		if (numArgs == 3 && IsAggregationExpressionConstant(thirdArg))
+		{
+			state.thirdArgument = thirdArg->value;
+			allArgumentsConstant = true;
+
+			hasNullOrUndefined = hasNullOrUndefined || IsExpressionResultNullOrUndefined(
+				&thirdArg->value);
+		}
+		else if (numArgs == 4 &&
+				 IsAggregationExpressionConstant(thirdArg) &&
+				 IsAggregationExpressionConstant(fourthArg))
+		{
+			state.thirdArgument = thirdArg->value;
+			state.fourthArgument = fourthArg->value;
+			allArgumentsConstant = true;
+
+			hasNullOrUndefined = hasNullOrUndefined || IsExpressionResultNullOrUndefined(
+				&thirdArg->value) ||
+								 IsExpressionResultNullOrUndefined(&fourthArg->value);
+		}
+
+		if (allArgumentsConstant)
+		{
+			state.hasNullOrUndefined = hasNullOrUndefined;
+			state.totalProcessedArgs = numArgs;
+
+			if (isIndexOfCP)
+			{
+				ProcessDollarIndexOfCP(&state, &data->value);
+			}
+			else
+			{
+				ProcessDollarIndexOfBytes(&state, &data->value);
+			}
+
+			data->kind = AggregationExpressionKind_Constant;
+
+			FreeVariableLengthArgs(arguments);
+			evaluatedOnConstants = true;
+		}
+	}
+
+	if (!evaluatedOnConstants)
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Helper to evaluate pre-parsed expressions of $indexOfBytes and $indexOfCP.
+ */
+static void
+HandlePreParsedIndexOfBytesAndIndexOfCP(pgbson *doc, void *arguments,
+										ExpressionResult *expressionResult,
+										bool isIndexOfCP)
+{
+	List *argumentList = (List *) arguments;
+	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
+	AggregationExpressionData *secondArg = list_nth(argumentList, 1);
+	AggregationExpressionData *thirdArg = list_nth(argumentList, 2);
+	AggregationExpressionData *fourthArg = list_nth(argumentList, 3);
+
+	int numArgs = 2;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t firstValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t secondValue = childResult.value;
+
+	bson_value_t thirdValue = { 0 };
+	if (thirdArg != NULL)
+	{
+		ExpressionResultReset(&childResult);
+		EvaluateAggregationExpressionData(thirdArg, doc, &childResult, isNullOnEmpty);
+		thirdValue = childResult.value;
+		numArgs++;
+	}
+
+	bson_value_t fourthValue = { 0 };
+	if (fourthArg != NULL)
+	{
+		ExpressionResultReset(&childResult);
+		EvaluateAggregationExpressionData(fourthArg, doc, &childResult, isNullOnEmpty);
+		fourthValue = childResult.value;
+		numArgs++;
+	}
+
+	FourArgumentExpressionState state = {
+		.firstArgument = firstValue,
+		.secondArgument = secondValue,
+		.thirdArgument = thirdValue,
+		.fourthArgument = fourthValue,
+		.totalProcessedArgs = numArgs,
+		.hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstValue) ||
+							  IsExpressionResultNullOrUndefined(&secondValue) ||
+							  IsExpressionResultNullOrUndefined(&thirdValue) ||
+							  IsExpressionResultNullOrUndefined(&fourthValue),
+	};
+
+	if (isIndexOfCP)
+	{
+		ProcessDollarIndexOfCP(&state, &childResult.value);
+	}
+	else
+	{
+		ProcessDollarIndexOfBytes(&state, &childResult.value);
+	}
+	ExpressionResultSetValue(expressionResult, &childResult.value);
+}
+
+
+/*
+ * Helper to parse $trim, $ltrim, and $rtrim expressions.
+ */
+static void
+ParseDollarTrimCore(const bson_value_t *argument, AggregationExpressionData *data, const
+					char *opName, ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50696), errmsg(
+							"%s only supports an object as an argument, found %s",
+							opName, BsonTypeName(argument->value_type))));
+	}
+
+	bson_value_t input = { 0 };
+	bson_value_t chars = { 0 };
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "chars") == 0)
+		{
+			chars = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50694), errmsg(
+								"%s found an unknown argument: %s", opName, key)));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50695), errmsg(
+							"%s requires an 'input' field", opName)));
+	}
+
+	AggregationExpressionData *parsedInput = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(parsedInput, &input, context);
+
+
+	/* chars is an optional argument. */
+	AggregationExpressionData *parsedChars = NULL;
+	if (chars.value_type != BSON_TYPE_EOD)
+	{
+		parsedChars = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(parsedChars, &chars, context);
+	}
+
+	if (IsAggregationExpressionConstant(parsedInput) && (parsedChars == NULL ||
+														 IsAggregationExpressionConstant(
+															 parsedChars)))
+	{
+		bson_value_t parsedCharsValue = parsedChars == NULL ? (bson_value_t) {
+			0
+		}
+		: parsedChars->value;
+		ProcessDollarTrim(&parsedInput->value, &parsedCharsValue, &data->value,
+						  parsedChars != NULL, opName);
+		data->kind = AggregationExpressionKind_Constant;
+
+		pfree(parsedInput);
+		if (parsedChars != NULL)
+		{
+			pfree(parsedChars);
+		}
+	}
+	else
+	{
+		/* If the input is not constant, we need to store the parsed input in the data argument. */
+		data->operator.arguments = list_make2(parsedInput, parsedChars);
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Helper to execute pre-parsed $trim, $ltrim and $rtrim
+ */
+static void
+HandlePreParsedDollarTrimCore(pgbson *doc, void *arguments, const char *opName,
+							  ExpressionResult *expressionResult)
+{
+	List *argumentList = (List *) arguments;
+	AggregationExpressionData *inputData = list_nth(argumentList, 0);
+	AggregationExpressionData *charsData = list_nth(argumentList, 1);
+
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(inputData, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t inputValue = childResult.value;
+	ExpressionResultReset(&childResult);
+
+	bson_value_t charsValue = { 0 };
+	if (charsData != NULL)
+	{
+		EvaluateAggregationExpressionData(charsData, doc, &childResult, isNullOnEmpty);
+		charsValue = childResult.value;
+	}
+
+	DualArgumentExpressionState state;
+	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	InitializeDualArgumentExpressionState(inputValue, charsValue, hasFieldExpression,
+										  &state);
+
+	bson_value_t result = { 0 };
+	ProcessDollarTrim(&inputValue, &charsValue, &result, charsData != NULL, opName);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function facilitates the parsing of input for the $regexFind, $regexFindAll, and $regexMatch operators.
+ * It stores the parsed input into their respective variables, validates the input, and throws errors if the input is deemed improper.
+ * The function returns `true` if any input values are constant and set the isNullOrUndefinedInput variable to true if any input value is NULL or Undefined.
+ */
+static bool
+ParseDollarRegexInput(const bson_value_t *operatorValue,
+					  AggregationExpressionData *data,
+					  bson_value_t *input,
+					  RegexData *regexData,
+					  const char *opName,
+					  bool enableNoAutoCapture,
+					  bool *isNullOrUndefinedInput,
+					  ParseAggregationExpressionContext *context)
+{
+	bson_value_t regex = { 0 };
+	bson_value_t options = { 0 };
+
+	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51103), errmsg(
+							"%s expects an object of named arguments but found: %s",
+							opName, BsonTypeName(operatorValue->value_type))));
+	}
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(operatorValue, &docIter);
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			*input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "regex") == 0)
+		{
+			regex = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "options") == 0)
+		{
+			options = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31024), errmsg(
+								"%s found an unknown argument: %s", opName, key)));
+		}
+	}
+
+	if (input->value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31022), errmsg(
+							"%s requires 'input' parameter", opName)));
+	}
+
+	if (regex.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31023), errmsg(
+							"%s requires 'regex' parameter", opName)));
+	}
+
+	DollarRegexArguments *regexArgs = palloc0(sizeof(DollarRegexArguments));
+	ParseAggregationExpressionData(&regexArgs->input, input, context);
+	ParseAggregationExpressionData(&regexArgs->regex, &regex, context);
+	ParseAggregationExpressionData(&regexArgs->options, &options, context);
+
+	if (IsAggregationExpressionConstant(&regexArgs->input) &&
+		IsAggregationExpressionConstant(&regexArgs->regex) &&
+		IsAggregationExpressionConstant(&regexArgs->options))
+	{
+		if (!ValidateEvaluatedRegexInput(&regexArgs->input.value, &regexArgs->regex.value,
+										 &regexArgs->options.value, regexData, opName,
+										 enableNoAutoCapture))
+		{
+			*isNullOrUndefinedInput = true;
+		}
+
+		*input = regexArgs->input.value;
+
+		pfree(regexArgs);
+		data->kind = AggregationExpressionKind_Constant;
+
+		return true;
+	}
+	else if (IsAggregationExpressionConstant(&regexArgs->regex) &&
+			 IsAggregationExpressionConstant(&regexArgs->options))
+	{
+		if (ValidateEvaluatedRegexInput(&regexArgs->input.value, &regexArgs->regex.value,
+										&regexArgs->options.value, regexData, opName,
+										enableNoAutoCapture))
+		{
+			regexArgs->pcreData = regexData->pcreData;
+		}
+	}
+
+	data->operator.arguments = regexArgs;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+
+	return false;
+}
+
+
+/* --------------------------------------------------------- */
+/* Process operators helper functions */
+/* --------------------------------------------------------- */
 
 /* Function that processes a single argument for $concat. */
 static bool
-ProcessDollarConcatElement(bson_value_t *result, const
-						   bson_value_t *currentElement,
-						   bool isFieldPathExpression, void *state)
+ProcessDollarConcatElement(const bson_value_t *currentValue, void *state,
+						   bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
 		return false; /* stop processing more arguments. */
@@ -505,23 +1578,23 @@ ProcessDollarConcatElement(bson_value_t *result, const
 
 	DollarConcatOperatorState *context = (DollarConcatOperatorState *) state;
 
-	if (currentElement->value_type != BSON_TYPE_UTF8)
+	if (currentValue->value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16702), errmsg(
 							"$concat only supports strings, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	StringView *strView = AllocateStringViewFromBsonValueString(currentElement);
+	StringView *strView = AllocateStringViewFromBsonValueString(currentValue);
 	context->stringList = lappend(context->stringList, strView);
-	context->totalSize += currentElement->value.v_utf8.len;
+	context->totalSize += currentValue->value.v_utf8.len;
 	return true;
 }
 
 
 /* Function that validates the final state before returning the result for $concat. */
 static void
-ProcessDollarConcatResult(bson_value_t *result, void *state)
+ProcessDollarConcatResult(void *state, bson_value_t *result)
 {
 	DollarConcatOperatorState *context = (DollarConcatOperatorState *) state;
 
@@ -537,11 +1610,11 @@ ProcessDollarConcatResult(bson_value_t *result, void *state)
 	ListCell *cell;
 	foreach(cell, context->stringList)
 	{
-		StringView *currentElement = lfirst(cell);
+		StringView *currentValue = lfirst(cell);
 		memcpy(result->value.v_utf8.str + result->value.v_utf8.len,
-			   currentElement->string, currentElement->length);
-		result->value.v_utf8.len += currentElement->length;
-		pfree(currentElement);
+			   currentValue->string, currentValue->length);
+		result->value.v_utf8.len += currentValue->length;
+		pfree(currentValue);
 	}
 
 	list_free(context->stringList);
@@ -549,27 +1622,24 @@ ProcessDollarConcatResult(bson_value_t *result, void *state)
 
 
 /* Function that processes a single argument for $toUpper. */
-static bool
-ProcessDollarToUpperElement(bson_value_t *result,
-							const bson_value_t *currentElement,
-							bool isFieldPathExpression,
-							void *state)
+static void
+ProcessDollarToUpper(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_UTF8;
 		result->value.v_utf8.str = "";
 		result->value.v_utf8.len = 0;
-		return true;
+		return;
 	}
 
-	switch (currentElement->value_type)
+	switch (currentValue->value_type)
 	{
 		case BSON_TYPE_UTF8:
 		{
 			result->value_type = BSON_TYPE_UTF8;
-			char *str = currentElement->value.v_utf8.str;
-			for (uint32_t currByte = 0; currByte < currentElement->value.v_utf8.len;
+			char *str = currentValue->value.v_utf8.str;
+			for (uint32_t currByte = 0; currByte < currentValue->value.v_utf8.len;
 				 currByte++)
 			{
 				if (islower(*str))
@@ -578,24 +1648,22 @@ ProcessDollarToUpperElement(bson_value_t *result,
 				}
 				str++;
 			}
-			result->value = currentElement->value;
+			result->value = currentValue->value;
 			break;
 		}
 
 		default:
 		{
-			return ProcessCommonBsonTypesForStringOperators(result, currentElement,
-															DateStringFormatCase_UpperCase);
+			ProcessCommonBsonTypesForStringOperators(result, currentValue,
+													 DateStringFormatCase_UpperCase);
 		}
 	}
-
-	return true;
 }
 
 
 /* Function that validates the final state before returning the result for $split. */
 static void
-ProcessDollarSplitResult(bson_value_t *result, void *state)
+ProcessDollarSplit(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *context = (DualArgumentExpressionState *) state;
 
@@ -661,108 +1729,97 @@ ProcessDollarSplitResult(bson_value_t *result, void *state)
 
 
 /* Function that processes a single argument for $strLenBytes. */
-static bool
-ProcessDollarStrLenBytesElement(bson_value_t *result, const
-								bson_value_t *currentElement,
-								bool isFieldPathExpression, void *state)
+static void
+ProcessDollarStrLenBytes(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (currentElement->value_type != BSON_TYPE_UTF8)
+	if (currentValue->value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34473), errmsg(
 							"$strLenBytes requires a string argument, found: %s",
-							currentElement->value_type == BSON_TYPE_EOD ?
+							currentValue->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	result->value_type = BSON_TYPE_INT32;
-	result->value.v_int32 = currentElement->value.v_utf8.len;
-	return true;
+	result->value.v_int32 = currentValue->value.v_utf8.len;
 }
 
 
 /* Function that processes a single argument for $strLenCP. */
-static bool
-ProcessDollarStrLenCPElement(bson_value_t *result, const
-							 bson_value_t *currentElement,
-							 bool isFieldPathExpression, void *state)
+static void
+ProcessDollarStrLenCP(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (currentElement->value_type != BSON_TYPE_UTF8)
+	if (currentValue->value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34471), errmsg(
 							"$strLenCP requires a string argument, found: %s",
-							currentElement->value_type == BSON_TYPE_EOD ?
+							currentValue->value_type == BSON_TYPE_EOD ?
 							MISSING_TYPE_NAME :
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	result->value_type = BSON_TYPE_INT32;
-	result->value.v_int32 = Utf8CodePointCount(currentElement);
-	return true;
+	result->value.v_int32 = Utf8CodePointCount(currentValue);
 }
 
 
 /* Function that processes a single argument for $tolower. */
-static bool
-ProcessDollarToLowerElement(bson_value_t *result,
-							const bson_value_t *currentElement,
-							bool isFieldPathExpression,
-							void *state)
+static void
+ProcessDollarToLower(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_UTF8;
 		result->value.v_utf8.str = "";
 		result->value.v_utf8.len = 0;
-		return true;
+		return;
 	}
 
-	switch (currentElement->value_type)
+	switch (currentValue->value_type)
 	{
 		case BSON_TYPE_UTF8:
 		{
 			result->value_type = BSON_TYPE_UTF8;
-			ConvertToLower(currentElement->value.v_utf8.str,
-						   currentElement->value.v_utf8.len);
-			result->value = currentElement->value;
+			ConvertToLower(currentValue->value.v_utf8.str,
+						   currentValue->value.v_utf8.len);
+			result->value = currentValue->value;
 			break;
 		}
 
 		default:
 		{
-			return ProcessCommonBsonTypesForStringOperators(result, currentElement,
-															DateStringFormatCase_LowerCase);
+			ProcessCommonBsonTypesForStringOperators(result, currentValue,
+													 DateStringFormatCase_LowerCase);
 		}
 	}
-
-	return true;
 }
 
 
 /**
  * A common function to process types for toLower and toUpper aggregation operators.
  * @param result : the final result which will contain the output
- * @param currentElement :  the element given which contains the type of input and the value of the input.
+ * @param currentValue :  the element given which contains the type of input and the value of the input.
  * @param isToUpper : Since this is a common function so a way is needed to process the results differently based on upper or lower case operator. It specified whether the call was made for toUpper or toLower aggregation operator
  */
 static bool
 ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
-										 const bson_value_t *currentElement,
+										 const bson_value_t *currentValue,
 										 DateStringFormatCase formatCase)
 {
-	switch (currentElement->value_type)
+	switch (currentValue->value_type)
 	{
 		case BSON_TYPE_UTF8:
 		{
 			result->value_type = BSON_TYPE_UTF8;
-			result->value = currentElement->value;
+			result->value = currentValue->value;
 			break;
 		}
 
 		case BSON_TYPE_INT32:
 		case BSON_TYPE_INT64:
 		{
-			char *strNumber = (char *) BsonValueToJsonForLogging(currentElement);
+			char *strNumber = (char *) BsonValueToJsonForLogging(currentValue);
 			result->value_type = BSON_TYPE_UTF8;
 			result->value.v_utf8.str = strNumber;
 			result->value.v_utf8.len = strlen(strNumber);
@@ -772,7 +1829,7 @@ ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
 		case BSON_TYPE_DOUBLE:
 		case BSON_TYPE_DECIMAL128:
 		{
-			char *strNumber = (char *) BsonValueToJsonForLogging(currentElement);
+			char *strNumber = (char *) BsonValueToJsonForLogging(currentValue);
 			int lenStrNumber = strlen(strNumber);
 
 			/**
@@ -795,7 +1852,7 @@ ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
 				.offsetInMs = 0,
 			};
 
-			int64_t dateInMs = currentElement->value.v_datetime;
+			int64_t dateInMs = currentValue->value.v_datetime;
 
 			StringView dateStrView = GetDateStringWithDefaultFormat(dateInMs, timezone,
 																	formatCase);
@@ -814,7 +1871,7 @@ ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
 			};
 
 			StringView timestampStrView = GetTimestampStringWithDefaultFormat(
-				currentElement, timezone, formatCase);
+				currentValue, timezone, formatCase);
 			result->value_type = BSON_TYPE_UTF8;
 			result->value.v_utf8.str = (char *) timestampStrView.string;
 			result->value.v_utf8.len = timestampStrView.length;
@@ -825,134 +1882,16 @@ ProcessCommonBsonTypesForStringOperators(bson_value_t *result,
 		{
 			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16007), errmsg(
 								"can't convert from BSON type %s to String",
-								BsonTypeName(currentElement->value_type))));
+								BsonTypeName(currentValue->value_type))));
 		}
 	}
 	return true;
-}
-
-
-/*
- * This function facilitates the parsing of input for the $trim, $ltrim, and $rtrim operators.
- * It stores the parsed input into their respective variables, validates the input, and throws errors if the input is deemed improper.
- * It returns false if, during the parsing process, it determines that the output for any of the operators would be null. Otherwise, it returns true.
- */
-static bool
-ParseDollarTrimInput(pgbson *doc, const bson_value_t *inputDocument, bson_value_t *input,
-					 bson_value_t *chars, ExpressionResult *expressionResult,
-					 const char *opName)
-{
-	if (inputDocument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50696), errmsg(
-							"%s only supports an object as an argument, found %s",
-							opName, BsonTypeName(inputDocument->value_type))));
-	}
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(inputDocument, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			*input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "chars") == 0)
-		{
-			*chars = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50694), errmsg(
-								"%s found an unknown argument: %s", opName, key)));
-		}
-	}
-
-	if (input->value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50695), errmsg(
-							"%s requires an 'input' field", opName)));
-	}
-
-	bool isNullOnEmpty = false;
-	*input = EvaluateExpressionAndGetValue(doc, input, expressionResult, isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(input))
-	{
-		return false;
-	}
-
-	if (input->value_type != BSON_TYPE_UTF8)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50699),
-						errmsg(
-							"%s requires its input to be a string, got %s (of type %s) instead.",
-							opName, BsonValueToJsonForLogging(input), BsonTypeName(
-								input->value_type)),
-						errdetail_log(
-							"%s requires its input to be a string, got of type %s instead.",
-							opName, BsonTypeName(input->value_type))));
-	}
-
-	/* chars is an optional argument, bail if not present */
-	if (chars->value_type == BSON_TYPE_EOD)
-	{
-		return true;
-	}
-
-	*chars = EvaluateExpressionAndGetValue(doc, chars, expressionResult, isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(chars))
-	{
-		return false;
-	}
-
-	if (chars->value_type != BSON_TYPE_UTF8)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50700), errmsg(
-							" %s requires 'chars' to be a string, got %s (of type %s) instead.",
-							opName, BsonValueToJsonForLogging(chars), BsonTypeName(
-								chars->value_type)), errdetail_log(
-							" %s requires 'chars' to be a string, got of type %s instead.",
-							opName, BsonTypeName(chars->value_type))));
-	}
-
-	return true;
-}
-
-
-/*
- * This function removes everything before the start index and after the end index,
- * and then assigns the trimmed string to the result of the $trim, $rtrim, or $ltrim operator.
- */
-static void
-WriteDollarTrimResult(bson_value_t *result, bson_value_t *input, int startIndex,
-					  int endIndex, ExpressionResult *expressionResult)
-{
-	int32 outputLength = (endIndex - startIndex) + 1;
-	if (outputLength > 0)
-	{
-		result->value.v_utf8.len = outputLength;
-		result->value.v_utf8.str = palloc(result->value.v_utf8.len);
-		memcpy(result->value.v_utf8.str,
-			   input->value.v_utf8.str + startIndex,
-			   result->value.v_utf8.len);
-	}
-	else
-	{
-		result->value.v_utf8.str = "";
-		result->value.v_utf8.len = 0;
-	}
-
-	ExpressionResultSetValue(expressionResult, result);
 }
 
 
 /* Process the $IndexOfBytes operator and find the occurance of substr and save it in result*/
 static void
-ProcessDollarIndexOfBytes(bson_value_t *result, void *state)
+ProcessDollarIndexOfBytes(void *state, bson_value_t *result)
 {
 	FourArgumentExpressionState *context = (FourArgumentExpressionState *) state;
 
@@ -968,8 +1907,8 @@ ProcessDollarIndexOfBytes(bson_value_t *result, void *state)
 	int endIndex = context->firstArgument.value.v_utf8.len;
 
 	bool isIndexOfBytesOp = true;
-	ProcessInputDollarIndexOfOperators(context, isIndexOfBytesOp, &startIndex,
-									   &endIndex);
+	ProcessDollarIndexOfCore(context, isIndexOfBytesOp, &startIndex,
+							 &endIndex);
 
 	if (startIndex > endIndex)
 	{
@@ -997,7 +1936,7 @@ ProcessDollarIndexOfBytes(bson_value_t *result, void *state)
 
 /* Process the $IndexOfCP operator and find the occurance of substr and save it in result */
 static void
-ProcessDollarIndexOfCP(bson_value_t *result, void *state)
+ProcessDollarIndexOfCP(void *state, bson_value_t *result)
 {
 	FourArgumentExpressionState *context = (FourArgumentExpressionState *) state;
 	if (IsExpressionResultNullOrUndefined(&context->firstArgument))
@@ -1012,8 +1951,8 @@ ProcessDollarIndexOfCP(bson_value_t *result, void *state)
 	int endIndex = -1;
 
 	bool isIndexOfBytesOp = false;
-	ProcessInputDollarIndexOfOperators(context, isIndexOfBytesOp, &startIndex,
-									   &endIndex);
+	ProcessDollarIndexOfCore(context, isIndexOfBytesOp, &startIndex,
+							 &endIndex);
 
 	if (endIndex == -1)
 	{
@@ -1063,9 +2002,9 @@ ProcessDollarIndexOfCP(bson_value_t *result, void *state)
  * it finds out startIndex and endIndex from the input and populates corresponding variables.
  */
 static void
-ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
-								   bool isIndexOfBytesOp,
-								   int *startIndex, int *endIndex)
+ProcessDollarIndexOfCore(FourArgumentExpressionState *input,
+						 bool isIndexOfBytesOp,
+						 int *startIndex, int *endIndex)
 {
 	const char *opName = isIndexOfBytesOp ? "$indexOfBytes" : "$indexOfCP";
 
@@ -1170,7 +2109,7 @@ ProcessInputDollarIndexOfOperators(FourArgumentExpressionState *input,
 
 /* Function that processes array for $strcasecmp. */
 static void
-ProcessDollarStrCaseCmpResult(bson_value_t *result, void *state)
+ProcessDollarStrCaseCmp(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -1189,7 +2128,7 @@ ProcessDollarStrCaseCmpResult(bson_value_t *result, void *state)
 
 
 /**
- * @param element : this refers to the element which is given as input aka currentElement in most of the operator handlers
+ * @param element : this refers to the element which is given as input aka currentValue in most of the operator handlers
  * This function processes the current element converts to UTF-8 for some bson types and then converts them to a common case so that they can be comparison can be case in-sensitive
  */
 static void
@@ -1266,6 +2205,10 @@ ProcessCoersionForStrCaseCmp(bson_value_t *element)
 	ConvertToLower(element->value.v_utf8.str, element->value.v_utf8.len);
 }
 
+
+/* --------------------------------------------------------- */
+/* Other helper functions */
+/* --------------------------------------------------------- */
 
 /*
  * This utility function is designed for the $trim, $ltrim, and $rtrim operations. It populates a hashmap by utilizing the input variable "chars".
@@ -1506,455 +2449,28 @@ AllocateStringViewFromBsonValueString(const bson_value_t *element)
 }
 
 
-/* *******************************************
- *  New aggregation operator's framework which uses pre parsed expression
- *  when building the projection tree.
- *  *******************************************
- */
-
-
-/*
- * Evaluates the output of an $regexMatch expression.
- * Since $regexMatch is expressed as { "$regexMatch": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
- * We evaluate the inner expressions and try to find match, returns true if match exist.
- */
-void
-HandlePreParsedDollarRegexMatch(pgbson *doc, void *arguments,
-								ExpressionResult *expressionResult)
-{
-	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
-
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t input = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t regex = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t options = childResult.value;
-	RegexData regexData = { 0 };
-	bool isRegexAlreadyCompiled = false;
-	bool enableNoAutoCapture = true;
-
-	if (regexArgs->pcreData)
-	{
-		isRegexAlreadyCompiled = true;
-		regexData.pcreData = regexArgs->pcreData;
-	}
-
-	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData, "$regexMatch",
-									 enableNoAutoCapture))
-	{
-		bson_value_t falseValue = {
-			.value_type = BSON_TYPE_BOOL,
-			.value.v_bool = false
-		};
-
-		ExpressionResultSetValue(expressionResult, &falseValue);
-		return;
-	}
-
-	bson_value_t resultValue = { .value_type = BSON_TYPE_BOOL };
-	resultValue.value.v_bool = CompareRegexTextMatch(&input, &regexData);
-	ExpressionResultSetValue(expressionResult, &resultValue);
-
-	if (!isRegexAlreadyCompiled)
-	{
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Evaluates the output of an $regexFind expression.
- * Since $regexFind is expressed as { "$regexFind": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
- * We evaluate the inner expressions and find the first matching pattern.
- */
-void
-HandlePreParsedDollarRegexFind(pgbson *doc, void *arguments,
-							   ExpressionResult *expressionResult)
-{
-	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
-
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t input = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t regex = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t options = childResult.value;
-	bson_value_t resultValue = { .value_type = BSON_TYPE_NULL };
-	RegexData regexData = { 0 };
-	bool isRegexAlreadyCompiled = false;
-	bool enableNoAutoCapture = false;
-
-	if (regexArgs->pcreData)
-	{
-		isRegexAlreadyCompiled = true;
-		regexData.pcreData = regexArgs->pcreData;
-	}
-
-	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData, "$regexFind",
-									 enableNoAutoCapture))
-	{
-		ExpressionResultSetValue(expressionResult, &resultValue);
-		return;
-	}
-
-	if (!CompareRegexTextMatch(&input, &regexData))
-	{
-		ExpressionResultSetValue(expressionResult, &resultValue);
-		return;
-	}
-
-	size_t *outputVector = GetResultVectorUsingPcreData(regexData.pcreData);
-	int outputLen = GetResultLengthUsingPcreData(regexData.pcreData);
-	int ignorePreviousMatchCP = 0;
-
-	resultValue = ConstructResultForDollarRegex(&regexData, &input, outputVector,
-												outputLen,
-												&ignorePreviousMatchCP);
-	ExpressionResultSetValue(expressionResult, &resultValue);
-
-	if (!isRegexAlreadyCompiled)
-	{
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Evaluates the output of an $regexFindAll expression.
- * Since $regexFindAll is expressed as { "$regexFindAll": {"input" :<string>, "regex" : <regex pattern>, "options": <regexOption>}}
- * We evaluate the inner expressions and find the all matching pattern.
- */
-void
-HandlePreParsedDollarRegexFindAll(pgbson *doc, void *arguments,
-								  ExpressionResult *expressionResult)
-{
-	DollarRegexArguments *regexArgs = (DollarRegexArguments *) arguments;
-
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&regexArgs->input, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t input = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->regex, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t regex = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(&regexArgs->options, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t options = childResult.value;
-	bson_value_t result;
-	RegexData regexData = { 0 };
-	bool isRegexAlreadyCompiled = false;
-	bool enableNoAutoCapture = false;
-
-	if (regexArgs->pcreData)
-	{
-		isRegexAlreadyCompiled = true;
-		regexData.pcreData = regexArgs->pcreData;
-	}
-
-	if (!ValidateEvaluatedRegexInput(&input, &regex, &options, &regexData,
-									 "$regexFindAll", enableNoAutoCapture))
-	{
-		InitBsonValueAsEmptyArray(&result);
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
-	}
-
-	WriteOutputOfDollarRegexFindAll(&input, &regexData, &result);
-	ExpressionResultSetValue(expressionResult, &result);
-
-	if (!isRegexAlreadyCompiled)
-	{
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Evaluates the output of an $substr/$substrBytes expression.
- * $substr is expressed as { "$substr": [<string>, <offset>, <length>] }
- */
-void
-HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
-								 ExpressionResult *expressionResult)
-{
-	List *argList = arguments;
-
-	AggregationExpressionData *first = list_nth(argList, 0);
-	AggregationExpressionData *second = list_nth(argList, 1);
-	AggregationExpressionData *third = list_nth(argList, 2);
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(first, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t firstValue = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(second, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t secondValue = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(third, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t thirdValue = childResult.value;
-
-	bson_value_t result;
-	ProcessDollarSubstrBytes(&firstValue, &secondValue, &thirdValue, &result);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * Evaluates the output of an $substrCP expression.
- * $substrCP is expressed as { "$substrCP": [<string>, <offset>, <length>] }
- */
-void
-HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
-							  ExpressionResult *expressionResult)
-{
-	List *argList = arguments;
-
-	AggregationExpressionData *first = list_nth(argList, 0);
-	AggregationExpressionData *second = list_nth(argList, 1);
-	AggregationExpressionData *third = list_nth(argList, 2);
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(first, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t firstValue = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(second, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t secondValue = childResult.value;
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(third, doc, &childResult, isNullOnEmpty);
-
-	bson_value_t thirdValue = childResult.value;
-
-	bson_value_t result;
-	ProcessDollarSubstrCP(&firstValue, &secondValue, &thirdValue, &result);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * Parses an $regexMatch expression and sets the parsed data in the data argument.
- * $regexMatch is expressed as { "$regexMatch": { "input" : <string>, "regex" : <string>, "options": <string>}}
- */
-void
-ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data,
-					  ParseAggregationExpressionContext *context)
-{
-	bson_value_t input = { 0 };
-	RegexData regexData = { 0 };
-	bool enableNoAutoCapture = true;
-	bool isNullOrUndefinedInput = false;
-
-	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexMatch",
-							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
-	{
-		if (isNullOrUndefinedInput)
-		{
-			data->value.value_type = BSON_TYPE_BOOL;
-			data->value.value.v_bool = false;
-			return;
-		}
-
-		data->value.value_type = BSON_TYPE_BOOL;
-		data->value.value.v_bool = CompareRegexTextMatch(&input, &regexData);
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Parses an $regexFind expression and sets the parsed data in the data argument.
- * $regexFind is expressed as { "$regexFind": { "input" : <string>, "regex" : <string>, "options": <string>}}
- */
-void
-ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data,
-					 ParseAggregationExpressionContext *context)
-{
-	bson_value_t input = { 0 };
-	RegexData regexData = { 0 };
-	bool enableNoAutoCapture = false;
-	bool isNullOrUndefinedInput = false;
-
-	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFind",
-							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
-	{
-		if (isNullOrUndefinedInput || !CompareRegexTextMatch(&input, &regexData))
-		{
-			data->value.value_type = BSON_TYPE_NULL;
-			FreePcreData(regexData.pcreData);
-			return;
-		}
-
-		size_t *outputVector = GetResultVectorUsingPcreData(regexData.pcreData);
-		int outputLen = GetResultLengthUsingPcreData(regexData.pcreData);
-		int ignorePreviousMatchCP = 0;
-
-		data->value = ConstructResultForDollarRegex(&regexData, &input, outputVector,
-													outputLen,
-													&ignorePreviousMatchCP);
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Parses an $regexFindAll expression and sets the parsed data in the data argument.
- * $regexFindAll is expressed as { "$regexFindAll": { "input" : <string>, "regex" : <string>, "options": <string>}}
- */
-void
-ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData *data,
-						ParseAggregationExpressionContext *context)
-{
-	bson_value_t input = { 0 };
-	RegexData regexData = { 0 };
-	bool enableNoAutoCapture = false;
-	bool isNullOrUndefinedInput = false;
-
-	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFindAll",
-							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
-	{
-		if (isNullOrUndefinedInput)
-		{
-			InitBsonValueAsEmptyArray(&(data->value));
-			return;
-		}
-
-		WriteOutputOfDollarRegexFindAll(&input, &regexData, &data->value);
-		FreePcreData(regexData.pcreData);
-	}
-}
-
-
-/*
- * Parses an $substrBytes expression and sets the parsed data in the data argument.
- */
-void
-ParseDollarSubstrBytes(const bson_value_t *argument, AggregationExpressionData *data,
-					   ParseAggregationExpressionContext *context)
-{
-	int numOfRequiredArgs = 3;
-	List *arguments = ParseFixedArgumentsForExpression(argument,
-													   numOfRequiredArgs,
-													   "$substrBytes",
-													   &data->operator.
-													   argumentsKind,
-													   context);
-
-	AggregationExpressionData *first = list_nth(arguments, 0);
-	AggregationExpressionData *second = list_nth(arguments, 1);
-	AggregationExpressionData *third = list_nth(arguments, 2);
-
-	if (IsAggregationExpressionConstant(first) &&
-		IsAggregationExpressionConstant(second) &&
-		IsAggregationExpressionConstant(third))
-	{
-		ProcessDollarSubstrBytes(&first->value, &second->value, &third->value,
-								 &data->value);
-
-		data->kind = AggregationExpressionKind_Constant;
-
-		list_free_deep(arguments);
-
-		return;
-	}
-
-	data->operator.arguments = arguments;
-}
-
-
-/*
- * Parses an $substrCP expression and sets the parsed data in the data argument.
- */
-void
-ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data,
-					ParseAggregationExpressionContext *context)
-{
-	int numOfRequiredArgs = 3;
-	List *arguments = ParseFixedArgumentsForExpression(argument,
-													   numOfRequiredArgs,
-													   "$substrCP",
-													   &data->operator.
-													   argumentsKind,
-													   context);
-
-	AggregationExpressionData *first = list_nth(arguments, 0);
-	AggregationExpressionData *second = list_nth(arguments, 1);
-	AggregationExpressionData *third = list_nth(arguments, 2);
-
-	if (IsAggregationExpressionConstant(first) &&
-		IsAggregationExpressionConstant(second) &&
-		IsAggregationExpressionConstant(third))
-	{
-		ProcessDollarSubstrCP(&first->value, &second->value, &third->value, &data->value);
-
-		data->kind = AggregationExpressionKind_Constant;
-
-		list_free_deep(arguments);
-
-		return;
-	}
-
-	data->operator.arguments = arguments;
-}
-
-
 /* Computes result for $substrBytes operator. */
 static void
-ProcessDollarSubstrBytes(bson_value_t *firstValue,
-						 bson_value_t *secondValue,
-						 bson_value_t *thirdValue,
-						 bson_value_t *result)
+ProcessDollarSubstrBytes(void *state, bson_value_t *result)
 {
-	if (!BsonValueIsNumber(secondValue))
+	ThreeArgumentExpressionState *context = (ThreeArgumentExpressionState *) state;
+	const bson_value_t firstValue = context->firstArgument;
+	const bson_value_t secondValue = context->secondArgument;
+	const bson_value_t thirdValue = context->thirdArgument;
+
+	if (!BsonValueIsNumber(&secondValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16034), errmsg(
 							"$substrBytes: starting index must be a numeric type (is BSON type %s)",
-							BsonTypeName(secondValue->value_type))));
+							BsonTypeName(secondValue.value_type))));
 	}
-	else if (!BsonValueIsNumber(thirdValue))
+	else if (!BsonValueIsNumber(&thirdValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16035), errmsg(
 							"$substrBytes: length must be a numeric type (is BSON type %s)",
-							BsonTypeName(thirdValue->value_type))));
+							BsonTypeName(thirdValue.value_type))));
 	}
-	else if (IsExpressionResultNullOrUndefined(firstValue))
+	else if (IsExpressionResultNullOrUndefined(&firstValue))
 	{
 		result->value_type = BSON_TYPE_UTF8;
 		result->value.v_utf8.str = "";
@@ -1963,10 +2479,10 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 		return;
 	}
 
-	ProcessCommonBsonTypesForStringOperators(result, firstValue,
+	ProcessCommonBsonTypesForStringOperators(result, &firstValue,
 											 DateStringFormatCase_CamelCase);
 
-	int64_t offset = BsonValueAsInt64WithRoundingMode(secondValue, 0, true);
+	int64_t offset = BsonValueAsInt64WithRoundingMode(&secondValue, 0, true);
 
 	if (offset < 0)
 	{
@@ -1993,7 +2509,7 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 							)));
 	}
 
-	int64_t length = BsonValueAsInt64WithRoundingMode(thirdValue, 0, true);
+	int64_t length = BsonValueAsInt64WithRoundingMode(&thirdValue, 0, true);
 
 	if (length < 0)
 	{
@@ -2020,35 +2536,37 @@ ProcessDollarSubstrBytes(bson_value_t *firstValue,
 
 /* Computes result for $substrCP operator. */
 static void
-ProcessDollarSubstrCP(bson_value_t *firstValue,
-					  bson_value_t *secondValue,
-					  bson_value_t *thirdValue,
-					  bson_value_t *result)
+ProcessDollarSubstrCP(void *state, bson_value_t *result)
 {
+	ThreeArgumentExpressionState *context = (ThreeArgumentExpressionState *) state;
+	const bson_value_t firstValue = context->firstArgument;
+	const bson_value_t secondValue = context->secondArgument;
+	const bson_value_t thirdValue = context->thirdArgument;
+
 	bool checkFixedInteger = true;
-	if (!BsonValueIsNumber(secondValue))
+	if (!BsonValueIsNumber(&secondValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34450), errmsg(
 							"$substrCP: starting index must be a numeric type (is BSON type %s)",
-							BsonTypeName(secondValue->value_type))));
+							BsonTypeName(secondValue.value_type))));
 	}
-	else if (!IsBsonValue32BitInteger(secondValue, checkFixedInteger))
+	else if (!IsBsonValue32BitInteger(&secondValue, checkFixedInteger))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34451), errmsg(
 							"$substrCP: starting index cannot be represented as a 32-bit integral value")));
 	}
-	else if (!BsonValueIsNumber(thirdValue))
+	else if (!BsonValueIsNumber(&thirdValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34452), errmsg(
 							"$substrCP: length must be a numeric type (is BSON type %s)",
-							BsonTypeName(thirdValue->value_type))));
+							BsonTypeName(thirdValue.value_type))));
 	}
-	else if (!IsBsonValue32BitInteger(thirdValue, checkFixedInteger))
+	else if (!IsBsonValue32BitInteger(&thirdValue, checkFixedInteger))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34453), errmsg(
 							"$substrCP: length cannot be represented as a 32-bit integral value")));
 	}
-	else if (IsExpressionResultNullOrUndefined(firstValue))
+	else if (IsExpressionResultNullOrUndefined(&firstValue))
 	{
 		result->value_type = BSON_TYPE_UTF8;
 		result->value.v_utf8.str = "";
@@ -2057,11 +2575,11 @@ ProcessDollarSubstrCP(bson_value_t *firstValue,
 		return;
 	}
 
-	ProcessCommonBsonTypesForStringOperators(result, firstValue,
+	ProcessCommonBsonTypesForStringOperators(result, &firstValue,
 											 DateStringFormatCase_CamelCase);
 
-	int offset = BsonValueAsInt32(secondValue);
-	int length = BsonValueAsInt32(thirdValue);
+	int offset = BsonValueAsInt32(&secondValue);
+	int length = BsonValueAsInt32(&thirdValue);
 
 	if (length < 0)
 	{
@@ -2132,102 +2650,89 @@ ProcessDollarSubstrCP(bson_value_t *firstValue,
 }
 
 
-/*
- * This function facilitates the parsing of input for the $regexFind, $regexFindAll, and $regexMatch operators.
- * It stores the parsed input into their respective variables, validates the input, and throws errors if the input is deemed improper.
- * The function returns `true` if any input values are constant and set the isNullOrUndefinedInput variable to true if any input value is NULL or Undefined.
- */
-static bool
-ParseDollarRegexInput(const bson_value_t *operatorValue,
-					  AggregationExpressionData *data,
-					  bson_value_t *input,
-					  RegexData *regexData,
-					  const char *opName,
-					  bool enableNoAutoCapture,
-					  bool *isNullOrUndefinedInput,
-					  ParseAggregationExpressionContext *context)
+static void
+ProcessDollarTrim(const bson_value_t *inputValue, const bson_value_t *charsValue,
+				  bson_value_t *result, const bool providedChars, const char *opName)
 {
-	bson_value_t regex = { 0 };
-	bson_value_t options = { 0 };
-
-	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
+	if (IsExpressionResultNullOrUndefined(inputValue) ||
+		(providedChars && IsExpressionResultNullOrUndefined(charsValue)))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51103), errmsg(
-							"%s expects an object of named arguments but found: %s",
-							opName, BsonTypeName(operatorValue->value_type))));
+		result->value_type = BSON_TYPE_NULL;
+		return;
 	}
 
-	bson_iter_t docIter;
-	BsonValueInitIterator(operatorValue, &docIter);
-	while (bson_iter_next(&docIter))
+	if (inputValue->value_type != BSON_TYPE_UTF8)
 	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			*input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "regex") == 0)
-		{
-			regex = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "options") == 0)
-		{
-			options = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31024), errmsg(
-								"%s found an unknown argument: %s", opName, key)));
-		}
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50699),
+						errmsg(
+							"%s requires its input to be a string, got %s (of type %s) instead.",
+							opName, BsonValueToJsonForLogging(inputValue), BsonTypeName(
+								inputValue->value_type)),
+						errdetail_log(
+							"%s requires its input to be a string, got of type %s instead.",
+							opName, BsonTypeName(inputValue->value_type))));
 	}
 
-	if (input->value_type == BSON_TYPE_EOD)
+	if (charsValue->value_type != BSON_TYPE_EOD && charsValue->value_type !=
+		BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31022), errmsg(
-							"%s requires 'input' parameter", opName)));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION50700), errmsg(
+							" %s requires 'chars' to be a string, got %s (of type %s) instead.",
+							opName, BsonValueToJsonForLogging(charsValue), BsonTypeName(
+								charsValue->value_type)), errdetail_log(
+							" %s requires 'chars' to be a string, got of type %s instead.",
+							opName, BsonTypeName(charsValue->value_type))));
 	}
 
-	if (regex.value_type == BSON_TYPE_EOD)
+	result->value_type = BSON_TYPE_UTF8;
+
+	HTAB *charsHashTable = CreateStringViewHashSet();
+	FillLookUpTableDollarTrim(charsHashTable, charsValue);
+
+	int startIndex, endIndex;
+	if (strcmp(opName, "$ltrim") == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31023), errmsg(
-							"%s requires 'regex' parameter", opName)));
+		startIndex = FindStartIndexDollarTrim(charsHashTable, inputValue);
+		endIndex = inputValue->value.v_utf8.len - 1;
+	}
+	else if (strcmp(opName, "$rtrim") == 0)
+	{
+		startIndex = 0;
+		endIndex = FindEndIndexDollarTrim(charsHashTable, inputValue);
+	}
+	else
+	{
+		startIndex = FindStartIndexDollarTrim(charsHashTable, inputValue);
+		endIndex = FindEndIndexDollarTrim(charsHashTable, inputValue);
 	}
 
+	WriteDollarTrimResult(inputValue, result, startIndex, endIndex);
+	hash_destroy(charsHashTable);
+}
 
-	DollarRegexArguments *regexArgs = palloc0(sizeof(DollarRegexArguments));
-	ParseAggregationExpressionData(&regexArgs->input, input, context);
-	ParseAggregationExpressionData(&regexArgs->regex, &regex, context);
-	ParseAggregationExpressionData(&regexArgs->options, &options, context);
 
-	if (IsAggregationExpressionConstant(&regexArgs->input) &&
-		IsAggregationExpressionConstant(&regexArgs->regex) &&
-		IsAggregationExpressionConstant(&regexArgs->options))
+/*
+ * This function removes everything before the start index and after the end index,
+ * and then assigns the trimmed string to the result of the $trim, $rtrim, or $ltrim operator.
+ */
+static void
+WriteDollarTrimResult(const bson_value_t *input, bson_value_t *result, int startIndex,
+					  int endIndex)
+{
+	int32 outputLength = (endIndex - startIndex) + 1;
+	if (outputLength > 0)
 	{
-		pfree(regexArgs);
-		data->kind = AggregationExpressionKind_Constant;
-
-		if (!ValidateEvaluatedRegexInput(input, &regex, &options, regexData, opName,
-										 enableNoAutoCapture))
-		{
-			*isNullOrUndefinedInput = true;
-		}
-
-		return true;
+		result->value.v_utf8.len = outputLength;
+		result->value.v_utf8.str = palloc(result->value.v_utf8.len);
+		memcpy(result->value.v_utf8.str,
+			   input->value.v_utf8.str + startIndex,
+			   result->value.v_utf8.len);
 	}
-	else if (IsAggregationExpressionConstant(&regexArgs->regex) &&
-			 IsAggregationExpressionConstant(&regexArgs->options))
+	else
 	{
-		if (ValidateEvaluatedRegexInput(input, &regex, &options, regexData, opName,
-										enableNoAutoCapture))
-		{
-			regexArgs->pcreData = regexData->pcreData;
-		}
+		result->value.v_utf8.str = "";
+		result->value.v_utf8.len = 0;
 	}
-
-	data->operator.arguments = regexArgs;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-
-	return false;
 }
 
 
@@ -2257,7 +2762,7 @@ HandlePreParsedDollarReplaceAll(pgbson *doc, void *arguments,
 }
 
 
-/* Parses a $replaceOne expression and sets the parsed data in the data argument. */
+/* Parses a $replaceOne expression. */
 void
 ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *data,
 					  ParseAggregationExpressionContext *context)
@@ -2269,7 +2774,7 @@ ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *d
 }
 
 
-/* Parses a $replaceAll expression and sets the parsed data in the data argument. */
+/* Parses a $replaceAll expression. */
 void
 ParseDollarReplaceAll(const bson_value_t *argument, AggregationExpressionData *data,
 					  ParseAggregationExpressionContext *context)
