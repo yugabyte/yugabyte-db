@@ -1133,11 +1133,11 @@ yb-admin create_snapshot_schedule \
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
 * *filter-expression*: The set of objects to include in the snapshot.
 
-The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) in the format <keyspace_name> or databases (YSQL) in the format <ysql.database_name>. For proper consistency guarantees, **it is recommended to set this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
+The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
 
 **Example**
 
-Take a snapshot of the YSQL database, `ysql.yugabyte` once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
 ./bin/yb-admin \
@@ -1145,7 +1145,7 @@ Take a snapshot of the YSQL database, `ysql.yugabyte` once per minute, and retai
     create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
-The equivalent command for a YCQL keyspace (for example, yugabyte) would be the following:
+The equivalent command for the YCQL keyspace `yugabyte` would be the following:
 
 ```sh
 ./bin/yb-admin \
