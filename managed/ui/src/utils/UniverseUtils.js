@@ -280,9 +280,9 @@ export const isPausableUniverse = (universe) => {
 
 
   if (isUniverseType(universe, 'aws')) {
-    return universe.nodeDetailsSet.find(
+    return universe.universeDetails?.nodeDetailsSet?.find(
       n => n !== null &&
-      isEphemeralAwsStorageInstance(n.cloudInfo?.instanceType)) !== undefined;
+      isEphemeralAwsStorageInstance(n.cloudInfo?.instanceType)) !== undefined ?? true;
   }
 
 
