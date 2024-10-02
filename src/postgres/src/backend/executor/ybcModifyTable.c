@@ -1378,12 +1378,23 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	YBCApplyWriteStmt(update_stmt, rel);
 }
 
+/*
+ * This checks if a YB relation has any separate index DocDB tables.
+ * Covered/primary indexes do not have separate DocDB tables.
+ */
 bool
 YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 {
-	return resultRelInfo->ri_NumIndices > 1 ||
-			(resultRelInfo->ri_NumIndices == 1 &&
-			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary);
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		if (YBIsCoveredByMainTable(index))
+			continue;
+
+		return true;
+	}
+
+	return false;
 }
 
 /*

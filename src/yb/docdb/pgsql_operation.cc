@@ -1960,7 +1960,6 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
     HybridTime* restart_read_ht, bool* has_paging_state) {
   // Build the vectorann and then make an index_doc_read_context on the vectorann
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  auto dims = doc_read_context.vector_idx_options().dimensions();
 
   if (!request_.vector_idx_options().has_vector()) {
     return STATUS(InvalidArgument, "Query vector not provided");
@@ -1970,16 +1969,11 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
 
   auto ysql_query_vec = pointer_cast<const vectorindex::YSQLVector*>(query_vec.data());
 
-  SCHECK_EQ(ysql_query_vec->dim, dims, InvalidArgument, "Vector dimensions mismatch");
-
   auto query_vec_ref = VERIFY_RESULT(
       VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
 
-  if (dims != ysql_query_vec->dim) {
-    return STATUS(InvalidArgument, "Vector dimensions mismatch");
-  }
   DummyANNFactory<FloatVector> ann_factory;
-  auto ann_store = ann_factory.Create(dims);
+  auto ann_store = ann_factory.Create(ysql_query_vec->dim);
 
   auto index_extraction_schema = Schema();
   std::vector<ColumnSchema> indexed_column_ids;
@@ -1991,6 +1985,11 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
   // Vector should be the first value after the key.
   auto vector_col_id =
       doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
+
+  if (request_.vector_idx_options().has_vector_column_id()) {
+    vector_col_id = request_.vector_idx_options().vector_column_id();
+  }
+
   index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
 
   FilteringIterator table_iter(&table_iter_);
@@ -2017,7 +2016,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
           *pointer_cast<const vectorindex::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vec, doc_iter->GetRowKey());
+      ann_store->Add(vec, doc_iter->GetTupleId());
     }
   }
 
