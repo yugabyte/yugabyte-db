@@ -22,7 +22,6 @@
 
 DECLARE_bool(enable_xcluster_api_v2);
 
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
 
 using namespace std::chrono_literals;
@@ -32,7 +31,6 @@ namespace yb {
 void XClusterDDLReplicationTestBase::SetUp() {
   XClusterYsqlTestBase::SetUp();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
 }
 
@@ -52,34 +50,6 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(bool is_colocated) {
       .is_colocated = is_colocated,
   };
   return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
-}
-
-Status XClusterDDLReplicationTestBase::EnableDDLReplicationExtension() {
-  // TODO(#19184): This will be done as part of creating the replication groups.
-  auto p_conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  RETURN_NOT_OK(p_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-  RETURN_NOT_OK(p_conn.ExecuteFormat(
-      "ALTER DATABASE $0 SET $1.replication_role = SOURCE", namespace_name,
-      xcluster::kDDLQueuePgSchemaName));
-  auto c_conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-  RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-  RETURN_NOT_OK(c_conn.ExecuteFormat(
-      "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
-      xcluster::kDDLQueuePgSchemaName));
-
-  // Ensure that tables are properly created with only one tablet each.
-  RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    for (const auto& table_name :
-         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
-      auto yb_table_name = VERIFY_RESULT(
-          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
-      std::shared_ptr<client::YBTable> table;
-      RETURN_NOT_OK(producer_client()->OpenTable(yb_table_name, &table));
-      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
-    }
-    return Status::OK();
-  }));
-  return Status::OK();
 }
 
 Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetProducerTable(

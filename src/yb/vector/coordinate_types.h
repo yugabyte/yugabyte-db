@@ -164,21 +164,23 @@ ReturnType HandleCoordinateKindSwitch(CoordinateKind coordinate_kind, Functor&& 
 #undef YB_CASE_FOR_COORDINATE_KIND_SWITCH
 
 // ------------------------------------------------------------------------------------------------
-// A utility for instantiating templates for all coordinate types
+// Instantiating templates for all supported coordinate type / distance result type combinations
 // ------------------------------------------------------------------------------------------------
 
-#define YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_OF(r, template_name, coordinate_type) \
-    template class template_name<std::vector<coordinate_type>>;
+#define YB_SUPPORTED_COORDINATE_AND_DISTANCE_RESULT_TYPES \
+    ((float, float)) \
+    ((uint8, float)) \
+    ((uint8, uint32_t))
 
-#define YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_FROM_TUPLE(r, template_name, coordinate_info_tuple) \
-    YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_OF( \
-        r, template_name, YB_EXTRACT_COORDINATE_TYPE(coordinate_info_tuple))
+#define YB_INSTANTIATE_TEMPLATE_FOR_ALL_COMBINATIONS_HELPER(r, template_name, info_tuple) \
+    template class template_name< \
+        std::vector<BOOST_PP_TUPLE_ELEM(2, 0, info_tuple)>, \
+        BOOST_PP_TUPLE_ELEM(2, 1, info_tuple)>;
 
-#define YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_TYPES(template_name) \
-    BOOST_PP_SEQ_FOR_EACH(YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_FROM_TUPLE, \
+#define YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(template_name) \
+    BOOST_PP_SEQ_FOR_EACH(YB_INSTANTIATE_TEMPLATE_FOR_ALL_COMBINATIONS_HELPER, \
                           template_name, \
-                          YB_COORDINATE_TYPE_INFO)
-
+                          YB_SUPPORTED_COORDINATE_AND_DISTANCE_RESULT_TYPES)
 
 // ------------------------------------------------------------------------------------------------
 // Vector cast

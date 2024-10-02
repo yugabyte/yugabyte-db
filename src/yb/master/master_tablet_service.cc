@@ -85,7 +85,7 @@ void MasterTabletServiceImpl::AcquireObjectLocks(
     return;
   }
 
-  master_->catalog_manager_impl()->AcquireObjectLocks(req, resp, std::move(context));
+  master_->catalog_manager_impl()->AcquireObjectLocks(l.epoch(), req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::ReleaseObjectLocks(
@@ -106,7 +106,7 @@ void MasterTabletServiceImpl::ReleaseObjectLocks(
     return;
   }
 
-  master_->catalog_manager_impl()->ReleaseObjectLocks(req, resp, std::move(context));
+  master_->catalog_manager_impl()->ReleaseObjectLocks(l.epoch(), req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
@@ -249,6 +249,12 @@ void MasterTabletServiceImpl::Checksum(const tserver::ChecksumRequestPB* req,
                                        tserver::ChecksumResponsePB* resp,
                                        rpc::RpcContext context)  {
   HandleUnsupportedMethod("Checksum", &context);
+}
+
+void MasterTabletServiceImpl::AdminExecutePgsql(
+    const tserver::AdminExecutePgsqlRequestPB* req, tserver::AdminExecutePgsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  HandleUnsupportedMethod("AdminExecutePgsql", &context);
 }
 
 } // namespace master

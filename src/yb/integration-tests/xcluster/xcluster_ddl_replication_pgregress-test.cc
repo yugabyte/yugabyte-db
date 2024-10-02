@@ -77,7 +77,6 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
 
     // Setup xCluster.
     RETURN_NOT_OK(SetUpClusters());
-    RETURN_NOT_OK(EnableDDLReplicationExtension());
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
 

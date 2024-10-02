@@ -1411,7 +1411,8 @@ Status PgApiImpl::NewSample(const PgObjectId& table_id,
                             bool is_region_local,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local);
+  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local,
+                                           clock_->Now());
   RETURN_NOT_OK(sample->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
   return Status::OK();
@@ -1618,8 +1619,8 @@ Status PgApiImpl::FetchRequestedYbctids(PgStatement *handle, const PgExecParamet
   return dml_read.Exec(exec_params);
 }
 
-Status PgApiImpl::DmlANNBindVector(PgStatement *handle, PgExpr *vector) {
-  return down_cast<PgDml*>(handle)->ANNBindVector(vector);
+Status PgApiImpl::DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector) {
+  return down_cast<PgDml*>(handle)->ANNBindVector(vec_att_no, vector);
 }
 
 Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size) {
@@ -2278,6 +2279,10 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
 
 Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
   return pg_session_->TabletsMetadata();
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
+    return pg_session_->ServersMetrics();
 }
 
 void PgApiImpl::ClearSessionState() {

@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -38,7 +40,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.UpgradeYsqlResponse;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
@@ -127,11 +131,16 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     IsInitDbDoneResponse mockIsInitDbDoneResponse =
         new IsInitDbDoneResponse(1000, "", true, true, null, null);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-
     try {
       when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
           .thenReturn(mockUpgradeYsqlResponse);
       when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+      when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      when(mockGFlagsValidation.ysqlMajorVersionUpgrade(anyString(), anyString()))
+          .thenReturn(false);
     } catch (Exception ignored) {
     }
     setUnderReplicatedTabletsMock();
@@ -257,6 +266,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void testSoftwareUpgradeSingleAZ() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -304,6 +316,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void testSoftwareUpgradeMultiAZ() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseMultiAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -350,6 +365,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void testSoftwareUpgradeNoSystemCatalogUpgrade() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
@@ -371,6 +389,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void testSoftwareUpgradeAndPromoteAutoFlagsOnOthers() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
     XClusterConfig.create(
@@ -398,6 +419,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void testSoftwareKubernetesUpgradeRetries() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
 

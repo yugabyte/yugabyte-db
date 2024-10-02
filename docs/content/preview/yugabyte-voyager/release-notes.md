@@ -13,6 +13,43 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.2 - October 1, 2024
+
+### Enhancements
+
+- The [assess-migration](../reference/assess-migration/) and [analyze schema](../reference/schema-migration/analyze-schema/) commands now report issues with indexes on UDT columns under the [Index on complex data types](../known-issues/postgresql/#indexes-on-some-complex-data-types-are-not-supported) PostgreSQL unsupported feature.
+- Improved logic for cluster sizing recommendations in assessment reports:
+
+  - Tables with more than two indexes will now be recommended for sharding.
+  - Materialized views and their associated indexes are now considered when sizing clusters from a PostgreSQL source.
+
+- The analyze-schema command now generates both HTML and JSON format reports by default unless the `output-format` flag is used, in which case only the specified format will be generated.
+- Voyager's [diagnostic service](../reference/diagnostics-report/) (callhome) now uses a secure port for enhanced data security.
+- The installer script now installs the `jq` package on all supported operating systems and verifies that the installed Java version is between 17 and 19 (inclusive).
+
+### Bug fix
+
+- Fixed an issue during the streaming phase of the import data command, where the process would hang on resumption if conflicts arose due to unique constraints between events.
+
+## v1.8.1 - September 17, 2024
+
+### Enhancements
+
+- The installation methods (including RHEL, Ubuntu, Brew, and the installer script) now install PostgreSQL 16 instead of PostgreSQL 14.
+- Added support in [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) to report issues with indexes on columns with complex data types, such as INET, CITEXT, JSONB, TSVECTOR, TSQUERY, and ARRAYs. assess-migration categorizes these issues under the [Index on complex data types](../known-issues/postgresql/#indexes-on-some-complex-data-types-are-not-supported) PostgreSQL unsupported feature.
+- Both [analyze schema](../reference/schema-migration/analyze-schema/) and [assess-migration](../reference/assess-migration/) now detect and report UNLOGGED tables, which are unsupported in YugabyteDB.
+- Changed assessment report file names from "assessmentReport" to "migration_assessment_report", and "bulkAssessmentReport" to "bulk_assessment_report" .
+- Improved UI output of [assess-migration](../reference/assess-migration/) by removing the progress bar from ora2pg when fetching the assessment report.
+
+### Bug fixes
+
+- Fixed an issue in streaming phase of [import data](../reference/data-migration/import-data/) where conflicts between events that could cause unique constraint errors were not being detected properly.
+- Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where multi-column GIN indexes were incorrectly reported as an issue due to a regex misidentifying expression indexes that combine two columns.
+- Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where table or column names containing the keyword "cluster" were incorrectly reported as issues of the type `ALTER TABLE CLUSTER ON`.
+- Fixed an issue in [export-data-from-target](../reference/data-migration/export-data/#export-data-from-target) involving the new YugabyteDB CDC connector from Oracle sources.
+- Fixed a schema registry issue in [import-data](../reference/data-migration/import-data/#import-data) where a "no such file or directory" error occurred.
+- Fixed a bug where Voyager was unable to send details to YugabyteDB UI when upgrading from version 1.7.2 to 1.8 using the same yugabyted cluster.
+
 ## v1.8 - September 3, 2024
 
 ### New Features

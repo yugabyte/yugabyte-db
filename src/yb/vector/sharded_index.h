@@ -28,7 +28,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
     for (auto& index : indexes_) {
-      index = factory.Create();
+      index = factory();
     }
   }
 
@@ -80,35 +80,8 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
  private:
-  std::vector<std::unique_ptr<VectorIndexIf<Vector, DistanceResult>>> indexes_;
+  std::vector<VectorIndexIfPtr<Vector, DistanceResult>> indexes_;
   std::atomic<size_t> round_robin_counter_;  // Atomic counter for thread-safe round-robin insertion
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class ShardedVectorIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
- public:
-  // Constructor to initialize the number of shards and underlying factory.
-  ShardedVectorIndexFactory(
-      size_t num_shards,
-      std::unique_ptr<VectorIndexFactory<Vector, DistanceResult>> underlying_factory)
-      : num_shards_(num_shards), underlying_factory_(std::move(underlying_factory)) {}
-
-  // Override the Create method to produce a ShardedVectorIndex.
-  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    // Create a new ShardedVectorIndex with the specified number of shards.
-    return std::make_unique<ShardedVectorIndex<Vector, DistanceResult>>(
-        *underlying_factory_, num_shards_);
-  }
-
-  // Override SetOptions to propagate options to the underlying factory.
-  void SetOptions(const HNSWOptions& options) override {
-    this->hnsw_options_ = options;  // Store the options in this factory.
-    underlying_factory_->SetOptions(options);  // Propagate to the underlying factory.
-  }
-
- private:
-  size_t num_shards_;
-  std::unique_ptr<VectorIndexFactory<Vector, DistanceResult>> underlying_factory_;
 };
 
 }  // namespace yb::vectorindex

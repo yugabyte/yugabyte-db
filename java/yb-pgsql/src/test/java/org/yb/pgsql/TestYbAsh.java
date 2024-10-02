@@ -23,10 +23,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,13 +39,11 @@ import com.yugabyte.util.PSQLException;
 @RunWith(value = YBTestRunner.class)
 public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLING_INTERVAL = 1000;
-
   private static final int ASH_SAMPLE_SIZE = 500;
-
   private static final String ASH_VIEW = "yb_active_session_history";
 
   private void setAshConfigAndRestartCluster(
-      int sampling_interval, int sample_size) throws Exception {
+      int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
       flagMap.put("allowed_preview_flags_csv",
@@ -55,13 +55,38 @@ public class TestYbAsh extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_ash", "true");
     flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(sampling_interval));
     flagMap.put("ysql_yb_ash_sample_size", String.valueOf(sample_size));
-    // flagMap.put("create_initial_sys_catalog_snapshot", "true");
+    if (circular_buffer_size > 0) {
+      flagMap.put("ysql_yb_ash_circular_buffer_size", String.valueOf(circular_buffer_size));
+    }
     Map<String, String> masterFlagMap = super.getMasterFlags();
     restartClusterWithFlags(masterFlagMap, flagMap);
   }
 
+  private void setAshConfigAndRestartCluster(
+      int sampling_interval, int sample_size) throws Exception {
+    setAshConfigAndRestartCluster(sampling_interval, sample_size, 0);
+  }
+
   private void executePgSleep(Statement statement, long seconds) throws Exception {
     statement.execute("SELECT pg_sleep(" + seconds + ")");
+  }
+
+  // Helper function to get backend count from yb_active_session_history.
+  private int getAshBackendCount(Statement stmt) throws Exception {
+    if (isTestRunningWithConnectionManager()) {
+      HashSet pids = new HashSet();
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        pids.add(getSingleRow(stmt, "SELECT pg_backend_pid()").getInt(0));
+      }
+      return getSingleRow(stmt, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid IN (" +
+          pids.stream().map(String::valueOf).collect(Collectors.joining(",")) +
+          ")").getLong(0).intValue();
+    } else {
+      int pid = getSingleRow(stmt, "SELECT pg_backend_pid()").getInt(0);
+      return getSingleRow(stmt, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+    }
   }
 
   /**
@@ -252,10 +277,10 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testPgAuxInfo() throws Exception {
-    setAshConfigAndRestartCluster(10, ASH_SAMPLE_SIZE);
+    setAshConfigAndRestartCluster(50, ASH_SAMPLE_SIZE, 1);
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
-      for (int i = 0; i < 10000; ++i) {
+      for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
         statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
       }
@@ -317,6 +342,9 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testYsqlPids() throws Exception {
+    // (DB-12674) Choosing backend PID is not deterministic with random
+    // backend allocation, use round-robin allocation instead.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
 
     try (Statement statement = connection.createStatement()) {
@@ -324,20 +352,14 @@ public class TestYbAsh extends BasePgSQLTest {
       for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
       }
-      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE pid = " + pid).getLong(0).intValue();
-      assertGreaterThan(res, 0);
+      assertGreaterThan(getAshBackendCount(statement), 0);
     }
 
     try (Statement statement = connection.createStatement()) {
       for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("SELECT * FROM test_table WHERE k = %d", i));
       }
-      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE pid = " + pid).getLong(0).intValue();
-      assertGreaterThan(res, 0);
+      assertGreaterThan(getAshBackendCount(statement), 0);
     }
   }
 

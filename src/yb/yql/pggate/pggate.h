@@ -602,7 +602,7 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
-  Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
+  Status DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
@@ -798,6 +798,8 @@ class PgApiImpl {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
 

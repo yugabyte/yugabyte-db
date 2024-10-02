@@ -128,7 +128,8 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
             // If the replication group is not found, retrying does not help.
             if (e.getMessage().toLowerCase().contains("not found")) {
               log.error(
-                  "Replication group {} not found, aborting wait for replication drain : {}",
+                  "Replication group {} not found, aborting waiting for replication to complete:"
+                      + " {}",
                   replicationGroupName,
                   e);
               throw new UnrecoverableException(e.getMessage());

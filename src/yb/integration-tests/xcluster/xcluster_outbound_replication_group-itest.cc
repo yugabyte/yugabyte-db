@@ -16,6 +16,7 @@
 
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/consensus/log.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
@@ -28,8 +29,6 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 namespace yb {
 namespace master {
@@ -44,11 +43,6 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
  public:
   XClusterOutboundReplicationGroupTest() {}
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-        UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
-        UseAutomaticMode();
-
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
@@ -61,21 +55,6 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     epoch_ = catalog_manager_->GetLeaderEpochInternal();
 
     namespace_id_ = ASSERT_RESULT(CreateYsqlNamespace(kNamespaceName));
-  }
-
-  virtual bool UseAutomaticMode() {
-    // Except for parameterized tests, we currently default to semi-automatic mode.
-    return false;
-  }
-
-  // How many extra streams/tables a namespace has
-  int OverheadStreamsCount() {
-    if (!UseAutomaticMode()) {
-      return 0;
-    }
-    // So far automatic mode has one extra stream for each namespace: sequences_data.
-    // TODO(jhe): increment this when you add the DDL queue table
-    return 1;
   }
 
   Result<NamespaceId> CreateYsqlNamespace(const NamespaceName& ns_name) {
@@ -97,6 +76,42 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return table_info->id();
   }
 
+  // Create a new OutboundReplicationGroup. Use GetXClusterStreams, or IsBootstrapRequired to wait
+  // for the new group to be ready.
+  Status CreateOutboundReplicationGroupAsync(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids) {
+    return XClusterClient().CreateOutboundReplicationGroup(
+        replication_group_id, namespace_ids, UseAutomaticMode());
+  }
+
+  Status CreateOutboundReplicationGroupSync(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      const std::vector<NamespaceId>& namespace_ids = {}) {
+    auto namespace_ids_copy = namespace_ids;
+    if (namespace_ids_copy.empty()) {
+      namespace_ids_copy.push_back(namespace_id_);
+    }
+
+    RETURN_NOT_OK(CreateOutboundReplicationGroupAsync(replication_group_id, namespace_ids_copy));
+    for (const auto& namespace_id : namespace_ids_copy) {
+      RETURN_NOT_OK(GetXClusterStreams(replication_group_id, namespace_id));
+    }
+    return Status::OK();
+  }
+
+  Result<bool> IsBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      const NamespaceId& namespace_id = {}) {
+    std::promise<Result<bool>> promise;
+    RETURN_NOT_OK(XClusterClient().IsBootstrapRequired(
+        CoarseMonoClock::Now() + kDeadline, replication_group_id,
+        namespace_id.empty() ? namespace_id_ : namespace_id,
+        [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+
+    return promise.get_future().get();
+  }
+
   // Cleanup streams marked for deletion and get the list of xcluster streams.
   std::unordered_set<xrepl::StreamId> CleanupAndGetAllXClusterStreams() {
     catalog_manager_->RunXReplBgTasks(epoch_);
@@ -105,10 +120,10 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
 
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, size_t all_xcluster_streams_count,
-      const master::GetXClusterStreamsResponsePB& resp, bool sequences_data_included,
-      bool skip_schema_name_check = false) {
+      const master::GetXClusterStreamsResponsePB& resp, bool all_tables_included = true,
+      const PgSchemaName& table2_schema_name = kPgSchemaName) {
     ASSERT_FALSE(resp.initial_bootstrap_required());
-    ASSERT_EQ(resp.table_infos_size(), sequences_data_included ? 3 : 2);
+    ASSERT_EQ(resp.table_infos_size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
 
     auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
     ASSERT_EQ(all_xcluster_streams.size(), all_xcluster_streams_count);
@@ -118,22 +133,21 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
       SCOPED_TRACE("table name: " + table_info.table_name());
       if (table_info.table_name() == kTableName1) {
         ASSERT_EQ(table_info.table_id(), table_id1);
+        ASSERT_EQ(table_info.pg_schema_name(), kPgSchemaName);
+
       } else if (table_info.table_name() == kTableName2) {
         ASSERT_EQ(table_info.table_id(), table_id2);
+        ASSERT_EQ(table_info.pg_schema_name(), table2_schema_name);
       } else if (table_info.table_name() == "sequences_data") {
-        ASSERT_EQ(table_info.table_id(), kPgSequencesDataTableId);
+        ASSERT_TRUE(all_tables_included);
+        ASSERT_TRUE(xcluster::IsSequencesDataAlias(table_info.table_id()));
+        EXPECT_TRUE(table_info.pg_schema_name().empty());
+      } else if (
+          table_info.table_name() == xcluster::kDDLQueueTableName &&
+          table_info.pg_schema_name() == xcluster::kDDLQueuePgSchemaName) {
+        ASSERT_TRUE(all_tables_included);
       } else {
         FAIL() << "Unexpected table name: " << table_info.table_name();
-      }
-      if (table_info.table_id() != kPgSequencesDataTableId) {
-        if (skip_schema_name_check) {
-          // Make sure it is not empty.
-          ASSERT_FALSE(table_info.pg_schema_name().empty());
-        } else {
-          ASSERT_EQ(table_info.pg_schema_name(), kPgSchemaName);
-        }
-      } else {
-        EXPECT_TRUE(table_info.pg_schema_name().empty());
       }
 
       ASSERT_FALSE(table_info.xrepl_stream_id().empty());
@@ -154,7 +168,12 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
         CoarseMonoClock::Now() + kDeadline, replication_group_id, namespace_id, table_names,
         pg_schema_names, [&promise](const auto& resp) { promise.set_value(resp); }));
 
-    return promise.get_future().get();
+    auto resp = VERIFY_RESULT(promise.get_future().get());
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    return resp;
   }
 
   Result<master::GetXClusterStreamsResponsePB> GetXClusterStreamsByTableId(
@@ -232,8 +251,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
 
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
@@ -245,29 +263,14 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   // We should have 2 normal streams now.
   size_t stream_count = 2 + OverheadStreamsCount();
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, stream_count, resp, /*sequences_data_included=*/UseAutomaticMode(),
-      /*skip_schema_name_check=*/true));
-
-  for (const auto& table_info : resp.table_infos()) {
-    // Order is not deterministic so search with the table name.
-    if (table_info.table_name() == kTableName1) {
-      ASSERT_EQ(table_info.pg_schema_name(), kPgSchemaName);
-    } else if (table_info.table_name() == kTableName2) {
-      ASSERT_EQ(table_info.pg_schema_name(), pg_schema_name2);
-    } else if (table_info.table_name() == "sequences_data") {
-      EXPECT_EQ(table_info.pg_schema_name(), "");
-    } else {
-      FAIL() << "unknown tablename " << table_info.table_name();
-    }
-  }
+      table_id_1, table_id_2, stream_count, resp, /*all_tables_included=*/true, pg_schema_name2));
 
   // Get the table info in a custom order.
   resp = ASSERT_RESULT(GetXClusterStreams(
       kReplicationGroupId, namespace_id_, {kTableName2, kTableName1},
       {pg_schema_name2, kPgSchemaName}));
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, stream_count, resp, /*sequences_data_included=*/false,
-      /*skip_schema_name_check=*/true));
+      table_id_1, table_id_2, stream_count, resp, /*all_tables_included=*/false, pg_schema_name2));
   ASSERT_EQ(resp.table_infos(0).pg_schema_name(), pg_schema_name2);
   ASSERT_EQ(resp.table_infos(1).pg_schema_name(), kPgSchemaName);
   ASSERT_EQ(resp.table_infos(0).table_name(), kTableName2);
@@ -297,8 +300,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
   auto ns2_table_id_1 = ASSERT_RESULT(CreateYsqlTable(namespace_name_2, kTableName1));
   auto ns2_table_id_2 = ASSERT_RESULT(CreateYsqlTable(namespace_name_2, kTableName2));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   // Wait for the new streams to be ready.
   auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
@@ -314,9 +316,8 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
   // Make sure only the namespace that was added is returned.
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
 
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      ns1_table_id_1, ns1_table_id_2, stream_count, ns1_info,
-      /*sequences_data_included=*/UseAutomaticMode()));
+  ASSERT_NO_FATALS(
+      VerifyNamespaceCheckpointInfo(ns1_table_id_1, ns1_table_id_2, stream_count, ns1_info));
 
   // Add the second namespace.
   ASSERT_OK(client::XClusterClient(*client_).AddNamespaceToOutboundReplicationGroup(
@@ -331,9 +332,8 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
 
   // Validate the seconds namespace.
   auto ns2_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      ns2_table_id_1, ns2_table_id_2, stream_count, ns2_info,
-      /*sequences_data_included=*/UseAutomaticMode()));
+  ASSERT_NO_FATALS(
+      VerifyNamespaceCheckpointInfo(ns2_table_id_1, ns2_table_id_2, stream_count, ns2_info));
 
   ASSERT_OK(XClusterClient().RemoveNamespaceFromOutboundReplicationGroup(
       kReplicationGroupId, namespace_id_, /*target_master_addresses=*/{}));
@@ -363,11 +363,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddTable) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   ASSERT_OK(VerifyWalRetentionOfTable(table_id_1, 900));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
-
-  // Wait for the new streams to be ready.
-  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), 1 + OverheadStreamsCount());
@@ -379,9 +375,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddTable) {
   auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   size_t stream_count = 2 + OverheadStreamsCount();
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, stream_count, ns1_info,
-      /*sequences_data_included=*/UseAutomaticMode()));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, ns1_info));
 
   ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }
@@ -390,17 +384,8 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredEmptyTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
 
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
-
-  std::promise<Result<bool>> promise;
-
-  ASSERT_OK(XClusterClient().IsBootstrapRequired(
-      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
-      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
-
-  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
-  ASSERT_FALSE(is_bootstrap_required);
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
+  ASSERT_FALSE(ASSERT_RESULT(IsBootstrapRequired()));
 }
 
 TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithData) {
@@ -412,17 +397,8 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithData) {
   ASSERT_OK(producer_client()->OpenTable(table_id_2, &table_2));
   ASSERT_OK(InsertRowsInProducer(0, 10, table_2));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
-
-  std::promise<Result<bool>> promise;
-
-  ASSERT_OK(XClusterClient().IsBootstrapRequired(
-      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
-      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
-
-  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
-  ASSERT_TRUE(is_bootstrap_required);
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
+  ASSERT_TRUE(ASSERT_RESULT(IsBootstrapRequired()));
 }
 
 TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeletedData) {
@@ -435,17 +411,9 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeleted
   ASSERT_OK(InsertRowsInProducer(0, 10, table_2));
   ASSERT_OK(DeleteRowsInProducer(0, 10, table_2));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
-  std::promise<Result<bool>> promise;
-
-  ASSERT_OK(XClusterClient().IsBootstrapRequired(
-      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
-      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
-
-  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
-  ASSERT_FALSE(is_bootstrap_required);
+  ASSERT_FALSE(ASSERT_RESULT(IsBootstrapRequired()));
 }
 
 TEST_P(XClusterOutboundReplicationGroupParameterized, MasterRestartDuringCheckpoint) {
@@ -462,8 +430,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, MasterRestartDuringCheckpo
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_xcluster_checkpoint_namespace_task) = true;
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupAsync(kReplicationGroupId, {namespace_id_}));
 
   std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
   auto future = promise.get_future();
@@ -480,8 +447,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, MasterRestartDuringCheckpo
 
   auto resp = ASSERT_RESULT(future.get());
   size_t stream_count = 2 + OverheadStreamsCount();
-  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      table_id_1, table_id_2, stream_count, resp, /*sequences_data_included=*/UseAutomaticMode()));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, resp));
 
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
@@ -491,8 +457,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
   ASSERT_EQ(resp.table_infos_size(), 2 + OverheadStreamsCount());
@@ -588,8 +553,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   auto resp = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
   ASSERT_EQ(resp.table_infos_size(), 2 + OverheadStreamsCount());
@@ -631,11 +595,8 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
   ASSERT_OK(CreateYsqlTable(namespace_name_2, "table_2"));
 
   // Replication group 1 with two namespaces.
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_, namespace_id_2}, UseAutomaticMode()));
-  // Wait for checkpointing to complete.
-  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
-  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
+  ASSERT_OK(
+      CreateOutboundReplicationGroupSync(kReplicationGroupId, {namespace_id_, namespace_id_2}));
   {
     auto group_info = ASSERT_RESULT(
         XClusterClient().GetXClusterOutboundReplicationGroupInfo(kReplicationGroupId));
@@ -648,10 +609,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
 
   // Replication group 2 with one namespace.
   const xcluster::ReplicationGroupId replication_group2("rg2");
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      replication_group2, {namespace_id_}, UseAutomaticMode()));
-  ASSERT_OK(GetXClusterStreams(replication_group2, namespace_id_));
-  // Wait for checkpointing to complete.
+  ASSERT_OK(CreateOutboundReplicationGroupSync(replication_group2, {namespace_id_}));
   {
     auto group_info =
         ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroupInfo(replication_group2));
@@ -721,8 +679,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
 // Make sure we cleanup the streams of the failed table create.
 TEST_P(XClusterOutboundReplicationGroupParameterized, CleanupStreamsOfFailedTableCreate) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
   int expected_stream_count = 1 + OverheadStreamsCount();
 
   auto check_streams = [&]() -> Status {
@@ -761,8 +718,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, CleanupStreamsOfFailedTabl
 TEST_P(XClusterOutboundReplicationGroupParameterized, TestGetStreamByTableId) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
 
-  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_id_}, UseAutomaticMode()));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   // Delete the table to put it into HIDDEN state.
   ASSERT_OK(DropYsqlTable(&producer_cluster_, kNamespaceName, kPgSchemaName, kTableName1));
@@ -787,14 +743,15 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestGetStreamByTableId) {
   ASSERT_EQ(ns_info.table_infos(1).table_id(), table_id_2);
 
   if (UseAutomaticMode()) {
-    // Verify that we can request sequences_data by its table id.
+    // Verify that we can request sequences_data by its table id alias.
+    TableId sequence_table_alias_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id_);
     auto ns_info = ASSERT_RESULT(
-        GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {kPgSequencesDataTableId}));
+        GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {sequence_table_alias_id}));
     ASSERT_EQ(ns_info.table_infos_size(), 1);
-    ASSERT_EQ(ns_info.table_infos(0).table_id(), kPgSequencesDataTableId);
+    ASSERT_EQ(ns_info.table_infos(0).table_id(), sequence_table_alias_id);
   }
 
-  // Verify that we can request a table that does not exist.
+  // Verify that we cannot request a table that does not exist.
   ASSERT_NOK_STR_CONTAINS(
       GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {"bad_table_id"}),
       "Table bad_table_id not found");

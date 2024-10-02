@@ -160,6 +160,72 @@ vault lease renew <lease-ID>
 vault lease revoke <lease-ID>
 ```
 
+## Configure SSL/TLS
+
+To allow YSQL Hashicorp Vault plugin to communicate securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../secure/tls-encryption/server-certificates/).
+
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+
+To start a secure local YugabyteDB cluster using `yugabyted`, refer to [Create a local multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster).
+
+For a YugabyteDB Aeon cluster, or a local YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters along with other connection information while adding the database by either of the following ways:
+
+- Provide the connection information in DSN format:
+
+    ```sh
+    vault write database/config/yugabytedb plugin_name=ysql-plugin  \
+    host="127.0.0.1" \
+    port=5433 \
+    username="yugabyte" \
+    password="yugabyte" \
+    db="yugabyte" \
+    load_balance=true \
+    yb_servers_refresh_interval=0 \
+    sslmode="verify-full" \
+    sslrootcert="path/to/.crt-file" \
+    allowed_roles="*"
+    ```
+
+- Provide the connection information as a connection string:
+
+    ```sh
+    vault write database/config/yugabytedb \
+    plugin_name=ysql-plugin \
+    connection_url="postgres://{{username}}:{{password}}@localhost:5433/yugabyte?sslmode=verify-full&load_balance=true&yb_servers_refresh_interval=0&sslrootcert=path/to/.crt-file" \
+    allowed_roles="*" \
+    username="yugabyte" \
+    password="yugabyte"
+    ```
+
+### SSL modes
+
+The following table summarizes the SSL modes:
+
+| SSL Mode | Client Driver Behavior | YugabyteDB Support |
+| :------- | :--------------------- | ------------------ |
+| disable  | SSL disabled | Supported
+| allow    | SSL enabled only if server requires SSL connection | Supported
+| prefer (default) | SSL enabled only if server requires SSL connection | Supported
+| require | SSL enabled for data encryption and Server identity is not verified | Supported
+| verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
+| verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
+
+YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
+
+## Known issues
+
+When executing vault operations, the internal query may fail with the following error:
+
+```output
+ERROR: The catalog snapshot used for this transaction has been invalidated: expected: 2, got: 1: MISMATCHED_SCHEMA (SQLSTATE 40001)
+```
+
+A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
+
+For such cases, the database aborts the query and returns a 40001 error code. Operations failing with this code can be safely retried.
+
+For more information, refer to [How to troubleshoot Schema or Catalog version mismatch database errors](https://support.yugabyte.com/hc/en-us/articles/4406287763597-How-to-troubleshoot-Schema-or-Catalog-version-mismatch-database-errors).
+
 ## Learn more
 
 - [Database static roles and credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-creds-rotation)

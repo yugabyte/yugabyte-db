@@ -3,7 +3,7 @@ title: YugabyteDB Anywhere node software requirements
 headerTitle: Software requirements for on-premises nodes
 linkTitle: On-premises provider
 description: Software requirements for on-premises provider nodes.
-headContent: Prepare a VM for deployment in a universe
+headContent: Prepare a VM for deploying universes on-premises
 menu:
   preview_yugabyte-platform:
     identifier: software-on-prem

@@ -35,6 +35,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
@@ -56,6 +58,8 @@ using std::string;
 using std::vector;
 using namespace std::literals;
 
+using yb::tserver::ListTabletsForTabletServerResponsePB;
+
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
@@ -67,11 +71,32 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
   }
 
   void CreateTable(const string& tablename) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute(CreateTableStmt(tablename)));
+  }
+
+  // After the master is restarted, it will continue the rollback operations of ongoing
+  // DDL transactions. This will increment the table schema version and then propagate
+  // to all tablet leaders via AlterSchema RPC. The new master leader needs some time to
+  // learn who are the tablet leaders. If the new master does not know who is the leader
+  // of a tablet, AlterSchema RPC will fail and the tablet leader can have a stale schema
+  // version, leading to schema version mismatch error like: expected 3, got 4.
+  // This function adds a delay that is proportional to the number of tablets found in the
+  // cluster.
+  void WaitForMasterToLearnAllTabletLeaders() const {
+    std::unordered_set<std::string> tablet_id_set;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = CHECK_RESULT(cluster_->GetTablets(ts));
+      for (const auto& tablet : tablets) {
+        tablet_id_set.insert(tablet.tablet_id());
+      }
+    }
+    SleepFor(300ms * tablet_id_set.size() * RegularBuildVsDebugVsSanitizers(1, 3, 3));
   }
 
   void RestartMaster() {
@@ -83,7 +108,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
       auto s = cluster_->GetIsMasterLeaderServiceReady(master);
       return s.ok();
     }, MonoDelta::FromSeconds(60), "Wait for Master to be ready."));
-    SleepFor(5s);
+    WaitForMasterToLearnAllTabletLeaders();
+    LOG(INFO) << "Restarted Master";
   }
 
   void SetFlagOnAllProcessesWithRollingRestart(const string& flag) {
@@ -1669,7 +1695,11 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
 
 // Test that the table cache is correctly invalidated after transaction verification
 // completes for an ALTER TABLE operation that performs a table scan.
-TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
+TEST_F(PgDdlAtomicityTest, TestTableCacheAfterTxnVerification) {
+  // Set report_ysql_ddl_txn_status_to_master to false, so that we can test the schema verification
+  // codepaths on master.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
@@ -1677,21 +1707,35 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE test1 PARTITION OF test FOR VALUES IN (1)"));
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4)"));
+      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4, 5)"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1, 'value', 1.0), (2, 'value', 2.0)"));
   ASSERT_OK(conn.TestFailDdl(
     "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
   // Ensure there is no schema version mismatch after a failed ALTER operation that performs
   // a table scan.
-  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (3, 'value', 3.0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test2 VALUES (3, 'value', 3.0); COMMIT;"));
   ASSERT_OK(conn.ExecuteFormat(
     "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
   // Ensure there is no schema version mismatch after a successful ALTER operation that performs
   // a table scan.
-  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (4, 4.0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test2 VALUES (4, 4.0); COMMIT;"));
   auto rows =
       ASSERT_RESULT((conn.FetchRows<int32_t, float, int32_t>("SELECT * FROM test2 ORDER BY key")));
   ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
+  // Ensure there is no schema version mismatch for various ALTERs.
+  // Alter type (with no rewrite).
+  ASSERT_OK(conn.Execute("ALTER TABLE test ALTER COLUMN num TYPE double precision"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test VALUES (5, 5.0); COMMIT;"));
+  // Legacy table rewrite.
+  ASSERT_OK(conn.Execute("CREATE TABLE test3 (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test3 VALUES (1, 'value')"));
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = OFF;"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE test3 ADD PRIMARY KEY (key), ALTER COLUMN value SET NOT NULL"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test3 VALUES (2, 'value2'); COMMIT;"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test3 ALTER COLUMN value TYPE int USING length(value),"
+      "ADD CONSTRAINT check_value CHECK (value > 0)"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test3 VALUES (3, 6); COMMIT;"));
 }
 
 // Test that DDL-related metadata in TableInfo objects is cleared on drop.
@@ -1773,6 +1817,33 @@ TEST_F(PgDdlAtomicityTest, TestCreateColocatedTable) {
   ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db colocation = true"));
   conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
   ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+}
+
+TEST_F(PgDdlAtomicityTest, TestAlterTableAddUniqueConstraint) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(x character varying(20))"));
+  // Adding a unique constraint does not change the table schema of the base table foo.
+  // If we use schema comparison of foo, we will not be able to tell whether the
+  // DDL transaction has committed at PG side or not. In this case we must use schema
+  // comparison of the index x_unique instead.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("x_unique")).size(), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD CONSTRAINT x_unique UNIQUE(x)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("x_unique")).size(), 1);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (y character varying(20))"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 0);
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  // As of 2024-09-17, the aborted ALTER TABLE bar statement leaves an orphan index
+  // inside DocDB that is not garbage collected. But its existence will not prevent
+  // a retry of the same statement to succeed, which will create another index with
+  // the same name y_unique (but with a different table id).
+  ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+  ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 2);
 }
 
 } // namespace pgwrapper

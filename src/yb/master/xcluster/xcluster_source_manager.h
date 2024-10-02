@@ -242,6 +242,9 @@ class XClusterSourceManager {
   bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
       EXCLUDES(tables_to_stream_map_mutex_);
 
+  Status SetupDDLReplicationExtension(
+      const NamespaceId& namespace_id, StdStatusCallback callback) const;
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

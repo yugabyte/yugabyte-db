@@ -61,9 +61,7 @@ static Size
 YbSnapshotMemory()
 {
 #if YB_TCMALLOC_ENABLED
-	int64_t cur_tc_actual_sz = 0;
-	YBCGetPgggateCurrentAllocatedBytes(&cur_tc_actual_sz);
-	return cur_tc_actual_sz;
+	return YBCGetPgggateCurrentAllocatedBytes();
 #else
 	return PgMemTracker.pg_cur_mem_bytes;
 #endif

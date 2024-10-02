@@ -13,6 +13,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Throwables;
 import com.google.common.base.Stopwatch;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -100,6 +102,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.extern.slf4j.Slf4j;
@@ -148,7 +151,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static boolean KEEP_FAILED_UNIVERSE = true;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -672,11 +675,14 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   }
 
   protected void initYSQL(Universe universe) {
-    initYSQL(universe, "some_table", false);
+    initYSQL(universe, "some_table");
   }
 
   protected void initYSQL(Universe universe, String tableName) {
-    initYSQL(universe, tableName, false);
+    initYSQL(
+        universe,
+        tableName,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
   protected void initYSQL(Universe universe, String tableName, boolean authEnabled) {
@@ -726,7 +732,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected void verifyYSQL(
       Universe universe, boolean readFromRR, String dbName, String tableName) {
-    verifyYSQL(universe, readFromRR, dbName, tableName, false);
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    verifyYSQL(universe, readFromRR, dbName, tableName, authEnabled);
   }
 
   protected void verifyYSQL(
@@ -1155,5 +1163,46 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
     assertEquals(resp.isEnabled, isEnabled);
     assertEquals(resp.isIdle, isLoadBalancerIdle);
+  }
+
+  public void doWithRetry(
+      Function<Duration, Duration> waitBeforeRetryFunct, Duration timeout, Runnable funct)
+      throws RuntimeException {
+    long currentDelayMs = 0;
+    long timeoutMs = timeout.toMillis();
+    long startTime = System.currentTimeMillis();
+    while (true) {
+      currentDelayMs = waitBeforeRetryFunct.apply(Duration.ofMillis(currentDelayMs)).toMillis();
+      try {
+        funct.run();
+        return;
+      } catch (UnrecoverableException e) {
+        log.error(
+            "Won't retry; Unrecoverable error while running the function: {}", e.getMessage());
+        throw e;
+      } catch (Exception e) {
+        if (System.currentTimeMillis() < startTime + timeoutMs - currentDelayMs) {
+          log.warn("Will retry; Error while running the function: {}", e.getMessage());
+        } else {
+          log.error("Retry timed out; Error while running the function: {}", e.getMessage());
+          Throwables.propagate(e);
+        }
+      }
+      log.debug(
+          "Waiting for {} ms between retry, total delay remaining {} ms",
+          currentDelayMs,
+          timeoutMs - (System.currentTimeMillis() - startTime));
+      try {
+        // Busy waiting is okay here since this is being used in tests.
+        Thread.sleep(currentDelayMs);
+      } catch (InterruptedException e) {
+        log.error("Interrupted while waiting for retry", e);
+        throw new RuntimeException(e);
+      }
+    }
+  }
+
+  protected void doWithRetry(Duration waitBeforeRetry, Duration timeout, Runnable funct) {
+    doWithRetry((prevDelay) -> waitBeforeRetry, timeout, funct);
   }
 }

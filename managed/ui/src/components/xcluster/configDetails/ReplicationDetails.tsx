@@ -92,7 +92,11 @@ export function ReplicationDetails({
   const queryClient = useQueryClient();
   const theme = useTheme();
 
-  const xClusterConfigQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUuid), () =>
+  const xClusterConfigQuery = useQuery(
+    xClusterQueryKey.detail(xClusterConfigUuid, false /* syncWithDb */),
+    () => fetchXClusterConfig(xClusterConfigUuid, false /* syncWithDb */)
+  );
+  const xClusterConfigFullQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUuid), () =>
     fetchXClusterConfig(xClusterConfigUuid)
   );
   const sourceUniverseQuery = useQuery(
@@ -227,7 +231,7 @@ export function ReplicationDetails({
   const allowedTasks = sourceUniverseQuery.data?.allowedTasks;
   const hideModal = () => dispatch(closeDialog());
   const isDeleteConfigModalVisible = showModal && visibleModal === XClusterModalName.DELETE_CONFIG;
-  const xClusterConfig = xClusterConfigQuery.data;
+  const xClusterConfig = xClusterConfigFullQuery.data ?? xClusterConfigQuery.data;
   if (
     xClusterConfig.sourceUniverseUUID === undefined ||
     xClusterConfig.targetUniverseUUID === undefined
@@ -667,6 +671,8 @@ export function ReplicationDetails({
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationTables
                     xClusterConfig={xClusterConfig}
+                    isTableInfoError={xClusterConfigFullQuery.isError}
+                    isTableInfoLoading={xClusterConfigFullQuery.isLoading}
                     isActive={window.location.search === '?tab=tables'}
                     isDrInterface={false}
                   />

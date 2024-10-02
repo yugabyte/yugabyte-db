@@ -204,7 +204,9 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   Status RegisterTask() override;
   void UnregisterTask() override;
 
-  Status FirstStep() override EXCLUDES(mutex_);
+  Status FirstStep() override;
+  Status SetupDDLReplicationExtension();
+  Status CreateTableTasks();
 
   void TaskCompleted(const Status& status) override EXCLUDES(done_result_mutex_);
 
@@ -233,6 +235,8 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
       REQUIRES(mutex_);
   void PopulateUniverseReplication(SysUniverseReplicationEntryPB& universe_pb) REQUIRES(mutex_);
 
+  Result<NamespaceId> ConvertSourceToTargetNamespace(const NamespaceId& source_namespace);
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -250,8 +254,8 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   const bool is_alter_replication_;
   const bool stream_ids_provided_;
   const bool transactional_;  // Not used in ALTER.
-  const bool is_db_scoped_;  // Not used in ALTER.
-  const bool automatic_ddl_mode_;  // Not used in ALTER.
+  bool is_db_scoped_;  // Computed in ValidateInputArguments.
+  const bool automatic_ddl_mode_;
 
   std::string log_prefix_;
 

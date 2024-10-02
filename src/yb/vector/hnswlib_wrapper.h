@@ -24,29 +24,10 @@
 
 namespace yb::vectorindex {
 
-namespace detail {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndexImpl;
-}  // namespace detail
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndex : public VectorIndexBase<
-    detail::HnswlibIndexImpl<Vector, DistanceResult>, Vector, DistanceResult> {
+class HnswlibIndexFactory {
  public:
-  explicit HnswlibIndex(const HNSWOptions& options);
-  virtual ~HnswlibIndex();
- private:
-  using Impl = detail::HnswlibIndexImpl<Vector, DistanceResult>;
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
- public:
-  HnswlibIndexFactory() = default;
-
-  std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    return std::make_unique<HnswlibIndex<Vector, DistanceResult>>(this->hnsw_options_);
-  }
+  static VectorIndexIfPtr<Vector, DistanceResult> Create(const HNSWOptions& options);
 };
 
 }  // namespace yb::vectorindex

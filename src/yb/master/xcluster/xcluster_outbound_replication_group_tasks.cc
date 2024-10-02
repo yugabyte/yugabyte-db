@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
@@ -70,9 +71,43 @@ Status XClusterCheckpointNamespaceTask::FirstStep() {
     // Ensure sequences_data table has been created and added to our tables to checkpoint.
     // TODO: Consider making this async  so we don't have to burn a thread waiting.
     RETURN_NOT_OK(outbound_replication_group_.helper_functions_.create_sequences_data_table_func());
+    TableId sequence_table_alias_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id_);
     RETURN_NOT_OK(outbound_replication_group_.AddTableToInitialBootstrapMapping(
-        namespace_id_, kPgSequencesDataTableId, epoch_));
+        namespace_id_, sequence_table_alias_id, epoch_));
   }
+
+  return SetupDDLReplicationExtension();
+}
+
+Status XClusterCheckpointNamespaceTask::SetupDDLReplicationExtension() {
+  if (outbound_replication_group_.AutomaticDDLMode()) {
+    return outbound_replication_group_.SetupDDLReplicationExtension(
+        namespace_id_,
+        std::bind(
+            &XClusterCheckpointNamespaceTask::SetupDDLReplicationExtensionCallback, this, _1));
+  }
+
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
+
+  return Status::OK();
+}
+
+void XClusterCheckpointNamespaceTask::SetupDDLReplicationExtensionCallback(Status status) {
+  ScheduleNextStep(
+      std::bind(&XClusterCheckpointNamespaceTask::PrepareDDLQueueTable, this, std::move(status)),
+      "PrepareDDLQueueTable");
+}
+
+Status XClusterCheckpointNamespaceTask::PrepareDDLQueueTable(Status status) {
+  RETURN_NOT_OK_PREPEND(status, "Failed to setup xCluster DDL replication extension");
+
+  // If the DDL queue table was freshly created in the previous step, then we would have
+  // automatically created a stream for it and added it to the namespace map. However this table
+  // must be marked as part of the initial bootstrap so that it gets included in the target as part
+  // of the replication setup.
+  RETURN_NOT_OK(
+      outbound_replication_group_.SetDDLQueueTableIsPartOfInitialBootstrap(namespace_id_, epoch_));
 
   ScheduleNextStep(
       std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");

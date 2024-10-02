@@ -10530,4 +10530,19 @@
   proargmodes => '{o,o,o,o,o,o,o,o}',
   proargnames => '{status,description,query_id,start_time,diagnostics_interval_sec,bind_var_query_min_duration_ms,explain_params,path}',
   prosrc => 'yb_get_query_diagnostics_status'},
+
+{ oid => '8071', descr => 'function to preserve tablegroup name',
+  proname => 'binary_upgrade_set_next_tablegroup_default', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'bool',
+  prosrc => 'binary_upgrade_set_next_tablegroup_default' },
+
+{ oid => '8072',
+  descr => 'Get metrics of all nodes',
+  proname => 'yb_servers_metrics', prorows => '10',
+  proretset => 't', provolatile => 'v', proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{text,jsonb,text,text}',
+  proargnames => '{uuid,metrics,status,error}',
+  proargmodes => '{o,o,o,o}',
+  prosrc => 'yb_servers_metrics'},
 ]

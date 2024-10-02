@@ -69,6 +69,8 @@ struct XClusterTabletInfo {
   ConsumerTabletInfo consumer_tablet_info;
   // Whether or not replication has been paused for this tablet.
   bool disable_stream;
+  // Whether or not we are using automatic DDL replication for this tablet.
+  bool automatic_ddl_mode;
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };

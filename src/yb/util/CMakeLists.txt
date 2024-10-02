@@ -302,6 +302,11 @@ ADD_YB_LIBRARY(yb_util
 
 add_dependencies(yb_util gen_version_info)
 
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/gflag_allowlist.txt
+  ${CMAKE_BINARY_DIR}/gflag_allowlist.txt
+  COPYONLY)
+
 #######################################
 # yb_test_util
 #######################################

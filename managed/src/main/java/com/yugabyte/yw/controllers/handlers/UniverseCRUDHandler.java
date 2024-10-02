@@ -856,6 +856,11 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(
               BAD_REQUEST, "YSQL RPC port cannot be the same as internal YSQL RPC port");
         }
+
+        if (Common.CloudType.kubernetes.equals(userIntent.providerType)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
+        }
       }
 
       // update otel port
@@ -934,19 +939,22 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, Boolean.toString(true)));
           checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+          Provider primaryClusterProvider =
+              Provider.getOrBadRequest(UUID.fromString(primaryIntent.provider));
           String serviceScope =
-              confGetter.getGlobalConf(GlobalConfKeys.k8sUniverseDefaultServiceScope);
+              confGetter.getConfForScope(
+                  primaryClusterProvider, ProviderConfKeys.k8sUniverseDefaultServiceScope);
           if (KubernetesUtil.shouldConfigureNamespacedService(taskParams, universe.getConfig())) {
             if (serviceScope.equals("Namespaced")) {
               // Default service scope should be 'Namespaced'
               primaryIntent.defaultServiceScopeAZ = false;
             }
-            // Validate service endpoints
-            try {
-              KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
-            } catch (IOException e) {
-              throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
-            }
+          }
+          // Validate service endpoints
+          try {
+            KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
+          } catch (IOException e) {
+            throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
           }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {

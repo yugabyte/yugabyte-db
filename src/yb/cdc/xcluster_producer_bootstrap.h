@@ -54,10 +54,6 @@ class XClusterProducerBootstrap {
 
   Status VerifyTabletOpIds();
 
-  Status SetLogRetentionForLocalTabletPeers();
-
-  Status SetLogRetentionForRemoteTabletPeers();
-
   Status UpdateCdcStateTableWithCheckpoints();
 
   void PrepareResponse();

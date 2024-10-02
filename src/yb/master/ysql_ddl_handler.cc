@@ -145,7 +145,7 @@ Status CatalogManager::ScheduleVerifyTransaction(
                 "YsqlTableSchemaChecker failed");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, true /* ddl_atomicity_enabled */);
   return Status::OK();
 }
@@ -255,13 +255,13 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
                 << " and is no longer bound by txn " << pb_txn_id;
       continue;
     }
-    if (table->is_index()) {
+    if (table->is_index() && is_committed.has_value()) {
       // This is an index. If the indexed table is being deleted or marked for deletion, then skip
       // doing anything as the deletion of the table will delete this index.
       const auto& indexed_table_id = table->indexed_table_id();
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-      if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, is_committed) &&
-          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, is_committed)) {
+      if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
+          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
         LOG(INFO) << "Skipping DDL transaction verification for index " << table->ToString()
                 << " as the indexed table " << indexed_table->ToString()
                 << " is also being dropped";
@@ -688,7 +688,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
                 "YsqlTableSchemaChecker failed");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
-      *this, table, txn, std::move(when_done), sys_catalog_.get(), master_->client_future(),
+      *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
       *master_->messenger(), epoch, true /* ddl_atomicity_enabled */);
   return Status::OK();
 }

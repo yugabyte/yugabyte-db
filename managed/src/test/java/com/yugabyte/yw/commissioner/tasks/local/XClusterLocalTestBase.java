@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -153,14 +154,37 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
                 return -1;
               }
             },
-            rowCount -> {
-              return rowCount == expectedRows;
-            });
-    boolean success = condition.retryUntilCond(5, TimeUnit.MINUTES.toSeconds(1));
+            rowCount -> rowCount == expectedRows);
+    boolean success = condition.retryUntilCond(1, TimeUnit.MINUTES.toSeconds(1));
     if (!success) {
       throw new RuntimeException(
           String.format(
               "Failed to get expected number of rows: %d for table %s.", expectedRows, table.name));
+    }
+  }
+
+  // Validates that the number of rows never becomes notExpectedRows.
+  public void validateNotExpectedRowCount(Universe universe, Table table, int notExpectedRows) {
+    assertNotEquals(-1, notExpectedRows);
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              try {
+                int rowCount = getRowCount(universe, table);
+                log.debug("row count: {}", rowCount);
+                return rowCount;
+              } catch (Exception e) {
+                log.error(e.getMessage());
+                return -1;
+              }
+            },
+            rowCount -> rowCount == notExpectedRows);
+    boolean success = condition.retryUntilCond(1 /* delayBetweenRetrySecs */, 10 /* timeoutSecs */);
+    if (success) {
+      throw new RuntimeException(
+          String.format(
+              "Got number of rows we did not expect: %d for table %s.",
+              notExpectedRows, table.name));
     }
   }
 
@@ -207,6 +231,15 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     assertTrue(ysqlResponse.isSuccess());
   }
 
+  public void dropDatabase(Universe universe, Db db) {
+    NodeDetails node = getLiveNode(universe);
+    String query = String.format("drop database %s", db.name);
+    log.debug("Universe: {}, Query: {}", universe.getName(), query);
+    ShellResponse ysqlResponse =
+        localNodeUniverseManager.runYsqlCommand(node, universe, YUGABYTE_DB, query, 20);
+    assertTrue(ysqlResponse.isSuccess());
+  }
+
   @Override
   protected Pair<Integer, Integer> getIpRange() {
     return new Pair<>(120, 150);
@@ -235,5 +268,25 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
         "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUUID,
         user.createAuthToken(),
         Json.toJson(formData));
+  }
+
+  protected void assertYsqlOutputEqualsWithRetry(
+      Universe universe, String ysqlCommand, String expectedValue) {
+    NodeDetails targetNodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    doWithRetry(
+        Duration.ofSeconds(1),
+        Duration.ofMinutes(1),
+        () -> {
+          ShellResponse targetYsqlResponse =
+              localNodeUniverseManager.runYsqlCommand(
+                  targetNodeDetails, universe, YUGABYTE_DB, ysqlCommand, 10);
+          if (!targetYsqlResponse.isSuccess()) {
+            throw new RuntimeException("Failed to run ysql command");
+          }
+          String response = CommonUtils.extractJsonisedSqlResponse(targetYsqlResponse).trim();
+          if (!response.equals(expectedValue)) {
+            throw new RuntimeException("Expected " + expectedValue + ", got " + response);
+          }
+        });
   }
 }

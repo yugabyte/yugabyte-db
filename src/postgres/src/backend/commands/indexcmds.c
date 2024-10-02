@@ -68,6 +68,7 @@
 #include "utils/tqual.h"
 
 /* YB includes. */
+#include "catalog/binary_upgrade.h"
 #include "catalog/pg_database.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
@@ -764,7 +765,7 @@ DefineIndex(Oid relationId,
 		char *tablegroup_name = NULL;
 	
 		if (OidIsValid(tablespaceId)) 
-    {
+		{
 			/*
 			 * We look in pg_shdepend rather than directly use the derived name,
 			 * as later we might need to associate an existing implicit tablegroup to a tablespace
@@ -778,9 +779,31 @@ DefineIndex(Oid relationId,
 			tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) : 
 				get_implicit_tablegroup_name(tablespaceId);
 
-		} 
-    else 
-    {
+		}
+		else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
+		{
+			/*
+			 * In yb_binary_restore if tablespaceId is not valid but
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
+			 * restoring without tablespace information.
+			 * In this case all tables are restored to default tablespace,
+			 * while maintaining the colocation properties, and tablegroup's name
+			 * will be colocation_restore_tablegroupId, while default tablegroup's
+			 * name would still be default.
+			 */
+			tablegroup_name = binary_upgrade_next_tablegroup_default ?
+								DEFAULT_TABLEGROUP_NAME :
+								get_restore_tablegroup_name(
+									binary_upgrade_next_tablegroup_oid);
+			binary_upgrade_next_tablegroup_default = false;
+			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+		}
+		else if (yb_binary_restore && OidIsValid(tablegroupId))
+		{
+			tablegroup_name = get_tablegroup_name(tablegroupId);
+		}
+		else
+		{
 			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
 			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 		}
@@ -976,6 +999,13 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("access method \"%s\" does not support exclusion constraints",
+						accessMethodName)));
+
+	/* YB: Inlined indexes are only supported in colocated mode right now. */
+	if (!MyDatabaseColocated && amRoutine->yb_amiscoveredbymaintable)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("access method \"%s\" requires colocation",
 						accessMethodName)));
 
 	amcanorder = amRoutine->amcanorder;
@@ -1631,8 +1661,9 @@ DefineIndex(Oid relationId,
 
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
-	/* Do backfill. */
-	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+	/* YB: Do backfill if this is a separate DocDB table from the main table. */
+	if (!YBIsOidCoveredByMainTable(indexRelationId))
+		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 

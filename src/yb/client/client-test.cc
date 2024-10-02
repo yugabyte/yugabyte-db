@@ -611,7 +611,10 @@ class ClientTestForceMasterLookup :
 
 
   void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
-    for (int i = 0; i < kNumIterations; i++) {
+    // With the cache disabled and tsan enabled, each lookup is extremely slow. So we greatly
+    // decrease the number of iterations.
+    int adjusted_num_iterations = yb::IsTsan() ? 10 : kNumIterations;
+    for (int i = 0; i < adjusted_num_iterations; i++) {
       if (point_lookup) {
           auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
           ASSERT_NOTNULL(key_rt);
@@ -639,7 +642,6 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
       PerformManyLookups(table, true /* point_lookup */)); });
   auto t2 = std::thread([&]() { ASSERT_NO_FATALS(
       PerformManyLookups(table, false /* point_lookup */)); });
-
   t1.join();
   t2.join();
 }

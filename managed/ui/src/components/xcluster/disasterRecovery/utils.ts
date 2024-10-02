@@ -2,7 +2,6 @@ import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
 import { DrConfigAction, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
-import { XClusterConfigType } from '../constants';
 
 import { DrConfig, DrConfigSafetimeResponse, DrConfigState } from './dtos';
 import { Universe } from '../../../redesign/helpers/dtos';

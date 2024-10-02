@@ -2068,7 +2068,8 @@ static struct config_bool ConfigureNamesBool[] =
 					"Enable this with high caution. It was added to avoid disruption for users who were "
 					"already using advisory locks but seeing success messages without the lock really being "
 					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks."),
+					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+					"for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -2636,6 +2637,30 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_ash,
 		false,
 		yb_enable_ash_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_update_optimization_infra", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables optimizations of YSQL UPDATE queries. This includes "
+						 "(but not limited to) skipping redundant secondary index updates "
+						 "and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_update_optimization_options.is_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable preloading of foreign key information into the relation cache."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -4033,6 +4058,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
+		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
+			gettext_noop("A value of 1 disables this feature."),
+			0
+		},
+		&yb_insert_on_conflict_read_batch_size,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_max_in_flight_ops", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum number of in-flight operations allowed from YSQL to tablet servers"),
 			NULL,
@@ -4123,7 +4160,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,
-		0, 0, INT_MAX,
+		50, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5636,6 +5673,7 @@ static const char *const map_old_guc_names[] = {
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
 };
 
 

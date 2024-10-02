@@ -134,6 +134,7 @@ public class CreateBackupScheduleTest extends CommissionerBaseTest {
         TaskType.CreateBackup,
         params.schedulingFrequency,
         null,
+        true /* useLocalTimezone */,
         params.frequencyTimeUnit,
         params.scheduleName);
     PlatformServiceException ex =

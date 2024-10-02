@@ -29,8 +29,12 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import io.fabric8.kubernetes.api.model.Config;
+import io.fabric8.kubernetes.api.model.Context;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,6 +43,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -56,7 +62,9 @@ import play.libs.Json;
 public class KubernetesUtil {
 
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW = "2.23.0.0-b539";
-  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b999";
+  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b1";
+  public static String MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_PREVIEW = "2.23.1.0-b168";
+  public static String MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE = "2024.2.0.0-b1";
   // Kubelet secret sync time + k8s_parent template sync time.
   public static final int WAIT_FOR_GFLAG_SYNC_SECS = 90;
 
@@ -66,7 +74,16 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE,
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
-        > 0;
+        >= 0;
+  }
+
+  public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE,
+            MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_PREVIEW,
+            true)
+        >= 0;
   }
 
   // ToDo: Old k8s provider needs to be fixed, so that we can get
@@ -220,6 +237,32 @@ public class KubernetesUtil {
     return defaultValue;
   }
 
+  private static String getClusterNameFromConfig(Map<String, String> config) {
+    String clusterName = "";
+    if (MapUtils.isEmpty(config) || !config.containsKey("KUBECONFIG")) {
+      return clusterName;
+    }
+    String kubeConfigPath = config.get("KUBECONFIG");
+    if (StringUtils.isNotBlank(kubeConfigPath)) {
+      try {
+        File kubeConfigFile = new File(kubeConfigPath);
+        if (kubeConfigFile.exists()) {
+          Config kubeConfig = KubeConfigUtils.parseConfig(kubeConfigFile);
+          Context context = KubeConfigUtils.getCurrentContext(kubeConfig).getContext();
+          String cluster = context.getCluster();
+          if (StringUtils.isNotBlank(cluster)) {
+            clusterName = cluster;
+          }
+        }
+      } catch (Exception e) {
+        log.warn("Cannot find cluster name in Kubeconfig, ignoring");
+      }
+    } else {
+      log.debug("Ignoring auto-provider case");
+    }
+    return clusterName;
+  }
+
   // This function decides the value of isMultiAZ based on the value
   // of azName. In case of single AZ providers, the azName is passed
   // as null.
@@ -234,6 +277,23 @@ public class KubernetesUtil {
         isMultiAZ, nodePrefix, azName, azConfig, newNamingStyle, isReadOnlyCluster);
   }
 
+  public static String getKubernetesNamespace(
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      Map<String, String> azConfig,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
+    return getKubernetesNamespace(
+        isMultiAZ,
+        nodePrefix,
+        azName,
+        azConfig,
+        newNamingStyle,
+        isReadOnlyCluster,
+        false /* addKubeClusterPrefix */);
+  }
+
   /**
    * This function returns the namespace for the given AZ. If the AZ config has KUBENAMESPACE
    * defined, then it is used directly. Otherwise, the namespace is constructed with nodePrefix &
@@ -245,7 +305,8 @@ public class KubernetesUtil {
       String azName,
       Map<String, String> azConfig,
       boolean newNamingStyle,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean addKubeClusterPrefix) {
     String namespace = azConfig != null ? azConfig.get("KUBENAMESPACE") : "";
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
@@ -258,17 +319,28 @@ public class KubernetesUtil {
       // We don't have any suffix in case of new naming.
       suffixLen = newNamingStyle ? 0 : suffixLen;
       namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
-      if (newNamingStyle) {
-        return namespace;
-      }
-      if (isReadOnlyCluster) {
-        namespace = String.format("%s%s", namespace, readClusterSuffix);
-      }
-      if (isMultiAZ) {
-        namespace = String.format("%s-%s", namespace, azName);
+      if (!newNamingStyle) {
+        if (isReadOnlyCluster) {
+          namespace = String.format("%s%s", namespace, readClusterSuffix);
+        }
+        if (isMultiAZ) {
+          namespace = String.format("%s-%s", namespace, azName);
+        }
       }
     }
+    if (addKubeClusterPrefix) {
+      String clusterName = getClusterNameFromConfig(azConfig);
+      namespace = String.format("%s::%s", clusterName, namespace);
+    }
     return namespace;
+  }
+
+  public static String getNamespaceFromClusterNamespaceKey(String clusterNamespace) {
+    if (clusterNamespace.contains("::")) {
+      String[] splitString = clusterNamespace.split("::");
+      return splitString[1];
+    }
+    return clusterNamespace;
   }
 
   /**
@@ -723,9 +795,10 @@ public class KubernetesUtil {
 
   public static boolean shouldConfigureNamespacedService(
       UniverseDefinitionTaskParams universeDetails, Map<String, String> universeConfig) {
-    if (isMCSEnabled(universeDetails)
-        || !universeDetails.useNewHelmNamingStyle
-        || universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("false")) {
+    if (!universeDetails.useNewHelmNamingStyle
+        || universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("false")
+        || !isNamespacedServiceSupported(
+            universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion)) {
       return false;
     }
     return true;
@@ -759,6 +832,9 @@ public class KubernetesUtil {
       universeOverrides = mapper.readValue(universeOverridesStr, Map.class);
     }
 
+    if (CollectionUtils.isEmpty(placementInfo.cloudList)) {
+      return result;
+    }
     Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
     for (PlacementRegion pr : placementInfo.cloudList.get(0).regionList) {
       Region region = Region.getOrBadRequest(pr.uuid);
@@ -804,7 +880,7 @@ public class KubernetesUtil {
       if (cluster.userIntent.providerType != CloudType.kubernetes) {
         continue;
       }
-      if (clusterType != cluster.clusterType) {
+      if ((clusterType != null) && (clusterType != cluster.clusterType)) {
         continue;
       }
       PlacementInfo pi = cluster.placementInfo;
@@ -821,7 +897,8 @@ public class KubernetesUtil {
                 az.getCode(),
                 entry.getValue(),
                 universeParams.useNewHelmNamingStyle,
-                isReadOnlyCluster);
+                isReadOnlyCluster,
+                true /* addKubeClusterPrefix */);
         namespaces.add(namespace);
       }
     }
@@ -841,11 +918,6 @@ public class KubernetesUtil {
       throws IOException {
     Map<String, Set<UUID>> namespaceAZs = new HashMap<>();
     Map<UUID, Map<String, Object>> azUUIDFinalOverrides = new HashMap<>();
-    // Not handling MCS enabled case. Need to check how to return map for that.
-    boolean isMCS = isMCSEnabled(universeParams);
-    if (isMCS) {
-      return null;
-    }
     String universeOverridesStr = universeParams.getPrimaryCluster().userIntent.universeOverrides;
     Map<String, String> azsOverridesStr = universeParams.getPrimaryCluster().userIntent.azOverrides;
     if (azsOverridesStr == null) {
@@ -855,7 +927,7 @@ public class KubernetesUtil {
       if (cluster.userIntent.providerType != CloudType.kubernetes) {
         continue;
       }
-      if (clusterType != cluster.clusterType) {
+      if ((clusterType != null) && (clusterType != cluster.clusterType)) {
         continue;
       }
       Map<UUID, Map<String, Object>> finalOverrides =
@@ -876,7 +948,8 @@ public class KubernetesUtil {
                 az.getCode(),
                 entry.getValue(),
                 universeParams.useNewHelmNamingStyle,
-                isReadOnlyCluster);
+                isReadOnlyCluster,
+                true /* addKubeClusterPrefix */);
         if (namespaceAZs.containsKey(namespace)) {
           namespaceAZs.get(namespace).add(az.getUuid());
         } else {
@@ -920,8 +993,10 @@ public class KubernetesUtil {
 
   /**
    * Generate Map of Namespace and Per-AZ Namespace scoped services. Returns empty map for AZs where
-   * serviceEndpoints is not defined. Returns null for AZs where serviceEndpoints is defined but
-   * empty.
+   * serviceEndpoints is not defined. Returns null for AZs where serviceEndpoints is defined as
+   * empty array. For helm default overrides( i.e. no overrides specified ): <br>
+   * 1. Returns null for default scope "AZ" <br>
+   * 2. Returns empty map for default scope "Namespaced"
    *
    * @param universeParams
    * @return Generated namespaced NS scope services in the form &lt;Namespace, &lt;AZ_uuid,
@@ -945,8 +1020,13 @@ public class KubernetesUtil {
               azOverridesEntry -> {
                 Map<String, Object> override = azOverridesEntry.getValue();
                 Map<String, Map<String, Object>> services = getServicesFromOverrides(override);
-                if (services == null) {
+                if (services == null
+                    || (MapUtils.isEmpty(services) && defaultScopeUserIntent.equals("AZ"))) {
                   azNamespacedServicesMap.put(azOverridesEntry.getKey(), null /* empty Services */);
+                } else if (MapUtils.isEmpty(services)
+                    && defaultScopeUserIntent.equals("Namespaced")) {
+                  azNamespacedServicesMap.put(
+                      azOverridesEntry.getKey(), new HashMap<String, Map<String, Object>>());
                 } else {
                   Map<String, Map<String, Object>> namespacedServices =
                       services.entrySet().stream()
@@ -967,11 +1047,16 @@ public class KubernetesUtil {
                                 return scope.equals("Namespaced");
                               })
                           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                  // Set null if using default helm overrides and userIntent service scope is "AZ"
+                  if (MapUtils.isEmpty(namespacedServices)) {
+                    namespacedServices = null;
+                  }
                   azNamespacedServicesMap.put(azOverridesEntry.getKey(), namespacedServices);
                 }
               });
       nsNamespacedServices.put(namespace, azNamespacedServicesMap);
     }
+    log.debug("Namespaced services: {}", nsNamespacedServices);
     return nsNamespacedServices;
   }
 
@@ -979,7 +1064,7 @@ public class KubernetesUtil {
    * Generate a map of &lt;AZ_uuid, Set&lt;Service_name>> to delete. The AZ_uuid's config will be
    * used to delete the corresponding services in the map entry.
    *
-   * @param taskParams The new universe params
+   * @param taskParams The new universe params( null for read-replica cluster delete )
    * @param universeParams The existing universe params
    * @param universeConfig
    * @param readReplicaDelete If handling read-replica cluster delete case
@@ -998,6 +1083,7 @@ public class KubernetesUtil {
     if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
       return removableServices;
     }
+    // This is only the case for Read-replica cluster delete
     if (taskParams == null) {
       taskParams = universeParams;
     }
@@ -1204,7 +1290,8 @@ public class KubernetesUtil {
               Map<String, Object> sE = mapper.convertValue(serviceEndpoint, Map.class);
               String serviceName = (String) sE.get("name");
               if (services.contains(serviceName)) {
-                throw new RuntimeException("Overrides contain same service name twice!");
+                throw new RuntimeException(
+                    String.format("Overrides contain same service name '%s' twice!", serviceName));
               }
               services.add(serviceName);
             }
@@ -1224,15 +1311,40 @@ public class KubernetesUtil {
   public static void validateServiceEndpoints(
       UniverseDefinitionTaskParams universeParams, Map<String, String> universeConfig)
       throws IOException {
-    // Return if should not configure
-    if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
-      log.debug("Universe configuration does not support Namespace scoped services, skipping");
+    UniverseDefinitionTaskParams params = universeParams;
+    // Populate primary cluster from universe if not available
+    // This is for case: Edit Read-Replica
+    if (universeParams.getPrimaryCluster() == null) {
+      Optional<Universe> optUniverse = Universe.maybeGet(universeParams.getUniverseUUID());
+      if (!optUniverse.isPresent()) {
+        // Universe not found here is an unexpected scenario, return
+        return;
+      }
+      // Add primary cluster to index 0 in params deep copy
+      params = Json.fromJson(Json.toJson(universeParams), UniverseDefinitionTaskParams.class);
+      params.clusters.add(0, optUniverse.get().getUniverseDetails().getPrimaryCluster());
+    }
+
+    if (!shouldConfigureNamespacedService(params, universeConfig)) {
+      Map<String, Map<UUID, Map<String, Map<String, Object>>>> nsScopedServices =
+          getNamespaceNSScopedServices(params, null /* clusterType */);
+      if (nsScopedServices == null) {
+        return;
+      }
+      boolean nsServicePresent =
+          nsScopedServices.values().stream()
+              .flatMap(azsMap -> azsMap.values().stream())
+              .anyMatch(Objects::nonNull);
+      if (nsServicePresent) {
+        throw new RuntimeException(
+            "Universe configuration does not support Namespace scoped services");
+      }
       return;
     }
     // Validate service name does not appear twice in final overrides per AZ.
-    validateConflictingService(universeParams);
+    validateConflictingService(params);
     // Validate Namespaced scope service
-    validateNamespacedServiceEndpoints(universeParams);
+    validateNamespacedServiceEndpoints(params);
   }
 
   /**
@@ -1250,17 +1362,17 @@ public class KubernetesUtil {
       UniverseDefinitionTaskParams universeParams,
       Map<String, String> universeConfig)
       throws IOException {
-    // Return if should not configure
-    if (!shouldConfigureNamespacedService(universeParams, universeConfig)) {
-      log.debug("Universe configuration does not support Namespace scoped services, skipping");
-      return;
-    }
     UniverseDefinitionTaskParams taskParams =
         Json.fromJson(Json.toJson(universeParams), UniverseDefinitionTaskParams.class);
     taskParams.getPrimaryCluster().userIntent.universeOverrides = newUniverseOverrides;
     taskParams.getPrimaryCluster().userIntent.azOverrides = newAZOverrides;
     // Validate new overrides for service endpoint independently
     validateServiceEndpoints(taskParams, universeConfig);
+
+    // Return if not supported
+    if (!shouldConfigureNamespacedService(taskParams, universeConfig)) {
+      return;
+    }
 
     String defaultScope =
         universeParams.getPrimaryCluster().userIntent.defaultServiceScopeAZ ? "AZ" : "Namespaced";

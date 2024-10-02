@@ -184,7 +184,7 @@ void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
       VLOG_AND_TRACE("maintenance", 1) << "Waiting for op " << op->name() << " to finish so "
             << "we can unregister it.";
       for (;;) {
-        auto wait_status = op->cond_.wait_for(GetLockForCondition(&lock), 15s);
+        auto wait_status = op->cond_.wait_for(GetLockForCondition(lock), 15s);
         if (op->running_ == 0) {
           break;
         }
@@ -209,7 +209,7 @@ void MaintenanceManager::RunSchedulerThread() {
   UniqueLock lock(mutex_);
   for (;;) {
     // Loop until we are shutting down or it is time to run another op.
-    cond_.wait_for(GetLockForCondition(&lock), polling_interval);
+    cond_.wait_for(GetLockForCondition(lock), polling_interval);
     if (shutdown_) {
       VLOG_AND_TRACE("maintenance", 1) << "Shutting down maintenance manager.";
       return;

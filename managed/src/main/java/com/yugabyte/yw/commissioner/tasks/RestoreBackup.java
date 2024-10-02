@@ -90,7 +90,7 @@ public class RestoreBackup extends UniverseTaskBase {
           restore.update(getTaskUUID(), Restore.State.Completed);
         }
       } catch (CancellationException ce) {
-        unlockUniverseForUpdate(false);
+        unlockUniverseForUpdate();
         isAbort = true;
         // Aborted
         if (restore != null) {

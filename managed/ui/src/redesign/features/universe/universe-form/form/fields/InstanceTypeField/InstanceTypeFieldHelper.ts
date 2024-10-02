@@ -1,7 +1,9 @@
 import _ from 'lodash';
 import { CloudType, InstanceType, InstanceTypeWithGroup, RunTimeConfigEntry } from '../../../utils/dto';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
+  'gr6','i3','i3en','i4g','i4i','im4gn',
+  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
 
 export const AZURE_INSTANCE_TYPE_GROUPS = {
   'B-Series': /^standard_b.+/i,
@@ -48,7 +50,8 @@ export const canUseSpotInstance = (runtimeConfigs: any) => {
 export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
   return (
     instance.providerCode === CloudType.aws &&
-    INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instance.instanceTypeCode?.split?.('.')[0])
+    (INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instance.instanceTypeCode?.split?.('.')[0]) ||
+    instance.instanceTypeCode?.split?.('.')[0].includes('d'))
   );
 };
 

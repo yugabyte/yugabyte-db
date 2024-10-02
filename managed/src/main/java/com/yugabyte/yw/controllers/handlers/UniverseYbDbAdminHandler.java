@@ -20,6 +20,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -240,6 +241,12 @@ public class UniverseYbDbAdminHandler {
             String.format(
                 "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
                 CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
+      }
+
+      if (CloudType.kubernetes.equals(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
       }
     }
     // Verify request params

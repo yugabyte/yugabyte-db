@@ -125,7 +125,6 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v2 = v2 + 1, v3 = v3
 (2 rows)
 
 DROP TABLE IF EXISTS t_simple;
-NOTICE:  table "t_simple" does not exist, skipping
 CREATE TABLE t_simple (k1 INT, k2 INT NULL, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (k1, k2));
 INSERT INTO t_simple (SELECT i, i, i, i, i, i FROM generate_series(1, 10) AS i);
 --
@@ -1593,12 +1592,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v4, v4 = v3 WHERE k1
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
-         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = v2 + 1 WHERE k1 = 6;
                                 QUERY PLAN

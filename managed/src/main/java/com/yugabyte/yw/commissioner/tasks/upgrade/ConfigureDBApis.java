@@ -104,6 +104,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           universe.getTServers().stream()
               .filter(n -> n.placementUuid.equals(currentCluster.uuid))
               .collect(Collectors.toList());
+      Universe targetUniverseState = getUniverse();
+      targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
+          userIntent;
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.
@@ -121,6 +124,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
             node.isYsqlServer = taskParams().enableYSQL;
             CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
             createNodeDetailsUpdateTask(node, false);
+            // Also updating targetUniverseState
+            CommunicationPorts.setCommunicationPorts(
+                taskParams().communicationPorts, targetUniverseState.getNode(node.getNodeName()));
           },
           masterNodes,
           tserverNodes,
@@ -132,8 +138,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // waitForServer(YSQL sevrver check) in params.
           UpgradeContext.builder()
               .runBeforeStopping(true)
-              .userIntent(userIntent)
-              .communicationPorts(taskParams().communicationPorts)
+              .targetUniverseState(targetUniverseState)
               .build(),
           universe.isYbcEnabled());
     }
