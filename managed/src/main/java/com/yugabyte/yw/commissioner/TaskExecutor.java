@@ -277,13 +277,11 @@ public class TaskExecutor {
       log.info("TaskExecutor is shutting down");
       runnableTasks.sealMap();
       Instant abortTime = Instant.now();
-      synchronized (runnableTasks) {
-        runnableTasks.forEach(
-            (uuid, runnable) -> {
-              runnable.setAbortTime(abortTime);
-              runnable.cancelWaiterIfAborted();
-            });
-      }
+      runnableTasks.forEach(
+          (uuid, runnable) -> {
+            runnable.setAbortTime(abortTime);
+            runnable.cancelWaiterIfAborted();
+          });
     }
     try {
       // Wait for all the RunnableTask to be done.
@@ -407,7 +405,7 @@ public class TaskExecutor {
       }
     } catch (ExecutionException e) {
       Throwables.propagate(e.getCause());
-    } catch (Exception e) {
+    } catch (Throwable e) {
       Throwables.propagate(e);
     }
   }
@@ -938,7 +936,7 @@ public class TaskExecutor {
           isTaskSkipped = true;
           log.info("Skipping task {} beause it is set to not run", getTaskInfo());
         }
-      } catch (Exception e) {
+      } catch (Throwable e) {
         t = e;
       } finally {
         t = handleAfterRun(getTask(), t);
@@ -1149,8 +1147,8 @@ public class TaskExecutor {
       try {
         getTask().setUserTaskUUID(taskUUID);
         super.run();
-      } catch (Exception e) {
-        Throwables.propagate(e);
+      } catch (Throwable t) {
+        Throwables.propagate(t);
       } finally {
         // Remove the task.
         runnableTasks.remove(taskUUID);
@@ -1210,13 +1208,6 @@ public class TaskExecutor {
       return getTaskUUID();
     }
 
-    public synchronized void doHeartbeat() {
-      log.trace("Heartbeating task {}", getTaskUUID());
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
-      taskInfo.markAsDirty();
-      taskInfo.update();
-    }
-
     /**
      * Adds the SubTaskGroup instance containing the subtasks which are to be executed concurrently.
      *
@@ -1250,7 +1241,7 @@ public class TaskExecutor {
      * @param abortOnFailure boolean whether to abort peer subtasks on failure of one subtask.
      */
     public void runSubTasks(boolean abortOnFailure) {
-      RuntimeException anyRe = null;
+      Throwable anyThrowable = null;
       try {
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
@@ -1277,22 +1268,29 @@ public class TaskExecutor {
             }
           } catch (CancellationException e) {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
-          } catch (RuntimeException e) {
+          } catch (Throwable t) {
             if (subTaskGroup.ignoreErrors) {
-              log.error("Ignoring error for " + subTaskGroup, e);
+              log.error("Ignoring error for " + subTaskGroup, t);
+            } else if (t instanceof Error) {
+              // Error is propagated as it is.
+              throw (Error) t;
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup + " failed.", e);
+              throw new RuntimeException(subTaskGroup + " failed.", t);
             }
-            anyRe = e;
+            anyThrowable = t;
           }
         }
       } finally {
         // Clear the subtasks so that new subtasks can be run from the clean state.
         subTaskGroups.clear();
       }
-      if (anyRe != null) {
-        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
+      if (anyThrowable != null) {
+        if (anyThrowable instanceof Error) {
+          // Error is propagated as it is.
+          throw (Error) anyThrowable;
+        }
+        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyThrowable);
       }
     }
 
@@ -1366,10 +1364,14 @@ public class TaskExecutor {
         try {
           super.run();
           break;
-        } catch (Exception e) {
+        } catch (Throwable t) {
+          if (t instanceof Error) {
+            // Error is propagated as it is.
+            throw (Error) t;
+          }
           if ((currentAttempt == retryLimit - 1)
-              || ExceptionUtils.hasCause(e, CancellationException.class)) {
-            throw e;
+              || ExceptionUtils.hasCause(t, CancellationException.class)) {
+            throw t;
           }
 
           String redactedParams =
@@ -1380,8 +1382,8 @@ public class TaskExecutor {
               getTask().getName(),
               redactedParams,
               currentAttempt);
-          if (!getTask().onFailure(getTaskInfo(), e)) {
-            throw e;
+          if (!getTask().onFailure(getTaskInfo(), t)) {
+            throw t;
           }
         }
 

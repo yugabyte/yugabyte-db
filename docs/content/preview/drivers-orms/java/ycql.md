@@ -3,7 +3,8 @@ title: Java Driver 3.10 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 3.10 driver
-badges: ycql
+tags:
+  other: ycql
 aliases:
   - /preview/tutorials/build-apps/java/ycql
 menu:

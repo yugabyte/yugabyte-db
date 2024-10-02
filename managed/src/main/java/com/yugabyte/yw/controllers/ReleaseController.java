@@ -5,8 +5,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -45,6 +47,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -193,6 +196,13 @@ public class ReleaseController extends AuthenticatedController {
             for (ReleaseArtifact artifact : artifacts) {
               release.addArtifact(artifact);
             }
+            // Update sensitive gflags for redaction.
+            Set<String> sensitiveGflags =
+                gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
+            release.setSensitiveGflags(sensitiveGflags);
+            release.save();
+            RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+                sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
           });
     } else {
       try {

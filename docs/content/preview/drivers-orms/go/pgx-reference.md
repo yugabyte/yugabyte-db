@@ -3,7 +3,8 @@ title: PGX Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /preview/reference/drivers/go/pgx-reference/
 menu:

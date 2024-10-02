@@ -78,9 +78,13 @@ class SequencesUtilTest : public pgwrapper::PgMiniTestBase {
   //
   // Returns one string for each expected row formatted as "<oid>, <last_value>, <is_called>",
   // with <is_called> being 0 or 1.
-  Result<std::vector<std::string>> ComputeExpectedScanResult() {
+  Result<std::vector<std::string>> GetSequencesData(
+      std::optional<Timestamp> read_time = std::nullopt) {
     std::vector<std::string> results;
     auto conn = VERIFY_RESULT(ConnectToDB(kNamespaceName));
+    if (read_time) {
+      RETURN_NOT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", read_time->ToInt64()));
+    }
     auto sequence_names =
         VERIFY_RESULT(conn.FetchRows<std::string>("SELECT sequencename FROM pg_sequences"));
     for (const auto& sequence_name : sequence_names) {
@@ -101,6 +105,12 @@ class SequencesUtilTest : public pgwrapper::PgMiniTestBase {
     }
     sort(expected.begin(), expected.end());
     EXPECT_THAT(actual_as_strings, testing::WhenSorted(testing::ContainerEq(expected)));
+  }
+
+  Result<Timestamp> GetCurrentTime() {
+    auto time = Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
+    LOG(INFO) << "Current time: " << time.ToHumanReadableTime();
+    return time;
   }
 
   NamespaceId namespace_id_;
@@ -148,14 +158,14 @@ TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {
 
 TEST_F(SequencesUtilTest, ScanSampleSequences) {
   ASSERT_OK(CreateSampleSequences());
-  auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+  auto expected = ASSERT_RESULT(GetSequencesData());
   auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
   VerifyScan(expected, actual);
 }
 
 TEST_F(SequencesUtilTest, ScanWithPaging) {
   ASSERT_OK(CreateSampleSequences());
-  auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+  auto expected = ASSERT_RESULT(GetSequencesData());
   {
     auto actual = ASSERT_RESULT(
         master::ScanSequencesDataTable(*client_.get(), namespace_oid_, /*max_rows_per_read=*/1));
@@ -179,7 +189,7 @@ TEST_F(SequencesUtilTest, ScanWithReadFailure) {
 TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWhenNoChanges) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
   ASSERT_OK(CreateSampleSequences());
-  auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+  auto expected = ASSERT_RESULT(GetSequencesData());
   auto sequences = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
   auto updates =
       ASSERT_RESULT(EnsureSequenceUpdatesInWal(*client_.get(), namespace_oid_, sequences));
@@ -217,9 +227,42 @@ TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWithConcurrentChanges) {
 
   // Ensure the updates it did make are nops.
   {
-    auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+    auto expected = ASSERT_RESULT(GetSequencesData());
     auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
     VerifyScan(expected, actual);
   }
 }
+
+TEST_F(SequencesUtilTest, ReadSequencesAsOfTime) {
+  auto kSequenceName = "seq_1";
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0 START WITH 1", kSequenceName));
+  auto time1 = ASSERT_RESULT(GetCurrentTime());
+  auto ground_truth_seq_time1 = ASSERT_RESULT(GetSequencesData());
+  ASSERT_EQ(ground_truth_seq_time1.size(), 1);
+  // Fetch next value which bumps the last_value of the sequence by FLAGS_ysql_sequence_cache_minval
+  // and sets is_called to true
+  ASSERT_OK(conn.FetchFormat("SELECT nextval('$0')", kSequenceName));
+  auto time2 = ASSERT_RESULT(GetCurrentTime());
+  auto ground_truth_seq_time2 = ASSERT_RESULT(GetSequencesData());
+  // Bump the sequence last_value again by getting nextval from a new session. Asking current
+  // session for nextval won't bump the last_value until the cache is exhausted.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn2.FetchFormat("SELECT nextval('$0')", kSequenceName));
+  auto ground_truth_seq_cur_time = ASSERT_RESULT(GetSequencesData());
+
+  // Check that the sequence info as of time1 is equal to the ground truth at time1
+  auto expected_seq_time1 = ASSERT_RESULT(GetSequencesData(time1));
+  ASSERT_EQ(expected_seq_time1.size(), 1);
+  ASSERT_STR_EQ(expected_seq_time1[0], ground_truth_seq_time1[0]);
+  // Check for time2
+  auto expected_seq_time2 = ASSERT_RESULT(GetSequencesData(time2));
+  ASSERT_EQ(expected_seq_time2.size(), 1);
+  ASSERT_STR_EQ(expected_seq_time2[0], ground_truth_seq_time2[0]);
+  // Check that resetting yb_read_time to 0 returns the current state of the sequence
+  auto expected_seq_cur_time = ASSERT_RESULT(GetSequencesData());
+  ASSERT_EQ(expected_seq_cur_time.size(), 1);
+  ASSERT_STR_EQ(expected_seq_cur_time[0], ground_truth_seq_cur_time[0]);
+}
+
 }  // namespace yb::master

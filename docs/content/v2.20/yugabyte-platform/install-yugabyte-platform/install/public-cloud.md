@@ -19,6 +19,10 @@ All of these process flows follow the same general steps:
 - Create a Provider Configuration (choose among AWS, GCP, Azure, on-prem, or various Kubernetes options).
 - Create a Universe using the configuration.
 
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../public-cloud/" class="nav-link active">

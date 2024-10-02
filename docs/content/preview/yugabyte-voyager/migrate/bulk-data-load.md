@@ -78,6 +78,15 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
 
 Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
 
+{{< note title= "Migrating data files with large size rows" >}}
+For CSV file format, the import data file has a default row size limit of 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data file process by setting the following environment variable:
+
+```sh
+export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
+```
+
+{{< /note >}}
+
 ### Import data status
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.

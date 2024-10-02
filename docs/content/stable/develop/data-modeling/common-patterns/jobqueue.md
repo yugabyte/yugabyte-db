@@ -4,7 +4,8 @@ headerTitle: Distributed job queue data model
 linkTitle: Job queue
 description: Explore the Job queue data model
 headcontent: Understand how to design a distributed job queue
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     identifier: common-patterns-jobqueue

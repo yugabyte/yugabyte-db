@@ -13,6 +13,24 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.2 - October 1, 2024
+
+### Enhancements
+
+- The [assess-migration](../reference/assess-migration/) and [analyze schema](../reference/schema-migration/analyze-schema/) commands now report issues with indexes on UDT columns under the [Index on complex data types](../known-issues/postgresql/#indexes-on-some-complex-data-types-are-not-supported) PostgreSQL unsupported feature.
+- Improved logic for cluster sizing recommendations in assessment reports:
+
+  - Tables with more than two indexes will now be recommended for sharding.
+  - Materialized views and their associated indexes are now considered when sizing clusters from a PostgreSQL source.
+
+- The analyze-schema command now generates both HTML and JSON format reports by default unless the `output-format` flag is used, in which case only the specified format will be generated.
+- Voyager's [diagnostic service](../reference/diagnostics-report/) (callhome) now uses a secure port for enhanced data security.
+- The installer script now installs the `jq` package on all supported operating systems and verifies that the installed Java version is between 17 and 19 (inclusive).
+
+### Bug fix
+
+- Fixed an issue during the streaming phase of the import data command, where the process would hang on resumption if conflicts arose due to unique constraints between events.
+
 ## v1.8.1 - September 17, 2024
 
 ### Enhancements
@@ -23,7 +41,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 - Changed assessment report file names from "assessmentReport" to "migration_assessment_report", and "bulkAssessmentReport" to "bulk_assessment_report" .
 - Improved UI output of [assess-migration](../reference/assess-migration/) by removing the progress bar from ora2pg when fetching the assessment report.
 
-### Bug Fixes
+### Bug fixes
 
 - Fixed an issue in streaming phase of [import data](../reference/data-migration/import-data/) where conflicts between events that could cause unique constraint errors were not being detected properly.
 - Fixed an issue in [analyze schema](../reference/schema-migration/analyze-schema/) where multi-column GIN indexes were incorrectly reported as an issue due to a regex misidentifying expression indexes that combine two columns.
@@ -99,7 +117,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### New features
 
-- [Assess Migration](../migrate/assess-migration/) {{<badge/tp>}} (for PostgreSQL source only): Introduced the Voyager Migration Assessment feature specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a thorough analysis of the source database by capturing essential metadata and metrics, and generates a comprehensive assessment report.
+- [Assess Migration](../migrate/assess-migration/) {{<tags/feature/tp>}} (for PostgreSQL source only): Introduced the Voyager Migration Assessment feature specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a thorough analysis of the source database by capturing essential metadata and metrics, and generates a comprehensive assessment report.
   - The report is created in HTML/JSON formats.
   - When [export schema](../reference/schema-migration/export-schema/) is run, voyager automatically modifies the CREATE TABLE DDLs to incorporate the recommendations.
   - Assessment can be done via plain bash/psql scripts for cases where source database connectivity is not available to the client machine running voyager.
@@ -131,7 +149,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### New features
 
-- Support for [live migration](../migrate/live-migrate/) from PostgreSQL databases with the option of [fall-forward](../migrate/live-fall-forward/), using which you can switch to a source-replica PostgreSQL database if an issue arises during migration {{<badge/tp>}}.
+- Support for [live migration](../migrate/live-migrate/) from PostgreSQL databases with the option of [fall-forward](../migrate/live-fall-forward/), using which you can switch to a source-replica PostgreSQL database if an issue arises during migration {{<tags/feature/tp>}}.
 
 ### Enhancements
 
@@ -175,7 +193,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Live migration
 
-  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
+  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<tags/feature/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
 
   - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. YugabyteDB Voyager is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
 
@@ -221,7 +239,7 @@ Removed redundant ALTER COLUMN DDLs present in the exported schema for certain c
 
 ### New feature
 
-- Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<badge/tp>}}.
+- Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<tags/feature/tp>}}.
 
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
 

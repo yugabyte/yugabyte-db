@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-RBAC is also available with fine-grained control over access to universes. Fine-grained RBAC is {{<badge/ea>}}; during Early Access, by default fine-grained RBAC is not enabled. See [Manage users](#manage-users).
+RBAC is also available with fine-grained control over access to universes. Fine-grained RBAC is {{<tags/feature/ea>}}; during Early Access, by default fine-grained RBAC is not enabled. See [Manage users](#manage-users).
 
 ## Users and roles
 
@@ -58,7 +58,7 @@ You can't delete or edit built-in roles.
 
 As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
-How you add and modify users varies depending on whether you have enabled fine-grained RBAC {{<badge/ea>}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled. During Early Access, by default fine-grained RBAC is not enabled.
+How you add and modify users varies depending on whether you have enabled fine-grained RBAC {{<tags/feature/ea>}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled. During Early Access, by default fine-grained RBAC is not enabled.
 
 To enable the feature, use following API command:
 

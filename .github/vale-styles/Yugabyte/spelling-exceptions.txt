@@ -298,6 +298,7 @@ hotfixes
 hotfixing
 http
 https
+Hudi
 idempotence
 idmapper
 Iglu

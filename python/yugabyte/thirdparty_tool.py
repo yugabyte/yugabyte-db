@@ -56,7 +56,7 @@ def main() -> None:
         return
 
     if args.sync_inline_thirdparty:
-        inline_thirdparty.sync_inline_thirdparty()
+        inline_thirdparty.sync_inline_thirdparty(args.inline_thirdparty_deps)
         return
 
     metadata = load_metadata()

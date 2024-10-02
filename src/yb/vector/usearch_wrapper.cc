@@ -25,11 +25,12 @@
 
 namespace yb::vectorindex {
 
-using unum::usearch::metric_punned_t;
-using unum::usearch::metric_kind_t;
-using unum::usearch::scalar_kind_t;
-using unum::usearch::index_dense_gt;
 using unum::usearch::index_dense_config_t;
+using unum::usearch::index_dense_gt;
+using unum::usearch::metric_kind_t;
+using unum::usearch::metric_punned_t;
+using unum::usearch::output_file_t;
+using unum::usearch::scalar_kind_t;
 
 index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   index_dense_config_t config;
@@ -92,6 +93,24 @@ class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
     }
     return Status::OK();
   }
+
+  Status SaveToFile(const std::string& file_path) const override {
+    if (!index_.save(output_file_t(file_path.c_str()))) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", file_path);
+    }
+    return Status::OK();
+  }
+
+
+  Status AttachToFile(const std::string& input_path) override {
+    auto result = decltype(index_)::make(input_path.c_str(), /* view= */ true);
+    if (result) {
+      index_ = std::move(result.index);
+      return Status::OK();
+    }
+    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", input_path);
+  }
+
 
   std::vector<VertexWithDistance<DistanceResult>> Search(
       const Vector& query_vector, size_t max_num_results) const override {

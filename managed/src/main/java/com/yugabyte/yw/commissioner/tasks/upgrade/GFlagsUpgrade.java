@@ -77,8 +77,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  protected void validateRerunParams(TaskInfo previousTaskInfo) {
-    Universe universe = getUniverse();
+  protected boolean checkSafeToRunOnRestriction(
+      Universe universe, TaskInfo previousTaskInfo, AllowedTasks allowedTasks) {
+    if (!allowedTasks.isRerun()) {
+      return true;
+    }
+    // Validate rerun task parameters against the old parameters from the previous task.
     GFlagsUpgradeParams prevTaskParams =
         Json.fromJson(previousTaskInfo.getTaskParams(), GFlagsUpgradeParams.class);
     // Cluster with GFlags from the previous task params.
@@ -144,6 +148,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           "Gflags upgrade rerun must affect all server types and nodes changed by the previously"
               + " failed gflags operation");
     }
+    return true;
   }
 
   @Override

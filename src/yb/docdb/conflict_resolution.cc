@@ -41,6 +41,8 @@
 
 #include "yb/gutil/stl_util.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 
@@ -322,8 +324,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       // the empty doc key - 'DocKey([], []), [])'. The created intent iterator should see existing
       // intent records against the empty doc key to perform conflict resolution correctly. Hence,
       // the iterator should be created with KeyBounds::kNoBounds instead.
+      // The iterator uses forward scan only, that's why restart block keys caching is not required.
       intent_iter_ = CreateIntentsIteratorWithHybridTimeFilter(
-          doc_db_.intents, &status_manager(), &KeyBounds::kNoBounds, &intent_key_upperbound_);
+          doc_db_.intents, &status_manager(), &KeyBounds::kNoBounds,
+          &intent_key_upperbound_, rocksdb::CacheRestartBlockKeys::kFalse);
     }
     return intent_iter_.Initialized();
   }
@@ -892,7 +896,9 @@ class StrongConflictChecker {
           BloomFilterMode::USE_BLOOM_FILTER,
           intent_key,
           rocksdb::kDefaultQueryId,
-          hybrid_time_file_filter);
+          hybrid_time_file_filter,
+          /* iterate_upper_bound = */ nullptr,
+          rocksdb::CacheRestartBlockKeys::kFalse);
       value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
     value_iter_.Seek(intent_key);

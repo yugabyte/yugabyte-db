@@ -4,7 +4,8 @@ headerTitle: Automatic data expiration
 linkTitle: Automatic data expiration
 description: Expire data using the `USING TTL` operator
 headcontent: Expire data using time-to-live
-badges: ycql
+tags:
+  other: ycql
 menu:
   preview:
     identifier: timeseries-automatic-expiration

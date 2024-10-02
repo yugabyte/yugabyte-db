@@ -5,8 +5,8 @@ linkTitle: Change data capture (CDC)
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
-cascade:
-  techPreview: /preview/releases/versioning/#feature-availability
+tags:
+  feature: tech-preview
 menu:
   v2.14:
     identifier: explore-change-data-capture

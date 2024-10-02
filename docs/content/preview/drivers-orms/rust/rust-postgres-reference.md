@@ -3,7 +3,8 @@ title: YugabyteDB Rust Smart Driver
 headerTitle: Rust Drivers
 linkTitle: Rust Drivers
 description: Rust postgres Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
 - /preview/reference/drivers/rust/rust-postgres-reference/
 menu:

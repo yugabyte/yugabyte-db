@@ -52,9 +52,10 @@ interface MigrationTilesProps {
   steps: string[];
   currentStep?: number;
   phase?: number;
-  migration: Migration;
+  migration: Migration | undefined;
   onStepChange?: (step: number) => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 export const MigrationTiles: FC<MigrationTilesProps> = ({
@@ -64,27 +65,28 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   phase,
   migration,
   isFetching = false,
+  isNewMigration = false,
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
 
   const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
   const { data: migrationSchemaData } = useGetVoyagerMigrateSchemaTasksQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
   const { data: migrationMetricsData } = useGetVoyagerDataMigrationMetricsQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
   const { data: newMigrationAPIData } = useGetMigrationAssessmentInfoQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
-  const mNewAssessment = (newMigrationAPIData as MigrationAssessmentReport | undefined)/* ?.data */;
+  const mNewAssessment = newMigrationAPIData as MigrationAssessmentReport | undefined;
 
   const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
   const mSchemaData = migrationSchemaData as MigrateSchemaTaskInfo;
@@ -111,7 +113,13 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
         let completed = false;
         let running = false;
 
-        if (phase != null) {
+        if (isNewMigration) {
+            if (stepIndex === MigrationStep["Verification"]) {
+              disabled = true;
+            } else {
+              notStarted = true;
+            }
+        } else if (phase != null) {
           if (phase === MigrationPhase["Verify"]) {
             // Everything will be completed
             completed = true;

@@ -26,6 +26,7 @@
 #include <string>
 #include <utility>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 
 #include "yb/rocksdb/cache.h"
@@ -88,6 +89,12 @@ TAG_FLAG(rocksdb_iterator_init_readahead_size, advanced);
 DEFINE_RUNTIME_uint64(rocksdb_iterator_max_readahead_size, 2_MB,
     "Maximum RocksDB iterator readahead size.");
 TAG_FLAG(rocksdb_iterator_max_readahead_size, advanced);
+
+DEFINE_RUNTIME_bool(rocksdb_iterator_disable_restart_block_keys_caching, false,
+    "Disables restart block keys caching. Having restart block keys caching turned on may give "
+    "a better performance for backward iteration over a block with restart interval greater "
+    "than 0 (for example for data block), refer to block_restart_interval gflag.");
+TAG_FLAG(rocksdb_iterator_disable_restart_block_keys_caching, advanced);
 
 DEFINE_test_flag(bool, rocksdb_record_readahead_stats_only_for_data_blocks, false,
     "For testing only. Record readahead statistics only for data blocks.");
@@ -390,7 +397,8 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
       return NewErrorInternalIterator(block_res.status());
     }
 
-    return table_->NewBlockIterator(block_res.get_ptr(), block_type_, /* input_iter = */ nullptr);
+    return table_->NewBlockIterator(
+        read_options_, block_res.get_ptr(), block_type_, /* input_iter = */ nullptr);
   }
 
   bool PrefixMayMatch(const Slice& internal_key) override {
@@ -1426,10 +1434,35 @@ yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock
   return block_res;
 }
 
+namespace {
+
+int GetBlockRestartInterval(const BlockBasedTableOptions& table_options, BlockType block_type) {
+  return block_type == BlockType::kData ? table_options.block_restart_interval
+                                        : table_options.index_block_restart_interval;
+}
+
+size_t GetRestartBlockCacheCapacity(
+    const ReadOptions& read_options,
+    const BlockBasedTableOptions& table_options,
+    BlockType block_type) {
+  if (FLAGS_rocksdb_iterator_disable_restart_block_keys_caching ||
+      !read_options.cache_restart_block_keys) {
+    return 0;
+  }
+
+  return yb::make_unsigned(GetBlockRestartInterval(table_options, block_type));
+}
+
+} // namespace
+
 InternalIterator* BlockBasedTable::NewBlockIterator(
-    BlockBasedTable::CachableEntry<Block>* block, BlockType block_type, BlockIter* input_iter) {
+    const ReadOptions& read_options, BlockBasedTable::CachableEntry<Block>* block,
+    BlockType block_type, BlockIter* input_iter) {
+  const auto restart_block_cache_capacity =
+      GetRestartBlockCacheCapacity(read_options, rep_->table_options, block_type);
   InternalIterator* iter = block->value->NewIterator(
-      rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter);
+      rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter,
+      /* total_order_seek = */ true, restart_block_cache_capacity);
   if (block->cache_handle) {
     Cache* block_cache = rep_->table_options.block_cache.get();
     iter->RegisterCleanup(&ReleaseCachedEntry, block_cache, block->cache_handle);
@@ -1448,7 +1481,7 @@ InternalIterator* BlockBasedTable::NewBlockIterator(
     return ReturnErrorIterator(block.status(), input_iter);
   }
 
-  return NewBlockIterator(block.get_ptr(), block_type, input_iter);
+  return NewBlockIterator(ro, block.get_ptr(), block_type, input_iter);
 }
 
 // This will be broken if the user specifies an unusual implementation

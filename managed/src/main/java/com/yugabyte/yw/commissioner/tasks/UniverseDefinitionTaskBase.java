@@ -334,7 +334,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       keys.add(match);
     }
-    log.trace("Found tags keys : " + keys);
+    log.trace("Found tags keys : {}", keys);
 
     if (!tagValue.contains(TemplatedTags.INSTANCE_ID)) {
       throw new IllegalArgumentException(
