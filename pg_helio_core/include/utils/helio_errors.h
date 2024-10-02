@@ -18,6 +18,8 @@
 /* Represents a Helio error */
 typedef int HelioErrorEreportCode;
 
+extern int32_t GetMongoErrorCodeFromHelioError(int32_t sqlErrorState);
+
 #define ERRCODE_HELIO_INTERNALERROR MAKE_SQLSTATE('M', '0', '0', '0', '0')
 #define MONGO_CODE_INTERNALERROR 1
 

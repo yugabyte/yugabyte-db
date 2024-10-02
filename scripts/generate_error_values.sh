@@ -26,6 +26,7 @@ set -e
 sourceFile=$1
 filePathDest=$2
 errorNamesPathDest=$3
+conversionFilePathDest=$4
 
 # Get a temp path to write to for staging
 filePathName=$(basename $filePathDest)
@@ -34,8 +35,36 @@ filePathName="${RANDOM}-${filePathName}"
 errNamesFileName=$(basename $errorNamesPathDest)
 errNamesFileName="${RANDOM}-${errNamesFileName}"
 
+conversionFileName=$(basename $conversionFilePathDest)
+conversionFileName="${RANDOM}-${conversionFileName}"
+
 filePath="/tmp/$filePathName"
 errorNamesPath="/tmp/$errNamesFileName"
+conversionFilePath="/tmp/$conversionFileName"
+
+echo "Writing header for $conversionFilePath"
+cat << EOF > $conversionFilePath
+/*-------------------------------------------------------------------------
+ * Copyright (c) Microsoft Corporation.  All rights reserved.
+ *
+ * include/utils/helio_errors.h
+ *
+ * Utilities for converting Helio error to mongo error.
+ * This file is generated - please modify the source (mongoerrors.csv)
+ *
+ *-------------------------------------------------------------------------
+ */
+
+#include <postgres.h>
+#include <utils/helio_errors.h>
+
+int32_t
+GetMongoErrorCodeFromHelioError(int32_t sqlStateError)
+{
+	switch (sqlStateError)
+	{
+EOF
+
 
 echo "Writing header for $filePath"
 cat << EOF > $filePath
@@ -58,6 +87,8 @@ cat << EOF > $filePath
 
 /* Represents a Helio error */
 typedef int HelioErrorEreportCode;
+
+extern int32_t GetMongoErrorCodeFromHelioError(int32_t sqlErrorState);
 
 EOF
 
@@ -256,6 +287,12 @@ for fileIndex in $(seq 1 $maxIndex); do
     # Add the generated macro to the csv as well
     echo "${name},${baseLetter}${secondChar}${thirdChar}${fourthChar}${fifthChar},${code},${fileIndex}" >> $errorNamesPath
 
+    echo "		case ERRCODE_HELIO_$errorNameUpper:" >> $conversionFilePath
+    echo "		{" >> $conversionFilePath
+    echo "			return MONGO_CODE_${errorNameUpper};" >> $conversionFilePath
+    echo "		}" >> $conversionFilePath
+    echo "" >> $conversionFilePath
+
     # Move to the next header.
     IncrementErrorCode
 done
@@ -263,6 +300,16 @@ done
 echo "Writing footer for $filePath"
 echo "#endif" >> $filePath
 
+echo "Writing footer for $filePath"
+echo "		default:"  >> $conversionFilePath
+echo "		{"  >> $conversionFilePath
+echo "			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)," >> $conversionFilePath
+echo "							errmsg(\"Unknown error code %d\", sqlStateError)));" >> $conversionFilePath
+echo "		}"  >> $conversionFilePath
+echo "	}" >> $conversionFilePath
+echo "}" >> $conversionFilePath
+
 echo "Moving $filePath to $filePathDest"
 mv -f $filePath $filePathDest
 mv -f $errorNamesPath $errorNamesPathDest
+mv -f $conversionFilePath $conversionFilePathDest
