@@ -117,7 +117,7 @@ If your sudo permissions are limited, add the following commands to the sudoers 
 <path-to-yba-ctl>/yba-ctl version
 ```
 
-Where path-to-yb-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
+Where path-to-yba-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
 
 ### High availability deployments
 
