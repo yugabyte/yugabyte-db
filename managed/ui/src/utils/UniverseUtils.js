@@ -10,6 +10,7 @@ import {
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
+
 export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
 
 const LDAP_KEYS = [
@@ -265,9 +266,27 @@ export const isOnpremUniverse = (universe) => {
   return isUniverseType(universe, 'onprem');
 };
 
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
+  'gr6','i3','i3en','i4g','i4i','im4gn',
+  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
+
+export const isEphemeralAwsStorageInstance = (instanceType) => {
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) ||
+    instanceType?.split?.('.')[0].includes('d');
+};
+
 export const isPausableUniverse = (universe) => {
+
+
+
+  if (isUniverseType(universe, 'aws')) {
+    return universe.nodeDetailsSet.find(
+      n => n !== null &&
+      isEphemeralAwsStorageInstance(n.cloudInfo?.instanceType)) !== undefined;
+  }
+
+
   return (
-    isUniverseType(universe, 'aws') ||
     isUniverseType(universe, 'gcp') ||
     isUniverseType(universe, 'azu')
   );
@@ -350,7 +369,7 @@ export const unformatConf = (GFlagInput) => {
 };
 
 /**
-  * Format Configuration string based on rules here: 
+  * Format Configuration string based on rules here:
   * https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#ysql-hba-conf-csv
   *
   * @param GFlagInput Input entered in the text field
@@ -450,7 +469,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     const isJWTUrlExist = attributes?.some((input) => input.includes(CONST_VALUES.JWT_JWKS_URL));
     const isJWKSKesysetEmpty = isEmptyString(JWKSKeyset) || !JWKSKeyset;
 
-    /* 
+    /*
       Raise error when there is jwt keyword but is no JWT_JWKS_URL attribute present and Keyset is empty
     */
     if (searchTerm === CONST_VALUES.JWT && !isJWTUrlExist && isJWKSKesysetEmpty) {

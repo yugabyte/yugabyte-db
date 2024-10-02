@@ -3,7 +3,8 @@ title: PostgreSQL node-postgres Driver
 headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
 description: PostgreSQL node-postgres Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
 - /preview/reference/drivers/nodejs/postgres-pg-reference/
 menu:

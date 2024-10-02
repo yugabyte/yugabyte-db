@@ -320,7 +320,7 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 	 * After updating INSERT ON CONFLICT batching map, PK is no longer
 	 * relevant from here on.
 	 */
-	if (isYBRelation && indexRelation->rd_index->indisprimary)
+	if (isYBRelation && YBIsCoveredByMainTable(indexRelation))
 		return deferredCheck;
 
 	/* Check whether to apply noDupErr to this index */
@@ -581,7 +581,7 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
 	 */
 	FormIndexDatum(indexInfo, slot, estate, values, isnull);
 
-	if (!(IsYBRelation(heapRelation) && indexRelation->rd_index->indisprimary))
+	if (!(IsYBRelation(heapRelation) && YBIsCoveredByMainTable(indexRelation)))
 	{
 		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		index_delete(indexRelation, /* index relation */
@@ -738,7 +738,7 @@ YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
 	 * into the main table.
 	 */
 	Assert(IsYBRelation(indexRelation));
-	if (indexRelation->rd_index->indisprimary)
+	if (YBIsCoveredByMainTable(indexRelation))
 		return;
 
 	/*
@@ -823,13 +823,13 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 			list_member_oid(estate->yb_skip_entities.index_list,
 							RelationGetRelid(indexRelation)))
 			continue;
-		
+
 		Form_pg_index indexData = indexRelation->rd_index;
 		/*
 		 * Primary key is a part of the base relation in Yugabyte and does not
 		 * need to be updated here.
 		 */
-		if (indexData->indisprimary &&
+		if (YBIsCoveredByMainTable(indexRelation) &&
 			!YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
 			continue;
 

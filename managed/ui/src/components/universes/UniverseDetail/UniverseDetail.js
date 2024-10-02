@@ -784,11 +784,6 @@ class UniverseDetail extends Component {
       }
     } = currentUniverse;
 
-    const isEphemeralAwsStorage =
-      nodeDetailsSet.find?.((node) => {
-        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
-      }) !== undefined;
-
     /**
      * Handle the backup state toggle.
      * i.e open the confirmation model if backup is to be disabled.
@@ -1434,7 +1429,6 @@ class UniverseDetail extends Component {
                   */}
 
                   {isPausableUniverse(currentUniverse?.data) &&
-                    !isEphemeralAwsStorage &&
                     (featureFlags.test['pausedUniverse'] ||
                       featureFlags.released['pausedUniverse']) && (
                       <RbacValidator

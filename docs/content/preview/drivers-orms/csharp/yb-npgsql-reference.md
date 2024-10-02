@@ -3,7 +3,8 @@ title: YugabyteDB Npgsql Smart Driver
 headerTitle: C# Drivers
 linkTitle: C# Drivers
 description: C# Npgsql Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /preview/reference/drivers/csharp/
   - /preview/reference/drivers/csharp/yb-npgsql-reference/

@@ -2,7 +2,8 @@
 title: Avoiding hotspots in YugabyteDB
 headertitle: Avoiding hotspots
 linkTitle: Hot shards
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     identifier: data-modeling-hot-shard

@@ -184,7 +184,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<badge/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 {{<tip>}}
 For more information, refer to the following:
@@ -268,7 +268,7 @@ Each table and index consists of several tablets based on the [`--ysql_num_shard
 
 For a cluster with RF3, 1000 tablets imply 3000 tablet replicas. If the cluster has three nodes, then each node has on average 1000 tablet replicas. A six node cluster would have on average 500 tablet replicas per-node and so on.
 
-Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs). 
+Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs).
 
 The overhead is proportional to the number of tablet replicas so 500 tablet replicas would need half as much.
 
