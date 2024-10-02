@@ -214,7 +214,7 @@ TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
 
 // The flag is used both in DocRowwiseIterator and at PG side (needed for Cost Based Optimizer).
 // But it is not tagged with kPg as it would be used both for YSQL and YCQL (refer to GH #22371).
-DEFINE_NON_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
+DEFINE_NON_RUNTIME_bool(use_fast_backward_scan, true,
     "Use backward scan optimization to build a row in the reverse order for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
