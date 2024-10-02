@@ -78,7 +78,10 @@ char	   *output_files[] = {
 int
 main(int argc, char **argv)
 {
+#ifdef YB_TODO
+	/* Unused variable due to later YB_TODO create_script_for_old_cluster_deletion */
 	char	   *deletion_script_file_name = NULL;
+#endif
 	bool		live_check = false;
 
 	pg_logging_init(argv[0]);
@@ -91,43 +94,77 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	adjust_data_dir(&old_cluster);
-	adjust_data_dir(&new_cluster);
+	if (!is_yugabyte_enabled() || user_opts.check)
+		adjust_data_dir(&old_cluster);
 
-	/*
-	 * Set mask based on PGDATA permissions, needed for the creation of the
-	 * output directories with correct permissions.
-	 */
-	if (!GetDataDirectoryCreatePerm(new_cluster.pgdata))
-		pg_fatal("could not read permissions of directory \"%s\": %s\n",
-				 new_cluster.pgdata, strerror(errno));
+	if (!(is_yugabyte_enabled() && user_opts.check))
+	{
+		adjust_data_dir(&new_cluster);
 
-	umask(pg_mode_mask);
+		/*
+		 * Set mask based on PGDATA permissions, needed for the creation of the
+		 * output directories with correct permissions.
+		 */
+		if (!GetDataDirectoryCreatePerm(new_cluster.pgdata))
+			pg_fatal("could not read permissions of directory \"%s\": %s\n",
+					 new_cluster.pgdata, strerror(errno));
 
-	/*
-	 * This needs to happen after adjusting the data directory of the new
-	 * cluster in adjust_data_dir().
-	 */
-	make_outputdirs(new_cluster.pgdata);
+		umask(pg_mode_mask);
+
+		/*
+		 * This needs to happen after adjusting the data directory of the new
+		 * cluster in adjust_data_dir().
+		 */
+		make_outputdirs(new_cluster.pgdata);
+	}
+	else
+	{
+		/*
+		 * Set mask based on PGDATA permissions, needed for the creation of the
+		 * output directories with correct permissions.
+		 */
+		if (!GetDataDirectoryCreatePerm(old_cluster.pgdata))
+			pg_fatal("could not read permissions of directory \"%s\": %s\n",
+					 old_cluster.pgdata, strerror(errno));
+
+		umask(pg_mode_mask);
+
+		/* YB: Make sure we have a place for log files. */
+		make_outputdirs(old_cluster.pgdata);
+	}
 
 	setup(argv[0], &live_check);
 
 	output_check_banner(live_check);
 
-	check_cluster_versions();
+	/* 
+	 * This checks for Postgres versions. 
+	 * The check isn't relevant to Yugabyte right now.
+	 */
+	if (!is_yugabyte_enabled())
+		check_cluster_versions();
 
 	get_sock_dir(&old_cluster, live_check);
 	get_sock_dir(&new_cluster, false);
 
-	check_cluster_compatibility(live_check);
+	/* 
+	 * This checks for global state information initialized 
+	 * during initdb and is not relevant for YB currently.
+	 */
+	if (!is_yugabyte_enabled())
+		check_cluster_compatibility(live_check);
 
 	check_and_dump_old_cluster(live_check);
 
 
 	/* -- NEW -- */
-	start_postmaster(&new_cluster, true);
+	if (!is_yugabyte_enabled())
+		start_postmaster(&new_cluster, true);
 
+#ifdef YB_TODO
+	/* Investigate relevant checks within check_new_cluster */
 	check_new_cluster();
+#endif
 	report_clusters_compatible();
 
 	pg_log(PG_REPORT,
@@ -135,27 +172,35 @@ main(int argc, char **argv)
 		   "Performing Upgrade\n"
 		   "------------------\n");
 
-	prepare_new_cluster();
+	if (!is_yugabyte_enabled())
+	{
+		prepare_new_cluster();
 
-	stop_postmaster(false);
+		stop_postmaster(false);
+	}
 
 	/*
 	 * Destructive Changes to New Cluster
 	 */
-
+#ifdef YB_TODO
+	/* Investigate whether this should be permanently disabled */
 	copy_xact_xlog_xid();
 
 	/* New now using xids of the old system */
 
 	/* -- NEW -- */
 	start_postmaster(&new_cluster, true);
+#endif
 
 	prepare_new_globals();
 
 	create_new_objects();
 
-	stop_postmaster(false);
+	if (!is_yugabyte_enabled())
+		stop_postmaster(false);
 
+#ifdef YB_TODO
+	/* Investigate these functions being executed after pg_restore is done */
 	/*
 	 * Most failures happen in create_new_objects(), which has completed at
 	 * this point.  We do this here because it is just before linking, which
@@ -204,7 +249,7 @@ main(int argc, char **argv)
 	pg_free(deletion_script_file_name);
 
 	cleanup_output_dirs();
-
+#endif
 	return 0;
 }
 
@@ -305,7 +350,10 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
+#ifdef YB_TODO 
+	/* Investigate/implement this check */
 	check_pghost_envvar();
+#endif
 
 	/*
 	 * In case the user hasn't specified the directory for the new binaries
@@ -326,8 +374,11 @@ setup(char *argv0, bool *live_check)
 
 	verify_directories();
 
+	if (is_yugabyte_enabled() && user_opts.check)
+		*live_check = true;
+
 	/* no postmasters should be running, except for a live check */
-	if (pid_lock_file_exists(old_cluster.pgdata))
+	if (!is_yugabyte_enabled() && pid_lock_file_exists(old_cluster.pgdata))
 	{
 		/*
 		 * If we have a postmaster.pid file, try to start the server.  If it
@@ -351,7 +402,7 @@ setup(char *argv0, bool *live_check)
 	}
 
 	/* same goes for the new postmaster */
-	if (pid_lock_file_exists(new_cluster.pgdata))
+	if (!is_yugabyte_enabled() && pid_lock_file_exists(new_cluster.pgdata))
 	{
 		if (start_postmaster(&new_cluster, false))
 			stop_postmaster(false);
@@ -406,7 +457,7 @@ prepare_new_globals(void)
 	prep_status("Restoring global objects in the new cluster");
 
 	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-			  "\"%s/psql\" " EXEC_PSQL_ARGS " %s -f \"%s/%s\"",
+			  "\"%s/ysqlsh\" " EXEC_PSQL_ARGS " %s -f \"%s/%s\"",
 			  new_cluster.bindir, cluster_conn_opts(&new_cluster),
 			  log_opts.dumpdir,
 			  GLOBALS_DUMP_FILE);
@@ -425,6 +476,12 @@ create_new_objects(void)
 	 * We cannot process the template1 database concurrently with others,
 	 * because when it's transiently dropped, connection attempts would fail.
 	 * So handle it in a separate non-parallelized pass.
+	 */
+#ifdef YB_TODO
+	/* 
+	 * Fix template1 restore, currently throws 
+	 *   UPDATE pg_catalog.pg_database SET datistemplate = false WHERE datname = 'template1';
+	 *   pg_database not found 
 	 */
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{
@@ -462,6 +519,7 @@ create_new_objects(void)
 
 		break;					/* done once we've processed template1 */
 	}
+#endif
 
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{
@@ -484,6 +542,10 @@ create_new_objects(void)
 		 * propagate its database-level properties.
 		 */
 		if (strcmp(old_db->db_name, "postgres") == 0)
+			create_opts = "--clean --create";
+		else if (strcmp(old_db->db_name, "yugabyte") == 0)
+			create_opts = "--clean --create";
+		else if (strcmp(old_db->db_name, "system_platform") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";

@@ -47,7 +47,7 @@ void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats);
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 uint64_t YBCPgGetSessionID();
 

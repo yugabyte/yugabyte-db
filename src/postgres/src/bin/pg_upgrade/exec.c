@@ -260,10 +260,15 @@ verify_directories(void)
 #endif
 		pg_fatal("You must have read and write access in the current directory.\n");
 
-	check_bin_dir(&old_cluster, false);
-	check_data_dir(&old_cluster);
+	if (!is_yugabyte_enabled())
+		check_bin_dir(&old_cluster, false);
+	if (!is_yugabyte_enabled() || user_opts.check)
+		/* YB: No "old cluster" data dir needed for actual upgrade. */
+		check_data_dir(&old_cluster);
 	check_bin_dir(&new_cluster, true);
-	check_data_dir(&new_cluster);
+	if (!(is_yugabyte_enabled() && user_opts.check))
+		/* YB: No new cluster for preflight checks. */
+		check_data_dir(&new_cluster);
 }
 
 
@@ -411,7 +416,13 @@ check_bin_dir(ClusterInfo *cluster, bool check_versions)
 		check_exec(cluster->bindir, "ysql_dump", check_versions);
 		check_exec(cluster->bindir, "ysql_dumpall", check_versions);
 		check_exec(cluster->bindir, "pg_restore", check_versions);
-		check_exec(cluster->bindir, "psql", check_versions);
+#ifdef YB_TODO
+		/* Make this version check work (ysqlsh -V returns psql, name mismatch) */
+		if (is_yugabyte_enabled())
+			check_exec(cluster->bindir, "ysqlsh", check_versions);
+		else
+			check_exec(cluster->bindir, "psql", check_versions);
+#endif
 		check_exec(cluster->bindir, "vacuumdb", check_versions);
 	}
 }
@@ -445,8 +456,10 @@ check_exec(const char *dir, const char *program, bool check_version)
 	if (check_version)
 	{
 		pg_strip_crlf(line);
-
-		snprintf(versionstr, sizeof(versionstr), "%s (PostgreSQL) " PG_VERSION, program);
+		if (strstr(cmd, "ysql_dump") != NULL)
+			snprintf(versionstr, sizeof(versionstr), "%s (YSQL) " PG_VERSION, program);
+		else
+			snprintf(versionstr, sizeof(versionstr), "%s (PostgreSQL) " PG_VERSION, program);
 
 		if (strcmp(line, versionstr) != 0)
 			pg_fatal("check for \"%s\" failed: incorrect version: found \"%s\", expected \"%s\"\n",

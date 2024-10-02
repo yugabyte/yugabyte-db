@@ -326,3 +326,9 @@ str2uint(const char *str)
 {
 	return strtoul(str, NULL, 10);
 }
+
+bool
+is_yugabyte_enabled()
+{
+	return true;
+}

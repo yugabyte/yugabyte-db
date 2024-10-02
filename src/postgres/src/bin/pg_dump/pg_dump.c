@@ -174,6 +174,8 @@ static int	ncomments = 0;
 static SecLabelItem *seclabels = NULL;
 static int	nseclabels = 0;
 
+static bool IsYugabyteEnabled = true;
+
 /*
  * The default number of rows per INSERT when
  * --inserts is specified without --rows-per-insert
@@ -14785,11 +14787,17 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		else
 			appendPQExpBuffer(tag, "%s %s", type, name);
 
-		if (dopt->include_yb_metadata)
-		{
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
 			yb_use_roles_sql = createPQExpBuffer();
+		/*
+		 * YB_TODO: \if is a psql meta-command and doesn't work with pg_restore,
+		 * for the dopt->binary_upgrade == true case. For now in the
+		 * dopt->binary_upgrade == true case, emit an empty statement. When we
+		 * implement restoration of global objects including roles, we will
+		 * probably want to set an ACL correctly.
+		 */
+		if (dopt->include_yb_metadata)
 			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
-		}
 
 		aclDeps[nDeps++] = objDumpId;
 		if (altDumpId != InvalidDumpId)
@@ -14803,12 +14811,12 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 								  .owner = owner,
 								  .description = "ACL",
 								  .section = SECTION_NONE,
-								  .createStmt = (dopt->include_yb_metadata ?
+								  .createStmt = ((dopt->include_yb_metadata || dopt->binary_upgrade) ?
 												 yb_use_roles_sql->data :
 												 sql->data),
 								  .deps = aclDeps,
 								  .nDeps = nDeps));
-		if (dopt->include_yb_metadata)
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
 			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
@@ -15617,10 +15625,15 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+
 			/*
-			 * We may create a primary key index as part of the CREATE TABLE
+			 * YB: We may create a primary key index as part of the CREATE TABLE
 			 * statement we generate here; accordingly, set things up so we
 			 * will set its OID correctly in binary update mode.
+			 *
+			 * YB_TODO: For upgrade, figure out how to handle a table partition
+			 * where the parent defines the primary key. (See use of
+			 * parent_has_primary_key, below.)
 			 */
 			if (tbinfo->primaryKeyIndex)
 			{
@@ -16134,8 +16147,22 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 * TOAST tables semi-independently, here we see them only as children
 		 * of other relations; so this "if" lacks RELKIND_TOASTVALUE, and the
 		 * child toast table is handled below.)
+		 *
+		 * YB: We have code in pg_backup_archiver.c:_printTocEntry to work
+		 * around YugabyteDB not currently supporting mixing DDLs with
+		 * modifications to the PG catalog in a single transaction. The
+		 * workaround causes ahwrite/ExecuteSqlCommandBuf to call
+		 * ExecuteSimpleCommands in pg_backup_db.c. ExecuteSimpleCommands does
+		 * its own parsing to split the statements, and is unaware of --
+		 * comments but is aware of quotation marks, so a single quote inside a
+		 * comment (here "heap's") puts it into a SQL_IN_SINGLE_QUOTE mode that
+		 * eats the rest of the string, eliminating the statement afterwards
+		 * which sets relispopulated. To work around this issue, since Yugabyte
+		 * doesn’t need xid fields, we skip the outputs here entirely, avoiding
+		 * the comments with single quotes.
 		 */
 		if (dopt->binary_upgrade &&
+			!IsYugabyteEnabled &&
 			(tbinfo->relkind == RELKIND_RELATION ||
 			 tbinfo->relkind == RELKIND_MATVIEW))
 		{

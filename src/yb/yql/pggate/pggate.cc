@@ -361,7 +361,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
+Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
   CHECK(!pg_session_);
 
   auto session = make_scoped_refptr<PgSession>(
@@ -370,7 +370,7 @@ Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
           PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
           const ExecParametersMutator& mutator) {
         return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
-      });
+      }, is_binary_upgrade);
 
   pg_session_.swap(session);
   return Status::OK();

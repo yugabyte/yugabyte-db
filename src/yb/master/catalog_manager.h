@@ -100,6 +100,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 
@@ -146,6 +147,7 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
+class YsqlInitDBAndMajorUpgradeHandler;
 
 using PlacementId = std::string;
 
@@ -1124,17 +1126,34 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
-  // Not implemented.
+  // Initiates initdb for the new version of a major YSQL version upgrade. The system must be in
+  // upgrade mode (TEST_online_pg11_to_pg15_upgrade set to true) for this to work.
+  //
+  // Returns immediately. Call IsYsqlMajorVersionUpgradeInitdbDone to wait until it's finished.
+  //
+  // Can be called more than once, but not while it's already running. It internally performs a
+  // rollback before running initdb.
   Status StartYsqlMajorVersionUpgradeInitdb(const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
                                             StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
                                             rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
-  // Not implemented.
+  // Checks if initdb has been completed for a YSQL major version upgrade.
   Status IsYsqlMajorVersionUpgradeInitdbDone(
       const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
       IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc);
 
-  // Not implemented.
+  // Rolls back an in-progress major YSQL version upgrade. Deletes all of the new YSQL version's
+  // catalog tables, and resets all upgrade-related state to initial values. Blocks until the
+  // rollback is finished or fails. The system must have been in upgrade mode
+  // (TEST_online_pg11_to_pg15_upgrade set to true), with no DDLs performed, since the beginning of
+  // the upgrade for this to work.
+  //
+  // Takes a long time to run. Set a timeout of at least 5 minutes when calling.
+  //
+  // Can be called more than once, but not at the same time.
+  //
+  // After the rollback successfully completes, it's safe to restart the masters on the old major
+  // YSQL version.
   Status RollbackYsqlMajorVersionUpgrade(const RollbackYsqlMajorVersionUpgradeRequestPB* req,
                                          RollbackYsqlMajorVersionUpgradeResponsePB* resp,
                                          rpc::RpcContext* rpc, const LeaderEpoch& epoch);
@@ -1660,6 +1679,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
+  scoped_refptr<SysConfigInfo> GetYsqlCatalogConfig() {
+    CHECK_NOTNULL(ysql_catalog_config_);
+    return ysql_catalog_config_;
+  }
+
+  InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
+
   Result<std::vector<SysCatalogEntryDumpPB>> FetchFromSysCatalog(
       SysRowEntryType type, const std::string& item_id_filter);
 
@@ -1736,7 +1762,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
   // if started running initdb, false if decided that it is not needed.
-  Result<bool> StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(mutex_);
+  Result<bool> StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
 
   Status PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
@@ -2402,7 +2428,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
-  boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
@@ -3096,6 +3121,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   std::atomic<bool> pg_cron_service_created_{false};
+
+  std::unique_ptr<YsqlInitDBAndMajorUpgradeHandler> ysql_initdb_and_major_upgrade_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

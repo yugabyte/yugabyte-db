@@ -53,6 +53,7 @@ class MetricEntity;
 class MetricRegistry;
 class NodeInstancePB;
 class ScopedGLogMetrics;
+class ServerRegistrationPB;
 class Thread;
 class Webserver;
 

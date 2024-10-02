@@ -924,7 +924,8 @@ YBInitPostgresBackend(
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
 		 */
-		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state));
+		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state,
+										IsBinaryUpgrade));
 		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
@@ -2000,6 +2001,20 @@ YbDdlModeOptional YbGetDdlMode(
 
 	Node *parsetree = GetActualStmtNode(pstmt);
 	NodeTag node_tag = nodeTag(parsetree);
+
+	/*
+	 * During a major PG version upgrade, the logical state of the catalog is
+	 * kept constant, and we're merely creating a new-major-version catalog
+	 * that's semantically equivalent to the old-major version catalog. During
+	 * this process we need to keep the catalog version constant, to avoid
+	 * needing to refresh the catalog. This is safe because the only DDLs
+	 * allowed are being performed by the new-major-version pg_restore process.
+	 */
+	if (IsBinaryUpgrade)
+		return (YbDdlModeOptional){
+			.has_value = true,
+			.value = YbCatalogModificationAspectsToDdlMode(YB_DDL_MODE_NO_ALTERING)
+		};
 
 	/*
 	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.

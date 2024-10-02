@@ -57,6 +57,9 @@ parseCommandLine(int argc, char *argv[])
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
 
+		/* Yugabyte flags */
+		{"old-host", required_argument, NULL, 'h'},
+		{"new-host", required_argument, NULL, 'H'},
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -99,7 +102,7 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:U:v",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -122,6 +125,14 @@ parseCommandLine(int argc, char *argv[])
 
 			case 'D':
 				new_cluster.pgdata = pg_strdup(optarg);
+				break;
+
+			case 'h':
+				old_cluster.yb_hostaddr = pg_strdup(optarg);
+				break;
+
+			case 'H':
+				new_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
 			case 'j':
@@ -222,14 +233,22 @@ parseCommandLine(int argc, char *argv[])
 		setenv("PGOPTIONS", FIX_DEFAULT_READ_ONLY, 1);
 
 	/* Get values from env if not already set */
-	check_required_directory(&old_cluster.bindir, "PGBINOLD", false,
-							 "-b", _("old cluster binaries reside"), false);
+	if (!is_yugabyte_enabled())
+		check_required_directory(&old_cluster.bindir, "PGBINOLD", false,
+								"-b", _("old cluster binaries reside"), false);
 	check_required_directory(&new_cluster.bindir, "PGBINNEW", false,
 							 "-B", _("new cluster binaries reside"), true);
-	check_required_directory(&old_cluster.pgdata, "PGDATAOLD", false,
-							 "-d", _("old cluster data resides"), false);
-	check_required_directory(&new_cluster.pgdata, "PGDATANEW", false,
-							 "-D", _("new cluster data resides"), false);
+	if (!is_yugabyte_enabled() || user_opts.check)
+		/* In YB upgrade, we don't need the old directory. */
+		check_required_directory(&old_cluster.pgdata, "PGDATAOLD", false,
+								 "-d", _("old cluster data resides"), false);
+	if (!(is_yugabyte_enabled() && user_opts.check))
+		/*
+		 * Checks in YB are done only on the old cluster and don't need a new
+		 * cluster data dir.
+		 */
+		check_required_directory(&new_cluster.pgdata, "PGDATANEW", false,
+								"-D", _("new cluster data resides"), false);
 	check_required_directory(&user_opts.socketdir, "PGSOCKETDIR", true,
 							 "-s", _("sockets will be created"), false);
 

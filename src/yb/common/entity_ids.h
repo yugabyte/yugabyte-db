@@ -71,7 +71,10 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
+// Called with any table UUID, is it a PG11 catalog ID? All other cases return false.
+bool IsPg11CatalogId(const TableId& id);
+
 // Called with any table UUID, is it a PG15 catalog ID? All other cases return false.
-bool IsPg15CatalogId(const std::string& id);
+bool IsPg15CatalogId(const TableId& id);
 
 }  // namespace yb

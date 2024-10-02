@@ -226,8 +226,10 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
-  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
+  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
+    return pgapi->InitSession(session_stats, is_binary_upgrade);
+  });
 }
 
 // ql_value is modified in-place.
@@ -565,8 +567,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
+  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }

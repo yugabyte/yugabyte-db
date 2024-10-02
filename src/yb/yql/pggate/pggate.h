@@ -134,7 +134,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState& session_stats);
+  Status InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 

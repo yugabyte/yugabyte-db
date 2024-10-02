@@ -329,6 +329,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Is the ts in a read-only placement.
   bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
 
+  Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
+
  private:
   mutable rw_spinlock mutex_;
   template <class TProxy>

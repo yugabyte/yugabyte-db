@@ -23,6 +23,12 @@ class BasicUpgradeTest : public UpgradeTestBase {
   explicit BasicUpgradeTest(const std::string& from_version) : UpgradeTestBase(from_version) {}
   virtual ~BasicUpgradeTest() = default;
 
+  void TearDown() override {
+    keep_running_ = false;
+    test_thread_holder_.JoinAll();
+    UpgradeTestBase::TearDown();
+  }
+
   Status VerifyVersionFromDB(const std::string& expected_version) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
     auto version = VERIFY_RESULT(conn.FetchRowAsString("SELECT version()"));

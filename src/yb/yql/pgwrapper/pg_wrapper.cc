@@ -21,6 +21,7 @@
 #include <regex>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
@@ -134,6 +135,9 @@ DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 DECLARE_string(tmp_dir);
+DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
+    "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
+    "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -761,6 +765,10 @@ Status PgWrapper::Start() {
     argv.push_back("log_error_verbosity=VERBOSE");
   }
 
+  if (conf_.run_in_binary_upgrade) {
+    argv.push_back("-b");
+  }
+
   proc_.emplace(argv[0], argv);
 
   vector<string> ld_library_path {
@@ -831,35 +839,79 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-Status PgWrapper::InitDb(const string& versioned_data_dir) {
+Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
   if (!Env::Default()->FileExists(initdb_program_path)) {
     return STATUS_FORMAT(IOError, "initdb not found at: $0", initdb_program_path);
   }
 
-  // A set versioned_data_dir means it's local initdb, so we need to initialize in the actual
-  // directory. Otherwise, we can use the symlink.
-  const string& data_dir = versioned_data_dir.empty() ? conf_.data_dir : versioned_data_dir;
+  // If InitdbParams is LocalInitdbParams, then it's local initdb, and we need to initialize in the
+  // actual directory. Otherwise, we can use the symlink.
+  const string& data_dir =
+      std::holds_alternative<LocalInitdbParams>(initdb_params)
+          ? std::get<LocalInitdbParams>(initdb_params).versioned_data_dir
+          : conf_.data_dir;
   vector<string> initdb_args { initdb_program_path, "-D", data_dir, "-U", "postgres" };
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
-  bool yb_enabled = versioned_data_dir.empty();
-  SetCommonEnv(&initdb_subprocess, yb_enabled);
-  int status = 0;
-  RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
-  if (status != 0) {
-    SCHECK(WIFEXITED(status), InternalError,
-           Format("$0 did not exit normally", initdb_program_path));
-    return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
-                         initdb_program_path,
-                         WEXITSTATUS(status));
+  bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
+  SetCommonEnv(&initdb_subprocess, global_initdb);
+  initdb_subprocess.SetEnv(
+      "FLAGS_TEST_online_pg11_to_pg15_upgrade",
+      FLAGS_TEST_online_pg11_to_pg15_upgrade ? "true" : "false");
+  if (global_initdb) {
+    for (const auto& [db_name, db_oid] : std::get<GlobalInitdbParams>(initdb_params).db_to_oid) {
+      initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
+    }
+  }
+
+  std::string stdout, stderr;
+  auto status = initdb_subprocess.Call(&stdout, &stderr);
+  LOG(INFO) << "initdb stdout: " << stdout;
+  if (!stderr.empty()) {
+    LOG(WARNING) << "initdb stderr: " << stderr;
+  }
+  if (!status.ok()) {
+    return status.CloneAndAppend(stderr);
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
+  return Status::OK();
+}
+
+Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
+  const auto program_path = JoinPathSegments(GetPostgresInstallRoot(), "bin", "pg_upgrade");
+  RETURN_NOT_OK(CheckExecutableValid(program_path));
+  if (!Env::Default()->FileExists(program_path)) {
+    return STATUS_FORMAT(IOError, "pg_upgrade not found at: $0", program_path);
+  }
+
+  std::vector<std::string> args{
+      program_path,
+      "--new-datadir", param.data_dir,
+      "--old-host", param.old_version_pg_address,
+      "--old-port", ToString(param.old_version_pg_port),
+      "--new-host", param.new_version_pg_address,
+      "--new-port", ToString(param.new_version_pg_port),
+      "--username", "yugabyte"};
+
+  LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
+  Subprocess subprocess(program_path, args);
+
+  std::string stdout, stderr;
+  auto status = Subprocess::Call(args, &stdout, &stderr);
+  LOG(INFO) << "pg_upgrade stdout: " << stdout;
+  if (!stderr.empty()) {
+    LOG(WARNING) << "pg_upgrade stderr: " << stderr;
+  }
+  if (!status.ok()) {
+    return status.CloneAndAppend(stderr);
+  }
+
+  LOG(INFO) << "pg_upgrade completed successfully";
   return Status::OK();
 }
 
@@ -949,13 +1001,13 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
   // Run local initdb. Do not communicate with the YugaByte cluster at all. This function is only
   // concerned with setting up the local PostgreSQL data directory on this tablet server. We skip
   // local initdb if versioned_data_dir already exists.
-  RETURN_NOT_OK(InitDb(versioned_data_dir));
+  RETURN_NOT_OK(InitDb(LocalInitdbParams{versioned_data_dir}));
   return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
 }
 
 Status PgWrapper::InitDbForYSQL(
     const string& master_addresses, const string& tmp_dir_base,
-    int tserver_shm_fd) {
+    int tserver_shm_fd, std::vector<std::pair<string, YBCPgOid>> db_to_oid) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -980,7 +1032,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb();
+  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

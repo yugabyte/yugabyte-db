@@ -3610,7 +3610,46 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	else
 	{
 		if (te->defn && strlen(te->defn) > 0)
+		{
+			/*
+			 * Yugabyte-specific
+			 *
+			 * During a major PG version upgrade, for table creation in binary
+			 * upgrade mode, pg_dump/pg_restore send a number of statements to
+			 * the backend as a single request string. For example, for a table
+			 * with a dropped column, they will send:
+			 *   1) Various "set next oid" and "set next relfilenode" statements
+			 *   2) The CREATE TABLE itself
+			 *   3) UPDATE the dropped column's pg_attribute table entry
+			 *   4) ALTER TABLE ... DROP COLUMN
+			 *
+			 * When multiple statements are sent in the same request, they're
+			 * executed inside an implicit transaction. YugabyteDB doesn't
+			 * currently support mixing DDLs with modifications to the PG
+			 * catalog. So, as a hack, by setting AH->outputKind to
+			 * OUTPUT_OTHERDATA, ahprintf will send each statement to the
+			 * backend separately, avoiding the limitation.
+			 */
+			ArchiverOutput yb_saved_output_kind = AH->outputKind;
+			if (AH->outputKind == OUTPUT_SQLCMDS)
+			{
+				static const char yb_zero_sqlparse[sizeof(AH->sqlparse)];
+				if (memcmp(&AH->sqlparse, &yb_zero_sqlparse,
+						   sizeof(AH->sqlparse)) != 0)
+					pg_fatal("AH->sqlparse not 0 before printing definition");
+				AH->outputKind = OUTPUT_OTHERDATA;
+			}
 			ahprintf(AH, "%s\n\n", te->defn);
+			/*
+			 * We've ended on a statement boundary or whitespace (after all, in
+			 * upstream Postgres, this sequence of SQL statements is sent to the
+			 * backend as one block), so reset the state of sqlparse, which is
+			 * normally meant to be stitching together strings with arbitrary
+			 * boundaries.
+			 */
+			memset(&AH->sqlparse, 0, sizeof(AH->sqlparse));
+			AH->outputKind = yb_saved_output_kind;
+		}
 	}
 
 	/*
