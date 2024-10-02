@@ -8,7 +8,8 @@ menu:
     identifier: java-driver-2-r2dbc
     parent: java-drivers
     weight: 500
-badges: ycql
+tags:
+  other: ycql
 type: docs
 ---
 

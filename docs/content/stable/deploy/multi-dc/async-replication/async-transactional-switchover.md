@@ -9,7 +9,8 @@ menu:
     parent: async-replication-transactional
     identifier: async-transactional-switchover
     weight: 40
-badges: ysql
+tags:
+  other: ysql
 type: docs
 ---
 
@@ -71,7 +72,7 @@ Proceed as follows:
     ```python
     python3 checkTime.py
 
-    import datetime 
+    import datetime
     print(datetime.datetime.now().strftime("%s%f"))
     print(datetime.datetime.now())
     ```
@@ -113,7 +114,7 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \ 
+        -master_addresses <B_master_addresses> \
         -certs_dir_name <dir_name> \
         change_xcluster_role ACTIVE
     ```
@@ -134,7 +135,7 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> 
+        -master_addresses <B_master_addresses>
         -certs_dir_name <cert_dir> \
         bootstrap_cdc_producer <comma_separated_B_table_ids>
     ```
@@ -174,7 +175,7 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master-addresses> \ 
+        -master_addresses <A_master-addresses> \
         -certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```

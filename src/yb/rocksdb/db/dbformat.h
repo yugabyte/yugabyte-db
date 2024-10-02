@@ -33,6 +33,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/slice_transform.h"
@@ -337,7 +339,18 @@ class IterKey {
       : buf_(space_), buf_size_(sizeof(space_)), key_(buf_, static_cast<size_t>(0)) {}
 
   IterKey(const IterKey&) = delete;
-  void operator=(const IterKey&) = delete;
+  IterKey& operator=(const IterKey&) = delete;
+
+  IterKey(IterKey&& other) noexcept {
+    MoveFrom(std::move(other));
+  }
+
+  IterKey& operator=(IterKey&& other) noexcept {
+    if (this != &other) {
+      MoveFrom(std::move(other));
+    }
+    return *this;
+  }
 
   ~IterKey() { ReleaseBuffer(); }
 
@@ -542,16 +555,24 @@ class IterKey {
   }
 
   void EncodeLengthPrefixedKey(const Slice& key) {
-    auto size = key.size();
-    EnlargeBufferIfNeeded(size + static_cast<size_t>(VarintLength(size)));
-    char* ptr = EncodeVarint32(buf_, static_cast<uint32_t>(size));
+    // As per @sergey, this code is not used in YB, but keeping it valid until this statement is
+    // is checked and code is removed.
+    const auto size = key.size();
+    const auto new_size = size + yb::make_unsigned(VarintLength(size));
+    EnlargeBufferIfNeeded(new_size);
+    char* ptr = EncodeVarint32(buf_, yb::narrow_cast<uint32_t>(size));
     memcpy(ptr, key.data(), size);
-    key_ = buf_;
+    key_ = Slice(buf_, new_size);
   }
 
  private:
+  // Returns true if buffer is not using local storage.
+  bool IsBufferAllocatedDynamically() const noexcept {
+    return buf_ != space_;
+  }
+
   void ReleaseBuffer() {
-    if (buf_ != space_) {
+    if (IsBufferAllocatedDynamically()) {
       delete[] buf_;
     }
   }
@@ -575,7 +596,30 @@ class IterKey {
     buf_size_ = new_buf_size;
   }
 
-  // No copying allowed
+  // Initializes this from other instance, which is a temporary object.
+  void MoveFrom(IterKey&& other) noexcept {
+    ReleaseBuffer();
+
+    buf_size_ = other.buf_size_;
+    if (other.IsBufferAllocatedDynamically()) {
+      buf_ = other.buf_;
+      key_ = other.key_; // Either key is pinned or points to buf_.
+    } else {
+      // Sanity check as it is expected buffer size equals local storage.
+      CHECK_EQ(buf_size_, sizeof(space_));
+
+      memcpy(space_, other.space_, sizeof(space_));
+      buf_ = space_;
+      key_ = other.IsKeyPinned() ? other.key_ : Slice(buf_, other.key_.size());
+    }
+
+    // Reset other to keep its invariant.
+    other.Clear();
+    other.buf_ = other.space_;
+    other.buf_size_ = sizeof(other.space_);
+  }
+
+  // No copying allowed, moving is allowed but it is not trivial.
   char* buf_;
   size_t buf_size_;
   Slice key_;

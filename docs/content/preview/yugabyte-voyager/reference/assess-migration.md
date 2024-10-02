@@ -8,7 +8,8 @@ menu:
     identifier: assess-migration-voyager
     parent: yb-voyager-cli
     weight: 1
-badges: tp
+tags:
+  feature: tech-preview
 type: docs
 ---
 

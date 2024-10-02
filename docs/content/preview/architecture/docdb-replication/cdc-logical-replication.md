@@ -4,7 +4,8 @@ headerTitle: CDC using PostgreSQL protocol
 linkTitle: CDC using PostgreSQL protocol
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
-badges: ea
+tags:
+  feature: early-access
 aliases:
   - /preview/explore/logical-replication/
 menu:

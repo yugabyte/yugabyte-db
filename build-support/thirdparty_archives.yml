@@ -1,101 +1,148 @@
-sha: b6b07342fdfd4a65ee2608d75dd31e4b0ecc0737
+sha: d4cf290eedeb2daeaa8617f9c129bcd1044b4448
 archives:
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240713003527-b6b07342fd-almalinux8-x86_64-clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072648-224279f6e8-almalinux8-x86_64-clang17
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang18
-    tag: v20240713003521-b6b07342fd-almalinux8-x86_64-clang18
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072646-224279f6e8-almalinux8-x86_64-clang18
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240713003520-b6b07342fd-almalinux8-x86_64-gcc11
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072647-224279f6e8-almalinux8-x86_64-gcc11
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc12
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072654-224279f6e8-almalinux8-x86_64-gcc12
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc13
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072650-224279f6e8-almalinux8-x86_64-gcc13
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240713003540-b6b07342fd-almalinux9-x86_64-clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072659-224279f6e8-almalinux9-x86_64-clang17
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20240713003537-b6b07342fd-almalinux9-x86_64-gcc12
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072655-224279f6e8-almalinux9-x86_64-gcc12
+
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: gcc13
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072658-224279f6e8-almalinux9-x86_64-gcc13
 
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
-    tag: v20240713003725-b6b07342fd-amzn2-aarch64-clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072848-224279f6e8-amzn2-aarch64-clang17
 
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
     lto_type: full
-    tag: v20240713003827-b6b07342fd-amzn2-aarch64-clang17-full-lto
+    tag: v20240922073005-224279f6e8-amzn2-aarch64-clang17-full-lto
 
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang18
-    tag: v20240713003831-b6b07342fd-amzn2-aarch64-clang18
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922073006-224279f6e8-amzn2-aarch64-clang18
 
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang18
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
     lto_type: full
-    tag: v20240713003853-b6b07342fd-amzn2-aarch64-clang18-full-lto
+    tag: v20240922072959-224279f6e8-amzn2-aarch64-clang18-full-lto
 
   - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240713003538-b6b07342fd-amzn2-x86_64-clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072704-224279f6e8-amzn2-x86_64-clang17
 
   - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
     lto_type: full
-    tag: v20240713003542-b6b07342fd-amzn2-x86_64-clang17-full-lto
+    tag: v20240922072706-224279f6e8-amzn2-x86_64-clang17-full-lto
 
   - os_type: amzn2
     architecture: x86_64
     compiler_type: clang18
-    tag: v20240713003544-b6b07342fd-amzn2-x86_64-clang18
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072707-224279f6e8-amzn2-x86_64-clang18
 
   - os_type: amzn2
     architecture: x86_64
     compiler_type: clang18
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
     lto_type: full
-    tag: v20240713003540-b6b07342fd-amzn2-x86_64-clang18-full-lto
+    tag: v20240922072704-224279f6e8-amzn2-x86_64-clang18-full-lto
 
   - os_type: macos
     architecture: arm64
     compiler_type: clang
-    tag: v20240713011052-b6b07342fd-macos-arm64
+    tag: v20240925171709-d4cf290eed-macos-arm64
 
   - os_type: macos
     architecture: x86_64
     compiler_type: clang
-    tag: v20240713003540-b6b07342fd-macos-x86_64
+    tag: v20240925171933-d4cf290eed-macos-x86_64
 
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang16
-    tag: v20240713003520-b6b07342fd-ubuntu2004-x86_64-clang16
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072638-224279f6e8-ubuntu2004-x86_64-clang16
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240713003517-b6b07342fd-ubuntu2204-x86_64-clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072641-224279f6e8-ubuntu2204-x86_64-clang17
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240713003527-b6b07342fd-ubuntu2204-x86_64-gcc11
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072641-224279f6e8-ubuntu2204-x86_64-gcc11
 
-  - os_type: ubuntu23.04
+  - os_type: ubuntu22.04
+    architecture: x86_64
+    compiler_type: gcc12
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072638-224279f6e8-ubuntu2204-x86_64-gcc12
+
+  - os_type: ubuntu24.04
+    architecture: x86_64
+    compiler_type: clang17
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072648-224279f6e8-ubuntu2404-x86_64-clang17
+
+  - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20240713003516-b6b07342fd-ubuntu2304-x86_64-gcc13
+    sha: 224279f6e85b8e54b55bf37a834a2d92295fd811
+    tag: v20240922072700-224279f6e8-ubuntu2404-x86_64-gcc13

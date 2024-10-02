@@ -3,7 +3,8 @@ title: PGX Smart Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /preview/reference/drivers/go/
   - /preview/reference/drivers/go/yb-pgx-reference/

@@ -9,7 +9,8 @@ menu:
     identifier: migrate-live
     parent: migration-types
     weight: 103
-badges: tp
+tags:
+  feature: tech-preview
 type: docs
 ---
 

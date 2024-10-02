@@ -2,7 +2,8 @@
 title: Partitioning tables in YugabyteDB
 headertitle: Partitioning tables
 linkTitle: Partitioning tables
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     identifier: data-modeling-partitions

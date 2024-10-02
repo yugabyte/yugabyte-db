@@ -227,11 +227,16 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup
                         "stream.");
 TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_update_optimization_infra, false,
-                               "Enables optimizations of YSQL UPDATE queries. This includes "
-                               "(but not limited to) skipping redundant secondary index updates "
-                               "and redundant constraint checks.");
-TAG_FLAG(ysql_yb_update_optimization_infra, advanced);
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted, false, true,
+                            "Enables optimizations of YSQL UPDATE queries. This includes "
+                            "(but not limited to) skipping redundant secondary index updates "
+                            "and redundant constraint checks.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
+                       "Enables the comparison of old and new values of columns specified in the "
+                       "SET clause of YSQL UPDATE queries to skip redundant secondary index "
+                       "updates and redundant constraint checks.");
+TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
 
 namespace yb {
 

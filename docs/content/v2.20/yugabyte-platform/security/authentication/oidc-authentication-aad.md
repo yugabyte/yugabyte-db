@@ -4,7 +4,8 @@ headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
-earlyAccess: /preview/releases/versioning/#feature-availability
+tags:
+  feature: early-access
 menu:
   v2.20_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -117,7 +118,7 @@ To register an application, do the following:
 1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
 
     ```sh
-    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient 
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
     ```
 
 1. Click **Register**.

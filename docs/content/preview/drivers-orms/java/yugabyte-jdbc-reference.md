@@ -3,7 +3,8 @@ title: YugabyteDB JDBC Smart Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: YugabyteDB JDBC Smart Driver for YSQL reference
-badges: ysql
+tags:
+  other: ysql
 aliases:
 - /preview/reference/drivers/java/yugabyte-jdbc-reference/
 menu:
@@ -56,7 +57,7 @@ To get the driver and HikariPool from Maven, add the following dependencies to t
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.5-yb-5</version>
+  <version>42.3.5-yb-8</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -73,7 +74,7 @@ To get the driver and HikariPool, add the following dependencies to the Gradle p
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-5'
+implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-8'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
