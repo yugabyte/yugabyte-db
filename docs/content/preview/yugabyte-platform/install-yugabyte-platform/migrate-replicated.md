@@ -103,7 +103,7 @@ If Replicated is using HTTP, you need to remove the standbys and delete the high
 
 ### Migrate from Replicated to YBA Installer on a different VM
 
-Note that [Replicated configuration](../install-replicated/#set-up-https-optional) will not be migrated when using this method.
+Note that the Replicated configuration is not migrated when using this method.
 
 To migrate to a different VM, do the following:
 
