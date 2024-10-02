@@ -7,8 +7,9 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "math/rand"
     "net/http"
+    "path/filepath"
+    "strconv"
     "strings"
     "time"
     "math"
@@ -20,14 +21,47 @@ import (
 
 const LOGGER_FILE_NAME = "api_voyager"
 
-const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = "SELECT migration_uuid, " +
-    "MAX(migration_phase) AS highest_migration_phase, " +
-    "MAX(invocation_sequence) as highest_invocation_sequence " +
-    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "GROUP BY migration_uuid"
+// Gets one row for each unique migration_uuid, and also gets the highest migration_phase and
+// invocation for import/export
+// Need to ignore rows with migration_phase 3 i.e. schema analysis
+const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string =
+`SELECT * FROM (
+    SELECT migration_uuid, highest_export_phase, MAX(invocation_sequence) AS
+    highest_export_invocation FROM (
+        SELECT migration_uuid, MAX(migration_phase) AS
+        highest_export_phase, invocation_sequence FROM (
+            SELECT migration_uuid, migration_phase, invocation_sequence FROM
+            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE
+                migration_phase <= 4 AND migration_phase != 3
+        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
+    ) AS highest_export_rows GROUP BY migration_uuid, highest_export_phase
+) AS export FULL JOIN
+(
+    SELECT migration_uuid, highest_import_phase, MAX(invocation_sequence) AS
+    highest_import_invocation FROM (
+        SELECT migration_uuid, MAX(migration_phase) AS
+        highest_import_phase, invocation_sequence FROM (
+            SELECT migration_uuid, migration_phase, invocation_sequence FROM
+            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE migration_phase > 4
+        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
+    ) AS highest_import_rows GROUP BY migration_uuid, highest_import_phase
+) AS import USING (migration_uuid) FULL JOIN
+(
+    SELECT migration_uuid, lowest_phase, MIN(invocation_sequence) AS
+    lowest_invocation FROM (
+        SELECT migration_uuid, MIN(migration_phase) AS lowest_phase, invocation_sequence FROM
+        ybvoyager_visualizer.ybvoyager_visualizer_metadata GROUP BY
+        migration_uuid, invocation_sequence
+    ) AS lowest_rows GROUP BY migration_uuid, lowest_phase
+) AS lowest USING (migration_uuid)`
 
-const RETRIEVE_VOYGAGER_MIGRATION_DETAILS string = "SELECT database_name, schema_name, " +
-    "status, invocation_timestamp, complexity, db_type " +
+const RETRIEVE_VOYAGER_MIGRATION_DETAILS string = "SELECT database_name, schema_name, " +
+    "status, invocation_timestamp, complexity, db_type, " +
+    "migration_dir, host_ip, port, db_version, voyager_info " +
+    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
+    "WHERE migration_uuid=$1 AND migration_phase=$2 AND invocation_sequence=$3"
+
+const RETRIEVE_VOYAGER_MIGRATION_START_TIMESTAMP string = "SELECT invocation_timestamp " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
     "WHERE migration_uuid=$1 AND migration_phase=$2 AND invocation_sequence=$3"
 
@@ -99,10 +133,36 @@ type SchemaAnalyzeReport struct {
     DatabaseObjects []models.SqlObjectsDetails `json:"databaseObjects"`
 }
 
-type AllVoygaerMigrations struct {
-    migrationUuid  string
-    migrationPhase int
-    invocationSeq  int
+type AllVoyagerMigrations struct {
+    migrationUuid        string
+    exportMigrationPhase pgtype.Int4
+    exportInvocationSeq  pgtype.Int4
+    importMigrationPhase pgtype.Int4
+    importInvocationSeq  pgtype.Int4
+    lowestMigrationPhase pgtype.Int4
+    lowestInvocationSeq  pgtype.Int4
+}
+
+type VoyagerInfo struct {
+    Ip        string `json:"IP"`
+    Os        string `json:"OperatingSystem"`
+    AvailDisk uint64 `json:"DiskSpaceAvailable"`
+    ExportDir string `json:"ExportDirectory"`
+}
+
+type DbIp struct {
+    SourceDbIp string `json:"SourceDBIP"`
+    TargetDbIp string `json:"TargetDBIP"`
+}
+
+var MigrationPhaseStrings = []string{
+    "Assessment",
+    "Export Schema",
+    "Analyze Schema",
+    "Export Data",
+    "Import Schema",
+    "Import Data",
+    "Verify",
 }
 
 func (c *Container) GetVoyagerMigrations(ctx echo.Context) error {
@@ -189,89 +249,257 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
     }
     defer rows.Close()
 
-    var allVoygaerMigrationsList []AllVoygaerMigrations
+    var allVoyagerMigrationsList []AllVoyagerMigrations
     for rows.Next() {
-        rowStruct := AllVoygaerMigrations{}
-        err := rows.Scan(&rowStruct.migrationUuid, &rowStruct.migrationPhase,
-            &rowStruct.invocationSeq)
+        allVoyagerMigrationsStruct := AllVoyagerMigrations{}
+        err := rows.Scan(&allVoyagerMigrationsStruct.migrationUuid,
+            &allVoyagerMigrationsStruct.exportMigrationPhase,
+            &allVoyagerMigrationsStruct.exportInvocationSeq,
+            &allVoyagerMigrationsStruct.importMigrationPhase,
+            &allVoyagerMigrationsStruct.importInvocationSeq,
+            &allVoyagerMigrationsStruct.lowestMigrationPhase,
+            &allVoyagerMigrationsStruct.lowestInvocationSeq,
+        )
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
                 LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
             log.Errorf(err.Error())
             continue
         }
-        allVoygaerMigrationsList = append(allVoygaerMigrationsList, rowStruct)
+        allVoyagerMigrationsList = append(allVoyagerMigrationsList, allVoyagerMigrationsStruct)
     }
 
-    for _, allVoygaerMigration := range allVoygaerMigrationsList {
+    for _, allVoyagerMigration := range allVoyagerMigrationsList {
 
-        var migrationPhaseToBeUsed int
-        var migrationInvocationSqToBeUsed int
-        if allVoygaerMigration.migrationPhase >= 1 {
-            migrationPhaseToBeUsed = 1
-            migrationInvocationSqToBeUsed = 2
-        } else {
-            migrationPhaseToBeUsed = allVoygaerMigration.migrationPhase
-            migrationInvocationSqToBeUsed = allVoygaerMigration.invocationSeq
+        assessmentFuture := make(chan AssessmentReportQueryFuture)
+        go getMigrationAssessmentReportFuture(log, allVoyagerMigration.migrationUuid, conn,
+            assessmentFuture)
+
+        // Update migration data struct using most recent import and export step.
+        // This is done since source db info is only in export rows, target db info in import rows.
+        // Info from import rows will overwrite info from export rows.
+        migrationDetailsStruct := models.VoyagerMigrationDetails{}
+        if allVoyagerMigration.exportMigrationPhase.Status == pgtype.Present &&
+            allVoyagerMigration.exportInvocationSeq.Status == pgtype.Present {
+            err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
+                allVoyagerMigration.migrationUuid,
+                allVoyagerMigration.exportMigrationPhase.Int,
+                allVoyagerMigration.exportInvocationSeq.Int)
+            if err != nil {
+                log.Errorf("[%s] Error while querying for export phase migration details",
+                    LOGGER_FILE_NAME)
+            }
         }
-        voyagerDetailsrows, err := conn.Query(context.Background(),
-            RETRIEVE_VOYGAGER_MIGRATION_DETAILS,
-            allVoygaerMigration.migrationUuid, migrationPhaseToBeUsed,
-            migrationInvocationSqToBeUsed)
+        if allVoyagerMigration.importMigrationPhase.Status == pgtype.Present &&
+            allVoyagerMigration.importInvocationSeq.Status == pgtype.Present {
+            err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
+                allVoyagerMigration.migrationUuid,
+                allVoyagerMigration.importMigrationPhase.Int,
+                allVoyagerMigration.importInvocationSeq.Int)
+            if err != nil {
+                log.Errorf("[%s] Error while querying for import phase migration details",
+                    LOGGER_FILE_NAME)
+            }
+        }
+        if allVoyagerMigration.lowestMigrationPhase.Status == pgtype.Present &&
+            allVoyagerMigration.lowestInvocationSeq.Status == pgtype.Present {
+            err := updateMigrationDetailStructStartTimestamp(log, conn, &migrationDetailsStruct,
+                allVoyagerMigration.migrationUuid,
+                allVoyagerMigration.lowestMigrationPhase.Int,
+                allVoyagerMigration.lowestInvocationSeq.Int)
+            if err != nil {
+                log.Errorf("[%s] Error while querying for migration start timestamp",
+                    LOGGER_FILE_NAME)
+            }
+        }
+
+        // Get complexity from assessment if it exists.
+        migrationDetailsStruct.Complexity = "N/A"
+        assessment := <-assessmentFuture
+        if assessment.Error != nil {
+            log.Errorf("[%s] Error getting migration assessment",
+                LOGGER_FILE_NAME)
+        } else {
+            migrationDetailsStruct.Complexity = assessment.Report.MigrationComplexity
+        }
+        voyagerMigrationsResponse.Migrations = append(
+            voyagerMigrationsResponse.Migrations, migrationDetailsStruct)
+    }
+    future <- voyagerMigrationsResponse
+}
+
+func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
+    migrationDetailsStruct *models.VoyagerMigrationDetails, migrationUuid string,
+    migrationPhase int32, invocationSeq int32) error {
+
+    voyagerDetailsrows, err := conn.Query(context.Background(),
+        RETRIEVE_VOYAGER_MIGRATION_DETAILS, migrationUuid, migrationPhase, invocationSeq)
+    if err != nil {
+        log.Errorf(fmt.Sprintf("[%s] Error while querying for migration details",
+            LOGGER_FILE_NAME))
+        log.Errorf(err.Error())
+        return err
+    }
+
+    for voyagerDetailsrows.Next() {
+        var database pgtype.Text
+        var schema pgtype.Text
+        var status pgtype.Text
+        var exportDir pgtype.Text
+        var invocation_ts time.Time
+        var complexity pgtype.Text
+        var voyagerInfo pgtype.Text
+        var dbIp pgtype.Text
+        var dbPort pgtype.Int4
+        var dbType pgtype.Text
+        var dbVersion pgtype.Text
+
+        migrationDetailsStruct.MigrationUuid = migrationUuid
+        migrationDetailsStruct.MigrationPhase = migrationPhase
+        migrationDetailsStruct.InvocationSequence = invocationSeq
+        err = voyagerDetailsrows.Scan(&database, &schema,
+            &status, &invocation_ts, &complexity, &dbType,
+            &exportDir, &dbIp, &dbPort,
+            &dbVersion, &voyagerInfo)
         if err != nil {
-            log.Errorf(fmt.Sprintf("[%s] Error while querying for migration details",
+            log.Errorf(fmt.Sprintf("[%s] Error while scanning migration details",
                 LOGGER_FILE_NAME))
             log.Errorf(err.Error())
             continue
         }
 
-        for voyagerDetailsrows.Next() {
-            rowStruct := models.VoyagerMigrationDetails{}
-            var invocation_ts time.Time
-            var complexity pgtype.Text
+        if database.Status == pgtype.Present && database.String != "" {
+            migrationDetailsStruct.SourceDb.Database = database.String
+        }
+        if schema.Status == pgtype.Present && schema.String != "" {
+            migrationDetailsStruct.SourceDb.Schema = schema.String
+        }
+        if status.Status == pgtype.Present && status.String != "" {
+            migrationDetailsStruct.Status = status.String
+        }
+        if exportDir.Status == pgtype.Present && exportDir.String != "" {
+            migrationDetailsStruct.Voyager.ExportDir = exportDir.String
+        }
 
-            rowStruct.MigrationUuid = allVoygaerMigration.migrationUuid
-            rowStruct.MigrationPhase = int32(allVoygaerMigration.migrationPhase)
-            rowStruct.InvocationSequence = int32(allVoygaerMigration.invocationSeq)
-            err = voyagerDetailsrows.Scan(&rowStruct.DatabaseName, &rowStruct.SchemaName,
-                &rowStruct.Status, &invocation_ts, &complexity, &rowStruct.SourceDb)
-            if err != nil {
-                log.Errorf(fmt.Sprintf("[%s] Error while scanning migration details",
-                    LOGGER_FILE_NAME))
-                log.Errorf(err.Error())
-                continue
-            }
+        // Use rowStruct.Status, fall back to invocationSeq, assume >= 2 means completed.
+        isCompleted := false
+        if migrationDetailsStruct.Status == "" {
+            isCompleted = invocationSeq >= 2
+        } else {
+            isCompleted = migrationDetailsStruct.Status == "COMPLETED"
+        }
 
-            rowStruct.Status = "In Progress"
-            if allVoygaerMigration.migrationPhase == 6 &&
-                allVoygaerMigration.invocationSeq >= 2 {
-                rowStruct.Status = "Complete"
-                rowStruct.MigrationPhase = 6
-            }
+        // If migration assessment is completed => Assessment
+        // If schema migration not completed => Schema migration
+        // If data migration not completed => Data migration
+        // Otherwise migration is complete => Completed
+        if migrationPhase <= 1 {
+            migrationDetailsStruct.Progress = "Assessment"
+        } else if migrationPhase < 5 || (migrationPhase <= 5 && !isCompleted) {
+            migrationDetailsStruct.Progress = "Schema migration"
+        } else if migrationPhase < 6 || (migrationPhase <= 6 && !isCompleted) {
+            migrationDetailsStruct.Progress = "Data migration"
+        } else {
+            migrationDetailsStruct.Progress = "Completed"
+        }
 
-            rand.Seed(time.Now().UnixNano())
-            rowStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
-            // rowStruct.MigrationName = "Migration_" + strconv.Itoa(rand.Intn(10002))
-            rowStruct.MigrationName = "Migration_" +
-                strings.Split(rowStruct.MigrationUuid, "-")[4]
+        migrationDetailsStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
+        migrationDetailsStruct.MigrationName = "Migration_" +
+            strings.Split(migrationDetailsStruct.MigrationUuid, "-")[4]
 
-            rowStruct.Complexity = "N/A"
-            if complexity.Status == pgtype.Present {
-                rowStruct.Complexity = complexity.String
-            } else {
-                log.Infof(fmt.Sprintf("Complexity not set for migration uuid: [%s]",
-                    rowStruct.MigrationUuid))
-                if rowStruct.MigrationPhase >= 1 && rowStruct.InvocationSequence >= 2 {
-                    go helpers.CalculateAndUpdateComplexity(log, conn,
-                        rowStruct.MigrationUuid, 1, 2)
+        if dbIp.Status == pgtype.Present {
+            // dbIp determines whether port and db type are for source or target
+            var dbIpStruct DbIp
+            err = json.Unmarshal([]byte(dbIp.String), &dbIpStruct)
+            if dbIpStruct.SourceDbIp != "" {
+                migrationDetailsStruct.SourceDb.Ip = dbIpStruct.SourceDbIp
+                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
+                    migrationDetailsStruct.SourceDb.Port =
+                        strconv.FormatInt(int64(dbPort.Int), 10)
+                }
+                if dbType.Status == pgtype.Present && dbType.String != "" {
+                    migrationDetailsStruct.SourceDb.Engine = dbType.String
+                }
+                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
+                    migrationDetailsStruct.SourceDb.Version = dbVersion.String
                 }
             }
-            voyagerMigrationsResponse.Migrations = append(
-                voyagerMigrationsResponse.Migrations, rowStruct)
+            if dbIpStruct.TargetDbIp != "" {
+                migrationDetailsStruct.TargetCluster.Ip = dbIpStruct.TargetDbIp
+                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
+                    migrationDetailsStruct.TargetCluster.Port =
+                        strconv.FormatInt(int64(dbPort.Int), 10)
+                }
+                if dbType.Status == pgtype.Present && dbType.String != "" {
+                    migrationDetailsStruct.TargetCluster.Engine = dbType.String
+                }
+                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
+                    migrationDetailsStruct.TargetCluster.Version = dbVersion.String
+                }
+            }
+        }
+
+        if voyagerInfo.Status == pgtype.Present {
+            var voyagerInfoStruct VoyagerInfo
+            err = json.Unmarshal([]byte(voyagerInfo.String), &voyagerInfoStruct)
+            migrationDetailsStruct.Voyager.MachineIp = voyagerInfoStruct.Ip
+            migrationDetailsStruct.Voyager.Os = voyagerInfoStruct.Os
+            migrationDetailsStruct.Voyager.AvailDiskBytes =
+                strconv.FormatUint(voyagerInfoStruct.AvailDisk, 10)
+
+            // This is hard-coded in yb-voyager as the schema export directory
+            if migrationDetailsStruct.MigrationPhase >= 2 {
+                migrationDetailsStruct.Voyager.ExportedSchemaLocation =
+                    filepath.Join(migrationDetailsStruct.Voyager.ExportDir, "schema")
+            }
+        }
+
+        // For now, only support offline migrations
+        migrationDetailsStruct.MigrationType = "Offline"
+
+        // This value will be overwritten by the complexity in the migration assessment
+        migrationDetailsStruct.Complexity = "N/A"
+        if complexity.Status == pgtype.Present {
+            migrationDetailsStruct.Complexity = complexity.String
+        } else {
+            log.Infof(fmt.Sprintf("Complexity not set for migration uuid: [%s]",
+                migrationDetailsStruct.MigrationUuid))
+            if migrationDetailsStruct.MigrationPhase >= 1 &&
+                migrationDetailsStruct.InvocationSequence >= 2 {
+                go helpers.CalculateAndUpdateComplexity(log, conn,
+                    migrationDetailsStruct.MigrationUuid, 1, 2)
+            }
         }
     }
+    return nil
+}
 
-    future <- voyagerMigrationsResponse
+func updateMigrationDetailStructStartTimestamp(log logger.Logger, conn *pgxpool.Pool,
+    migrationDetailsStruct *models.VoyagerMigrationDetails, migrationUuid string,
+    migrationPhase int32, invocationSeq int32) error {
+
+    voyagerDetailsrows, err := conn.Query(context.Background(),
+        RETRIEVE_VOYAGER_MIGRATION_START_TIMESTAMP, migrationUuid, migrationPhase, invocationSeq)
+    if err != nil {
+        log.Errorf(fmt.Sprintf("[%s] Error while querying for migration details",
+            LOGGER_FILE_NAME))
+        log.Errorf(err.Error())
+        return err
+    }
+
+    for voyagerDetailsrows.Next() {
+        var start_ts time.Time
+
+        err = voyagerDetailsrows.Scan(&start_ts)
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while scanning migration details",
+                LOGGER_FILE_NAME))
+            log.Errorf(err.Error())
+            continue
+        }
+        migrationDetailsStruct.StartTimestamp = start_ts.Format("2006-01-02 15:04:05")
+    }
+    return nil
 }
 
 func getVoyagerDataMigrationMetricsFuture(log logger.Logger, conn *pgxpool.Pool,
@@ -604,7 +832,7 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
 
     // Fetching schmea and complexity details
     voyagerDetailsrows, err := conn.Query(context.Background(),
-        RETRIEVE_VOYGAGER_MIGRATION_DETAILS, migrationUuid, 0, 2)
+        RETRIEVE_VOYAGER_MIGRATION_DETAILS, migrationUuid, 0, 2)
     if err != nil {
         c.logger.Errorf(fmt.Sprintf("[%s] Error while querying for assesment details",
             LOGGER_FILE_NAME))
@@ -615,14 +843,14 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
         rowStruct := models.VoyagerMigrationDetails{}
         var invocation_ts time.Time
         var complexity pgtype.Text
-        err = voyagerDetailsrows.Scan(&rowStruct.DatabaseName, &rowStruct.SchemaName,
-            &rowStruct.Status, &invocation_ts, &complexity, &rowStruct.SourceDb)
+        err = voyagerDetailsrows.Scan(&rowStruct.SourceDb.Database, &rowStruct.SourceDb.Schema,
+            &rowStruct.Status, &invocation_ts, &complexity, &rowStruct.SourceDb.Engine)
         if err != nil {
             c.logger.Errorf(fmt.Sprintf("[%s] Error while scanning for assesment details",
                 LOGGER_FILE_NAME))
             c.logger.Errorf(err.Error())
         }
-        assesmentComplexity.Schema = rowStruct.SchemaName
+        assesmentComplexity.Schema = rowStruct.SourceDb.Schema
         assesmentComplexity.Complexity = complexity.String
     }
 

@@ -866,21 +866,60 @@ VoyagerMigrationDetails:
       format: uuid
     migration_name:
       type: string
+    migration_type:
+      type: string
     migration_phase:
       type: integer
     invocation_sequence:
       type: integer
     source_db:
-      type: string
+      type: object
+      properties:
+        ip:
+          type: string
+        port:
+          type: string
+        engine:
+          type: string
+        version:
+          type: string
+        database:
+          type: string
+        schema:
+          type: string
+    voyager:
+      type: object
+      properties:
+        machine_ip:
+          type: string
+        os:
+          type: string
+        avail_disk_bytes:
+          type: string
+        export_dir:
+          type: string
+        exported_schema_location:
+          type: string
+    target_cluster:
+      type: object
+      properties:
+        ip:
+          type: string
+        port:
+          type: string
+        engine:
+          type: string
+        version:
+          type: string
     complexity:
-      type: string
-    database_name:
-      type: string
-    schema_name:
       type: string
     status:
       type: string
+    progress:
+      type: string
     invocation_timestamp:
+      type: string
+    start_timestamp:
       type: string
 VoyagerMigrateDataMetrics:
   title: YB Voyager Migrate Data metrics Info
