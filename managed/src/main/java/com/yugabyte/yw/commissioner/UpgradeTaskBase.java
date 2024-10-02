@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -414,6 +416,15 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
 
     return result;
+  }
+
+  public static boolean isBatchRollEnabled(Universe universe, RuntimeConfGetter confGetter) {
+    boolean isK8s =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+            == Common.CloudType.kubernetes;
+    return isK8s
+        ? confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollK8sEnabled)
+        : confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled);
   }
 
   /**
