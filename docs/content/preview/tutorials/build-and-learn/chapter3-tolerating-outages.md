@@ -245,7 +245,7 @@ The YugaPlus movies recommendation service, written in Java, already includes th
 <dependency>
     <groupId>com.yugabyte</groupId>
     <artifactId>jdbc-yugabytedb</artifactId>
-    <version>42.3.5-yb-7</version>
+    <version>42.3.5-yb-8</version>
 </dependency>
 ```
 

@@ -81,7 +81,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.5-yb-7</version>
+  <version>42.3.5-yb-8</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -99,7 +99,7 @@ Install the added dependency using `mvn install`.
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-7'
+implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-8'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
@@ -126,7 +126,7 @@ The following table describes the connection parameters required to connect, inc
 | `fallback-to-topology-keys-only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
 | `failed-host-reconnect-delay-secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
 
-Starting with version 42.3.5-yb-7, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'. See the [smart driver page](../smart-drivers.md#read-replica-cluster-aware) for usage of these values.
+Starting with version 42.3.5-yb-8, 5 new values are allowed for the property `load-balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'. See the [smart driver page](../smart-drivers.md#read-replica-cluster-aware) for usage of these values.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 

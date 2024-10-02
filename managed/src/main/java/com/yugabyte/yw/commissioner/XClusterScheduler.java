@@ -154,10 +154,6 @@ public class XClusterScheduler {
               if (tableIdsInReplication.contains(tableId)) {
                 return false;
               }
-              // Exclude tables that are still present in the source universe.
-              if (sourceUniverseTableIds.contains(tableId)) {
-                return false;
-              }
               // Exclude tables that have no associated xClusterTableConfig or have a null
               // streamId.
               Optional<XClusterTableConfig> xClusterTableConfig =

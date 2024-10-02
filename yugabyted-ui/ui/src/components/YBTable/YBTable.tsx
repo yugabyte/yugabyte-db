@@ -33,6 +33,7 @@ interface YBTableProps {
   touchBorder?: boolean;
   cellBorder?: boolean;
   noCellBottomBorder?: boolean;
+  noHeaderBottomBorder?: boolean;
   alternateRowShading?: boolean;
 }
 
@@ -91,6 +92,11 @@ const useStyles = makeStyles((theme: Theme) => {
     },
     noCellBottomBorder: {
       '& .MuiTableCell-body': {
+        borderBottom: 0,
+      },
+    },
+    noHeaderBottomBorder: {
+      '& .MuiTableCell-head': {
         borderBottom: 0,
       },
     },
@@ -328,6 +334,7 @@ export const YBTable = ({
   withBorder = true,
   touchBorder = false,
   noCellBottomBorder = false,
+  noHeaderBottomBorder = false,
   cellBorder = false,
   alternateRowShading = false,
   data,
@@ -438,6 +445,9 @@ export const YBTable = ({
   }
   if (noCellBottomBorder) {
     tableContainerDivClasses.push(classes.noCellBottomBorder);
+  }
+  if (noHeaderBottomBorder) {
+    tableContainerDivClasses.push(classes.noHeaderBottomBorder);
   }
   const tableContainerDiv = clsx(tableContainerDivClasses);
   return (
