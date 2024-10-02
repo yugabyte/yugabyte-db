@@ -101,10 +101,10 @@ The following table describes the connection parameters required to connect, inc
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) |  Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
 | `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
-| `fallback_to_topology_keys_only` | Applicable only when `topology_keys` are specified. Ensures that the driver attempts connections to nodes within only the placement values specified in `topology_keys` | Empty
-| `failed_host_reconnect_delay_secs` | The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if the time specified via this property has elapsed since the time it was last marked as a failed host. | 5 
+| `fallback_to_topology_keys_only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
+| `failed_host_reconnect_delay_secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
 
-Starting with version v5.5.3-yb-4, 5 new values are allowed for the property `load_balance` to support read replica nodes: 'any' (alias for 'true'), 'only-primary', 'only-rr', 'prefer-primary' and 'prefer-rr'. See the [smart driver page](../smart-drivers.md#read-replica-cluster-aware) for usage of these values.
+In v5.5.3-yb-4 and later, the `load-balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Read replica-aware load balancing](../../smart-drivers/#read-replica-cluster-aware).
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
@@ -137,7 +137,7 @@ url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1",
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load balances subsequent connection requests across these servers.
 
 To enable load balancing for primary cluster nodes that have a read replica cluster, see [Load balancing read replica clusters](../yb-pgx-reference/#load-balancing-for-read-replica-clusters).
 
@@ -231,8 +231,9 @@ var baseUrl string = fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 func main() {
     // Create a table and insert a row
     url := fmt.Sprintf("%s?load_balance=true", baseUrl)
-    // If you have a read-replica cluster and want your connections to be load-balanced across only the read-replica nodes,
-    // set the load-balance property to 'only-rr' as shown below.
+    // If you have a read replica cluster and want to balance
+    // connections across only read replica nodes,
+    // set the load-balance property to 'only-rr' as follows:
     // url := fmt.Sprintf("%s?load_balance=only-rr", baseUrl)
     fmt.Printf("Connection url: %s\n", url)
     createTable(url)
