@@ -218,20 +218,22 @@ List of access methods
 (1 row)
 
 \dAc *helio*
-                                           List of operator classes
-    AM     |   Input type    | Storage type |                    Operator class                    | Default? 
------------+-----------------+--------------+------------------------------------------------------+----------
- helio_rum | helio_core.bson | bytea        | helio_api_catalog.bson_rum_single_path_ops           | yes
- helio_rum | helio_core.bson | bytea        | helio_api_catalog.bson_rum_wildcard_project_path_ops | no
-(2 rows)
+                                                       List of operator classes
+    AM     |                Input type                | Storage type |                    Operator class                    | Default? 
+-----------+------------------------------------------+--------------+------------------------------------------------------+----------
+ helio_rum | helio_api_catalog.shard_key_and_document | uuid         | helio_api_catalog.bson_rum_exclusion_ops             | no
+ helio_rum | helio_core.bson                          | bytea        | helio_api_catalog.bson_rum_single_path_ops           | yes
+ helio_rum | helio_core.bson                          | bytea        | helio_api_catalog.bson_rum_wildcard_project_path_ops | no
+(3 rows)
 
 \dAf *helio*
-                              List of operator families
-    AM     |                   Operator family                    | Applicable types 
------------+------------------------------------------------------+------------------
+                                          List of operator families
+    AM     |                   Operator family                    |             Applicable types             
+-----------+------------------------------------------------------+------------------------------------------
+ helio_rum | helio_api_catalog.bson_rum_exclusion_ops             | helio_api_catalog.shard_key_and_document
  helio_rum | helio_api_catalog.bson_rum_single_path_ops           | helio_core.bson
  helio_rum | helio_api_catalog.bson_rum_wildcard_project_path_ops | helio_core.bson
-(2 rows)
+(3 rows)
 
 \dX *helio*
                  List of extended statistics

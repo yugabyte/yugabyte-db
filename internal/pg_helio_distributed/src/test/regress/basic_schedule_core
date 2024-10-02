@@ -110,3 +110,10 @@ test: bson_index_term_generation
 test: bson_aggregation_stage_lookup_tests bson_aggregation_stage_facet_tests
 test: bson_aggregation_expression_variable_tests
 test: bson_aggregates_distinct_tests
+
+test: commands_create_drop_indexes_b commands_drop_indexes commands_create_indexes_wp regex5_tests_explain
+test: andor and and3 or9 bson_query_operator_tests_parameterized
+test: commands_find_and_modify bson_unique_index
+test: regex5_tests_runtime regex_options_runtime
+test: regex5_tests_index regex_options_index regex
+test: bson_index_selection_tests commands_shard_collection commands_update

@@ -1,0 +1,325 @@
+SET search_path TO helio_core,helio_api,helio_api_catalog,helio_api_internal;
+SET citus.next_shard_id TO 560000;
+SET helio_api.next_collection_id TO 5600;
+SET helio_api.next_collection_index_id TO 5600;
+-- insert a document
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"1", "a": { "b": 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Create a unique index on the collection.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                    index_spec_as_bson                                                    | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                            | t
+          5600 |     5601 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "unique" : true } | t
+(2 rows)
+
+-- insert a value that doesn't collide with the unique index.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"2", "a": [ { "b": 2 }, { "b" : 3 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert a value that has duplicate values that do not collide with other values.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"3", "a": [ { "b": 4 }, { "b" : 4 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert a value that has duplicate values that collide wtih other values.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"4", "a": [ { "b": 5 }, { "b" : 3 }]}', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"5", "a": { "b": [ 5, 3 ] } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"6", "a": { "b": 3 } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- valid scenarios again.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"4", "a": [ { "b": 5 }, { "b" : 6 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"5", "a": { "b": [ 7, 9 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"6", "a": { "b": 8 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"7", "a": { "b": true } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"8", "a": { "b": "someValue" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- we can use the unique index for queries
+BEGIN;
+set local helio_api.forceUseIndexIfAvailable to on;
+set local enable_seqscan TO off;
+set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'queryuniqueindex') WHERE document @@ '{ "a.b": { "$gt": 5 } }';
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using "rumConstraint1" on documents_5600_560002 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::helio_core.bson)
+(7 rows)
+
+ROLLBACK;
+-- insert a document that does not have an a.b (should succeed)
+SELECT helio_api.insert_one('db','queryuniqueindex','{"a": { "c": "someValue" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that does not have an a.b (should fail)
+SELECT helio_api.insert_one('db','queryuniqueindex','{"a": { "d": "someValue" } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- insert another document that has a.b = null (Should fail)
+SELECT helio_api.insert_one('db','queryuniqueindex','{"a": { "b": null } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- insert a document that has constraint failure on _id
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id": "8", "a": { "b": 2055 } }', NULL);
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+-- drop the unique index.
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": ["rumConstraint1"]}');
+                         retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+(1 row)
+
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+(1 row)
+
+-- now we can violate the unique constraint
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"9", "a": { "b": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"10", "a": { "b": [ 2, 1 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create an index when the collection violates unique. Should fail.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1, "sparse": 1 }] }', true);
+ERROR:  could not create exclusion constraint "documents_rum_index_5602_560002"
+DETAIL:  Key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }, (5600,"{ ""_id"" : ""1"", ""a"" : { ""b"" : { ""$numberInt"" : ""1"" } } }")) conflicts with key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "9", "a" : { "b" : { "$numberInt" : "1" } } }, (5600,"{ ""_id"" : ""9"", ""a"" : { ""b"" : { ""$numberInt"" : ""1"" } } }")).
+CONTEXT:  SQL statement "ALTER TABLE helio_data.documents_5600 ADD CONSTRAINT documents_rum_index_5602 EXCLUDE USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a.b') WITH OPERATOR(helio_api_catalog.=?=), ((shard_key_value, document)::helio_api_catalog.shard_key_and_document) helio_api_catalog.bson_rum_exclusion_ops(path='a.b') WITH OPERATOR(helio_api_catalog.=)) "
+-- create a unique index with the same name ( should be fine since we dropped it )
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "c": 1 }, "name": "rumConstraint1", "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                           index_spec_as_bson                                                            | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                           | t
+          5600 |     5603 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "sparse" : true, "unique" : true } | t
+(2 rows)
+
+-- since this is sparse, we can create several documents without "c" on it.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"11", "d": "someValue" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that does not have an c (should succeed)
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"12", "e" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that has a.b = null (Should succeed)
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"13", "c": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- however, inserting 'c' again should fail.
+SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"14", "c": null }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- drop the unique index by key.
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": {"c": 1} }');
+                         retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+(1 row)
+
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+(1 row)
+
+-- create unique index fails for wildcard.
+SELECT helio_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"f.$**": 1}, "name": "my_idx3", "unique": 1.0}]}', true);
+ERROR:  Error in specification { "key" : { "f.$**" : 1 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+SELECT helio_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"$**": 1}, "wildcardProjection": { "f.g": 0 }, "name": "my_idx3", "unique": 1.0}]}', true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "wildcardProjection" : { "f.g" : 0 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+-- test for sharded
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"1", "a": { "b": 1 }, "d": 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.shard_collection('db', 'queryuniqueindexsharded', '{ "d": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Create a unique index on the collection.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindexsharded", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindexsharded') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                    index_spec_as_bson                                                    | index_is_valid 
+---------------------------------------------------------------------
+          5601 |     5605 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                            | t
+          5601 |     5606 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "unique" : true } | t
+(2 rows)
+
+-- valid scenarios:
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"2", "a": { "b": [ 2, 2] }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"3", "a": { "b": [ 3, 4 ] }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"4", "a": { "b": 5 }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"5", "a": { "c": 5 }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now violate unique in shard key "d": 1 
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"6", "a": { "b": [ 3, 6 ] }, "d": 1 }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"7", "a": { "b": null }, "d": 1 }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- now insert something in a different shard - should not violate unique
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"8", "a": { "b": [ 3, 6 ] }, "d": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryuniqueindexsharded','{"_id":"9", "a": { "b": null }, "d": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- still can be used for query.
+BEGIN;
+set local helio_api.forceUseIndexIfAvailable to on;
+set local enable_seqscan TO off;
+EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'queryuniqueindexsharded') WHERE document @@ '{ "a.b": { "$gt": 5 } }';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5601_560032 documents_5601
+               Recheck Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on "rumConstraint1"
+                     Index Cond: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::helio_core.bson)
+(9 rows)
+
+ROLLBACK;
