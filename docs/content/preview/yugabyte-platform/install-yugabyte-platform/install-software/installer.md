@@ -52,6 +52,10 @@ After the installation is complete, you can use YBA Installer to manage your ins
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
+
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
