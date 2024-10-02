@@ -58,7 +58,7 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationRecommendationSidePanel {
   open: boolean;
   onClose: () => void;
-  migration: Migration;
+  migration: Migration | undefined;
 }
 
 export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePanel> = ({
@@ -71,7 +71,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
 
   const { data: targetRecommendationAPI, isFetching: isFetchingTargetRecommendationData } =
     useGetAssessmentTargetRecommendationInfoQuery({
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     });
 
   const targetRecommendationData = targetRecommendationAPI as
