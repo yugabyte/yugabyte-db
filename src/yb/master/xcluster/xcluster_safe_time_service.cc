@@ -381,7 +381,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
 
   std::unordered_map<NamespaceId, HybridTime> namespace_safe_time_map;
   std::unordered_map<NamespaceId, HybridTime> namespace_safe_time_map_without_ddl_queue;
-  std::vector<ProducerTabletInfo> table_entries_to_delete;
+  std::vector<xcluster::SafeTimeTablePK> table_entries_to_delete;
 
   // Track tablets that are missing from the safe time, or slow. This is for reporting only.
   std::unordered_map<NamespaceId, std::vector<TabletId>> tablets_missing_safe_time_map;
@@ -399,7 +399,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     if (should_log_outlier_tablets) {
       const auto& tablet_safe_time = tablet_to_safe_time_map[tablet_info];
       if (tablet_safe_time.is_special()) {
-        tablets_missing_safe_time_map[namespace_id].emplace_back(tablet_info.tablet_id);
+        tablets_missing_safe_time_map[namespace_id].emplace_back(tablet_info.tablet_id());
       } else {
         namespace_max_safe_time[namespace_id].MakeAtLeast(tablet_safe_time);
       }
@@ -425,7 +425,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     // Ignore values like Invalid, Min, Max and only consider a valid clock time.
     if (tablet_safe_time.is_special()) {
       namespace_safe_time_map[*namespace_id] = HybridTime::kInvalid;
-      if (!ddl_queue_tablet_ids_.contains(tablet_info.tablet_id)) {
+      if (!ddl_queue_tablet_ids_.contains(tablet_info.tablet_id())) {
         namespace_safe_time_map_without_ddl_queue[*namespace_id] = HybridTime::kInvalid;
       }
       continue;
@@ -435,7 +435,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
       if (tablet_safe_time.AddDelta(1s * FLAGS_xcluster_safe_time_slow_tablet_delta_secs) <
           namespace_max_safe_time[*namespace_id]) {
         namespace_min_safe_time[*namespace_id].MakeAtMost(tablet_safe_time);
-        slow_tablets_map[*namespace_id].emplace_back(tablet_info.tablet_id);
+        slow_tablets_map[*namespace_id].emplace_back(tablet_info.tablet_id());
       }
     }
 
@@ -446,7 +446,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
       namespace_safe_time.MakeAtMost(tablet_safe_time);
 
       // Also update namespace_safe_time_map_without_ddl_queue at same time.
-      if (!ddl_queue_tablet_ids_.contains(tablet_info.tablet_id)) {
+      if (!ddl_queue_tablet_ids_.contains(tablet_info.tablet_id())) {
         namespace_safe_time_map_without_ddl_queue[*namespace_id].MakeAtMost(tablet_safe_time);
       }
     }
@@ -536,18 +536,20 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   };
 
   for (const auto& row : client::TableRange(*safe_time_table_, options)) {
-    auto replication_group_id =
+    auto replication_group_id_column_value =
         xcluster::ReplicationGroupId(row.column(kXCReplicationGroupIdIdx).string_value());
-    auto tablet_id = row.column(kXCProducerTabletIdIdx).string_value();
+    auto tablet_id_column_value = row.column(kXCProducerTabletIdIdx).string_value();
+    auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
+        replication_group_id_column_value, tablet_id_column_value));
     auto safe_time = row.column(kXCSafeTimeIdx).int64_value();
     HybridTime safe_ht;
     RETURN_NOT_OK_PREPEND(
         safe_ht.FromUint64(static_cast<uint64_t>(safe_time)),
         Format(
-            "Invalid safe time set in table $0 replication_group_id:$1, tablet_id:$2",
-            kSafeTimeTableName.table_name(), replication_group_id, tablet_id));
+            "Invalid safe time set in table $0 tablet key $1", kSafeTimeTableName.table_name(),
+            key));
 
-    tablet_safe_time[{replication_group_id, tablet_id}] = safe_ht;
+    tablet_safe_time[key] = safe_ht;
   }
 
   RETURN_NOT_OK_PREPEND(
@@ -603,14 +605,20 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
 
         for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
           const auto& consumer_table_id = stream_entry.consumer_table_id();
-          auto stripped_consumer_table_id =
-              xcluster::StripSequencesDataAliasIfPresent(consumer_table_id);
-          auto consumer_namespace_id =
-              VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(stripped_consumer_table_id));
+          const auto& producer_table_id = stream_entry.producer_table_id();
+          NamespaceId consumer_namespace_id;
+          if (xcluster::IsSequencesDataAlias(consumer_table_id)) {
+            consumer_namespace_id =
+                VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(consumer_table_id));
+          } else {
+            consumer_namespace_id =
+                VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
+          }
           for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
             for (const auto& tablet_id : producer_tablets.tablets()) {
-              producer_tablet_namespace_map_[{replication_group_id, tablet_id}] =
-                  consumer_namespace_id;
+              const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+                  replication_group_id, tablet_id, producer_table_id));
+              producer_tablet_namespace_map_[key] = consumer_namespace_id;
               if (stream_entry.is_ddl_queue_table()) {
                 ddl_queue_tablet_ids_.insert(tablet_id);
               }
@@ -654,7 +662,7 @@ Status XClusterSafeTimeService::SetXClusterSafeTime(
 }
 
 Status XClusterSafeTimeService::CleanupEntriesFromTable(
-    const std::vector<ProducerTabletInfo>& entries_to_delete) {
+    const std::vector<xcluster::SafeTimeTablePK>& entries_to_delete) {
   if (entries_to_delete.empty()) {
     return OK();
   }
@@ -673,8 +681,8 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   for (auto& tablet_info : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet_info.replication_group_id.ToString());
-    QLAddStringHashValue(req, tablet_info.tablet_id);
+    QLAddStringHashValue(req, tablet_info.replication_group_id_column_value().ToString());
+    QLAddStringHashValue(req, tablet_info.tablet_id_column_value());
 
     VLOG_WITH_FUNC(1) << "Cleaning up tablet from " << kSafeTimeTableName.table_name() << ". "
                       << tablet_info.ToString();

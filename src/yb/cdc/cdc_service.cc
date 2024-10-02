@@ -1700,6 +1700,8 @@ void CDCServiceImpl::GetChanges(
     if (is_replication_paused_for_stream && VLOG_IS_ON(1)) {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Replication is paused from the producer for stream: " << req->stream_id();
+      // Below log line used in tests to detect when streams are paused.
+      VLOG(3) << "Replication is paused from the producer for stream: " << req->stream_id();
     }
     // Returning success to slow down polling on the consumer side while replication is paused or
     // early exit for testing purpose.

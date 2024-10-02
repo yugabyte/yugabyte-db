@@ -11,7 +11,12 @@
 // under the License.
 //
 
+#include "yb/tserver/xcluster_consumer.h"
+
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/xcluster_types.h"
+
+#include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -21,24 +26,20 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/xcluster_util.h"
+
+#include "yb/gutil/map-util.h"
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rpc/rpc.h"
-#include "yb/tserver/xcluster_consumer.h"
+
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/tserver/xcluster_poller.h"
-
-#include "yb/cdc/cdc_consumer.pb.h"
-
-#include "yb/client/client.h"
-
-#include "yb/rocksdb/rate_limiter.h"
-
-#include "yb/gutil/map-util.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
@@ -400,7 +401,9 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
          stream_entry_pb.consumer_producer_tablet_map()) {
       for (const auto& producer_tablet_id : producer_tablet_list.tablets()) {
         auto xCluster_tablet_info = xcluster::XClusterTabletInfo{
-            .producer_tablet_info = {replication_group_id, stream_id, producer_tablet_id},
+            .producer_tablet_info =
+                {replication_group_id, stream_id, producer_tablet_id,
+                 stream_entry_pb.producer_table_id()},
             .consumer_tablet_info = {consumer_tablet_id, stream_entry_pb.consumer_table_id()},
             .disable_stream = producer_entry_pb.disable_stream(),
             .automatic_ddl_mode = producer_entry_pb.automatic_ddl_mode()};
@@ -493,17 +496,36 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.contains(producer_tablet_info.stream_id);
 
-        auto namespace_info_res = get_namespace_info_func_(consumer_tablet_info.tablet_id);
-        if (!namespace_info_res.ok()) {
-          LOG(WARNING) << "Could not get namespace info for table "
-                       << consumer_tablet_info.tablet_id << ": "
-                       << namespace_info_res.status().ToString();
-          continue;  // Don't finish creation.  Try again on the next RunThread().
+        NamespaceId consumer_namespace_id;
+        NamespaceName consumer_namespace_name;
+        auto consumer_table_id = consumer_tablet_info.table_id;
+        if (xcluster::IsSequencesDataAlias(consumer_table_id)) {
+          auto namespace_id_result = xcluster::GetReplicationNamespaceBelongsTo(consumer_table_id);
+          if (namespace_id_result) {
+            consumer_namespace_id = *namespace_id_result;
+            // We don't need consumer_namespace_name for sequence streams so don't bother computing
+            // it.
+            consumer_namespace_name = "<unknown>";
+          } else {
+            LOG(ERROR) << "Malformed sequences_data alias table ID: " << consumer_table_id
+                       << "; skipping creation of a poller for a tablet belonging to that table: "
+                       << consumer_tablet_info.tablet_id;
+            continue;
+          }
+        } else {
+          auto namespace_info_result = get_namespace_info_func_(consumer_tablet_info.tablet_id);
+          if (!namespace_info_result.ok()) {
+            LOG(WARNING) << "Could not get namespace info for tablet "
+                         << consumer_tablet_info.tablet_id << ": "
+                         << namespace_info_result.status().ToString();
+            continue;  // Don't finish creation.  Try again on the next RunThread().
+          }
+          consumer_namespace_id = namespace_info_result->first;
+          consumer_namespace_name = namespace_info_result->second;
         }
-        const auto& [namespace_id, namespace_name] = *namespace_info_res;
 
         auto xcluster_poller = std::make_shared<XClusterPoller>(
-            producer_tablet_info, consumer_tablet_info, namespace_id,
+            producer_tablet_info, consumer_tablet_info, consumer_namespace_id,
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
@@ -511,7 +533,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           xcluster_poller->InitDDLQueuePoller(
-              use_local_tserver, rate_limiter_.get(), namespace_name, xcluster_context_,
+              use_local_tserver, rate_limiter_.get(), consumer_namespace_name, xcluster_context_,
               connect_to_pg_func_);
         } else {
           xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
@@ -705,14 +727,17 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
 
   auto session = local_client_.NewSession(local_client_.default_rpc_timeout());
   for (auto& [producer_info, safe_time] : safe_time_map) {
+    const auto key =
+        VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(producer_info));
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, producer_info.replication_group_id.ToString());
-    QLAddStringHashValue(req, producer_info.tablet_id);
+    QLAddStringHashValue(req, key.replication_group_id_column_value().ToString());
+    QLAddStringHashValue(req, key.tablet_id_column_value());
     safe_time_table_->AddInt64ColumnValue(req, master::kXCSafeTime, safe_time.ToUint64());
 
     VLOG_WITH_FUNC(2) << "UniverseID: " << producer_info.replication_group_id
                       << ", TabletId: " << producer_info.tablet_id
+                      << ", TableId: " << producer_info.table_id
                       << ", SafeTime: " << safe_time.ToDebugString();
     session->Apply(std::move(op));
   }
