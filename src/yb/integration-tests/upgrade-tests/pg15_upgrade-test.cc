@@ -168,4 +168,97 @@ TEST_F(Pg15UpgradeTest, Comments) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, Schemas) {
+  const auto kSchemaA = "schema_a";
+  const auto kSchemaB = "schema_b";
+  const auto kPublic = "public";
+
+  const auto kSchemaATable = "s_schema_table_a";
+  const auto kSchemaBTable = "s_schema_table_b";
+  const auto kDefaultTable = "d_schema_table";
+  const auto kDefaultTable2 = "d_schema_table_2";
+  const auto kPublicTable = "p_schema_table";
+  const auto kPublicTable2 = "p_schema_table_2";
+
+  // This query returns rows in the format "schema.table"
+  static const auto kGetTables =
+      Format("SELECT nspname || '.' || relname FROM pg_class c "
+             "JOIN pg_namespace n ON c.relnamespace = n.oid "
+             "WHERE nspname IN ('$0', '$1', '$2') AND relname LIKE '%%schema_table%%' "
+             "ORDER BY nspname, relname ASC",
+             kSchemaA, kSchemaB, kPublic);
+
+  // YB_TODO: When `CREATE SCHEMA` is the first command in this sequence, it fails with the error:
+  // ERROR:  this ddl statement is currently not allowed
+  // DETAIL:  The pg_yb_catalog_version table is not in per-database catalog version mode.
+  // HINT:  Fix pg_yb_catalog_version table to per-database catalog version mode.
+  // (This is before anything upgrade-related occurs)
+  ASSERT_OK(ExecuteStatements(
+      {Format("CREATE TABLE $0.$1 (a INT)", kPublic, kPublicTable),
+       Format("CREATE SCHEMA $0", kSchemaA),
+       Format("CREATE TABLE $0.$1 (a INT)", kSchemaA, kSchemaATable),
+       Format("CREATE TABLE $0 (a INT)", kDefaultTable)}));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto check_tables = [&](pgwrapper::PGConn& conn) {
+    const auto results = ASSERT_RESULT(conn.FetchRows<std::string>(kGetTables));
+    ASSERT_EQ(results.size(), 3);
+    ASSERT_STR_CONTAINS(results[0], Format("$0.$1", kPublic, kDefaultTable));
+    ASSERT_STR_CONTAINS(results[1], Format("$0.$1", kPublic, kPublicTable));
+    ASSERT_STR_CONTAINS(results[2], Format("$0.$1", kSchemaA, kSchemaATable));
+
+    // Check that each table can be selected from (proving it's more than just an entry in pg_class)
+    const auto joined_rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT COUNT(*) FROM $0.$1, $2, $3",
+             kSchemaA, kSchemaATable, kDefaultTable, kPublicTable)));
+    ASSERT_EQ(joined_rows, 0);
+  };
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(check_tables(conn));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_tables(conn));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Check the tables from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_tables(conn));
+  }
+
+  // Create a new schema and tables
+  ASSERT_OK(ExecuteStatements(
+      {Format("CREATE SCHEMA $0", kSchemaB),
+       Format("CREATE TABLE $0.$1 (a INT)", kPublic, kPublicTable2),
+       Format("CREATE TABLE $0.$1 (a INT)", kSchemaB, kSchemaBTable),
+       Format("CREATE TABLE $0 (a INT)", kDefaultTable2)}));
+
+  // Check the new tables from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    const auto results = ASSERT_RESULT(conn.FetchRows<std::string>(kGetTables));
+    ASSERT_EQ(results.size(), 6);
+    int idx = 0;
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kPublic, kDefaultTable));
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kPublic, kDefaultTable2));
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kPublic, kPublicTable));
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kPublic, kPublicTable2));
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kSchemaA, kSchemaATable));
+    ASSERT_STR_CONTAINS(results[idx++], Format("$0.$1", kSchemaB, kSchemaBTable));
+
+    // Check that each table can be selected from (proving it's more than just an entry in pg_class)
+    const auto joined_rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT COUNT(*) FROM $0.$1, $2.$3, $4, $5, $6, $7",
+               kSchemaA, kSchemaATable, kSchemaB, kSchemaBTable,
+               kDefaultTable, kDefaultTable2, kPublicTable, kPublicTable2)));
+    ASSERT_EQ(joined_rows, 0);
+  }
+}
+
 }  // namespace yb
