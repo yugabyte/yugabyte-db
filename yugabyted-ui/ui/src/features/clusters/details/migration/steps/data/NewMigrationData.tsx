@@ -76,10 +76,11 @@ const exportDataPrereqs: React.ReactNode[] = [
 
 interface MigrationDataProps {
   heading: string;
-  migration: Migration;
+  migration: Migration | undefined;
   step: number;
   onRefetch: () => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 export const MigrationData: FC<MigrationDataProps> = ({
@@ -87,6 +88,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
   migration,
   onRefetch,
   isFetching = false,
+  isNewMigration = false,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -108,7 +110,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationMetrics,
   } = useGetVoyagerDataMigrationMetricsQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
   const dataAPI = { metrics: data?.metrics || [] };
@@ -141,7 +143,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
     [dataAPI]
   );
 
-  const phase = migration.migration_phase || 0;
+  const phase = migration?.migration_phase || 0;
 
   const exportProgress = useMemo(() => {
     const totalObjects = migrationExportProgressData.length || 1;
@@ -192,15 +194,15 @@ export const MigrationData: FC<MigrationDataProps> = ({
         </YBButton>
       </Box>
 
-      {isErrorMigrationMetrics && <GenericFailure />}
+      {isErrorMigrationMetrics && !isNewMigration && <GenericFailure />}
 
-      {(isFetching || isFetchingAPI) && (
+      {(isFetching || isFetchingAPI) && !isNewMigration && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI || isErrorMigrationMetrics) && (
+      {(!(isFetching || isFetchingAPI || isErrorMigrationMetrics) || isNewMigration) && (
         <>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
             <StepCard

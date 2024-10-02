@@ -1570,7 +1570,8 @@ int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
-	.is_enabled = false,
+	.has_infra = true,
+	.is_enabled = true,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
@@ -1851,6 +1852,11 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	++ddl_transaction_state.nesting_level;
+	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+}
+
+void
+YBAddModificationAspects(YbDdlMode mode) {
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
@@ -5298,7 +5304,8 @@ YbGetRedactedQueryString(const char* query, int query_len,
 bool
 YbIsUpdateOptimizationEnabled()
 {
-	return yb_update_optimization_options.is_enabled &&
+	return yb_update_optimization_options.has_infra &&
+		   yb_update_optimization_options.is_enabled &&
 		   yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }

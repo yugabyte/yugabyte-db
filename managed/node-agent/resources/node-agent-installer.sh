@@ -20,7 +20,6 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
-USER_SCOPED_UNIT="false"
 SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
@@ -155,22 +154,7 @@ uninstall_node_agent() {
   local NODE_AGENT_UUID=""
   NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   rm -rf "$RESPONSE_FILE"
-  local RUNNING=""
-  RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
-  # If not found, check in user-level units
-  if [ -z "$RUNNING" ]; then
-    RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
-  fi
-
-  if [ -n "$RUNNING" ]; then
-     if [ "$USER_SCOPED_UNIT" = "false" ]; then
-      run_as_super_user systemctl stop yb-node-agent
-      run_as_super_user systemctl disable yb-node-agent
-    else
-      systemctl --user stop yb-node-agent
-      systemctl --user disable yb-node-agent
-    fi
-  fi
+  stop_systemd_service
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
     STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
@@ -308,7 +292,38 @@ modify_selinux() {
   set -e
 }
 
+stop_systemd_service() {
+  local UNIT_FILE_PRESENT=""
+  local USER_SCOPED_UNIT=""
+  set +e
+  UNIT_FILE_PRESENT=$(systemctl list-units | grep -F yb-node-agent.service)
+  # If not found, check in user-level units
+  if [ -z "$UNIT_FILE_PRESENT" ]; then
+    UNIT_FILE_PRESENT=$(systemctl --user list-units | grep -F yb-node-agent.service)
+    if [ -n "$UNIT_FILE_PRESENT" ]; then
+      USER_SCOPED_UNIT="true"
+    fi
+  else
+    USER_SCOPED_UNIT="false"
+  fi
+  if [ -n "$UNIT_FILE_PRESENT" ]; then
+    if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
+      run_as_super_user systemctl stop yb-node-agent
+      run_as_super_user systemctl disable yb-node-agent
+    elif [ "$USER_SCOPED_UNIT" = "true" ]; then
+      systemctl --user stop yb-node-agent
+      systemctl --user disable yb-node-agent
+    fi
+  fi
+  set -e
+}
+
 install_systemd_service() {
+  local USER_SCOPED_UNIT="false"
+  if [ "$SUDO_ACCESS" = "false" ]; then
+    USER_SCOPED_UNIT="true"
+    SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
+  fi
   if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
     modify_selinux
   fi
@@ -434,10 +449,6 @@ err_msg() {
 main() {
   echo "* Starting YB Node Agent $COMMAND."
   if [ "$COMMAND" = "install_service" ]; then
-    if [ "$SUDO_ACCESS" = "false" ]; then
-      USER_SCOPED_UNIT="true"
-      SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
-    fi
     install_systemd_service
   elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
@@ -529,23 +540,7 @@ main() {
         exit 1
       fi
       # Disable existing node-agent if sudo access is available.
-      local RUNNING=""
-      set +e
-      RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
-      # If not found, check in user-level units
-      if [ -z "$RUNNING" ]; then
-        RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
-      fi
-      if [ -n "$RUNNING" ]; then
-        if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
-          run_as_super_user systemctl stop yb-node-agent
-          run_as_super_user systemctl disable yb-node-agent
-        else
-          systemctl --user stop yb-node-agent
-          systemctl --user disable yb-node-agent
-        fi
-      fi
-      set -e
+      stop_systemd_service
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
@@ -755,10 +750,11 @@ check_sudo_access
 main
 
 if [ "$?" -eq 0 ] && [ "$COMMAND" = "install" ]; then
-  if [ "$SUDO_ACCESS" = "false" ]; then
+  if [ "$DISABLE_EGRESS" == "false" ]; then
     echo "You can install a systemd service on linux machines\
  by running $INSTALLER_NAME -c install_service --user yugabyte (Requires sudo access)."
   else
-     install_systemd_service
+    echo "Automatically installing systemd service for node agent installed by YBA."
+    install_systemd_service
   fi
 fi

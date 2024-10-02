@@ -2961,8 +2961,21 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
+		&yb_update_optimization_options.has_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_skip_redundant_update_ops", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables the comparison of old and new values of columns specified in the "
+						 "SET clause of YSQL UPDATE queries to skip redundant secondary index " 
+						 "updates and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

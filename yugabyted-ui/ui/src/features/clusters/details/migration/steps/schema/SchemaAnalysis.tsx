@@ -52,7 +52,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface SchemaAnalysisProps {
-  migration: Migration;
+  migration: Migration | undefined;
   schemaAPI: MigrateSchemaTaskInfo;
 }
 

@@ -117,28 +117,31 @@ SIMSIMD_MAKE_JS(serial, f64, f64, SIMSIMD_DEREFERENCE, SIMSIMD_F32_DIVISION_EPSI
 SIMSIMD_MAKE_KL(serial, f32, f32, SIMSIMD_DEREFERENCE, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f32_serial
 SIMSIMD_MAKE_JS(serial, f32, f32, SIMSIMD_DEREFERENCE, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f32_serial
 
-SIMSIMD_MAKE_KL(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f16_serial
-SIMSIMD_MAKE_JS(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f16_serial
+SIMSIMD_MAKE_KL(serial, f16, f32, SIMSIMD_F16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f16_serial
+SIMSIMD_MAKE_JS(serial, f16, f32, SIMSIMD_F16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f16_serial
 
-SIMSIMD_MAKE_KL(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_bf16_serial
-SIMSIMD_MAKE_JS(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_bf16_serial
+SIMSIMD_MAKE_KL(serial, bf16, f32, SIMSIMD_BF16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_bf16_serial
+SIMSIMD_MAKE_JS(serial, bf16, f32, SIMSIMD_BF16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_bf16_serial
 
 SIMSIMD_MAKE_KL(accurate, f32, f64, SIMSIMD_DEREFERENCE, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f32_accurate
 SIMSIMD_MAKE_JS(accurate, f32, f64, SIMSIMD_DEREFERENCE, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f32_accurate
 
-SIMSIMD_MAKE_KL(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f16_accurate
-SIMSIMD_MAKE_JS(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f16_accurate
+SIMSIMD_MAKE_KL(accurate, f16, f64, SIMSIMD_F16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_f16_accurate
+SIMSIMD_MAKE_JS(accurate, f16, f64, SIMSIMD_F16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_f16_accurate
 
-SIMSIMD_MAKE_KL(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_bf16_accurate
-SIMSIMD_MAKE_JS(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_bf16_accurate
+SIMSIMD_MAKE_KL(accurate, bf16, f64, SIMSIMD_BF16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_kl_bf16_accurate
+SIMSIMD_MAKE_JS(accurate, bf16, f64, SIMSIMD_BF16_TO_F32, SIMSIMD_F32_DIVISION_EPSILON) // simsimd_js_bf16_accurate
 
 #if SIMSIMD_TARGET_ARM
 #if SIMSIMD_TARGET_NEON
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd"))), apply_to = function)
 
-SIMSIMD_PUBLIC float32x4_t simsimd_log2_f32_neon(float32x4_t x) {
+#endif
+
+SIMSIMD_PUBLIC float32x4_t _simsimd_log2_f32_neon(float32x4_t x) {
     // Extracting the exponent
     int32x4_t i = vreinterpretq_s32_f32(x);
     int32x4_t e = vsubq_s32(vshrq_n_s32(vandq_s32(i, vdupq_n_s32(0x7F800000)), 23), vdupq_n_s32(127));
@@ -172,8 +175,8 @@ SIMSIMD_PUBLIC void simsimd_kl_f32_neon(simsimd_f32_t const* a, simsimd_f32_t co
 
 simsimd_kl_f32_neon_cycle:
     if (n < 4) {
-        a_vec = simsimd_partial_load_f32x4_neon(a, n);
-        b_vec = simsimd_partial_load_f32x4_neon(b, n);
+        a_vec = _simsimd_partial_load_f32x4_neon(a, n);
+        b_vec = _simsimd_partial_load_f32x4_neon(b, n);
         n = 0;
     } else {
         a_vec = vld1q_f32(a);
@@ -182,7 +185,7 @@ simsimd_kl_f32_neon_cycle:
     }
 
     float32x4_t ratio_vec = vdivq_f32(vaddq_f32(a_vec, epsilon_vec), vaddq_f32(b_vec, epsilon_vec));
-    float32x4_t log_ratio_vec = simsimd_log2_f32_neon(ratio_vec);
+    float32x4_t log_ratio_vec = _simsimd_log2_f32_neon(ratio_vec);
     float32x4_t prod_vec = vmulq_f32(a_vec, log_ratio_vec);
     sum_vec = vaddq_f32(sum_vec, prod_vec);
     if (n != 0)
@@ -202,8 +205,8 @@ SIMSIMD_PUBLIC void simsimd_js_f32_neon(simsimd_f32_t const* a, simsimd_f32_t co
 
 simsimd_js_f32_neon_cycle:
     if (n < 4) {
-        a_vec = simsimd_partial_load_f32x4_neon(a, n);
-        b_vec = simsimd_partial_load_f32x4_neon(b, n);
+        a_vec = _simsimd_partial_load_f32x4_neon(a, n);
+        b_vec = _simsimd_partial_load_f32x4_neon(b, n);
         n = 0;
     } else {
         a_vec = vld1q_f32(a);
@@ -214,8 +217,8 @@ simsimd_js_f32_neon_cycle:
     float32x4_t m_vec = vmulq_f32(vaddq_f32(a_vec, b_vec), vdupq_n_f32(0.5));
     float32x4_t ratio_a_vec = vdivq_f32(vaddq_f32(a_vec, epsilon_vec), vaddq_f32(m_vec, epsilon_vec));
     float32x4_t ratio_b_vec = vdivq_f32(vaddq_f32(b_vec, epsilon_vec), vaddq_f32(m_vec, epsilon_vec));
-    float32x4_t log_ratio_a_vec = simsimd_log2_f32_neon(ratio_a_vec);
-    float32x4_t log_ratio_b_vec = simsimd_log2_f32_neon(ratio_b_vec);
+    float32x4_t log_ratio_a_vec = _simsimd_log2_f32_neon(ratio_a_vec);
+    float32x4_t log_ratio_b_vec = _simsimd_log2_f32_neon(ratio_b_vec);
     float32x4_t prod_a_vec = vmulq_f32(a_vec, log_ratio_a_vec);
     float32x4_t prod_b_vec = vmulq_f32(b_vec, log_ratio_b_vec);
     sum_vec = vaddq_f32(sum_vec, vaddq_f32(prod_a_vec, prod_b_vec));
@@ -227,14 +230,19 @@ simsimd_js_f32_neon_cycle:
     *result = sum / 2;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON
 
 #if SIMSIMD_TARGET_NEON_F16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd+fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_kl_f16_neon(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                         simsimd_distance_t* result) {
@@ -245,8 +253,8 @@ SIMSIMD_PUBLIC void simsimd_kl_f16_neon(simsimd_f16_t const* a, simsimd_f16_t co
 
 simsimd_kl_f16_neon_cycle:
     if (n < 4) {
-        a_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a, n));
-        b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b, n));
+        a_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a, n));
+        b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b, n));
         n = 0;
     } else {
         a_vec = vcvt_f32_f16(vld1_f16((simsimd_f16_for_arm_simd_t const*)a));
@@ -255,7 +263,7 @@ simsimd_kl_f16_neon_cycle:
     }
 
     float32x4_t ratio_vec = vdivq_f32(vaddq_f32(a_vec, epsilon_vec), vaddq_f32(b_vec, epsilon_vec));
-    float32x4_t log_ratio_vec = simsimd_log2_f32_neon(ratio_vec);
+    float32x4_t log_ratio_vec = _simsimd_log2_f32_neon(ratio_vec);
     float32x4_t prod_vec = vmulq_f32(a_vec, log_ratio_vec);
     sum_vec = vaddq_f32(sum_vec, prod_vec);
     if (n)
@@ -275,8 +283,8 @@ SIMSIMD_PUBLIC void simsimd_js_f16_neon(simsimd_f16_t const* a, simsimd_f16_t co
 
 simsimd_js_f16_neon_cycle:
     if (n < 4) {
-        a_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a, n));
-        b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b, n));
+        a_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a, n));
+        b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b, n));
         n = 0;
     } else {
         a_vec = vcvt_f32_f16(vld1_f16((simsimd_f16_for_arm_simd_t const*)a));
@@ -287,8 +295,8 @@ simsimd_js_f16_neon_cycle:
     float32x4_t m_vec = vmulq_f32(vaddq_f32(a_vec, b_vec), vdupq_n_f32(0.5));
     float32x4_t ratio_a_vec = vdivq_f32(vaddq_f32(a_vec, epsilon_vec), vaddq_f32(m_vec, epsilon_vec));
     float32x4_t ratio_b_vec = vdivq_f32(vaddq_f32(b_vec, epsilon_vec), vaddq_f32(m_vec, epsilon_vec));
-    float32x4_t log_ratio_a_vec = simsimd_log2_f32_neon(ratio_a_vec);
-    float32x4_t log_ratio_b_vec = simsimd_log2_f32_neon(ratio_b_vec);
+    float32x4_t log_ratio_a_vec = _simsimd_log2_f32_neon(ratio_a_vec);
+    float32x4_t log_ratio_b_vec = _simsimd_log2_f32_neon(ratio_b_vec);
     float32x4_t prod_a_vec = vmulq_f32(a_vec, log_ratio_a_vec);
     float32x4_t prod_b_vec = vmulq_f32(b_vec, log_ratio_b_vec);
     sum_vec = vaddq_f32(sum_vec, vaddq_f32(prod_a_vec, prod_b_vec));
@@ -300,7 +308,9 @@ simsimd_js_f16_neon_cycle:
     *result = sum / 2;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_F16
 #endif // SIMSIMD_TARGET_ARM
@@ -309,9 +319,12 @@ simsimd_js_f16_neon_cycle:
 #if SIMSIMD_TARGET_HASWELL
 #pragma GCC push_options
 #pragma GCC target("avx2", "f16c", "fma")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("avx2,f16c,fma"))), apply_to = function)
 
-SIMSIMD_INTERNAL __m256 simsimd_log2_f32_haswell(__m256 x) {
+#endif
+
+SIMSIMD_INTERNAL __m256 _simsimd_log2_f32_haswell(__m256 x) {
     // Extracting the exponent
     __m256i i = _mm256_castps_si256(x);
     __m256i e = _mm256_srli_epi32(_mm256_and_si256(i, _mm256_set1_epi32(0x7F800000)), 23);
@@ -347,8 +360,8 @@ SIMSIMD_PUBLIC void simsimd_kl_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t
 
 simsimd_kl_f16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_f16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_f16x8_haswell(b, n);
+        a_vec = _simsimd_partial_load_f16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_f16x8_haswell(b, n);
         n = 0;
     } else {
         a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
@@ -357,14 +370,14 @@ simsimd_kl_f16_haswell_cycle:
     }
 
     __m256 ratio_vec = _mm256_div_ps(_mm256_add_ps(a_vec, epsilon_vec), _mm256_add_ps(b_vec, epsilon_vec));
-    __m256 log_ratio_vec = simsimd_log2_f32_haswell(ratio_vec);
+    __m256 log_ratio_vec = _simsimd_log2_f32_haswell(ratio_vec);
     __m256 prod_vec = _mm256_mul_ps(a_vec, log_ratio_vec);
     sum_vec = _mm256_add_ps(sum_vec, prod_vec);
     if (n)
         goto simsimd_kl_f16_haswell_cycle;
 
     simsimd_f32_t log2_normalizer = 0.693147181f;
-    simsimd_f32_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f32_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     sum *= log2_normalizer;
     *result = sum;
 }
@@ -378,8 +391,8 @@ SIMSIMD_PUBLIC void simsimd_js_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t
 
 simsimd_js_f16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_f16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_f16x8_haswell(b, n);
+        a_vec = _simsimd_partial_load_f16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_f16x8_haswell(b, n);
         n = 0;
     } else {
         a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
@@ -390,8 +403,8 @@ simsimd_js_f16_haswell_cycle:
     __m256 m_vec = _mm256_mul_ps(_mm256_add_ps(a_vec, b_vec), _mm256_set1_ps(0.5f)); // M = (P + Q) / 2
     __m256 ratio_a_vec = _mm256_div_ps(a_vec, m_vec);
     __m256 ratio_b_vec = _mm256_div_ps(b_vec, m_vec);
-    __m256 log_ratio_a_vec = simsimd_log2_f32_haswell(ratio_a_vec);
-    __m256 log_ratio_b_vec = simsimd_log2_f32_haswell(ratio_b_vec);
+    __m256 log_ratio_a_vec = _simsimd_log2_f32_haswell(ratio_a_vec);
+    __m256 log_ratio_b_vec = _simsimd_log2_f32_haswell(ratio_b_vec);
     __m256 prod_a_vec = _mm256_mul_ps(a_vec, log_ratio_a_vec);
     __m256 prod_b_vec = _mm256_mul_ps(b_vec, log_ratio_b_vec);
     sum_vec = _mm256_add_ps(sum_vec, prod_a_vec);
@@ -400,21 +413,26 @@ simsimd_js_f16_haswell_cycle:
         goto simsimd_js_f16_haswell_cycle;
 
     simsimd_f32_t log2_normalizer = 0.693147181f;
-    simsimd_f32_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f32_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     sum *= log2_normalizer;
     *result = sum / 2;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_HASWELL
 
 #if SIMSIMD_TARGET_SKYLAKE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2"))), apply_to = function)
 
-SIMSIMD_INTERNAL __m512 simsimd_log2_f32_skylake(__m512 x) {
+#endif
+
+SIMSIMD_INTERNAL __m512 _simsimd_log2_f32_skylake(__m512 x) {
     // Extract the exponent and mantissa
     __m512 one = _mm512_set1_ps(1.0f);
     __m512 e = _mm512_getexp_ps(x);
@@ -450,7 +468,7 @@ simsimd_kl_f32_skylake_cycle:
         a += 16, b += 16, n -= 16;
     }
     __m512 ratio_vec = _mm512_div_ps(a_vec, b_vec);
-    __m512 log_ratio_vec = simsimd_log2_f32_skylake(ratio_vec);
+    __m512 log_ratio_vec = _simsimd_log2_f32_skylake(ratio_vec);
     __m512 prod_vec = _mm512_mul_ps(a_vec, log_ratio_vec);
     sum_vec = _mm512_add_ps(sum_vec, prod_vec);
     if (n)
@@ -486,8 +504,8 @@ simsimd_js_f32_skylake_cycle:
     __m512 m_recip_approx = _mm512_rcp14_ps(m_vec);
     __m512 ratio_a_vec = _mm512_mul_ps(a_vec, m_recip_approx);
     __m512 ratio_b_vec = _mm512_mul_ps(b_vec, m_recip_approx);
-    __m512 log_ratio_a_vec = simsimd_log2_f32_skylake(ratio_a_vec);
-    __m512 log_ratio_b_vec = simsimd_log2_f32_skylake(ratio_b_vec);
+    __m512 log_ratio_a_vec = _simsimd_log2_f32_skylake(ratio_a_vec);
+    __m512 log_ratio_b_vec = _simsimd_log2_f32_skylake(ratio_b_vec);
     sum_a_vec = _mm512_maskz_fmadd_ps(nonzero_mask, a_vec, log_ratio_a_vec, sum_a_vec);
     sum_b_vec = _mm512_maskz_fmadd_ps(nonzero_mask, b_vec, log_ratio_b_vec, sum_b_vec);
     if (n)
@@ -497,16 +515,21 @@ simsimd_js_f32_skylake_cycle:
     *result = _mm512_reduce_add_ps(_mm512_add_ps(sum_a_vec, sum_b_vec)) * log2_normalizer / 2;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_HASWELL
 
 #if SIMSIMD_TARGET_SAPPHIRE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512fp16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512fp16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512fp16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512fp16"))), apply_to = function)
 
-SIMSIMD_INTERNAL __m512h simsimd_log2_f16_sapphire(__m512h x) {
+#endif
+
+SIMSIMD_INTERNAL __m512h _simsimd_log2_f16_sapphire(__m512h x) {
     // Extract the exponent and mantissa
     __m512h one = _mm512_set1_ph((simsimd_f16_t)1);
     __m512h e = _mm512_getexp_ph(x);
@@ -541,7 +564,7 @@ simsimd_kl_f16_sapphire_cycle:
         a += 32, b += 32, n -= 32;
     }
     __m512h ratio_vec = _mm512_div_ph(a_vec, b_vec);
-    __m512h log_ratio_vec = simsimd_log2_f16_sapphire(ratio_vec);
+    __m512h log_ratio_vec = _simsimd_log2_f16_sapphire(ratio_vec);
     __m512h prod_vec = _mm512_mul_ph(a_vec, log_ratio_vec);
     sum_vec = _mm512_add_ph(sum_vec, prod_vec);
     if (n)
@@ -576,8 +599,8 @@ simsimd_js_f16_sapphire_cycle:
     __m512h m_recip_approx = _mm512_rcp_ph(m_vec);
     __m512h ratio_a_vec = _mm512_mul_ph(a_vec, m_recip_approx);
     __m512h ratio_b_vec = _mm512_mul_ph(b_vec, m_recip_approx);
-    __m512h log_ratio_a_vec = simsimd_log2_f16_sapphire(ratio_a_vec);
-    __m512h log_ratio_b_vec = simsimd_log2_f16_sapphire(ratio_b_vec);
+    __m512h log_ratio_a_vec = _simsimd_log2_f16_sapphire(ratio_a_vec);
+    __m512h log_ratio_b_vec = _simsimd_log2_f16_sapphire(ratio_b_vec);
     sum_a_vec = _mm512_maskz_fmadd_ph(nonzero_mask, a_vec, log_ratio_a_vec, sum_a_vec);
     sum_b_vec = _mm512_maskz_fmadd_ph(nonzero_mask, b_vec, log_ratio_b_vec, sum_b_vec);
     if (n)
@@ -587,7 +610,9 @@ simsimd_js_f16_sapphire_cycle:
     *result = _mm512_reduce_add_ph(_mm512_add_ph(sum_a_vec, sum_b_vec)) * log2_normalizer / 2;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SAPPHIRE
 #endif // SIMSIMD_TARGET_X86
@@ -599,7 +624,7 @@ simsimd_js_f16_sapphire_cycle:
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.
