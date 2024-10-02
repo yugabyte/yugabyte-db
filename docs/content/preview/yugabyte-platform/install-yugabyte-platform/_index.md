@@ -33,13 +33,9 @@ Kubernetes installations are performed and managed using the YugabyteDB Anywhere
 
 {{</index/block>}}
 
-### Replicated
+### Migrate from Replicated
 
-{{< warning title="Replicated end-of-life" >}}
-
-{{</warning >}}
-
-YugabyteDB Anywhere is ending support for Replicated at the end of 2024. For new installations of YugabyteDB Anywhere, use [YBA Installer](install-software/installer/).
+YugabyteDB Anywhere has ended support for installing using Replicated. For new installations of YugabyteDB Anywhere, use [YBA Installer](install-software/installer/).
 
 To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](migrate-replicated/).
 
@@ -50,11 +46,5 @@ To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installe
     body="Migrate an installation from Replicated to YBA Installer."
     href="migrate-replicated/"
     icon="fa-thin fa-truck">}}
-
-  {{<index/item
-    title="Replicated [Deprecated]"
-    body="Install YugabyteDB Anywhere software using Replicated."
-    href="install-replicated/"
-    icon="fa-thin fa-clone">}}
 
 {{</index/block>}}

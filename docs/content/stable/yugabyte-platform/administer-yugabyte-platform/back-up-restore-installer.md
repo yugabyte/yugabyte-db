@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
+Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
