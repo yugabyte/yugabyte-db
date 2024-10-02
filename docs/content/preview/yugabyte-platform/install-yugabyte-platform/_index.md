@@ -5,6 +5,8 @@ linkTitle: Install
 description: Install YugabyteDB Anywhere and prepare universe nodes.
 image: fa-thin fa-wrench
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments
+aliases:
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-replicated/
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
