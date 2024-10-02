@@ -20,7 +20,7 @@ The following tutorial describes how to connect a YugabyteDB Aeon cluster to a H
 
 <!--For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Aeon, refer to [Deploy a GraphQL application](../hasura-sample-app/).-->
 
-## Obtain your YugabyteDB cluster connection info
+## Obtain your YugabyteDB cluster connection information 
 
 Sign up for YugabyteDB Aeon and create a Sandbox cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
 
