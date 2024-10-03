@@ -75,6 +75,8 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
+Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
+
 ## Fundamentals
 
 Learn how to perform common tasks required for Java application development using the YugabyteDB JDBC driver.
