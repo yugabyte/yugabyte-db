@@ -13,6 +13,8 @@
 
 #include "yb/tserver/pg_client_session.h"
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <mutex>
@@ -154,45 +156,75 @@ Status AppendPsqlErrorCode(const Status& status,
   return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
 }
 
+TransactionErrorCode GetTransactionErrorCode(const Status& status) {
+  return status.ok() ? TransactionErrorCode::kNone : TransactionError(status).value();
+}
+
+Status TryAppendTxnConflictOpIndex(
+    const Status& status, const client::CollectedErrors& errors,
+    const PgClientSessionOperations& ops) {
+  DCHECK(!status.ok());
+  if (GetTransactionErrorCode(status) != TransactionErrorCode::kNone && !ops.empty()) {
+    for (const auto& error : errors) {
+      if (GetTransactionErrorCode(error->status()) == TransactionErrorCode::kConflict) {
+        const auto ops_begin = ops.begin();
+        const auto ops_end = ops.end();
+        const auto op_it = std::find_if(
+            ops.begin(), ops_end,
+            [failed_op = &error->failed_op()](const auto& op) {return op.get() == failed_op; });
+
+        if (PREDICT_FALSE(op_it == ops_end)) {
+          LOG(DFATAL) << "Unknown operation failed with conflict";
+          break;
+        }
+
+        return status.CloneAndAddErrorCode(OpIndex(op_it - ops_begin));
+      }
+    }
+  }
+  return status;
+}
+
 // Get a common transaction error code for all the errors and append it to the previous Status.
 Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
-  TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
-  constexpr auto kNumTxnErrorCodes = 6;
-  static const TransactionErrorCode precedence_list[kNumTxnErrorCodes] = {
-      TransactionErrorCode::kDeadlock, TransactionErrorCode::kAborted,
-      TransactionErrorCode::kConflict, TransactionErrorCode::kReadRestartRequired,
-      TransactionErrorCode::kSnapshotTooOld, TransactionErrorCode::kSkipLocking};
-  size_t common_txn_error_idx = kNumTxnErrorCodes;
+  // The list of all known TransactionErrorCode (except kNone), ordered in decreasing of priority.
+  static constexpr std::array precedence_list = {
+      TransactionErrorCode::kDeadlock,
+      TransactionErrorCode::kAborted,
+      TransactionErrorCode::kConflict,
+      TransactionErrorCode::kReadRestartRequired,
+      TransactionErrorCode::kSnapshotTooOld,
+      TransactionErrorCode::kSkipLocking};
+  static_assert(precedence_list.size() + 1 == MapSize(static_cast<TransactionErrorCode*>(nullptr)));
+
+  static const auto precedence_begin = precedence_list.begin();
+  static const auto precedence_end = precedence_list.end();
+  auto common_txn_error_it = precedence_end;
   for (const auto& error : errors) {
-    const TransactionErrorCode txn_error = TransactionError(error->status()).value();
-    if (txn_error == TransactionErrorCode::kNone || txn_error == common_txn_error) {
+    const auto txn_error = GetTransactionErrorCode(error->status());
+    if (txn_error == TransactionErrorCode::kNone ||
+        (common_txn_error_it != precedence_end && *common_txn_error_it == txn_error)) {
       continue;
     }
 
-    size_t txn_error_idx = std::find(
-        precedence_list, precedence_list + kNumTxnErrorCodes, txn_error) - precedence_list;
-    if ((txn_error_idx >= kNumTxnErrorCodes)) {
-      LOG(DFATAL) << "Unknown transaction error code: " << ToString(txn_error);
+    const auto txn_error_it = std::find(precedence_begin, precedence_end, txn_error);
+    if (PREDICT_FALSE(txn_error_it == precedence_end)) {
+      LOG(DFATAL) << "Unknown transaction error code: " << txn_error;
       return status;
     }
 
-    if ((common_txn_error == TransactionErrorCode::kNone) ||
-        (txn_error_idx < common_txn_error_idx)) {
-      common_txn_error = txn_error;
-      common_txn_error_idx = txn_error_idx;
-      VLOG(4) << "updating common_txn_error to: " << ToString(common_txn_error);
+    if (txn_error_it < common_txn_error_it) {
+      common_txn_error_it = txn_error_it;
+      VLOG(4) << "updating common_txn_error_idx to: " << *common_txn_error_it;
     }
   }
 
-  return (common_txn_error != TransactionErrorCode::kNone) ?
-    status.CloneAndAddErrorCode(TransactionError(common_txn_error)) : status;
+  return common_txn_error_it == precedence_end
+      ? status : status.CloneAndAddErrorCode(TransactionError(*common_txn_error_it));
 }
 
-// Given a set of errors from operations, this function attempts to combine them into one status
-// that is later passed to PostgreSQL and further converted into a more specific error code.
-Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
-  if (errors.empty())
-    return status;
+Status CombineErrorsToStatusImpl(const client::CollectedErrors& errors, const Status& status) {
+  DCHECK(!errors.empty());
 
   if (status.IsIOError() &&
       // TODO: move away from string comparison here and use a more specific status than IOError.
@@ -211,12 +243,21 @@ Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status
                   /* file_name_len= */ size_t(0));
   }
 
-  Status result =
-    status.ok()
-    ? STATUS(InternalError, GetStatusStringSet(errors))
-    : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
+  const auto result = status.ok()
+      ? STATUS(InternalError, GetStatusStringSet(errors))
+      : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 
   return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
+}
+
+// Given a set of errors from operations, this function attempts to combine them into one status
+// that is later passed to PostgreSQL and further converted into a more specific error code.
+Status CombineErrorsToStatus(
+    const client::CollectedErrors& errors, const Status& status,
+    const PgClientSessionOperations& ops = {}) {
+  return errors.empty()
+      ? status
+      : TryAppendTxnConflictOpIndex(CombineErrorsToStatusImpl(errors, status), errors, ops);
 }
 
 Status ProcessUsedReadTime(uint64_t session_id,
@@ -397,7 +438,7 @@ struct PerformData {
       VLOG_WITH_PREFIX(3)
           << "Flush status: " << flush_status->status << ", Errors: " << AsString(status_strings);
     }
-    auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
+    auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status, ops);
     VLOG_WITH_PREFIX(3) << "Combined status: " << status;
     if (status.ok()) {
       status = ProcessResponse(used_read_time_applier ? &used_read_time : nullptr);

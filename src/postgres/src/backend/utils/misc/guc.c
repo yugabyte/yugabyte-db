@@ -2724,7 +2724,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_explicit_row_locking_batch_size,
-		1, 1, INT_MAX,
+		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
 	},
 	{

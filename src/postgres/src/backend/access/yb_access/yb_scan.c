@@ -3709,6 +3709,59 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	return tuple;
 }
 
+void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
+{
+	if (wait_policy == LockWaitError)
+	{
+		// In case the user has specified NOWAIT, the intention is to error out immediately. If
+		// we raise TransactionErrorCode::kConflict, the statement might be retried by our
+		// retry logic in yb_attempt_to_restart_on_error().
+
+		if (rel)
+			ereport(ERROR,
+				(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					errmsg("could not obtain lock on row in relation \"%s\"",
+							RelationGetRelationName(rel))));
+		else
+		{
+			// It is not expected that relation is null. Raise an error wihout
+			// relation name in release mode.
+			Assert(false);
+			ereport(ERROR,
+				(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+				errmsg("could not obtain lock on row")));
+		}
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				errmsg("could not serialize access due to concurrent update"),
+				yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+}
+
+static bool
+YBCIsExplicitRowLockConflictStatus(YBCStatus status)
+{
+	Assert(status);
+	const uint16_t txn_error = YBCStatusTransactionError(status);
+	return YBCIsTxnConflictError(txn_error) || YBCIsTxnAbortedError(txn_error);
+}
+
+static void
+HandleExplicitRowLockStatus(YBCPgExplicitRowLockStatus status)
+{
+	if (status.error_info.is_initialized &&
+		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
+	{
+		YBCHandleConflictError(
+			OidIsValid(status.error_info.conflicting_table_id)
+				? RelationIdGetRelation(status.error_info.conflicting_table_id)
+				: NULL,
+			status.error_info.pg_wait_policy);
+	}
+	HandleYBStatus(status.ybc_status);
+}
+
 /*
  * The return value of this function depends on whether we are batching or not.
  * Currently, batching is enabled if the GUC yb_explicit_row_locking_batch_size > 1
@@ -3722,11 +3775,10 @@ YBCLockTuple(
 	Relation relation, Datum ybctid, RowMarkType mode,
 	LockWaitPolicy pg_wait_policy, EState* estate)
 {
-	const int docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy);
 	const YBCPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
 		.pg_wait_policy = pg_wait_policy,
-		.docdb_wait_policy = docdb_wait_policy};
+		.docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy)};
 
 	const Oid relfile_oid = YbGetRelfileNodeId(relation);
 	const Oid db_oid = YBCGetDatabaseOid(relation);
@@ -3734,9 +3786,10 @@ YBCLockTuple(
 	if (yb_explicit_row_locking_batch_size > 1 &&
 		lock_params.pg_wait_policy != LockWaitSkip)
 	{
-		// TODO: Error message requires conversion
-		HandleYBStatus(YBCAddExplicitRowLockIntent(
-			relfile_oid, ybctid, db_oid, &lock_params, YBCIsRegionLocal(relation)));
+		HandleExplicitRowLockStatus(
+			YBCAddExplicitRowLockIntent(
+				relfile_oid, ybctid, db_oid, &lock_params,
+				YBCIsRegionLocal(relation)));
 		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
 		return HeapTupleMayBeUpdated;
 	}
@@ -3790,7 +3843,8 @@ YBCLockTuple(
 
 		elog(DEBUG2, "Error when trying to lock row. "
 			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
-			 pg_wait_policy, docdb_wait_policy, edata->yb_txn_errcode, edata->message);
+			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
+			 edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			res = HeapTupleUpdated;
@@ -3814,8 +3868,7 @@ YBCLockTuple(
 void
 YBCFlushTupleLocks()
 {
-	// TODO: Error message requires conversion
-	HandleYBStatus(YBCFlushExplicitRowLockIntents());
+	HandleExplicitRowLockStatus(YBCFlushExplicitRowLockIntents());
 }
 
 /*

@@ -19,7 +19,6 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/status.h"
-#include "yb/util/lw_function.h"
 
 #include "yb/yql/pggate/pg_tools.h"
 
@@ -36,17 +35,27 @@ class ExplicitRowLockBuffer {
     friend bool operator==(const Info&, const Info&) = default;
   };
 
+  struct ErrorStatusAdditionalInfo {
+    ErrorStatusAdditionalInfo(int pg_wait_policy_, PgOid conflicting_table_id_)
+        : pg_wait_policy(pg_wait_policy_), conflicting_table_id(conflicting_table_id_) {}
+
+    int pg_wait_policy;
+    PgOid conflicting_table_id;
+  };
+
   ExplicitRowLockBuffer(
       TableYbctidVectorProvider& ybctid_container_provider,
       std::reference_wrapper<const YbctidReader> ybctid_reader);
   Status Add(
-      Info&& info, const LightweightTableYbctid& key, bool is_region_local);
-  Status Flush();
+      const Info& info, const LightweightTableYbctid& key, bool is_region_local,
+      std::optional<ErrorStatusAdditionalInfo>& error_info);
+  Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   void Clear();
   bool IsEmpty() const;
 
  private:
-  Status DoFlush();
+  Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info);
+  Status DoFlushImpl();
 
   TableYbctidVectorProvider& ybctid_container_provider_;
   const YbctidReader& ybctid_reader_;
