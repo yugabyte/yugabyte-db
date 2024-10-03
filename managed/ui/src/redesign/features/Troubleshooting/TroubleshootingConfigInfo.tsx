@@ -32,6 +32,7 @@ interface TroubleshootingConfigInfoProps {
   tpUuid: string;
   customerUUID: string;
   apiToken: string;
+  tpApiToken: string;
   onRefetchConfig: () => void;
 }
 
@@ -44,6 +45,7 @@ export const TroubleshootingConfigInfo = ({
   customerUUID,
   inUseStatus,
   apiToken,
+  tpApiToken,
   onRefetchConfig
 }: TroubleshootingConfigInfoProps) => {
   const { t } = useTranslation();
@@ -72,6 +74,7 @@ export const TroubleshootingConfigInfo = ({
     tpUrl,
     ybaUrl,
     apiToken,
+    tpApiToken,
     metricsUrl,
     metricsScrapePeriodSecs,
     tpUuid,
