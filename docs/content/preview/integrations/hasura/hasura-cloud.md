@@ -5,11 +5,12 @@ linkTitle: Hasura Cloud
 description: Connect Hasura Cloud to YugabyteDB Aeon.
 aliases:
   - /preview/yugabyte-cloud/hasura-cloud/
+  - /preview/yugabyte-cloud/cloud-examples/hasura-cloud/
 menu:
-  preview_yugabyte-cloud:
+  preview_integrations:
     identifier: hasura-cloud
-    parent: cloud-examples
-    weight: 400
+    parent: hasura
+    weight: 30
 type: docs
 ---
 
@@ -19,9 +20,9 @@ The following tutorial describes how to connect a YugabyteDB Aeon cluster to a H
 
 <!--For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Aeon, refer to [Deploy a GraphQL application](../hasura-sample-app/).-->
 
-## Obtain your Yugabyte cluster connection info
+## Obtain your YugabyteDB cluster connection information
 
-Sign up for YugabyteDB Aeon and create a Sandbox cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
+Sign up for YugabyteDB Aeon and create a Sandbox cluster by following the steps in the [Quick Start](/preview/yugabyte-cloud/cloud-quickstart/).
 
 The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the connection string with the cluster's host address and port number.
 
