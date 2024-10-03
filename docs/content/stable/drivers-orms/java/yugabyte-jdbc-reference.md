@@ -95,6 +95,8 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes ). You can change this value by including the `yb-servers-refresh-interval` parameter.
 
+For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
+
 ### Use the driver
 
 The YugabyteDB JDBC driver's driver class is `com.yugabyte.Driver`. The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
