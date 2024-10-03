@@ -1001,6 +1001,13 @@ DefineIndex(Oid relationId,
 				 errmsg("access method \"%s\" does not support exclusion constraints",
 						accessMethodName)));
 
+	/* YB: Inlined indexes are only supported in colocated mode right now. */
+	if (!MyDatabaseColocated && amRoutine->yb_amiscoveredbymaintable)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("access method \"%s\" requires colocation",
+						accessMethodName)));
+
 	amcanorder = amRoutine->amcanorder;
 	amoptions = amRoutine->amoptions;
 
@@ -1654,8 +1661,9 @@ DefineIndex(Oid relationId,
 
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
-	/* Do backfill. */
-	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+	/* YB: Do backfill if this is a separate DocDB table from the main table. */
+	if (!YBIsOidCoveredByMainTable(indexRelationId))
+		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 

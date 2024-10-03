@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Aeon cluster, do the following:
 
-1. Download your [cluster certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 

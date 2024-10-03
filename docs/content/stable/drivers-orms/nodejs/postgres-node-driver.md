@@ -115,7 +115,7 @@ const config = {
 }
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
 

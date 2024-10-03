@@ -163,7 +163,7 @@ TEST_F(MasterTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
-      webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
+      webserver_dir, {"masters", "tservers", "tables"}, mini_master_->master());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
@@ -640,7 +640,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   ASSERT_EQ(descs.size(), 1);
   auto new_desc = descs[0];
   EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
-  EXPECT_TRUE(original_desc->IsRemoved());
+  EXPECT_TRUE(original_desc->IsReplaced());
 
   auto updated_original_common = original_common;
   updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
@@ -650,7 +650,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
-  EXPECT_TRUE(new_desc->IsRemoved());
+  EXPECT_TRUE(new_desc->IsReplaced());
 }
 
 TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
@@ -1188,9 +1188,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
@@ -1238,9 +1236,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
 TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
@@ -1282,10 +1278,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
-
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   CreateTableRequestPB req;
 
   // Fail due to not cloud_info.

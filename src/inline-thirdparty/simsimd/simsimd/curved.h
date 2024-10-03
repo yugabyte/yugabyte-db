@@ -25,8 +25,8 @@
 
 #include "types.h"
 
-#include "dot.h"     // `simsimd_partial_load_f16x4_neon` and friends
-#include "spatial.h" // `simsimd_substract_bf16x32_genoa`
+#include "dot.h"     // `_simsimd_partial_load_f16x4_neon` and friends
+#include "spatial.h" // `_simsimd_substract_bf16x32_genoa`
 
 #ifdef __cplusplus
 extern "C" {
@@ -134,26 +134,29 @@ SIMSIMD_MAKE_MAHALANOBIS(serial, f64, f64, SIMSIMD_DEREFERENCE) // simsimd_mahal
 SIMSIMD_MAKE_BILINEAR(serial, f32, f32, SIMSIMD_DEREFERENCE)    // simsimd_bilinear_f32_serial
 SIMSIMD_MAKE_MAHALANOBIS(serial, f32, f32, SIMSIMD_DEREFERENCE) // simsimd_mahalanobis_f32_serial
 
-SIMSIMD_MAKE_BILINEAR(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16)    // simsimd_bilinear_f16_serial
-SIMSIMD_MAKE_MAHALANOBIS(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16) // simsimd_mahalanobis_f16_serial
+SIMSIMD_MAKE_BILINEAR(serial, f16, f32, SIMSIMD_F16_TO_F32)    // simsimd_bilinear_f16_serial
+SIMSIMD_MAKE_MAHALANOBIS(serial, f16, f32, SIMSIMD_F16_TO_F32) // simsimd_mahalanobis_f16_serial
 
-SIMSIMD_MAKE_BILINEAR(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16)    // simsimd_bilinear_bf16_serial
-SIMSIMD_MAKE_MAHALANOBIS(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16) // simsimd_mahalanobis_bf16_serial
+SIMSIMD_MAKE_BILINEAR(serial, bf16, f32, SIMSIMD_BF16_TO_F32)    // simsimd_bilinear_bf16_serial
+SIMSIMD_MAKE_MAHALANOBIS(serial, bf16, f32, SIMSIMD_BF16_TO_F32) // simsimd_mahalanobis_bf16_serial
 
 SIMSIMD_MAKE_BILINEAR(accurate, f32, f64, SIMSIMD_DEREFERENCE)    // simsimd_bilinear_f32_accurate
 SIMSIMD_MAKE_MAHALANOBIS(accurate, f32, f64, SIMSIMD_DEREFERENCE) // simsimd_mahalanobis_f32_accurate
 
-SIMSIMD_MAKE_BILINEAR(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16)    // simsimd_bilinear_f16_accurate
-SIMSIMD_MAKE_MAHALANOBIS(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16) // simsimd_mahalanobis_f16_accurate
+SIMSIMD_MAKE_BILINEAR(accurate, f16, f64, SIMSIMD_F16_TO_F32)    // simsimd_bilinear_f16_accurate
+SIMSIMD_MAKE_MAHALANOBIS(accurate, f16, f64, SIMSIMD_F16_TO_F32) // simsimd_mahalanobis_f16_accurate
 
-SIMSIMD_MAKE_BILINEAR(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16)    // simsimd_bilinear_bf16_accurate
-SIMSIMD_MAKE_MAHALANOBIS(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16) // simsimd_mahalanobis_bf16_accurate
+SIMSIMD_MAKE_BILINEAR(accurate, bf16, f64, SIMSIMD_BF16_TO_F32)    // simsimd_bilinear_bf16_accurate
+SIMSIMD_MAKE_MAHALANOBIS(accurate, bf16, f64, SIMSIMD_BF16_TO_F32) // simsimd_mahalanobis_bf16_accurate
 
 #if SIMSIMD_TARGET_ARM
 #if SIMSIMD_TARGET_NEON
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_f32_neon(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_f32_t const* c,
                                               simsimd_size_t n, simsimd_distance_t* result) {
@@ -220,14 +223,19 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f32_neon(simsimd_f32_t const* a, simsimd
     *result = sum;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON
 
 #if SIMSIMD_TARGET_NEON_F16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd+fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_f16_neon(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_f16_t const* c,
                                               simsimd_size_t n, simsimd_distance_t* result) {
@@ -250,9 +258,9 @@ SIMSIMD_PUBLIC void simsimd_bilinear_f16_neon(simsimd_f16_t const* a, simsimd_f1
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t a_i = vaddvq_f32(vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a + i, 1)));
-            float32x4_t b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b + tail_start, tail_length));
-            float32x4_t c_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(c + i * n + tail_start, tail_length));
+            simsimd_f32_t a_i = vaddvq_f32(vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a + i, 1)));
+            float32x4_t b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b + tail_start, tail_length));
+            float32x4_t c_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(c + i * n + tail_start, tail_length));
             simsimd_f32_t partial_sum = vaddvq_f32(vmulq_f32(b_vec, c_vec));
             sum += a_i * partial_sum;
         }
@@ -286,13 +294,13 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f16_neon(simsimd_f16_t const* a, simsimd
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t a_i = vaddvq_f32(vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a + i, 1)));
-            simsimd_f32_t b_i = vaddvq_f32(vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b + i, 1)));
+            simsimd_f32_t a_i = vaddvq_f32(vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a + i, 1)));
+            simsimd_f32_t b_i = vaddvq_f32(vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b + i, 1)));
             simsimd_f32_t diff_i = a_i - b_i;
-            float32x4_t a_j_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a + tail_start, tail_length));
-            float32x4_t b_j_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b + tail_start, tail_length));
+            float32x4_t a_j_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a + tail_start, tail_length));
+            float32x4_t b_j_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b + tail_start, tail_length));
             float32x4_t diff_j_vec = vsubq_f32(a_j_vec, b_j_vec);
-            float32x4_t c_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(c + i * n + tail_start, tail_length));
+            float32x4_t c_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(c + i * n + tail_start, tail_length));
             simsimd_f32_t partial_sum = vaddvq_f32(vmulq_f32(diff_j_vec, c_vec));
             sum += diff_i * partial_sum;
         }
@@ -301,43 +309,45 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f16_neon(simsimd_f16_t const* a, simsimd
     *result = sum;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_F16
 
 #if SIMSIMD_TARGET_NEON_BF16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.6-a+simd+bf16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.6-a+simd+bf16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b,
                                                simsimd_bf16_t const* c, simsimd_size_t n, simsimd_distance_t* result) {
-    float32x4_t sum_high_vec = vdupq_n_f32(0), sum_low_vec = vdupq_n_f32(0);
+    float32x4_t sum_vec = vdupq_n_f32(0);
     for (simsimd_size_t i = 0; i != n; ++i) {
-        float32x4_t a_vec = vdupq_n_f32(simsimd_uncompress_bf16(a + i));
-        float32x4_t partial_sum_high_vec = vdupq_n_f32(0), partial_sum_low_vec = vdupq_n_f32(0);
+        float32x4_t a_vec = vdupq_n_f32(simsimd_bf16_to_f32(a + i));
+        float32x4_t partial_sum_vec = vdupq_n_f32(0);
         for (simsimd_size_t j = 0; j + 8 <= n; j += 8) {
             bfloat16x8_t b_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)(b + j));
             bfloat16x8_t c_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)(c + i * n + j));
-            partial_sum_high_vec = vbfmlaltq_f32(partial_sum_high_vec, b_vec, c_vec);
-            partial_sum_low_vec = vbfmlalbq_f32(partial_sum_low_vec, b_vec, c_vec);
+            partial_sum_vec = vbfdotq_f32(partial_sum_vec, b_vec, c_vec);
         }
-        sum_high_vec = vmlaq_f32(sum_high_vec, a_vec, partial_sum_high_vec);
-        sum_low_vec = vmlaq_f32(sum_low_vec, a_vec, partial_sum_low_vec);
+        sum_vec = vmlaq_f32(sum_vec, a_vec, partial_sum_vec);
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = vaddvq_f32(sum_high_vec) + vaddvq_f32(sum_low_vec);
+    simsimd_f64_t sum = vaddvq_f32(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t a_i = simsimd_uncompress_bf16(a + i);
-            bfloat16x8_t b_vec = simsimd_partial_load_bf16x8_neon(b + tail_start, tail_length);
-            bfloat16x8_t c_vec = simsimd_partial_load_bf16x8_neon(c + i * n + tail_start, tail_length);
-            simsimd_f32_t partial_sum_high = vaddvq_f32(vbfmlaltq_f32(vdupq_n_f32(0), b_vec, c_vec));
-            simsimd_f32_t partial_sum_low = vaddvq_f32(vbfmlalbq_f32(vdupq_n_f32(0), b_vec, c_vec));
-            sum += a_i * (partial_sum_high + partial_sum_low);
+            simsimd_f32_t a_i = simsimd_bf16_to_f32(a + i);
+            bfloat16x8_t b_vec = _simsimd_partial_load_bf16x8_neon(b + tail_start, tail_length);
+            bfloat16x8_t c_vec = _simsimd_partial_load_bf16x8_neon(c + i * n + tail_start, tail_length);
+            simsimd_f32_t partial_sum = vaddvq_f32(vbfdotq_f32(vdupq_n_f32(0), b_vec, c_vec));
+            sum += a_i * partial_sum;
         }
     }
 
@@ -347,12 +357,12 @@ SIMSIMD_PUBLIC void simsimd_bilinear_bf16_neon(simsimd_bf16_t const* a, simsimd_
 SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b,
                                                   simsimd_bf16_t const* c, simsimd_size_t n,
                                                   simsimd_distance_t* result) {
-    float32x4_t sum_high_vec = vdupq_n_f32(0), sum_low_vec = vdupq_n_f32(0);
+    float32x4_t sum_vec = vdupq_n_f32(0);
     for (simsimd_size_t i = 0; i != n; ++i) {
-        simsimd_f32_t a_i = simsimd_uncompress_bf16(a + i);
-        simsimd_f32_t b_i = simsimd_uncompress_bf16(b + i);
+        simsimd_f32_t a_i = simsimd_bf16_to_f32(a + i);
+        simsimd_f32_t b_i = simsimd_bf16_to_f32(b + i);
         float32x4_t diff_i_vec = vdupq_n_f32(a_i - b_i);
-        float32x4_t partial_sum_high_vec = vdupq_n_f32(0), partial_sum_low_vec = vdupq_n_f32(0);
+        float32x4_t partial_sum_vec = vdupq_n_f32(0);
         for (simsimd_size_t j = 0; j + 8 <= n; j += 8) {
             bfloat16x8_t a_j_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)(a + j));
             bfloat16x8_t b_j_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)(b + j));
@@ -369,24 +379,22 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_neon(simsimd_bf16_t const* a, simsi
             bfloat16x8_t diff_j_vec = vcombine_bf16(vcvt_bf16_f32(diff_j_vec_low), vcvt_bf16_f32(diff_j_vec_high));
 
             bfloat16x8_t c_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)(c + i * n + j));
-            partial_sum_high_vec = vbfmlaltq_f32(partial_sum_high_vec, diff_j_vec, c_vec);
-            partial_sum_low_vec = vbfmlalbq_f32(partial_sum_low_vec, diff_j_vec, c_vec);
+            partial_sum_vec = vbfdotq_f32(partial_sum_vec, diff_j_vec, c_vec);
         }
-        sum_high_vec = vmlaq_f32(sum_high_vec, diff_i_vec, partial_sum_high_vec);
-        sum_low_vec = vmlaq_f32(sum_low_vec, diff_i_vec, partial_sum_low_vec);
+        sum_vec = vmlaq_f32(sum_vec, diff_i_vec, partial_sum_vec);
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = vaddvq_f32(sum_high_vec) + vaddvq_f32(sum_low_vec);
+    simsimd_f64_t sum = vaddvq_f32(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t a_i = simsimd_uncompress_bf16(a + i);
-            simsimd_f32_t b_i = simsimd_uncompress_bf16(b + i);
+            simsimd_f32_t a_i = simsimd_bf16_to_f32(a + i);
+            simsimd_f32_t b_i = simsimd_bf16_to_f32(b + i);
             simsimd_f32_t diff_i = a_i - b_i;
-            bfloat16x8_t a_j_vec = simsimd_partial_load_bf16x8_neon(a + tail_start, tail_length);
-            bfloat16x8_t b_j_vec = simsimd_partial_load_bf16x8_neon(b + tail_start, tail_length);
+            bfloat16x8_t a_j_vec = _simsimd_partial_load_bf16x8_neon(a + tail_start, tail_length);
+            bfloat16x8_t b_j_vec = _simsimd_partial_load_bf16x8_neon(b + tail_start, tail_length);
 
             // Again, upcast for subtraction
             float32x4_t a_j_vec_high = vcvt_f32_bf16(vget_high_bf16(a_j_vec));
@@ -397,17 +405,18 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_neon(simsimd_bf16_t const* a, simsi
             float32x4_t diff_j_vec_low = vsubq_f32(a_j_vec_low, b_j_vec_low);
             bfloat16x8_t diff_j_vec = vcombine_bf16(vcvt_bf16_f32(diff_j_vec_low), vcvt_bf16_f32(diff_j_vec_high));
 
-            bfloat16x8_t c_vec = simsimd_partial_load_bf16x8_neon(c + i * n + tail_start, tail_length);
-            simsimd_f32_t partial_sum_high = vaddvq_f32(vbfmlaltq_f32(vdupq_n_f32(0), diff_j_vec, c_vec));
-            simsimd_f32_t partial_sum_low = vaddvq_f32(vbfmlalbq_f32(vdupq_n_f32(0), diff_j_vec, c_vec));
-            sum += diff_i * (partial_sum_high + partial_sum_low);
+            bfloat16x8_t c_vec = _simsimd_partial_load_bf16x8_neon(c + i * n + tail_start, tail_length);
+            simsimd_f32_t partial_sum = vaddvq_f32(vbfdotq_f32(vdupq_n_f32(0), diff_j_vec, c_vec));
+            sum += diff_i * partial_sum;
         }
     }
 
     *result = sum;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_BF16
 
@@ -417,7 +426,10 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_neon(simsimd_bf16_t const* a, simsi
 #if SIMSIMD_TARGET_HASWELL
 #pragma GCC push_options
 #pragma GCC target("avx2", "f16c", "fma")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("avx2,f16c,fma"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_f16_t const* c,
                                                  simsimd_size_t n, simsimd_distance_t* result) {
@@ -434,15 +446,15 @@ SIMSIMD_PUBLIC void simsimd_bilinear_f16_haswell(simsimd_f16_t const* a, simsimd
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f64_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
             simsimd_f32_t a_i = _mm256_cvtss_f32(_mm256_cvtph_ps(_mm_set1_epi16(*(short const*)(a + i))));
-            __m256 b_vec = simsimd_partial_load_f16x8_haswell(b + tail_start, tail_length);
-            __m256 c_vec = simsimd_partial_load_f16x8_haswell(c + i * n + tail_start, tail_length);
-            simsimd_f32_t partial_sum = _mm256_reduce_add_ps_dbl(_mm256_mul_ps(b_vec, c_vec));
+            __m256 b_vec = _simsimd_partial_load_f16x8_haswell(b + tail_start, tail_length);
+            __m256 c_vec = _simsimd_partial_load_f16x8_haswell(c + i * n + tail_start, tail_length);
+            simsimd_f32_t partial_sum = _simsimd_reduce_f32x8_haswell(_mm256_mul_ps(b_vec, c_vec));
             sum += a_i * partial_sum;
         }
     }
@@ -470,7 +482,7 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f16_haswell(simsimd_f16_t const* a, sims
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f64_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
@@ -479,10 +491,10 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f16_haswell(simsimd_f16_t const* a, sims
                 _mm256_cvtph_ps(_mm_set1_epi16(*(short const*)(a + i))), //
                 _mm256_cvtph_ps(_mm_set1_epi16(*(short const*)(b + i)))));
             __m256 diff_j_vec = _mm256_sub_ps( //
-                simsimd_partial_load_f16x8_haswell(a + tail_start, tail_length),
-                simsimd_partial_load_f16x8_haswell(b + tail_start, tail_length));
-            __m256 c_vec = simsimd_partial_load_f16x8_haswell(c + i * n + tail_start, tail_length);
-            simsimd_f32_t partial_sum = _mm256_reduce_add_ps_dbl(_mm256_mul_ps(diff_j_vec, c_vec));
+                _simsimd_partial_load_f16x8_haswell(a + tail_start, tail_length),
+                _simsimd_partial_load_f16x8_haswell(b + tail_start, tail_length));
+            __m256 c_vec = _simsimd_partial_load_f16x8_haswell(c + i * n + tail_start, tail_length);
+            simsimd_f32_t partial_sum = _simsimd_reduce_f32x8_haswell(_mm256_mul_ps(diff_j_vec, c_vec));
             sum += diff_i * partial_sum;
         }
     }
@@ -495,29 +507,29 @@ SIMSIMD_PUBLIC void simsimd_bilinear_bf16_haswell(simsimd_bf16_t const* a, simsi
                                                   simsimd_distance_t* result) {
     __m256 sum_vec = _mm256_setzero_ps();
     for (simsimd_size_t i = 0; i != n; ++i) {
-        // The `simsimd_uncompress_bf16` is cheaper than `simsimd_bf16x8_to_f32x8_haswell`
-        __m256 a_vec = _mm256_set1_ps(simsimd_uncompress_bf16(a + i));
+        // The `simsimd_bf16_to_f32` is cheaper than `_simsimd_bf16x8_to_f32x8_haswell`
+        __m256 a_vec = _mm256_set1_ps(simsimd_bf16_to_f32(a + i));
         __m256 partial_sum_vec = _mm256_setzero_ps();
         for (simsimd_size_t j = 0; j + 8 <= n; j += 8) {
-            __m256 b_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(b + j)));
-            __m256 c_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(c + i * n + j)));
+            __m256 b_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(b + j)));
+            __m256 c_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(c + i * n + j)));
             partial_sum_vec = _mm256_fmadd_ps(b_vec, c_vec, partial_sum_vec);
         }
         sum_vec = _mm256_fmadd_ps(a_vec, partial_sum_vec, sum_vec);
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f64_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t a_i = simsimd_uncompress_bf16(a + i);
-            __m256 b_vec = simsimd_bf16x8_to_f32x8_haswell( //
-                simsimd_partial_load_bf16x8_haswell(b + tail_start, tail_length));
-            __m256 c_vec = simsimd_bf16x8_to_f32x8_haswell( //
-                simsimd_partial_load_bf16x8_haswell(c + i * n + tail_start, tail_length));
-            simsimd_f32_t partial_sum = _mm256_reduce_add_ps_dbl(_mm256_mul_ps(b_vec, c_vec));
+            simsimd_f32_t a_i = simsimd_bf16_to_f32(a + i);
+            __m256 b_vec = _simsimd_bf16x8_to_f32x8_haswell( //
+                _simsimd_partial_load_bf16x8_haswell(b + tail_start, tail_length));
+            __m256 c_vec = _simsimd_bf16x8_to_f32x8_haswell( //
+                _simsimd_partial_load_bf16x8_haswell(c + i * n + tail_start, tail_length));
+            simsimd_f32_t partial_sum = _simsimd_reduce_f32x8_haswell(_mm256_mul_ps(b_vec, c_vec));
             sum += a_i * partial_sum;
         }
     }
@@ -530,33 +542,33 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_haswell(simsimd_bf16_t const* a, si
                                                      simsimd_distance_t* result) {
     __m256 sum_vec = _mm256_setzero_ps();
     for (simsimd_size_t i = 0; i != n; ++i) {
-        __m256 diff_i_vec = _mm256_sub_ps(                  //
-            _mm256_set1_ps(simsimd_uncompress_bf16(a + i)), //
-            _mm256_set1_ps(simsimd_uncompress_bf16(b + i)));
+        __m256 diff_i_vec = _mm256_sub_ps(              //
+            _mm256_set1_ps(simsimd_bf16_to_f32(a + i)), //
+            _mm256_set1_ps(simsimd_bf16_to_f32(b + i)));
         __m256 partial_sum_vec = _mm256_setzero_ps();
         for (simsimd_size_t j = 0; j + 8 <= n; j += 8) {
-            __m256 diff_j_vec = _mm256_sub_ps(                                             //
-                simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(a + j))), //
-                simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(b + j))));
-            __m256 c_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(c + i * n + j)));
+            __m256 diff_j_vec = _mm256_sub_ps(                                              //
+                _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(a + j))), //
+                _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(b + j))));
+            __m256 c_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)(c + i * n + j)));
             partial_sum_vec = _mm256_fmadd_ps(diff_j_vec, c_vec, partial_sum_vec);
         }
         sum_vec = _mm256_fmadd_ps(diff_i_vec, partial_sum_vec, sum_vec);
     }
 
     // Handle the tail of every row
-    simsimd_f64_t sum = _mm256_reduce_add_ps_dbl(sum_vec);
+    simsimd_f64_t sum = _simsimd_reduce_f32x8_haswell(sum_vec);
     simsimd_size_t tail_length = n % 8;
     simsimd_size_t tail_start = n - tail_length;
     if (tail_length) {
         for (simsimd_size_t i = 0; i != n; ++i) {
-            simsimd_f32_t diff_i = simsimd_uncompress_bf16(a + i) - simsimd_uncompress_bf16(b + i);
+            simsimd_f32_t diff_i = simsimd_bf16_to_f32(a + i) - simsimd_bf16_to_f32(b + i);
             __m256 diff_j_vec = _mm256_sub_ps( //
-                simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(a + tail_start, tail_length)),
-                simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(b + tail_start, tail_length)));
-            __m256 c_vec = simsimd_bf16x8_to_f32x8_haswell(
-                simsimd_partial_load_bf16x8_haswell(c + i * n + tail_start, tail_length));
-            simsimd_f32_t partial_sum = _mm256_reduce_add_ps_dbl(_mm256_mul_ps(diff_j_vec, c_vec));
+                _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(a + tail_start, tail_length)),
+                _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(b + tail_start, tail_length)));
+            __m256 c_vec = _simsimd_bf16x8_to_f32x8_haswell(
+                _simsimd_partial_load_bf16x8_haswell(c + i * n + tail_start, tail_length));
+            simsimd_f32_t partial_sum = _simsimd_reduce_f32x8_haswell(_mm256_mul_ps(diff_j_vec, c_vec));
             sum += diff_i * partial_sum;
         }
     }
@@ -564,14 +576,19 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_haswell(simsimd_bf16_t const* a, si
     *result = sum;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_HASWELL
 
 #if SIMSIMD_TARGET_SKYLAKE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_f32_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_f32_t const* c,
                                                  simsimd_size_t n, simsimd_distance_t* result) {
@@ -640,14 +657,20 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f32_skylake(simsimd_f32_t const* a, sims
     *result = _mm512_reduce_add_ps(sum_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SKYLAKE
 
 #if SIMSIMD_TARGET_GENOA
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_bf16_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b,
                                                 simsimd_bf16_t const* c, simsimd_size_t n, simsimd_distance_t* result) {
@@ -657,7 +680,7 @@ SIMSIMD_PUBLIC void simsimd_bilinear_bf16_genoa(simsimd_bf16_t const* a, simsimd
     __mmask32 tail_mask = (__mmask32)_bzhi_u32(0xFFFFFFFF, tail_length);
 
     for (simsimd_size_t i = 0; i != n; ++i) {
-        __m512 a_vec = _mm512_set1_ps(simsimd_uncompress_bf16(a + i));
+        __m512 a_vec = _mm512_set1_ps(simsimd_bf16_to_f32(a + i));
         __m512 partial_sum_vec = _mm512_setzero_ps();
         __m512i b_vec, c_vec;
         simsimd_size_t j = 0;
@@ -689,7 +712,7 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_genoa(simsimd_bf16_t const* a, sims
     __mmask32 tail_mask = (__mmask32)_bzhi_u32(0xFFFFFFFF, tail_length);
 
     for (simsimd_size_t i = 0; i != n; ++i) {
-        __m512 diff_i_vec = _mm512_set1_ps(simsimd_uncompress_bf16(a + i) - simsimd_uncompress_bf16(b + i));
+        __m512 diff_i_vec = _mm512_set1_ps(simsimd_bf16_to_f32(a + i) - simsimd_bf16_to_f32(b + i));
         __m512 partial_sum_vec = _mm512_setzero_ps();
         __m512i a_j_vec, b_j_vec, diff_j_vec, c_vec;
         simsimd_size_t j = 0;
@@ -705,7 +728,7 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_genoa(simsimd_bf16_t const* a, sims
             b_j_vec = _mm512_maskz_loadu_epi16(tail_mask, b + tail_start);
             c_vec = _mm512_maskz_loadu_epi16(tail_mask, c + i * n + tail_start);
         }
-        diff_j_vec = simsimd_substract_bf16x32_genoa(a_j_vec, b_j_vec);
+        diff_j_vec = _simsimd_substract_bf16x32_genoa(a_j_vec, b_j_vec);
         partial_sum_vec = _mm512_dpbf16_ps(partial_sum_vec, (__m512bh)(diff_j_vec), (__m512bh)(c_vec));
         j += 32;
         if (j < n)
@@ -716,14 +739,20 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_genoa(simsimd_bf16_t const* a, sims
     *result = _mm512_reduce_add_ps(sum_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_GENOA
 
 #if SIMSIMD_TARGET_SAPPHIRE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512fp16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512fp16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512fp16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512fp16"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_bilinear_f16_sapphire(simsimd_f16_t const* a, simsimd_f16_t const* b,
                                                   simsimd_f16_t const* c, simsimd_size_t n,
@@ -734,7 +763,7 @@ SIMSIMD_PUBLIC void simsimd_bilinear_f16_sapphire(simsimd_f16_t const* a, simsim
     __mmask32 tail_mask = (__mmask32)_bzhi_u32(0xFFFFFFFF, tail_length);
 
     for (simsimd_size_t i = 0; i != n; ++i) {
-        __m512h a_vec = _mm512_set1_ph(*(_Float16 const*)(a + i));
+        __m512h a_vec = _mm512_castsi512_ph(_mm512_set1_epi16(*(short const*)(a + i)));
         __m512h partial_sum_vec = _mm512_setzero_ph();
         __m512i b_vec, c_vec;
         simsimd_size_t j = 0;
@@ -766,8 +795,8 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_f16_sapphire(simsimd_f16_t const* a, sim
     __mmask32 tail_mask = (__mmask32)_bzhi_u32(0xFFFFFFFF, tail_length);
 
     for (simsimd_size_t i = 0; i != n; ++i) {
-        __m512h a_i_vec = _mm512_set1_ph(*(_Float16 const*)(a + i));
-        __m512h b_i_vec = _mm512_set1_ph(*(_Float16 const*)(b + i));
+        __m512h a_i_vec = _mm512_castsi512_ph(_mm512_set1_epi16(*(short const*)(a + i)));
+        __m512h b_i_vec = _mm512_castsi512_ph(_mm512_set1_epi16(*(short const*)(b + i)));
         __m512h diff_i_vec = _mm512_sub_ph(a_i_vec, b_i_vec);
         __m512h partial_sum_vec = _mm512_setzero_ph();
         __m512h diff_j_vec;
@@ -804,7 +833,9 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_sapphire(simsimd_bf16_t const* a, s
                                                       simsimd_bf16_t const* c, simsimd_size_t n,
                                                       simsimd_distance_t* result) {}
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SAPPHIRE
 #endif // SIMSIMD_TARGET_X86
@@ -816,7 +847,7 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16_sapphire(simsimd_bf16_t const* a, s
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

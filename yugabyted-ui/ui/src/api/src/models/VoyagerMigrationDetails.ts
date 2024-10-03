@@ -12,6 +12,12 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { VoyagerMigrationDetailsSourceDb } from './VoyagerMigrationDetailsSourceDb';
+// eslint-disable-next-line no-duplicate-imports
+import type { VoyagerMigrationDetailsTargetCluster } from './VoyagerMigrationDetailsTargetCluster';
+// eslint-disable-next-line no-duplicate-imports
+import type { VoyagerMigrationDetailsVoyager } from './VoyagerMigrationDetailsVoyager';
 
 
 /**
@@ -34,6 +40,12 @@ export interface VoyagerMigrationDetails  {
   migration_name?: string;
   /**
    * 
+   * @type {string}
+   * @memberof VoyagerMigrationDetails
+   */
+  migration_type?: string;
+  /**
+   * 
    * @type {number}
    * @memberof VoyagerMigrationDetails
    */
@@ -46,10 +58,22 @@ export interface VoyagerMigrationDetails  {
   invocation_sequence?: number;
   /**
    * 
-   * @type {string}
+   * @type {VoyagerMigrationDetailsSourceDb}
    * @memberof VoyagerMigrationDetails
    */
-  source_db?: string;
+  source_db?: VoyagerMigrationDetailsSourceDb;
+  /**
+   * 
+   * @type {VoyagerMigrationDetailsVoyager}
+   * @memberof VoyagerMigrationDetails
+   */
+  voyager?: VoyagerMigrationDetailsVoyager;
+  /**
+   * 
+   * @type {VoyagerMigrationDetailsTargetCluster}
+   * @memberof VoyagerMigrationDetails
+   */
+  target_cluster?: VoyagerMigrationDetailsTargetCluster;
   /**
    * 
    * @type {string}
@@ -61,25 +85,25 @@ export interface VoyagerMigrationDetails  {
    * @type {string}
    * @memberof VoyagerMigrationDetails
    */
-  database_name?: string;
-  /**
-   * 
-   * @type {string}
-   * @memberof VoyagerMigrationDetails
-   */
-  schema_name?: string;
-  /**
-   * 
-   * @type {string}
-   * @memberof VoyagerMigrationDetails
-   */
   status?: string;
   /**
    * 
    * @type {string}
    * @memberof VoyagerMigrationDetails
    */
+  progress?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof VoyagerMigrationDetails
+   */
   invocation_timestamp?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof VoyagerMigrationDetails
+   */
+  start_timestamp?: string;
 }
 
 

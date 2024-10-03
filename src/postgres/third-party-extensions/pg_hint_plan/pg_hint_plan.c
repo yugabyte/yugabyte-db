@@ -4676,67 +4676,13 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		return;
 
 	/*
-	 * We can accept only plain relations, foreign tables and table saples are
+	 * We can accept only plain relations, foreign tables and table samples are
 	 * also unacceptable. See set_rel_pathlist.
 	 */
-	if ((rel->rtekind != RTE_RELATION &&
-		 rel->rtekind != RTE_SUBQUERY)||
+	if (rel->rtekind != RTE_RELATION ||
 		rte->relkind == RELKIND_FOREIGN_TABLE ||
 		rte->tablesample != NULL)
 		return;
-
-	/*
-	 * Even though UNION ALL node doesn't have particular name so usually it is
-	 * unhintable, turn on parallel when it contains parallel nodes.
-	 */
-	if (rel->rtekind == RTE_SUBQUERY)
-	{
-		ListCell *lc;
-		bool	inhibit_nonparallel = false;
-
-		if (rel->partial_pathlist == NIL)
-			return;
-
-		foreach(lc, rel->partial_pathlist)
-		{
-			ListCell *lcp;
-			AppendPath *apath = (AppendPath *) lfirst(lc);
-			int		parallel_workers = 0;
-
-			if (!IsA(apath, AppendPath))
-				continue;
-
-			foreach (lcp, apath->subpaths)
-			{
-				Path *spath = (Path *) lfirst(lcp);
-
-				if (spath->parallel_aware &&
-					parallel_workers < spath->parallel_workers)
-					parallel_workers = spath->parallel_workers;
-			}
-
-			apath->path.parallel_workers = parallel_workers;
-			inhibit_nonparallel = true;
-		}
-
-		if (inhibit_nonparallel)
-		{
-			ListCell *lc;
-
-			foreach(lc, rel->pathlist)
-			{
-				Path *path = (Path *) lfirst(lc);
-
-				if (path->startup_cost < disable_cost)
-				{
-					path->startup_cost += disable_cost;
-					path->total_cost += disable_cost;
-				}
-			}
-		}
-
-		return;
-	}
 
 	/* We cannot handle if this requires an outer */
 	if (rel->lateral_relids)

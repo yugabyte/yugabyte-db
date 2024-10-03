@@ -113,7 +113,7 @@ public class ApiHelper {
       pageText = jsonPromise.toCompletableFuture().get();
     } catch (Exception e) {
       pageText = e.getMessage();
-      e.printStackTrace();
+      log.error("Error occurred", e);
     }
     return pageText;
   }

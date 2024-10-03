@@ -49,5 +49,12 @@ else
     echo "el8 not detected, skipping changing selinux context"
 fi
 
+installer_dir="{{ ynp_dir }}/../../bin"
+# Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
+# can read the binary in restricted environment.
+mkdir -p {{ yb_home_dir }}/.install
+cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
+chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
+
 # Ensure the permissions for yb_home_dir are 750
 chmod 750 "{{ yb_home_dir }}"

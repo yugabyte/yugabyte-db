@@ -672,6 +672,35 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
+  @Test
+  public void testDbScopedPauseResumeUniverses() throws InterruptedException {
+    CreateDRMetadata createData = defaultDbDRCreate();
+    UUID drConfigUUID = createData.drConfigUUID;
+    Universe sourceUniverse = createData.sourceUniverse;
+    Universe targetUniverse = createData.targetUniverse;
+    List<Db> dbs = createData.dbs;
+    List<Table> tables = createData.tables;
+
+    Result pauseResult = pauseUniverses(drConfigUUID);
+    JsonNode json = Json.parse(contentAsString(pauseResult));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    Result resumeResult = resumeUniverses(drConfigUUID);
+    json = Json.parse(contentAsString(resumeResult));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "2", "name", "'val2'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+  }
+
   private void deleteDrConfig(UUID drConfigUUID, Universe sourceUniverse, Universe targetUniverse)
       throws InterruptedException {
     Result deleteResult = deleteDrConfig(drConfigUUID);

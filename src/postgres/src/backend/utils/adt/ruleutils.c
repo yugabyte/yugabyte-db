@@ -1504,7 +1504,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		appendStringInfoChar(&buf, ')');
 
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
-			!idxrec->indisprimary)
+			!YBIsCoveredByMainTable(indexrel))
 		{
 			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}

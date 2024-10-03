@@ -24,6 +24,11 @@ namespace yb::master {
 static const auto kXClusterDDLExtensionName = xcluster::kDDLQueuePgSchemaName;
 
 bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
+  if (!table.LockForRead()->visible_to_client()) {
+    // Ignore dropped tables.
+    return false;
+  }
+
   if (table.GetTableType() != PGSQL_TABLE_TYPE || table.is_system()) {
     // DB Scoped replication Limited to ysql databases.
     // System tables are not replicated. DDLs statements will be replicated and executed on the

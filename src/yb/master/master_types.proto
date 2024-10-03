@@ -156,6 +156,8 @@ message MasterErrorPB {
 
     // The number of existing replication slots have reached `max_replication_slots`.
     REPLICATION_SLOT_LIMIT_REACHED = 41;
+
+    TABLET_SERVER_NOT_FOUND = 42;
   }
 
   // The error code.

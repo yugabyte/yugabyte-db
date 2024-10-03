@@ -33,6 +33,11 @@ typedef const void * ConstSliceVector;
 typedef void * SliceSet;
 typedef const void * ConstSliceSet;
 
+typedef struct PgExplicitRowLockStatus {
+  YBCStatus ybc_status;
+  YBCPgExplicitRowLockErrorInfo error_info;
+} YBCPgExplicitRowLockStatus;
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
@@ -530,7 +535,7 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value);
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector);
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector);
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size);
 
@@ -763,10 +768,10 @@ YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
                                           bool relation_is_region_local);
 
 // Explicit Row-level Locking.
-YBCStatus YBCAddExplicitRowLockIntent(
-    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
-    YBCPgOid database_oid, const YBCPgExplicitRowLockParams *params, bool is_region_local);
-YBCStatus YBCFlushExplicitRowLockIntents();
+YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid, YBCPgOid database_oid,
+    const YBCPgExplicitRowLockParams *params, bool is_region_local);
+YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 bool YBCIsInitDbModeEnvVarSet();
 

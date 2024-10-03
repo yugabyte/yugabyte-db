@@ -27,6 +27,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -130,7 +131,8 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
 
   auto rocksdb_iter = CreateRocksDBIterator(
       doc_db.regular, doc_db.key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */, query_id);
+      boost::none /* user_key_for_filter = */, query_id, /* file_filter = */ nullptr,
+      /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse);
   rocksdb_iter.SeekToFirst();
   KeyBytes prev_key;
   while (CHECK_RESULT(rocksdb_iter.CheckedValid())) {

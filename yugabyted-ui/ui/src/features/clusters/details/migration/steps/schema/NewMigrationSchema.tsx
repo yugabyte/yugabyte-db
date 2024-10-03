@@ -90,10 +90,11 @@ const importSchemaPrereqs: React.ReactNode[] = [
 
 interface MigrationSchemaProps {
   heading: string;
-  migration: Migration;
+  migration: Migration | undefined;
   step: number;
   onRefetch: () => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 export const MigrationSchema: FC<MigrationSchemaProps> = ({
@@ -101,6 +102,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   migration,
   onRefetch,
   isFetching = false,
+  isNewMigration = false,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -111,7 +113,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
@@ -134,15 +136,15 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
         </YBButton>
       </Box>
 
-      {isErrorMigrationSchemaTasks && <GenericFailure />}
+      {isErrorMigrationSchemaTasks && !isNewMigration && <GenericFailure />}
 
-      {(isFetching || isFetchingAPI) && (
+      {(isFetching || isFetchingAPI) && !isNewMigration && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI || isErrorMigrationSchemaTasks) && (
+      {(!(isFetching || isFetchingAPI || isErrorMigrationSchemaTasks) || isNewMigration) && (
         <>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
             <StepCard

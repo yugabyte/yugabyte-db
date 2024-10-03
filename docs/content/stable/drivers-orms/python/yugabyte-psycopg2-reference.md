@@ -3,7 +3,8 @@ title: YugabyteDB Psycopg2 Smart Driver
 headerTitle: Python Drivers
 linkTitle: Python Drivers
 description: YugabyteDB Psycopg2 Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: Python Drivers

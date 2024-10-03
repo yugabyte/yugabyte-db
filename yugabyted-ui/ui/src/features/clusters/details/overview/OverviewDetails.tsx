@@ -16,6 +16,8 @@ import {
   useGetClusterActivitiesQuery,
   useGetClusterAlertsQuery,
   useGetClusterTabletsQuery,
+  useGetClusterTablesQuery,
+  GetClusterTablesApiEnum,
 } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
@@ -93,6 +95,10 @@ export const OverviewDetails: FC = () => {
   const { refetch: refetchAlerts } = useGetClusterAlertsQuery(
     { node_address: "" },
     { query: { enabled: false } });
+  const { refetch: refetchTables } = useGetClusterTablesQuery(
+        { api: GetClusterTablesApiEnum.Ysql },
+        { query: { enabled: false } }
+      );
   const [ refreshChartController, setRefreshChartController ] = useQueryParam<boolean | undefined>("refreshChartController");
 
   const refetch = () => {
@@ -103,6 +109,7 @@ export const OverviewDetails: FC = () => {
     refetchLoadBalancer();
     refetchActivities();
     refetchAlerts();
+    refetchTables();
     setRefreshChartController(!refreshChartController, "replaceIn");
   }
 

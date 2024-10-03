@@ -4,7 +4,8 @@ headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-badges: tp
+tags:
+  feature: tech-preview
 aliases:
    - /preview/explore/connection-manager/connection-mgr-ysql/
    - /preview/explore/connection-manager/

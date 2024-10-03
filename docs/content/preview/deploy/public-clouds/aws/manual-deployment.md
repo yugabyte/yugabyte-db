@@ -666,7 +666,7 @@ From any node, execute the following command.
 
 ```sh
 $ cd ~/tserver
-$ ./bin/ysqlsh <any-node-ip>
+$ ./bin/ysqlsh -h <any-node-ip>
 ```
 
 ```sql

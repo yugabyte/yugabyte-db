@@ -8,9 +8,10 @@ import { useTranslation } from "react-i18next";
 
 interface MigrationDetailsProps {
   steps: string[];
-  migration: Migration;
+  migration: Migration | undefined;
   onRefetch: () => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 export const MigrationDetails: FC<MigrationDetailsProps> = ({
@@ -18,11 +19,12 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   migration,
   onRefetch,
   isFetching = false,
+  isNewMigration = false,
 }) => {
-  const [selectedStep, setSelectedStep] = React.useState<number>(migration.landing_step);
+  const [selectedStep, setSelectedStep] = React.useState<number>(migration?.landing_step ?? 0);
   React.useEffect(() => {
-    setSelectedStep(migration.landing_step);
-  }, [migration.landing_step]);
+    setSelectedStep(migration?.landing_step ?? 0);
+  }, [migration?.landing_step]);
 
   const { t } = useTranslation();
 
@@ -35,9 +37,10 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
             steps={steps}
             currentStep={selectedStep}
             onStepChange={setSelectedStep}
-            phase={migration.migration_phase}
+            phase={migration?.migration_phase}
             migration={migration}
             isFetching={isFetching}
+            isNewMigration={isNewMigration}
           />
         </Box>
         <Box mr={2}>
@@ -50,6 +53,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
             step={selectedStep}
             onRefetch={onRefetch}
             isFetching={isFetching}
+            isNewMigration={isNewMigration}
           />
           <Box justifyContent="between" gridGap={2} display="flex" mt={2}>
             {selectedStep > 0 && (

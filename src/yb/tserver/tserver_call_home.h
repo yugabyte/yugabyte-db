@@ -13,11 +13,12 @@
 #pragma once
 
 #include "yb/server/call_home.h"
-#include "yb/tserver/tablet_server.h"
 
 namespace yb {
 
 namespace tserver {
+
+class TabletServer;
 
 class TserverCallHome : public CallHome {
  public:

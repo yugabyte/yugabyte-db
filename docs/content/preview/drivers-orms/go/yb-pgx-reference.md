@@ -3,7 +3,8 @@ title: PGX Smart Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /preview/reference/drivers/go/
   - /preview/reference/drivers/go/yb-pgx-reference/
@@ -69,16 +70,18 @@ Learn how to perform common tasks required for Go application development using 
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `load_balance` - enable cluster-aware load balancing by setting this property to one of the allowed values other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` connection parameter.
+
+For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
 
-To enable uniform load balancing across all servers, you set the `load_balance` property to `true` in the URL, as per the following example:
+To enable uniform load balancing across all servers, you set the `load_balance` property to one of the allowed values other than `false` in the URL, as per the following example:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -239,7 +242,7 @@ For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/
 
 To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 

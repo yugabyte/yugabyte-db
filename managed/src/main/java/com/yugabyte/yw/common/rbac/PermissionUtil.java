@@ -60,7 +60,7 @@ public class PermissionUtil {
           environment.resourceAsStream(resourceType.getPermissionFilePath()),
           new TypeReference<List<PermissionInfo>>() {});
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error("Error occurred", e);
       return Collections.emptyList();
     }
   }

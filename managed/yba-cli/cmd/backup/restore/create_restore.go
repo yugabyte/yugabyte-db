@@ -22,8 +22,8 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/restore"
 )
 
-// createBackupRestoreCmd represents the universe backup command
-var createBackupRestoreCmd = &cobra.Command{
+// createRestoreCmd represents the universe backup command
+var createRestoreCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Restore a YugabyteDB Anywhere universe backup",
 	Long:  "Restore an universe backup in YugabyteDB Anywhere",
@@ -50,13 +50,12 @@ var createBackupRestoreCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var response *http.Response
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		authAPI.GetCustomerUUID()
-
-		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 
 		universeListRequest := authAPI.ListUniverses()
 		universeListRequest = universeListRequest.Name(universeNameFlag)
@@ -107,13 +106,48 @@ var createBackupRestoreCmd = &cobra.Command{
 		rList = storageConfigsName
 
 		if len(rList) < 1 {
-			fmt.Println("No storage configurations found")
+			fmt.Println("No storage configurations with name " + storageName + " found")
 			return
 		}
 
 		var storageUUID string
 		if len(rList) > 0 {
 			storageUUID = rList[0].GetConfigUUID()
+		}
+
+		kmsConfigUUID := ""
+		kmsConfigName, err := cmd.Flags().GetString("kms-config")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		// find kmsConfigUUID from the name
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Restore", "Create - Fetch KMS Configs")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+		for _, k := range kmsConfigs {
+			metadataInterface := k["metadata"]
+			if metadataInterface != nil {
+				metadata := metadataInterface.(map[string]interface{})
+				kmsName := metadata["name"]
+				if kmsName != nil && strings.Compare(kmsName.(string), kmsConfigName) == 0 {
+					configUUID := metadata["configUUID"]
+					if configUUID != nil {
+						kmsConfigUUID = configUUID.(string)
+					}
+				}
+			}
+		}
+		if len(strings.TrimSpace(kmsConfigName)) != 0 &&
+			len(strings.TrimSpace(kmsConfigUUID)) == 0 {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No KMS configuration with name: %s found\n",
+						kmsConfigName),
+					formatter.RedColor,
+				))
 		}
 
 		backupInfos, err := cmd.Flags().GetStringArray("keyspace-info")
@@ -133,13 +167,8 @@ var createBackupRestoreCmd = &cobra.Command{
 			CustomerUUID:          util.GetStringPointer(authAPI.CustomerUUID),
 			StorageConfigUUID:     util.GetStringPointer(storageUUID),
 			BackupStorageInfoList: &result,
+			KmsConfigUUID:         util.GetStringPointer(kmsConfigUUID),
 		}
-		data, err = json.Marshal(requestBody)
-		if err != nil {
-			fmt.Println("Error marshalling:", err)
-			return
-		}
-		logrus.Debug(string(data))
 
 		rCreate, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
 		if err != nil {
@@ -286,14 +315,18 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 }
 
 func init() {
-	createBackupRestoreCmd.Flags().SortFlags = false
-	createBackupRestoreCmd.Flags().String("universe-name", "",
-		"[Required] Universe name. Name of the universe to be backed up")
-	createBackupRestoreCmd.MarkFlagRequired("universe-name")
-	createBackupRestoreCmd.Flags().String("storage-config-name", "",
+	createRestoreCmd.Flags().SortFlags = false
+	createRestoreCmd.Flags().String("universe-name", "",
+		"[Required] Target universe name to perform restore operation.")
+	createRestoreCmd.MarkFlagRequired("universe-name")
+	createRestoreCmd.Flags().String("storage-config-name", "",
 		"[Required] Storage config to be used for taking the backup")
-	createBackupRestoreCmd.MarkFlagRequired("storage-config-name")
-	createBackupRestoreCmd.Flags().StringArray("keyspace-info", []string{},
+	createRestoreCmd.MarkFlagRequired("storage-config-name")
+	createRestoreCmd.Flags().String("kms-config", "",
+		"[Optional] Key management service config name. "+
+			"For a successful restore, the KMS configuration used for restore should be the same "+
+			"KMS configuration used during backup creation.")
+	createRestoreCmd.Flags().StringArray("keyspace-info", []string{},
 		"[Required] Keyspace info to perform restore operation."+
 			" Provide the following semicolon separated fields as key value pairs, and"+
 			" enclose the string with quotes: "+
@@ -305,11 +338,11 @@ func init() {
 				"values. ", formatter.GreenColor)+
 			"The attribute use-tablespaces, selective-restore and table-name-list are optional values. "+
 			"Attributes selective-restore and table-name-list and are needed only for YCQL. "+
-			"The attribute use-tablespaces is to be used if needed only in the case of YSQL"+
+			"The attribute use-tablespaces is to be used if needed only in the case of YSQL. "+
 			"Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
 			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2' "+
 			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
 			"backup-type=ysql;use-tablespaces=true'")
-	createBackupRestoreCmd.MarkFlagRequired("keyspace-info")
+	createRestoreCmd.MarkFlagRequired("keyspace-info")
 
 }

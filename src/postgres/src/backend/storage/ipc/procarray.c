@@ -4165,7 +4165,7 @@ YbStorePgAshSamples(TimestampTz sample_time)
 		 */
 		if (proc->pid == 0 || proc->isBackgroundWorker ||
 			proc->yb_ash_metadata.addr_family == AF_UNSPEC ||
-			YbAshShouldIgnoreWaitEvent(proc->wait_event_info))
+			!proc->yb_is_ash_metadata_set)
 			continue;
 
 		YbAshMaybeIncludeSample(proc, arrayP->numProcs, sample_time,
