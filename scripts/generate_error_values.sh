@@ -5,16 +5,14 @@
 # Helio API/Helio Core.
 # As an input takes the base error csv file that is expected
 # to be of the form 
-#           ErrorName,MongoError,OrdinalPosition
+#           ErrorName,OrdinalPosition
 # Where ErrorName is the user friendly name
-# MongoError is the "Wire protocol friendly" error code
 # And Ordinal position is a monotonically increasing number
 # that is unique across error codes.
 # Generates a header file with the error codes for C code to
 # use and a generated csv file that has the form
-#           ErrorName,ErrorCode,MongoError
+#           ErrorName,ErrorCode,OrdinalPosition
 # Which has the User friendly name above, the PG error string
-# And the Mongo wire protocol error above.
 #########################################################
 
 # fail if trying to reference a variable that is not set.
@@ -26,7 +24,6 @@ set -e
 sourceFile=$1
 filePathDest=$2
 errorNamesPathDest=$3
-conversionFilePathDest=$4
 
 # Get a temp path to write to for staging
 filePathName=$(basename $filePathDest)
@@ -35,66 +32,48 @@ filePathName="${RANDOM}-${filePathName}"
 errNamesFileName=$(basename $errorNamesPathDest)
 errNamesFileName="${RANDOM}-${errNamesFileName}"
 
-conversionFileName=$(basename $conversionFilePathDest)
-conversionFileName="${RANDOM}-${conversionFileName}"
-
 filePath="/tmp/$filePathName"
 errorNamesPath="/tmp/$errNamesFileName"
-conversionFilePath="/tmp/$conversionFileName"
 
-echo "Writing header for $conversionFilePath"
-cat << EOF > $conversionFilePath
-/*-------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation.  All rights reserved.
- *
- * include/utils/helio_errors.h
- *
- * Utilities for converting Helio error to mongo error.
- * This file is generated - please modify the source (mongoerrors.csv)
- *
- *-------------------------------------------------------------------------
- */
-
-#include <postgres.h>
-#include <utils/helio_errors.h>
-
-int32_t
-GetMongoErrorCodeFromHelioError(int32_t sqlStateError)
+function WriteHeaderBase()
 {
-	switch (sqlStateError)
-	{
-EOF
+  local _filePath=$1;
+  local _fileName=$2;
+  local _headerDef=$3
+  local _sourceFileName=$(basename $sourceFile)
 
-
-echo "Writing header for $filePath"
-cat << EOF > $filePath
+  echo "Writing header for $_filePath"
+cat << EOF > $_filePath
 
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/utils/helio_errors.h
+ * include/utils/$_fileName
  *
  * Utilities for Helio Error Definition.
- * This file is generated - please modify the source (mongoerrors.csv)
+ * This file is generated - please modify the source ($_sourceFileName)
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef HELIO_ERRORS_H
-#define HELIO_ERRORS_H
+#ifndef $_headerDef
+#define $_headerDef
 
 #include <utils/elog.h>
 
+EOF
+}
+
+echo "Writing initial content for $filePath"
+WriteHeaderBase $filePath "helio_errors.h" HELIO_ERRORS_H
+cat << EOF >> $filePath
 /* Represents a Helio error */
 typedef int HelioErrorEreportCode;
-
-extern int32_t GetMongoErrorCodeFromHelioError(int32_t sqlErrorState);
-
 EOF
 
 # Write the CSV header file.
 echo "Writing header for $errorNamesPath"
-echo "ErrorName,ErrorCode,MongoError,ErrorOrdinal" > $errorNamesPath
+echo "ErrorName,ErrorCode,ErrorOrdinal" > $errorNamesPath
 
 # Postgres Printable Error Range - used in error mode calculation
 ValidChars=(0 1 2 3 4 5 6 7 8 9 A B C D E F G H I J K L M N O P Q R S T U V W X Y Z)
@@ -177,11 +156,11 @@ if [ -f $errorNamesPathDest ]; then
             continue;
         fi
 
-        # Format is error,pgcode,mongocode,ordinal
-        regex="([A-Za-z0-9]+),([A-Za-z0-9]+),([0-9]+),([0-9]+)"
+        # Format is error,pgcode,ordinal
+        regex="([A-Za-z0-9]+),([A-Za-z0-9]+),([0-9]+)"
         if [[ $fileLine =~ $regex ]]; then
             _name="${BASH_REMATCH[1]}"
-            _existOrdinal="${BASH_REMATCH[4]}"
+            _existOrdinal="${BASH_REMATCH[3]}"
 
             existingKeys["$_name"]=$_existOrdinal
         else
@@ -202,12 +181,11 @@ for fileLine in $(cat $sourceFile); do
     fi
 
     # Parse the CSV line
-    regex="([A-Za-z0-9]+),([0-9]+),([0-9]+)"
+    regex="([0-9]+),([A-Za-z0-9]+)"
     if [[ $fileLine =~ $regex ]]; then
-        _name="${BASH_REMATCH[1]}"
-        _code="${BASH_REMATCH[2]}"
-        _ordinal="${BASH_REMATCH[3]}"
-        lineToEnter="${_name},${_code}"
+        _name="${BASH_REMATCH[2]}"
+        _ordinal="${BASH_REMATCH[1]}"
+        lineToEnter="${_name}"
 
         # Ensure uniqueness of ordinal values.
         if [[ ${myKeys["$_ordinal"]:-''} != '' ]]; then
@@ -222,19 +200,14 @@ for fileLine in $(cat $sourceFile); do
 
         myKeys["$_ordinal"]=$lineToEnter
 
+        # Track in ascending ordinal order
         # Track the highest ordinal.
         if (( $maxIndex < $_ordinal )); then
             maxIndex=$_ordinal
-        fi
-
-        # Enforce file is maintained in increasing order.
-        if (( $_code <= $_maxCode )); then
-            echo "ERROR: Error codes must be in increasing order: Found $_code - currentMax $_maxCode"
-            exit 1
         else
-            _maxCode=$_code
+            echo "ErrorOrdinal must be in ascending order: detected $_ordinal with max $maxIndex"
+            exit 1
         fi
-
     else
         echo "$fileLine doesn't match";
         exit 1
@@ -243,7 +216,7 @@ done
 
 echo "Max ordinal found ${maxIndex}"
 
-# Iterate throuhg each ordinal.
+# Iterate through each ordinal.
 for fileIndex in $(seq 1 $maxIndex); do
 
     if [[ ${myKeys["$fileIndex"]:-''} == '' ]]; then
@@ -253,10 +226,9 @@ for fileIndex in $(seq 1 $maxIndex); do
 
     # Grab the error and rematch the regex.
     fileLine=${myKeys[$fileIndex]}
-    regex="([A-Za-z0-9]+),([0-9]+)"
+    regex="([A-Za-z0-9]+)"
     if [[ $fileLine =~ $regex ]]; then
         name="${BASH_REMATCH[1]}"
-        code="${BASH_REMATCH[2]}"
     else
         echo "ERROR: $fileLine doesn't match";
         exit 1
@@ -281,17 +253,10 @@ for fileIndex in $(seq 1 $maxIndex); do
     else
         echo "#define ERRCODE_HELIO_$errorNameUpper MAKE_SQLSTATE('$baseLetter', '$secondChar', '$thirdChar', '$fourthChar', '$fifthChar')"  >> $filePath
     fi
-    echo "#define MONGO_CODE_${errorNameUpper} $code"  >> $filePath
     echo >> $filePath
 
     # Add the generated macro to the csv as well
-    echo "${name},${baseLetter}${secondChar}${thirdChar}${fourthChar}${fifthChar},${code},${fileIndex}" >> $errorNamesPath
-
-    echo "		case ERRCODE_HELIO_$errorNameUpper:" >> $conversionFilePath
-    echo "		{" >> $conversionFilePath
-    echo "			return MONGO_CODE_${errorNameUpper};" >> $conversionFilePath
-    echo "		}" >> $conversionFilePath
-    echo "" >> $conversionFilePath
+    echo "${name},${baseLetter}${secondChar}${thirdChar}${fourthChar}${fifthChar},${fileIndex}" >> $errorNamesPath
 
     # Move to the next header.
     IncrementErrorCode
@@ -300,16 +265,6 @@ done
 echo "Writing footer for $filePath"
 echo "#endif" >> $filePath
 
-echo "Writing footer for $filePath"
-echo "		default:"  >> $conversionFilePath
-echo "		{"  >> $conversionFilePath
-echo "			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)," >> $conversionFilePath
-echo "							errmsg(\"Unknown error code %d\", sqlStateError)));" >> $conversionFilePath
-echo "		}"  >> $conversionFilePath
-echo "	}" >> $conversionFilePath
-echo "}" >> $conversionFilePath
-
 echo "Moving $filePath to $filePathDest"
 mv -f $filePath $filePathDest
 mv -f $errorNamesPath $errorNamesPathDest
-mv -f $conversionFilePath $conversionFilePathDest

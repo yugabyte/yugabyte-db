@@ -72,13 +72,15 @@ trim_installed_data_files:
 
 build-sql: $(generated_sql_files)
 
-generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h $(OSS_SRC_DIR)/mongoerrors.csv
+generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h $(OSS_SRC_DIR)/helioerrors.csv
 
 all: generate_errors_file
 
-$(HELIO_CORE_DIR)include/utils/helio_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/mongoerrors.csv
+$(HELIO_CORE_DIR)include/utils/helio_errors.h: $(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/helioerrors.csv
 	mkdir -p $(HELIO_CORE_DIR)/build
-	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/mongoerrors.csv $(HELIO_CORE_DIR)include/utils/helio_errors.h $(HELIO_CORE_DIR)include/utils/helio_codes.txt $(HELIO_CORE_DIR)/src/utils/helio_errors.c
+	mkdir -p $(HELIO_CORE_DIR)/generated/src/utils
+	mkdir -p $(HELIO_CORE_DIR)/generated/include/utils
+	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/helioerrors.csv $(HELIO_CORE_DIR)include/utils/helio_errors.h $(HELIO_CORE_DIR)include/utils/helio_codes.txt
 
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)
