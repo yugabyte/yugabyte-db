@@ -2647,8 +2647,32 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
+		&yb_update_optimization_options.has_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_skip_redundant_update_ops", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables the comparison of old and new values of columns specified in the "
+						 "SET clause of YSQL UPDATE queries to skip redundant secondary index " 
+						 "updates and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
 		&yb_update_optimization_options.is_enabled,
-		false,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable preloading of foreign key information into the relation cache."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_catcache,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4043,6 +4067,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&ysql_session_max_batch_size,
 		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
+		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
+			gettext_noop("A value of 1 disables this feature."),
+			0
+		},
+		&yb_insert_on_conflict_read_batch_size,
+		1, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

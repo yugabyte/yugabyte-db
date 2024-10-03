@@ -1,5 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -121,11 +123,11 @@ public class CreateSupportBundle extends AbstractTaskBase {
 
     // add the supportBundle metadata into the bundle
     try {
+      JsonNode sbJson = Json.toJson(supportBundle);
+      ((ObjectNode) sbJson).remove("status");
+      ((ObjectNode) sbJson).remove("sizeInBytes");
       supportBundleUtil.saveMetadata(
-          customer,
-          bundlePath.toAbsolutePath().toString(),
-          Json.toJson(supportBundle),
-          "manifest.json");
+          customer, bundlePath.toAbsolutePath().toString(), sbJson, "manifest.json");
     } catch (Exception e) {
       // Log the error and continue with the rest of support bundle collection.
       log.error("Error occurred while collecting support bundle manifest json", e);

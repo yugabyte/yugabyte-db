@@ -26,6 +26,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 
 DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
@@ -272,7 +273,8 @@ class SharedExchange::Impl {
  public:
   template <class T>
   Impl(T type, const std::string& instance_id, uint64_t session_id)
-      : session_id_(session_id),
+      : instance_id_(instance_id),
+        session_id_(session_id),
         owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
         shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
                               boost::interprocess::read_write) {
@@ -304,6 +306,10 @@ class SharedExchange::Impl {
       return nullptr;
     }
     return header->data();
+  }
+
+  const std::string& instance_id() const {
+    return instance_id_;
   }
 
   uint64_t session_id() const {
@@ -357,6 +363,7 @@ class SharedExchange::Impl {
     return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
   }
 
+  const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
   boost::interprocess::shared_memory_object shared_memory_object_;
@@ -430,6 +437,10 @@ void SharedExchange::SignalStop() {
   impl_->SignalStop();
 }
 
+const std::string& SharedExchange::instance_id() const {
+  return impl_->instance_id();
+}
+
 uint64_t SharedExchange::session_id() const {
   return impl_->session_id();
 }
@@ -465,4 +476,9 @@ bool TServerSharedData::IsCronLeader() const {
   auto lease_end = cron_leader_lease_.load();
   return lease_end.Initialized() && lease_end > MonoTime::Now();
 }
+
+std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {
+  return MakeSharedMemoryPrefix(instance_id) + "_big_" + std::to_string(id);
+}
+
 } // namespace yb::tserver

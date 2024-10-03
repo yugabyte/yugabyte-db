@@ -114,7 +114,7 @@ To create an export configuration, do the following:
 
   {{% tab header="Prometheus" lang="prometheus" %}}
 
-Prometheus integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+Prometheus integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
 
 The Prometheus integration requires the following:
 
@@ -152,7 +152,7 @@ To create an export configuration, do the following:
 
   {{% tab header="VictoriaMetrics" lang="victoria" %}}
 
-VictoriaMetrics integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+VictoriaMetrics integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
 
 The VictoriaMetrics integration requires the following:
 

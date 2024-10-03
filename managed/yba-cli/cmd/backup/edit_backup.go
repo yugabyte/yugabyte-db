@@ -142,7 +142,6 @@ var editBackupCmd = &cobra.Command{
 		fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
 		fullBackupContext.SetFullBackup(r.GetEntities()[0])
 		fullBackupContext.Write()
-		return
 	},
 }
 

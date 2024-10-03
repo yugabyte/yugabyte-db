@@ -1619,8 +1619,8 @@ Status PgApiImpl::FetchRequestedYbctids(PgStatement *handle, const PgExecParamet
   return dml_read.Exec(exec_params);
 }
 
-Status PgApiImpl::DmlANNBindVector(PgStatement *handle, PgExpr *vector) {
-  return down_cast<PgDml*>(handle)->ANNBindVector(vector);
+Status PgApiImpl::DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector) {
+  return down_cast<PgDml*>(handle)->ANNBindVector(vec_att_no, vector);
 }
 
 Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size) {

@@ -23,10 +23,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -67,6 +69,24 @@ public class TestYbAsh extends BasePgSQLTest {
 
   private void executePgSleep(Statement statement, long seconds) throws Exception {
     statement.execute("SELECT pg_sleep(" + seconds + ")");
+  }
+
+  // Helper function to get backend count from yb_active_session_history.
+  private int getAshBackendCount(Statement stmt) throws Exception {
+    if (isTestRunningWithConnectionManager()) {
+      HashSet pids = new HashSet();
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        pids.add(getSingleRow(stmt, "SELECT pg_backend_pid()").getInt(0));
+      }
+      return getSingleRow(stmt, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid IN (" +
+          pids.stream().map(String::valueOf).collect(Collectors.joining(",")) +
+          ")").getLong(0).intValue();
+    } else {
+      int pid = getSingleRow(stmt, "SELECT pg_backend_pid()").getInt(0);
+      return getSingleRow(stmt, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+    }
   }
 
   /**
@@ -322,6 +342,9 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testYsqlPids() throws Exception {
+    // (DB-12674) Choosing backend PID is not deterministic with random
+    // backend allocation, use round-robin allocation instead.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
 
     try (Statement statement = connection.createStatement()) {
@@ -329,20 +352,14 @@ public class TestYbAsh extends BasePgSQLTest {
       for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
       }
-      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE pid = " + pid).getLong(0).intValue();
-      assertGreaterThan(res, 0);
+      assertGreaterThan(getAshBackendCount(statement), 0);
     }
 
     try (Statement statement = connection.createStatement()) {
       for (int i = 0; i < 100; ++i) {
         statement.execute(String.format("SELECT * FROM test_table WHERE k = %d", i));
       }
-      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE pid = " + pid).getLong(0).intValue();
-      assertGreaterThan(res, 0);
+      assertGreaterThan(getAshBackendCount(statement), 0);
     }
   }
 

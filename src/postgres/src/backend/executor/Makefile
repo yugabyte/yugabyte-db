@@ -32,6 +32,7 @@ OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        nodeForeignscan.o nodeWindowAgg.o tstoreReceiver.o tqueue.o spi.o \
        nodeTableFuncscan.o ybcExpr.o ybcFunction.o ybc_fdw.o ybcModifyTable.o \
        nodeYbBitmapIndexscan.o nodeYbSeqscan.o nodeYbBitmapTablescan.o \
+       ybInsertOnConflictBatchingMap.o \
        ybOptimizeModifyTable.o
 
 include $(top_srcdir)/src/backend/common.mk

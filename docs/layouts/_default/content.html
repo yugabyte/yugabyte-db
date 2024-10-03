@@ -28,7 +28,19 @@
     {{- end -}}
     <div class="heading-content">
       <div>
-        <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ partial "badges.html" . }}</h1>
+        <h1>
+          {{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}
+          {{ if .Draft }} (Draft){{ end }}
+          {{- if .Params.tags -}}
+            {{- if .Params.tags.feature -}}
+              {{- partial "tags/feature.html" . -}}
+            {{- end -}}
+
+            {{- if .Params.tags.other -}}
+              {{- partial "tags/other.html" . -}}
+            {{- end -}}
+          {{- end -}}
+        </h1>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
     </div>

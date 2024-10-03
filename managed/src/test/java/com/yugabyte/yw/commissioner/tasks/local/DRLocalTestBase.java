@@ -88,6 +88,26 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         user.createAuthToken());
   }
 
+  protected Result pauseUniverses(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/pause_universes",
+        user.createAuthToken());
+  }
+
+  protected Result resumeUniverses(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "POST",
+        "/api/customers/"
+            + customer.getUuid()
+            + "/dr_configs/"
+            + drConfigUUID
+            + "/resume_universes",
+        user.createAuthToken());
+  }
+
   @Before
   public void setupDr() {
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.xcluster.dr.enabled", "true");

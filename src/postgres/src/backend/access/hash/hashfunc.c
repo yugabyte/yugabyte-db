@@ -452,8 +452,8 @@ hashvarlenaextended(PG_FUNCTION_ARGS)
  * by using the final values of both b and c.  b is perhaps a little less
  * well mixed than c, however.
  */
-Datum
-hash_any(register const unsigned char *k, register int keylen)
+uint32
+hash_bytes(const unsigned char *k, int keylen)
 {
 	register uint32 a,
 				b,
@@ -667,7 +667,13 @@ hash_any(register const unsigned char *k, register int keylen)
 	final(a, b, c);
 
 	/* report the result */
-	return UInt32GetDatum(c);
+	return c;
+}
+
+Datum
+hash_any(const unsigned char *k, int keylen)
+{
+	return UInt32GetDatum(hash_bytes(k, keylen));
 }
 
 /*

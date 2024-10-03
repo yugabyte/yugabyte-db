@@ -3,7 +3,8 @@ title: YugabyteDB Rust Smart Driver
 headerTitle: Rust Drivers
 linkTitle: Rust Drivers
 description: Rust postgres Smart Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 aliases:
 - /preview/reference/drivers/rust/rust-postgres-reference/
 menu:
@@ -355,7 +356,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Aeon](../../../yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 

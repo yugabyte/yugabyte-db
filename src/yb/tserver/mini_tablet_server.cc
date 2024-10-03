@@ -362,5 +362,10 @@ MetricEntity& MiniTabletServer::metric_entity() const {
   return *server_->metric_entity();
 }
 
+const MemTrackerPtr& MiniTabletServer::mem_tracker() const {
+  CHECK(started_);
+  return server_->mem_tracker();
+}
+
 } // namespace tserver
 } // namespace yb

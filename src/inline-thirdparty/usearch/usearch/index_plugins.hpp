@@ -43,11 +43,19 @@
 #if USEARCH_USE_SIMSIMD
 // Propagate the `f16` settings
 #if defined(USEARCH_CAN_COMPILE_FP16) || defined(USEARCH_CAN_COMPILE_FLOAT16)
+#if USEARCH_CAN_COMPILE_FP16 || USEARCH_CAN_COMPILE_FLOAT16
 #define SIMSIMD_NATIVE_F16 1
+#else
+#define SIMSIMD_NATIVE_F16 0
+#endif
 #endif
 // Propagate the `bf16` settings
 #if defined(USEARCH_CAN_COMPILE_BF16) || defined(USEARCH_CAN_COMPILE_BFLOAT16)
+#if USEARCH_CAN_COMPILE_BF16 || USEARCH_CAN_COMPILE_BFLOAT16
 #define SIMSIMD_NATIVE_BF16 1
+#else
+#define SIMSIMD_NATIVE_BF16 0
+#endif
 #endif
 // No problem, if some of the functions are unused or undefined
 #pragma GCC diagnostic push
@@ -57,11 +65,15 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4101) // "Unused variables"
 #pragma warning(disable : 4068) // "Unknown pragmas", when MSVC tries to read GCC pragmas
+#endif // _MSC_VER
 #include <simsimd/simsimd.h>
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif // _MSC_VER
 #pragma GCC diagnostic pop
 #endif
 
@@ -386,7 +398,7 @@ inline float f16_to_f32(std::uint16_t u16) noexcept {
 #if USEARCH_USE_FP16LIB
     return fp16_ieee_to_fp32_value(u16);
 #elif USEARCH_USE_SIMSIMD
-    return simsimd_uncompress_f16((simsimd_f16_t const*)&u16);
+    return simsimd_f16_to_f32((simsimd_f16_t const*)&u16);
 #else
 #warning "It's recommended to use SimSIMD and fp16lib for half-precision numerics"
     _Float16 f16;
@@ -403,7 +415,7 @@ inline std::uint16_t f32_to_f16(float f32) noexcept {
     return fp16_ieee_from_fp32_value(f32);
 #elif USEARCH_USE_SIMSIMD
     std::uint16_t result;
-    simsimd_compress_f16(f32, (simsimd_f16_t*)&result);
+    simsimd_f32_to_f16(f32, (simsimd_f16_t*)&result);
     return result;
 #else
 #warning "It's recommended to use SimSIMD and fp16lib for half-precision numerics"
@@ -420,15 +432,14 @@ inline std::uint16_t f32_to_f16(float f32) noexcept {
  */
 inline float bf16_to_f32(std::uint16_t u16) noexcept {
 #if USEARCH_USE_SIMSIMD
-    return simsimd_uncompress_bf16((simsimd_bf16_t const*)&u16);
+    return simsimd_bf16_to_f32((simsimd_bf16_t const*)&u16);
 #else
     union float_or_unsigned_int_t {
         float f;
         unsigned int i;
-    };
-    union float_or_unsigned_int_t result_union;
-    result_union.i = u16 << 16; // Zero extends the mantissa
-    return result_union.f;
+    } conv;
+    conv.i = u16 << 16; // Zero extends the mantissa
+    return conv.f;
 #endif
 }
 
@@ -439,18 +450,17 @@ inline float bf16_to_f32(std::uint16_t u16) noexcept {
 inline std::uint16_t f32_to_bf16(float f32) noexcept {
 #if USEARCH_USE_SIMSIMD
     std::uint16_t result;
-    simsimd_compress_bf16(f32, (simsimd_bf16_t*)&result);
+    simsimd_f32_to_bf16(f32, (simsimd_bf16_t*)&result);
     return result;
 #else
     union float_or_unsigned_int_t {
         float f;
         unsigned int i;
-    };
-    union float_or_unsigned_int_t value;
-    value.f = f32;
-    value.i >>= 16;
-    value.i &= 0xFFFF;
-    return (unsigned short)value.i;
+    } conv;
+    conv.f = f32;
+    conv.i >>= 16;
+    conv.i &= 0xFFFF;
+    return (unsigned short)conv.i;
 #endif
 }
 
@@ -2660,6 +2670,6 @@ class flat_hash_multi_set_gt {
 
 // This file is part of the usearch inline third-party dependency of YugabyteDB.
 // Git repo: https://github.com/unum-cloud/usearch
-// Git commit: 240fe9c298100f9e37a2d7377b1595be6ba1f412
+// Git commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
 //
 // See also src/inline-thirdparty/README.md.

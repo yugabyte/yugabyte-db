@@ -109,7 +109,7 @@ Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for mo
 
 #### Use SSL with YugabyteDB Aeon
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 With clusters in YugabyteDB Aeon, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 

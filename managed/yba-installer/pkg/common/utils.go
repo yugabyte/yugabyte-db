@@ -846,7 +846,7 @@ func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
 	return db, nonPwdConnStr, nil
 }
 
-// RunFromInstalled will return if yba-ctl is an "instanlled" yba-ctl or one locally executed
+// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl or one locally executed
 func RunFromInstalled() bool {
 	path, err := os.Executable()
 	if err != nil {
@@ -854,7 +854,7 @@ func RunFromInstalled() bool {
 	}
 
 	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
+		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)|(?:.*/yba-ctl/yba-ctl)")
 
 	if err != nil {
 		log.Fatal("could not compile regex: " + err.Error())

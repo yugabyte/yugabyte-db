@@ -46,6 +46,15 @@ extern Datum datumTransfer(Datum value, bool typByVal, int typLen);
 extern bool datumIsEqual(Datum value1, Datum value2,
 			 bool typByVal, int typLen);
 
+/* YB: taken from datum.h of upstream PG 15.2 */
+/*
+ * datum_image_hash
+ *
+ * Generates hash value for 'value' based on its bits rather than logical
+ * value.
+ */
+extern uint32 datum_image_hash(Datum value, bool typByVal, int typLen);
+
 /*
  * Serialize and restore datums so that we can transfer them to parallel
  * workers.

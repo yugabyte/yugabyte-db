@@ -128,6 +128,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
@@ -226,7 +228,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -262,8 +263,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
           Json.toJson(ImmutableMap.of("state", "Live")),
-          // Clear master state.
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -286,7 +285,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -311,8 +309,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("type", "GFlags")),
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
-          // Clear master state.
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));

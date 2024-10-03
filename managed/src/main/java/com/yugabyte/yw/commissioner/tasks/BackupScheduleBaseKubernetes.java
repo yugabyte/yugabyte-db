@@ -55,7 +55,7 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
   // If PIT restore enabled and previous task was a volume resize, should not run this task
   @Override
   protected boolean checkSafeToRunOnRestriction(
-      Universe universe, TaskInfo placementModificationTaskInfo) {
+      Universe universe, TaskInfo placementModificationTaskInfo, AllowedTasks allowedTasks) {
     if (taskParams().scheduleParams.enablePointInTimeRestore
         && placementModificationTaskInfo.getTaskType() == TaskType.EditKubernetesUniverse) {
       UniverseDefinitionTaskParams placementTaskParams =

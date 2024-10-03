@@ -66,7 +66,28 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   Status Insert(VertexId vertex_id, const Vector& v) override {
+    CHECK_NOTNULL(hnsw_);
     hnsw_->addPoint(v.data(), vertex_id);
+    return Status::OK();
+  }
+
+  Status SaveToFile(const std::string& file_path) const override {
+    try {
+      hnsw_->saveIndex(file_path);
+    } catch (std::exception& e) {
+      return STATUS_FORMAT(
+          IOError, "Failed to save Hnswlib index to file $0: $1", file_path, e.what());
+    }
+    return Status::OK();
+  }
+
+  Status AttachToFile(const std::string& file_path) override {
+    try {
+      hnsw_->loadIndex(file_path, space_.get());
+    } catch (std::exception& e) {
+      return STATUS_FORMAT(
+          IOError, "Failed to load Hnswlib index from file $0: $1", file_path, e.what());
+    }
     return Status::OK();
   }
 

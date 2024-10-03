@@ -1512,6 +1512,168 @@ public class DrConfigController extends AuthenticatedController {
     return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Resume);
   }
 
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "pauseDrUniverses",
+      value = "Pause DR config and universes associated with DR",
+      response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
+  public Result pauseUniverses(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    pauseUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
+
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    String operation = "pause";
+    editFormData.status = "Paused";
+
+    XClusterConfigTaskParams params =
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            editFormData,
+            null /* requestedTableInfoList */,
+            null /* mainTableToAddIndexTablesMap */,
+            null /* tableIdsToAdd */,
+            Collections.emptyMap() /* sourceTableIdTargetTableIdMap */,
+            null /* tableIdsToRemove */);
+
+    // Submit task to edit xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.PauseXClusterUniverses, params);
+    CustomerTask.create(
+        customer,
+        xClusterConfig.getSourceUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Pause,
+        drConfig.getName());
+
+    log.info("Submitted {} DrConfig({}) and universes, task {}", operation, drConfigUUID, taskUUID);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfigUUID.toString(),
+            Audit.ActionType.Pause,
+            Json.toJson(editFormData),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfigUUID).asResult();
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "resumeDrUniverses",
+      value = "Resume DR config and universes associated with DR",
+      response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
+  public Result resumeUniverses(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    resumeUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
+
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    String operation = "resume";
+    editFormData.status = "Running";
+
+    XClusterConfigTaskParams params =
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            editFormData,
+            null /* requestedTableInfoList */,
+            null /* mainTableToAddIndexTablesMap */,
+            null /* tableIdsToAdd */,
+            Collections.emptyMap() /* sourceTableIdTargetTableIdMap */,
+            null /* tableIdsToRemove */);
+
+    // Submit task to edit xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.ResumeXClusterUniverses, params);
+    CustomerTask.create(
+        customer,
+        xClusterConfig.getSourceUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Resume,
+        drConfig.getName());
+
+    log.info("Submitted {} DrConfig({}) and universes, task {}", operation, drConfigUUID, taskUUID);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfigUUID.toString(),
+            Audit.ActionType.Resume,
+            Json.toJson(editFormData),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfigUUID).asResult();
+  }
+
   /**
    * API that gets the safetime for a disaster recovery configuration.
    *
@@ -2015,6 +2177,46 @@ public class DrConfigController extends AuthenticatedController {
           String.format(
               "%s task is not allowed; with state `%s`, the allowed tasks are %s",
               taskType, drConfig.getState(), XClusterConfigTaskBase.getAllowedTasks(drConfig)));
+    }
+  }
+
+  public void pauseUniversesPrechecks(
+      XClusterConfig xClusterConfig, Universe sourceUniverse, Universe targetUniverse) {
+    if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The DR Config status be in running state. Current status is: %s.",
+              xClusterConfig.getStatus()));
+    }
+
+    if (xClusterConfig.isPaused()) {
+      throw new PlatformServiceException(BAD_REQUEST, "DR Config is already paused");
+    }
+
+    if (sourceUniverse.getUniverseDetails().universePaused
+        || targetUniverse.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Either universe %s or %s are already paused",
+              sourceUniverse.getName(), targetUniverse.getName()));
+    }
+  }
+
+  public void resumeUniversesPrechecks(
+      XClusterConfig xClusterConfig, Universe sourceUniverse, Universe targetUniverse) {
+    if (!xClusterConfig.isPaused()) {
+      throw new PlatformServiceException(BAD_REQUEST, "DR Config is expected to be paused");
+    }
+
+    if (!(sourceUniverse.getUniverseDetails().universePaused
+        && targetUniverse.getUniverseDetails().universePaused)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "One of universes %s or %s are not paused. Both universes are expected to be paused.",
+              sourceUniverse.getName(), targetUniverse.getName()));
     }
   }
 }

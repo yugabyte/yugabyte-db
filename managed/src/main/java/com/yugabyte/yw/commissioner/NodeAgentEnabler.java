@@ -234,6 +234,10 @@ public class NodeAgentEnabler {
     return isNodeAgentEnabled(
             universe,
             p -> {
+              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+              if (primaryCluster.userIntent.useSystemd == false) {
+                return false;
+              }
               if (p.getCloudCode() != CloudType.onprem || p.getDetails().isSkipProvisioning()) {
                 // Do not include provider flag for cloud and fully manual onprem providers when the
                 // enabler is on.

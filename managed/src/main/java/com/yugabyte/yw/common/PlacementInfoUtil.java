@@ -2462,7 +2462,6 @@ public class PlacementInfoUtil {
           if (!excludedRegions.contains(regUUID)) {
             multimap.putAll(regUUID, azs);
           }
-          ;
         });
     while (!multimap.isEmpty()) {
       for (UUID regionUUID : new ArrayList<>(multimap.keySet())) {

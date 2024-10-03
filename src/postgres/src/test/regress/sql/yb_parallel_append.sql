@@ -64,3 +64,6 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 explain (costs off)
 select * from lp;
 
+-- union of non-YB relations (#21733)
+explain (costs off)
+/*+ Set(enable_seqscan OFF) */ select 'l' UNION ALL (SELECT 'g') ORDER BY 1;
