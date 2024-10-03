@@ -92,7 +92,9 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
+  std::string load_index_from_path;
   std::string query_vecs_path;
+  std::string save_index_to_path;
   ANNMethodKind ann_method;
 
   std::string ToString() const {
@@ -167,6 +169,11 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
        "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
+      (OPTIONAL_ARG_FIELD(save_index_to_path),
+       "Save the index to this path.")
+      (OPTIONAL_ARG_FIELD(load_index_from_path),
+       "Load the index from this path, or read it from disk without loading fully into memory, "
+       "if the index supports it. This supersedes the index build procedure.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
@@ -196,7 +203,9 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (HNSW_OPTION_ARG(ml),
        "The scaling factor used to randomly select the level for a newly added vertex. "
        "Setting this to 1 / log(2), or ~1.44, results in the average number of points at every "
-       "level being half of the number of points at the level below it. Higher values of this ")
+       "level being half of the number of points at the level below it. Higher values of this "
+       "parameter result in a more compact graph with fewer levels, but may increase the search "
+       "time.")
       (HNSW_OPTION_ARG(ef_construction),
        "The number of closest neighbors at each level that are used to determine the candidates "
        "used for constructing the neighborhood of a newly added vertex. Higher values result in "
@@ -275,7 +284,7 @@ class BenchmarkTool {
       const BenchmarkArguments& args,
       PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_factory)
       : args_(args),
-        index_factory_(std::move(index_factory)) {
+        index_pre_factory_(std::move(index_factory)) {
   }
 
   Status Execute() {
@@ -315,7 +324,7 @@ class BenchmarkTool {
     PrintConfiguration();
 
     if (args_.num_index_shards > 1) {
-      index_factory_ = [pre_factory = index_factory_, num_shards = args_.num_index_shards](
+      index_pre_factory_ = [pre_factory = index_pre_factory_, num_shards = args_.num_index_shards](
           const HNSWOptions& options) {
         return [factory = pre_factory(options), num_shards]() {
           return std::make_unique<ShardedVectorIndex<IndexedVector, IndexedDistanceResult>>(
@@ -324,9 +333,26 @@ class BenchmarkTool {
       };
     }
 
-    vector_index_ = index_factory_(hnsw_options())();
+    vector_index_ = index_pre_factory_(hnsw_options())();
 
-    RETURN_NOT_OK(BuildIndex());
+    RETURN_NOT_OK(vector_index_->Reserve(num_points_to_insert()));
+    if (!args_.load_index_from_path.empty()) {
+      LOG(INFO) << "Loading index from " << args_.load_index_from_path;
+      auto load_start_time = MonoTime::Now();
+      RETURN_NOT_OK(vector_index_->AttachToFile(args_.load_index_from_path));
+      LOG(INFO) << "Loaded index from " << args_.load_index_from_path
+                << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
+    } else {
+      RETURN_NOT_OK(BuildIndex());
+      if (!args_.save_index_to_path.empty()) {
+        auto save_start_time = MonoTime::Now();
+        LOG(INFO) << "Saving index to " << args_.save_index_to_path;
+        RETURN_NOT_OK(vector_index_->SaveToFile(args_.save_index_to_path));
+        LOG(INFO) << "Saved index to " << args_.save_index_to_path
+                  << " in " << MonoTime::Now().GetDeltaSince(save_start_time);
+
+      }
+    }
 
     RETURN_NOT_OK(Validate());
 
@@ -546,7 +572,12 @@ class BenchmarkTool {
           num_vectors_to_load, total_mem_required_mb, args_.max_memory_for_loading_vectors_mb);
     }
 
+    MonoTime load_start_time = MonoTime::Now();
+    LOG(INFO) << "Loading vectors from " << indexed_vector_source_->file_path() << "...";
     input_vectors_ = VERIFY_RESULT(indexed_vector_source_->LoadVectors(num_vectors_to_load));
+    LOG(INFO) << "Loaded " << input_vectors_.size() << " vectors in "
+              << (MonoTime::Now() - load_start_time);
+
     size_t num_points_used = 0;
     const size_t max_to_insert = max_num_vectors_to_insert();
 
@@ -650,7 +681,7 @@ class BenchmarkTool {
   // Source for vectors to run validation queries on.
   std::unique_ptr<VectorSource<InputVector>> query_vector_source_;
 
-  PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_factory_;
+  PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_pre_factory_;
   VectorIndexIfPtr<IndexedVector, IndexedDistanceResult> vector_index_;
 
   // Atomics used in multithreaded index construction.
@@ -679,13 +710,13 @@ std::optional<Status> BenchmarkExecuteHelper(
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
-    using IndexType = typename ANNMethodTraits<ann_method_kind>::template IndexType<
+    using FactoryType = typename ANNMethodTraits<ann_method_kind>::template FactoryType<
         IndexedVector,
         typename DistanceTraits<IndexedVector, distance_kind>::Result>;
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args,
         [](const HNSWOptions& options) {
-          return CreateIndexFactory<IndexType>(options);
+          return std::bind(&FactoryType::Create, options);
         }
     ).Execute();
   }
@@ -712,7 +743,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, L2Squared,    float,      float  ))        \
     ((Usearch, L2Squared,    uint8_t,    float  ))        \
     ((Hnswlib, L2Squared,    float,      float  ))        \
-    ((Hnswlib, L2Squared,    uint8_t,    uint8_t))        \
+    ((Hnswlib, L2Squared,    uint8_t,    float))        \
     /* Cosine similarity */                               \
     ((Usearch, Cosine,       float,      float  ))        \
     ((Usearch, Cosine,       uint8_t,    float  ))        \

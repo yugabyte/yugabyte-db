@@ -114,13 +114,13 @@ for mount_point in "${mount_points_array[@]}"; do
       add_result "home directory check" "FAIL" "$message"
     fi
     if [ -d "$mount_point" ]; then
-        if [ -w "$mount_point" ] && [ $(( $(stat -c %a "$mount_point") % 10 & 2 )) -ne 0 ]; then
+        if su - {{ yb_user }} -c "test -w \"$mount_point\""; then
             result="PASS"
-            message="Directory $mount_point exists and is world-writable."
+            message="Directory $mount_point exists and is writable by {{ yb_user }}."
             echo "[PASS] $message"
         else
             result="FAIL"
-            message="Directory $mount_point exists but is not world-writable."
+            message="Directory $mount_point exists but is not {{ yb_user }} writable."
             echo "[FAIL] $message"
             any_fail=1
         fi

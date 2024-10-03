@@ -864,6 +864,9 @@ public abstract class KubernetesManager {
 
   public abstract String getKubeconfigCluster(Map<String, String> config);
 
+  public abstract boolean checkStatefulSetStatus(
+      Map<String, String> config, String namespace, String labelSelector, int replicaCount);
+
   public abstract void deleteUnusedPVCs(
       Map<String, String> config,
       String namespace,

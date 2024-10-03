@@ -86,7 +86,7 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 1
+PER_PROCESS_VERSION = 3
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -1802,9 +1802,10 @@ class NodeChecker():
 
     def check_yb_node_clock_drift(self):
         e = self._new_entry("Node Clock Drift")
-        if not chrony_exists() and not ntp_exists():
+        if not chrony_exists() and not ntp_exists() and not timesyncd_exists():
             if self.clock_service_required:
-                return e.fill_and_return_entry(["no time sync service found (chrony or ntp(d))"],
+                return e.fill_and_return_entry(["no time sync service found (chrony, ntp(d) or " +
+                                               "timesyncd)"],
                                                has_error=True)
             return e.ignore_check()
         # metrics[0] is clock drift metric
@@ -1848,11 +1849,11 @@ class NodeChecker():
             stat = res['total_stat']
             self.current_process_results[process_name] = res
             self._dump_per_process_results()
-
-            metrics[0].add_value(stat['user_cpu_seconds'], labels=[process,
-                                                                   Label('type', 'user')])
-            metrics[0].add_value(stat['system_cpu_seconds'], labels=[process,
-                                                                     Label('type', 'system')])
+            ticks = int(os.sysconf("SC_CLK_TCK"))
+            metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
+                                                                            Label('type', 'user')])
+            metrics[0].add_value(stat['system_cpu_seconds'] // ticks,
+                                 labels=[process, Label('type', 'system')])
             metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
                                                                         Label('type', 'resident')])
             metrics[1].add_value(stat['proportional_memory_kb'], labels=[
@@ -1868,6 +1869,43 @@ class NodeChecker():
         except Exception as ex:
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
+
+    def check_systemd_unit_preexec_present(self):
+        e = self._new_entry("Systemd unit preexec check")
+        services = ["yb-master.service", "yb-tserver.service"]
+        errors = []
+        for service in services:
+            root_cmd = "systemctl list-unit-files %s" % service
+            user_cmd = "systemctl --user list-unit-files %s" % service
+            root_out = self._check_output(root_cmd)
+            user_out = self._check_output(user_cmd)
+            success = True
+            if "0 unit files listed" not in root_out:
+                if not self._check_unit_for_preexec(service, user=False):
+                    errors.append("%s has no clock_sync script ExecStartPre" % service)
+            elif "0 unit files listed" not in user_out:
+                if not self._check_unit_for_preexec(service, user=True):
+                    errors.append("%s has no clock_sync script ExecStartPre" % service)
+            else:
+                logging.info("no systemd units found, skipping")
+                return e.ignore_check()
+        return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+
+    def _check_unit_for_preexec(self, service, user=True):
+        cmd = ""
+        if user:
+            cmd = "systemctl --user show --no-pager %s" % service
+        else:
+            cmd = "systemctl show --no-pager %s" % service
+        out = self._check_output(cmd)
+        if out.startswith("Error"):
+            logging.error("Error from systemctl: %s" % out)
+            return False
+        for line in out.splitlines():
+            # Found execstartpre, which has clock_sync script
+            if "ExecStartPre=" in line:
+                return True
+        return False
 
     def _load_per_process_metrics(self, process_name):
         root_pid = self.get_process_pid_by_name(process_name)
@@ -1957,10 +1995,9 @@ class NodeChecker():
         cmd = 'cat /proc/{}/stat'.format(pid)
         stat = self._check_output(cmd).strip()
         stat_list = stat.split(" ")
-        ticks = int(os.sysconf("SC_CLK_TCK"))
         if len(stat_list) > 0:
-            res['user_cpu_seconds'] = int(stat_list[13]) // ticks
-            res['system_cpu_seconds'] = int(stat_list[14]) // ticks
+            res['user_cpu_seconds'] = int(stat_list[13])
+            res['system_cpu_seconds'] = int(stat_list[14])
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
@@ -1978,9 +2015,9 @@ class NodeChecker():
         stat = self._check_output(cmd).strip()
         stat_list = stat.split("\n")
         for lst in stat_list:
-            if "read_bytes" in lst:
+            if lst.startswith("read_bytes:"):
                 res['io_read_kb'] = int(lst.split(" ")[1]) // 1024
-            if "write_bytes:" in lst:
+            if lst.startswith("write_bytes:"):
                 res['io_write_kb'] = int(lst.split(" ")[1]) // 1024
 
         cmd = 'ls /proc/{}/fd/ | wc -l'.format(pid)
@@ -2067,6 +2104,10 @@ def get_clock_drift_ms():
         return _chrony_get_clock_drift_ms()
     if ntp_exists():
         return _ntp_get_clock_drift_ms()
+    if timesyncd_exists():
+        return _timesyncd_get_clock_drift_ms()
+    logging.error("unknown time service: must be ntp(d) or chrony")
+    return "Failed to get clock drift"
 
 
 def _chrony_get_clock_drift_ms():
@@ -2078,9 +2119,14 @@ def _chrony_get_clock_drift_ms():
     if "Error" not in chrony_out and "Active: active" in chrony_out:
         # Check drift using chrony
         out = check_output("chronyc tracking", env)
-        match = re.search("System time.*: (.*) second", out, re.MULTILINE)
-        if match:
-          return float(match.group(1))*1000 # Convert seconds to milliseconds
+        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
+        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
+        if skew_match and delay_match and dispersion_match:
+            skew = float(skew_match.group(1))
+            delay = float(delay_match.group(1))
+            dispersion = float(dispersion_match.group(1))
+            return skew + dispersion + (.5 * delay)
     return "Failed to get clock drift from chrony"
 
 def _ntp_get_clock_drift_ms():
@@ -2093,6 +2139,11 @@ def _ntp_get_clock_drift_ms():
           return int(float(out)*1000) # Convert seconds to milliseconds
     return "Failed to get clock drift from ntp(d)"
 
+def _timesyncd_get_clock_drift_ms():
+    # Timesyncd does not do incremental clock drift correction, and instead will step the clock
+    # to be correct. We will return 0 here and handle a not-synced system with other errors.
+    return 0
+
 def get_ntp_service_status():
     if chrony_exists():
         return 1 if is_service_running("chronyd.service") else 0
@@ -2100,6 +2151,8 @@ def get_ntp_service_status():
         ntp_running = is_service_running("ntp.service")
         ntpd_running = is_service_running("ntpd.service")
         return 1 if ntp_running or ntpd_running else 0
+    elif timesyncd_exists():
+        return get_timedatectl_status()
     logging.error("unknown time service: must be ntp(d) or chrony")
     return 0
 
@@ -2112,6 +2165,23 @@ def ntp_exists():
     env = os.environ.copy()
     ntp_out = check_output("command -v ntpq", env)
     return "Error" not in ntp_out
+
+def timesyncd_exists():
+    env = os.environ.copy()
+    timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
+    return "Error" not in timesyncd_out
+
+# Returns 1 if timesyncd is running and synced, 0 otherwise.
+def get_timedatectl_status():
+    # timesyncd is not running
+    if not is_service_running("systemd-timesyncd.service"):
+        return 0
+
+    env = os.environ.copy()
+    out = check_output("timedatectl status", env)
+    if "System clock synchronized: yes" in out:
+        return 1
+    return 0
 
 def is_service_running(service_name):
     env = os.environ.copy()
@@ -2384,6 +2454,7 @@ def main():
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
         coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
+        coordinator.add_check(checker, "check_systemd_unit_preexec_present")
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)

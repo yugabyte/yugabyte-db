@@ -137,6 +137,8 @@ typedef struct YbQueryDiagnosticsEntry
 	char		explain_plan[YB_QD_MAX_EXPLAIN_PLAN_LEN];
 } YbQueryDiagnosticsEntry;
 
+extern TimestampTz *yb_pgss_last_reset_time;
+
 typedef void (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int query_len, char *normalized_query);
 extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
 
@@ -146,5 +148,6 @@ extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsBgWorkerRegister(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
+extern void AppendToDescription(char *description, const char *format, ...);
 
 #endif                            /* YB_QUERY_DIAGNOSTICS_H */

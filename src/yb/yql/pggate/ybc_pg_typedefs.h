@@ -795,6 +795,12 @@ typedef struct PgExplicitRowLockParams {
   int docdb_wait_policy;
 } YBCPgExplicitRowLockParams;
 
+typedef struct PgExplicitRowLockErrorInfo {
+  bool is_initialized;
+  int pg_wait_policy;
+  YBCPgOid conflicting_table_id;
+} YBCPgExplicitRowLockErrorInfo;
+
 // For creating a new table...
 typedef enum PgYbrowidMode {
   PG_YBROWID_MODE_NONE,   // ...do not add ybrowid

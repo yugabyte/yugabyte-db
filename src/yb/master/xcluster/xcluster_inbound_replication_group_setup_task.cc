@@ -36,6 +36,7 @@
 
 #include "yb/tserver/pg_create_table.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -58,7 +59,7 @@ DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
-DECLARE_int32(master_yb_client_default_timeout_ms);
+DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 using namespace std::placeholders;
 
@@ -286,15 +287,48 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (automatic_ddl_mode_ && FLAGS_TEST_xcluster_enable_sequence_replication) {
+  if (automatic_ddl_mode_ && FLAGS_TEST_xcluster_enable_sequence_replication &&
+      !is_alter_replication_) {
     // Ensure sequences_data table has been created.
+    // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
-        local_client.get(),
-        CoarseMonoClock::now() +
-            MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms)));
+        local_client.get(), CoarseMonoClock::now() +
+                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
+  ScheduleNextStep(
+      std::bind(
+          &XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension,
+          shared_from(this)),
+      "SetupDDLReplicationExtension");
+
+  return Status::OK();
+}
+
+Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() {
+  if (automatic_ddl_mode_) {
+    for (const auto& namespace_id : target_namespace_ids_) {
+      auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
+      Synchronizer sync;
+      LOG(INFO) << "Setting up DDL replication extension for namespace " << namespace_id << " ("
+                << namespace_name << ")";
+      RETURN_NOT_OK(master::SetupDDLReplicationExtension(
+          catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
+          CoarseMonoClock::now() +
+              MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+          sync.AsStdStatusCallback()));
+      RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
+    }
+  }
+
+  ScheduleNextStep(
+      std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
+      "CreateTableTasks");
+  return Status::OK();
+}
+
+Status XClusterInboundReplicationGroupSetupTask::CreateTableTasks() {
   LOG_WITH_PREFIX(INFO) << "Started schema validation for " << source_table_ids_.size()
                         << " table(s)";
 
@@ -451,6 +485,7 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
 
     cdc::ProducerEntryPB producer_entry;
     producer_entry.mutable_master_addrs()->CopyFrom(source_masters_);
+    producer_entry.set_automatic_ddl_mode(automatic_ddl_mode_);
 
     if (FLAGS_enable_xcluster_auto_flag_validation) {
       auto auto_flag_config_version = VERIFY_RESULT(GetAutoFlagConfigVersionIfCompatible());

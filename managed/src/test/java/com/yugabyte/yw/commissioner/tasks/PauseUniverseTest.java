@@ -110,6 +110,8 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           TaskType.PauseServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ManageAlertDefinitions,
+          TaskType.MarkSourceMetric,
+          TaskType.UpdateUniverseFields,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
@@ -119,6 +121,8 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

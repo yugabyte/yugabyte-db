@@ -82,7 +82,7 @@ SerializationFailure errors happen when multiple transactions are updating the s
     ERROR:  40001: All transparent retries exhausted.
     ```
 
-- All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. For this scenario, the client might receive a message similar to the following:
+- All transactions are given a dynamic priority. If another higher priority transaction aborts the current transaction, the client might receive a message similar to the following:
 
     ```output
     ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict

@@ -93,7 +93,7 @@ class ProvisionCommand(Command):
         file.write("""
             print_results() {
                 any_fail=0
-                if [[ $json_results == *'"result":"FAIL"'* ]]; then
+                if [[ $json_results == *'"result": "FAIL"'* ]]; then
                     any_fail=1
                 fi
                 json_results+='\n]}'

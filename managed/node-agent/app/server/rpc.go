@@ -204,21 +204,6 @@ func (server *RPCServer) Stop() {
 	server.listener = nil
 }
 
-func (server *RPCServer) toPreflightCheckResponse(result any) (*pb.DescribeTaskResponse, error) {
-	nodeConfigs := []*pb.NodeConfig{}
-	err := util.ConvertType(result, &nodeConfigs)
-	if err != nil {
-		return nil, err
-	}
-	return &pb.DescribeTaskResponse{
-		Data: &pb.DescribeTaskResponse_PreflightCheckOutput{
-			PreflightCheckOutput: &pb.PreflightCheckOutput{
-				NodeConfigs: nodeConfigs,
-			},
-		},
-	}, nil
-}
-
 /* Implementation of gRPC methods start here. */
 
 // Ping handles ping request.
@@ -280,9 +265,10 @@ func (server *RPCServer) SubmitTask(
 	username := req.GetUser()
 	cmdInput := req.GetCommandInput()
 	if cmdInput != nil {
+		// Handle generic shell commands.
 		cmd := cmdInput.GetCommand()
 		shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
-		err := task.GetTaskManager().Submit(ctx, taskID, shellTask, nil)
+		err := task.GetTaskManager().Submit(ctx, taskID, shellTask)
 		if err != nil {
 			return res, status.Error(codes.Internal, err.Error())
 		}
@@ -290,6 +276,7 @@ func (server *RPCServer) SubmitTask(
 	}
 	preflightCheckInput := req.GetPreflightCheckInput()
 	if preflightCheckInput != nil {
+		// Handle preflight check RPC.
 		preflightCheckParam := &model.PreflightCheckParam{}
 		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
 		if err != nil {
@@ -298,8 +285,7 @@ func (server *RPCServer) SubmitTask(
 		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 		err = task.GetTaskManager().
-			Submit(ctx, taskID, preflightCheckHandler,
-				util.RPCResponseConverter(server.toPreflightCheckResponse))
+			Submit(ctx, taskID, preflightCheckHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
 			return res, status.Errorf(codes.Internal, err.Error())

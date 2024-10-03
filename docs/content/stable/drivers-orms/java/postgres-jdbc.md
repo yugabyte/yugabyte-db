@@ -8,7 +8,8 @@ menu:
     identifier: java-driver-3-jdbc-postgres
     parent: java-drivers
     weight: 500
-badges: ysql
+tags:
+  other: ysql
 type: docs
 ---
 
@@ -146,7 +147,7 @@ String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 ### Step 3: Write your application
 

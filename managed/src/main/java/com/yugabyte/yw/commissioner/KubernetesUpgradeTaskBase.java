@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
@@ -660,5 +662,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
     createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
+    String currentVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    Universe universe = getUniverse();
+    boolean ysqlMajorVersionUpgrade =
+        gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, ybSoftwareVersion)
+            && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+
+    if (ysqlMajorVersionUpgrade) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Cannot upgrade to this version with PG15 upgrade enabled");
+    }
   }
 }

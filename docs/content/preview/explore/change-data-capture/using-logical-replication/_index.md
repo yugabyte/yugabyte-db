@@ -4,8 +4,8 @@ headerTitle: CDC using PostgreSQL replication protocol
 linkTitle: PostgreSQL protocol
 description: CDC using YugabyteDB PostgreSQL replication protocol.
 headcontent: Capture changes made to data in the database
-cascade:
-  earlyAccess: /preview/releases/versioning/#feature-maturity
+tags:
+  feature: early-access
 menu:
   preview:
     identifier: explore-change-data-capture-logical-replication

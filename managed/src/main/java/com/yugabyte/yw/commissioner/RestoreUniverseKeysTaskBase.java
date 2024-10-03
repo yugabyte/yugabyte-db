@@ -32,11 +32,13 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
     if (activeKey == null
         || activeKey.getUuid().keyRef == null
         || activeKey.getUuid().keyRef.length() == 0) {
-      final String errMsg =
-          String.format(
-              "Skipping universe %s, No active keyRef found.",
-              taskParams().getUniverseUUID().toString());
-      log.trace(errMsg);
+      if (log.isTraceEnabled()) {
+        final String errMsg =
+            String.format(
+                "Skipping universe %s, No active keyRef found.",
+                taskParams().getUniverseUUID().toString());
+        log.trace(errMsg);
+      }
       return null;
     }
     return Base64.getDecoder().decode(activeKey.getUuid().keyRef);

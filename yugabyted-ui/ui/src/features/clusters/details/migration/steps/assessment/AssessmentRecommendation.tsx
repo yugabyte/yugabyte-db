@@ -32,7 +32,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface MigrationAssessmentRecommendationProps {
-  migration: Migration;
+  migration: Migration | undefined;
   recommendation: string;
   nodeCount: string | number;
   vCpuPerNode: string | number;

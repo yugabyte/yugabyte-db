@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -463,6 +464,21 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
   protected void addSubtasksToRemoveDatabasesFromXClusterConfig(
       XClusterConfig xClusterConfig, Set<String> databases, boolean keepEntry) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Set<String> dbNames =
+        getNamespaces(ybService, sourceUniverse, databases).stream()
+            .map(namespaceDetails -> namespaceDetails.getName())
+            .collect(Collectors.toSet());
+    Set<PitrConfig> pitrConfigsToBeDropped =
+        xClusterConfig.getPitrConfigs().stream()
+            .filter(pitr -> dbNames.contains(pitr.getDbName()) && pitr.isCreatedForDr())
+            .collect(Collectors.toSet());
+    for (PitrConfig pitrConfig : pitrConfigsToBeDropped) {
+      createDeletePitrConfigTask(
+          pitrConfig.getUuid(),
+          pitrConfig.getUniverse().getUniverseUUID(),
+          false /* ignoreErrors */);
+    }
 
     for (String dbId : databases) {
       createXClusterRemoveNamespaceFromTargetUniverseTask(xClusterConfig, dbId);

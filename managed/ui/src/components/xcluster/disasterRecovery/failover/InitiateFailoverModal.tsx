@@ -92,10 +92,11 @@ export const InitiateFailoverModal = ({
   const currentSafetimesQuery = useQuery(drConfigQueryKey.safetimes(drConfig.uuid), () =>
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName =
     storageConfigs?.find(

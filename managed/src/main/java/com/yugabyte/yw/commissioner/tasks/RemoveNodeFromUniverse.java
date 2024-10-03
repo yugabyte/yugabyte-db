@@ -45,6 +45,8 @@ import org.yb.util.TabletServerInfo;
 @Retryable
 public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
+  private String replacementMasterName;
+
   @Inject
   protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -55,16 +57,17 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  protected NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
+  private String findReplacementMasterIfApplicable(
+      Universe universe, NodeDetails currentNode, boolean pickNewNode) {
     boolean startMasterOnRemoveNode =
         confGetter.getGlobalConf(GlobalConfKeys.startMasterOnRemoveNode);
     if (startMasterOnRemoveNode && NodeActionFormData.startMasterOnRemoveNode) {
-      return super.findReplacementMaster(universe, currentNode);
+      return super.findReplacementMaster(universe, currentNode, pickNewNode);
     }
     return null;
   }
 
-  private void runBasicChecks(Universe universe) {
+  private NodeDetails runBasicChecks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (currentNode == null) {
       String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
@@ -75,6 +78,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry()) {
       currentNode.validateActionOnState(NodeActionType.REMOVE);
     }
+    return currentNode;
   }
 
   @Override
@@ -86,13 +90,33 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     // Check again after locking.
-    runBasicChecks(getUniverse());
+    NodeDetails currentNode = runBasicChecks(getUniverse());
     boolean alwaysWaitForDataMove =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
     if (alwaysWaitForDataMove) {
       performPrecheck();
     }
     addBasicPrecheckTasks();
+    // Pick new only on first try.
+    replacementMasterName = findReplacementMasterIfApplicable(universe, currentNode, isFirstTry());
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (node == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (node.isMaster) {
+      if (replacementMasterName != null) {
+        NodeDetails replacementMaster = universe.getNode(replacementMasterName);
+        if (replacementMaster.masterState == null) {
+          replacementMaster.masterState = MasterState.ToStart;
+        }
+      }
+      node.masterState = MasterState.ToStop;
+    }
   }
 
   @Override
@@ -108,23 +132,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
     Universe universe =
         lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion,
-            u -> {
-              NodeDetails node = u.getNode(taskParams().nodeName);
-              if (node == null) {
-                String msg =
-                    "No node " + taskParams().nodeName + " found in universe " + u.getName();
-                log.error(msg);
-                throw new RuntimeException(msg);
-              }
-              if (node.isMaster) {
-                NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
-                if (newMasterNode != null && newMasterNode.masterState == null) {
-                  newMasterNode.masterState = MasterState.ToStart;
-                }
-                node.masterState = MasterState.ToStop;
-              }
-            });
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
       preTaskActions();
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
@@ -176,7 +184,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
       createMasterReplacementTasks(
           universe,
           currentNode,
-          () -> findNewMasterIfApplicable(universe, currentNode),
+          () -> replacementMasterName == null ? null : universe.getNode(replacementMasterName),
           masterReachable,
           true /* ignore stop error */);
 

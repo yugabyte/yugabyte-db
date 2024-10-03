@@ -1145,6 +1145,8 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   virtual std::vector<std::string> ExtraTSFlags() override {
     auto flags = YbAdminSnapshotScheduleTestWithYsql::ExtraTSFlags();
     flags.push_back("--ysql_hba_conf_csv=local all yugabyte trust, host all all all trust");
+    // Needed to eliminate the role of sequence cache when creating new connections to the DB
+    flags.push_back("--ysql_sequence_cache_minval=1");
     return flags;
   }
 
@@ -2369,8 +2371,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAddUnique
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(asrivastava): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropUniqueConstraint) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropUniqueConstraint) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2491,8 +2492,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDropCheck
   ASSERT_FALSE(result_status.ok());
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDeletedData) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoDeletedData) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2518,6 +2518,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDele
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_OK(restore_status);
 
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+
   LOG(INFO) << "Select data from 'test_table' after restore";
   res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM test_table where key=3"));
   LOG(INFO) << "Select result " << res;
@@ -2529,13 +2531,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDele
   ASSERT_EQ(res, 16);
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoInsertedData) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoInsertedData) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create table 'test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT UNIQUE)"));
   LOG(INFO) << "Create Sequence 'value_data'";
   ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
   LOG(INFO) << "Insert some rows to 'test_table'";
@@ -2560,6 +2561,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoInse
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_OK(restore_status);
 
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
   LOG(INFO) << "Select row from 'test_table' after restore";
   auto result_status = conn.FetchRow<int32_t>("SELECT value FROM test_table where key=4");
   ASSERT_EQ(result_status.ok(), false);
@@ -2567,16 +2569,11 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoInse
   res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM test_table where key=3"));
   LOG(INFO) << "Select result " << res;
   ASSERT_EQ(res, 11);
-  LOG(INFO) << "Insert a row into 'test_table' and validate";
+  LOG(INFO) << "Insert a row into 'test_table' and validate 'value_data' provides a unique value";
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, nextval('value_data'))"));
-  // Here value should be 21 instead of 16 as previous insert has value 16
-  res = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM test_table where key=4"));
-  LOG(INFO) << "Select result " << res;
-  ASSERT_EQ(res, 21);
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoCreateSequence) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoCreateSequence) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2600,7 +2597,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoCrea
         "INSERT INTO $0 VALUES (2, nextval('$1'))", table_name, sequence_name));
   };
 
-  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto sequence_name = prefix + "_value_seq";
 
@@ -2627,8 +2625,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoCrea
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDropSequence) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceUndoDropSequence) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2648,7 +2645,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDrop
     ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
   };
 
-  CheckAfterPITR = [&conn](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto new_table_name = prefix + "_table_new";
 
@@ -2667,8 +2665,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceUndoDrop
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceVerifyPartialRestore) {
+TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceVerifyPartialRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.
@@ -2724,7 +2722,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceVerifyPa
         ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP TABLE $0", table_name));
       };
 
-  CheckAfterPITR = [&conn, &conn_yugabyte](const std::string& prefix, const std::string& option) {
+  CheckAfterPITR = [this, &conn_yugabyte](const std::string& prefix, const std::string& option) {
+    auto conn = ASSERT_RESULT(ConnectToRestoredDb());
     const auto table_name = prefix + "_table";
     const auto table_name_2 = prefix + "_table_2";
     const auto table_name_3 = prefix + "_table_3";
@@ -2780,9 +2779,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequenceVerifyPa
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(yamen): Fails for DB cloning with colocated databases.
 TEST_P(
-    YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlSequencePartialCleanupAfterRestore) {
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    PgsqlSequencePartialCleanupAfterRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.
@@ -2815,6 +2814,7 @@ TEST_P(
   LOG(INFO) << "Perform a Restore to the time noted above";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
   std::string insert_query =
       "INSERT INTO " + table_name + " VALUES ($0, nextval('" + sequence_name + "'))";
   LOG(INFO) << "Insert query " << insert_query;

@@ -128,9 +128,9 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
 
     RuntimeException ex = assertThrows(RuntimeException.class, () -> submitTask(params));
     assertEquals(
-        "Universe "
-            + defaultUniverse.getUniverseUUID().toString()
-            + " cannot run restricted CreateBackupScheduleKubernetes task",
+        "Task CreateBackupScheduleKubernetes cannot be run because a previous task"
+            + " EditKubernetesUniverse failed on the universe. Please retry the previous task first"
+            + " to fix the universe.",
         ex.getMessage());
   }
 

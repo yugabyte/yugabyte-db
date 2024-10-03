@@ -52,7 +52,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
-  private NodeAgentEnabler nodeAgentEnabler;
   private Customer customer;
   private NodeAgent nodeAgent;
   private NodeAgentImplBase nodeAgentImpl;

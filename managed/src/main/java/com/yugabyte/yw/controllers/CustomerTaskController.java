@@ -24,7 +24,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
+import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -34,7 +34,16 @@ import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -69,7 +78,7 @@ public class CustomerTaskController extends AuthenticatedController {
     LinkedList<TaskInfo> result = new LinkedList<>(subTaskQuery.findList());
 
     if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
-      TaskError taskError = parentTask.getTaskError();
+      YBAError taskError = parentTask.getTaskError();
       if (taskError != null) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details
         // which are not present in subtasks. Usually these errors encountered on a
@@ -90,7 +99,7 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskState = taskInfo.getTaskState().name();
       subTaskData.creationTime = taskInfo.getCreateTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
-      TaskError taskError = taskInfo.getTaskError();
+      YBAError taskError = taskInfo.getTaskError();
       if (taskError != null) {
         subTaskData.errorCode = taskError.getCode();
         subTaskData.errorString = taskError.getMessage();

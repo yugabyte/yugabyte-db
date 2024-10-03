@@ -48,6 +48,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
@@ -137,7 +138,7 @@ public class NodeAgentEnabler {
                     return ips;
                   };
               c.getUniverses().stream()
-                  .filter(u -> !u.getUniverseDetails().disableNodeAgent)
+                  .filter(u -> !u.getUniverseDetails().installNodeAgent)
                   .filter(
                       u -> {
                         Optional<Boolean> optional =
@@ -171,17 +172,81 @@ public class NodeAgentEnabler {
   }
 
   /**
-   * Checks if node agent is enabled for the universe during universe tasks like universe creation.
-   * For onprem provider, the provider flag is included in the check to detect old provider.
+   * Checks if the universe should be marked for pending node agent installation. It returns true
+   * for all the eligible universes even if the background installation may not happen because it is
+   * not supported. This is for audit and future changes.
    *
    * @param universe the given universe.
-   * @return empty for non-supported universes, true if node agent is enabled else false.
+   * @return true if it should be marked, else false.
    */
-  public Optional<Boolean> isNodeAgentEnabled(Universe universe) {
-    // Provider flag is always included for onprem irrespective of the enabler state to be lenient
-    // on new node addition. It is up to the caller to further check the universe field to verify if
-    // the node agent client is immediately available.
-    return isNodeAgentEnabled(universe, p -> p.getCloudCode() == CloudType.onprem || !isEnabled());
+  public boolean shouldMarkUniverse(Universe universe) {
+    return isEnabled() && isNodeAgentEnabled(universe, p -> true).orElse(false) == false;
+  }
+
+  /**
+   * Checks if node agent client is enabled for the provider and the universe if it is non-null.
+   *
+   * @param provider the given provider.
+   * @param universe the given universe.
+   * @return true if the client is enabled.
+   */
+  public boolean isNodeAgentClientEnabled(Provider provider, @Nullable Universe universe) {
+    boolean clientEnabled =
+        confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+    if (!clientEnabled) {
+      log.debug("Node agent client is disabled for provider {}", provider.getUuid());
+      return false;
+    }
+    if (!isEnabled()) {
+      log.debug("Node agent client is disabled for old provider {}", provider.getUuid());
+      return provider.getDetails().isEnableNodeAgent();
+    }
+    if (universe != null) {
+      // For client, the internal provider flag is not checked if enabler is enabled.
+      if (isNodeAgentEnabled(universe, p -> !isEnabled()).orElse(false) == false) {
+        return false;
+      }
+      if (universe.getUniverseDetails().installNodeAgent) {
+        // Mixed mode is allowed.
+        log.debug(
+            "Node agent is not available on all nodes for universe {}", universe.getUniverseUUID());
+        if (!confGetter.getConfForScope(universe, UniverseConfKeys.allowNodeAgentClientMixMode)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /*
+   * Checks if background installation for node agents is enabled for the given universe. It is
+   * disabled if node agent client is currently disabled. As node agent is enabled for all new
+   * providers by default, background installation is enabled unless it is explicitly disabled.
+   * For old providers, its support depends on the provider type.
+   *
+   * 1. Cloud service providers - supported if the client runtime config is not disabled.
+   * 2. Onprem fully manual providers - supported if the client runtime config is not disabled.
+   * 3. Onprem non-manual providers - not supported.
+   *
+   * For 1 and 2, provider flag must not be checked.
+   */
+  private boolean isBackgroundInstallNodeAgentEnabled(Universe universe) {
+    return isNodeAgentEnabled(
+            universe,
+            p -> {
+              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+              if (primaryCluster.userIntent.useSystemd == false) {
+                return false;
+              }
+              if (p.getCloudCode() != CloudType.onprem || p.getDetails().isSkipProvisioning()) {
+                // Do not include provider flag for cloud and fully manual onprem providers when the
+                // enabler is on.
+                return !isEnabled();
+              }
+              // Onprem non-manual provider for which the provider flag is also checked.
+              return false;
+            })
+        .orElse(false);
   }
 
   // This checks if node agent is enabled for the universe with the optional parameter to include or
@@ -222,7 +287,7 @@ public class NodeAgentEnabler {
   }
 
   /**
-   * Mark universe to disable node agent only if the node agent enabler is enabled.
+   * Mark universe to install node agent only if the node agent enabler is enabled.
    *
    * @param universeUuid the given universe UUID.
    */
@@ -233,10 +298,10 @@ public class NodeAgentEnabler {
           null /* version increment CB */,
           u -> {
             UniverseDefinitionTaskParams d = u.getUniverseDetails();
-            d.disableNodeAgent = true;
+            d.installNodeAgent = true;
             u.setUniverseDetails(d);
           });
-      log.debug("Marked universe {} to disable node agent", universeUuid);
+      log.debug("Marked universe {} to install node agent", universeUuid);
     }
   }
 
@@ -404,7 +469,13 @@ public class NodeAgentEnabler {
    */
   public boolean shouldInstallNodeAgents(Universe universe, boolean ignoreUniverseLock) {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    if (!details.disableNodeAgent) {
+    if (!isEnabled()) {
+      log.trace(
+          "Skipping installation for universe {} as enabler is disabled",
+          universe.getUniverseUUID());
+      return false;
+    }
+    if (!details.installNodeAgent) {
       log.trace(
           "Skipping installation for universe {} as marker is not set", universe.getUniverseUUID());
       // No marker set to install node-agent.
@@ -435,8 +506,7 @@ public class NodeAgentEnabler {
           universe.getUniverseUUID());
       return false;
     }
-    Optional<Boolean> optional = isNodeAgentEnabled(universe, p -> !isEnabled());
-    return optional.isPresent() && optional.get();
+    return isBackgroundInstallNodeAgentEnabled(universe);
   }
 
   /**
@@ -455,7 +525,7 @@ public class NodeAgentEnabler {
         UUID customerUuid, UUID universeUuid, NodeDetails nodeDetails, NodeAgent nodeAgent)
         throws Exception;
 
-    /** Set disableNodeAgent property in the universe details to false by locking the universe. */
+    /** Set installNodeAgent property in the universe details to false by locking the universe. */
     boolean migrate(UUID customerUuid, UUID universeUuid) throws Exception;
   }
 

@@ -301,7 +301,8 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, const Slice index_value, BlockType block_type,
       BlockIter* input_iter = nullptr);
   InternalIterator* NewBlockIterator(
-      CachableEntry<Block>* block, BlockType block_type, BlockIter* input_iter);
+      const ReadOptions& ro, CachableEntry<Block>* block, BlockType block_type,
+      BlockIter* input_iter);
 
   bool NonBlockBasedFilterKeyMayMatch(FilterBlockReader* filter, const Slice& filter_key) const;
 

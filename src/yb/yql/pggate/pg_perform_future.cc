@@ -23,15 +23,20 @@
 namespace yb::pggate {
 namespace {
 
-Status PatchStatus(const Status& status, PgSession& session, const PgObjectIds& relations) {
-  if (PgsqlRequestStatus(status) != PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+Status PatchStatus(const Status& status, const PgObjectIds& relations) {
+  if (status.ok()) {
     return status;
   }
-  auto op_index = OpIndex::ValueFromStatus(status);
-  if (op_index && *op_index < relations.size()) {
-    auto table = VERIFY_RESULT(session.LoadTable(relations[*op_index]));
-    return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-        .CloneAndAddErrorCode(RelationOid(table->pg_table_id()));
+
+  const auto max_relation_index = relations.size();
+  const auto op_index = OpIndex::ValueFromStatus(status).get_value_or(max_relation_index);
+  if (op_index < max_relation_index) {
+    static const auto duplicate_key_status =
+        STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+    const auto& actual_status =
+        PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
+          ? duplicate_key_status : status;
+    return  actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
   }
   return status;
 }
@@ -64,7 +69,7 @@ Result<PerformFuture::Data> PerformFuture::Get(PgSession& session) {
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
   auto result = pggate::Get(&future);
-  RETURN_NOT_OK(PatchStatus(result.status, session, relations_));
+  RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session.TrySetCatalogReadPoint(result.catalog_read_time);
   return Data{
       .response = std::move(result.response),

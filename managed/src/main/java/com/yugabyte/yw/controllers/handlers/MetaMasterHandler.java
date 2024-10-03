@@ -52,7 +52,7 @@ public class MetaMasterHandler {
         throw new RuntimeException(
             masterLBState != null ? masterLBState.errorMessage() : "Null response");
       }
-      resp.isEnabled = new Boolean(masterLBState.isEnabled());
+      resp.isEnabled = masterLBState.isEnabled();
       if (!resp.isEnabled) {
         // If it is not enabled, no point getting the current state of the tablet LB
         return resp;
@@ -66,11 +66,11 @@ public class MetaMasterHandler {
           // other error codes are real errors talking to the master
           throw new RuntimeException(isBalancedResp.errorMessage());
         }
-        resp.isIdle = new Boolean(!isBalancedResp.hasError());
+        resp.isIdle = !isBalancedResp.hasError();
       } catch (MasterErrorException mex) {
         if (mex.error != null
             && mex.error.getCode() == MasterErrorPB.Code.LOAD_BALANCER_RECENTLY_ACTIVE) {
-          resp.isIdle = new Boolean(false);
+          resp.isIdle = false;
         } else {
           // other error codes are real errors talking to the master
           throw mex;

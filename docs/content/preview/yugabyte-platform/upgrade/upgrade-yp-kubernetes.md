@@ -62,12 +62,12 @@ If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster 
 
 ## Install Yugabyte Kubernetes Operator by upgrading an existing YBA
 
-The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<badge/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
+The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
 
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:

@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere (YBA) will end support for Replicated installation at the end of 2024. If your YBA installation uses Replicated, you can use [YBA Installer](../install-software/installer/) to migrate from Replicated.
+YugabyteDB Anywhere has ended support for Replicated installation. If your YugabyteDB Anywhere installation uses Replicated, use YBA Installer to migrate from Replicated.
 
 ## Before you begin
 
@@ -103,7 +103,7 @@ If Replicated is using HTTP, you need to remove the standbys and delete the high
 
 ### Migrate from Replicated to YBA Installer on a different VM
 
-Note that [Replicated configuration](../install-replicated/#set-up-https-optional) will not be migrated when using this method.
+Note that the Replicated configuration is not migrated when using this method.
 
 To migrate to a different VM, do the following:
 

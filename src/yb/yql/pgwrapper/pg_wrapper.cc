@@ -207,7 +207,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1024,
     "Batch size of explicit row locking.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
@@ -294,6 +294,9 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 
 DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
               "True to enable Query Diagnostics");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
+    "Enable preloading of foreign key information into the relation cache.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
   if (value != "database" && value != "tablet") {

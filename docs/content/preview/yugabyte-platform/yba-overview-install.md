@@ -20,7 +20,7 @@ At a high level, you perform the following tasks to install and use YugabyteDB A
 
 1. Prepare your infrastructure.
 
-    Set up the necessary VMs, cloud permissions, users, and networking to install YugabyteDB Anywhere and deploy universes. How you prepare your infrastructure depends on the types of providers you want to support.
+    Set up the cloud permissions, users, networking, and servers needed to install YugabyteDB Anywhere and deploy universes. How you prepare your infrastructure depends on the types of providers you want to support.
 
     See [Prepare your infrastructure](../prepare/).
 
@@ -41,6 +41,10 @@ At a high level, you perform the following tasks to install and use YugabyteDB A
     YugabyteDB Anywhere uses the details in the provider configuration to configure and deploy the universe. If using Kubernetes, using Helm charts or the [Kubernetes operator](../../deploy/kubernetes/single-zone/oss/yugabyte-operator/) is also possible.
 
     See [Create universes](../create-deployments/).
+
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
 
 ## Prerequisites
 

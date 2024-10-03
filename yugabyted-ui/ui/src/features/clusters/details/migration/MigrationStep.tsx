@@ -16,10 +16,11 @@ import {
 
 interface MigrationStepProps {
   steps: string[];
-  migration: Migration;
+  migration: Migration | undefined;
   step: number;
   onRefetch: () => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 const stepComponents = [MigrationAssessment, MigrationSchema, MigrationData, MigrationVerify];
@@ -30,45 +31,46 @@ export const MigrationStep: FC<MigrationStepProps> = ({
   step,
   onRefetch,
   isFetching = false,
+  isNewMigration = false,
 }) => {
   const { refetch: refetchMigrationAssesmentDetails } = useGetVoyagerMigrationAssesmentDetailsQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationAssesmentInfo } = useGetMigrationAssessmentInfoQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationAssesmentSourceDB } = useGetAssessmentSourceDBInfoQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchTargetRecommendation } = useGetAssessmentTargetRecommendationInfoQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationSchemaTasks } = useGetVoyagerMigrateSchemaTasksQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationMetrics } = useGetVoyagerDataMigrationMetricsQuery(
     {
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     },
     { query: { enabled: false } }
   );
@@ -96,6 +98,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
               migration={migration}
               onRefetch={refetch}
               isFetching={isFetching}
+              isNewMigration={isNewMigration}
             />
           );
         }

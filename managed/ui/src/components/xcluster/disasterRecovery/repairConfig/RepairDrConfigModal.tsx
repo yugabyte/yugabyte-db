@@ -124,10 +124,11 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const queryClient = useQueryClient();
   const formMethods = useForm<RepairDrConfigModalFormValues>();
 
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName =
     storageConfigs?.find(

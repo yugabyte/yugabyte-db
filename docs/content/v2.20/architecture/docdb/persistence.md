@@ -88,7 +88,7 @@ A binary-comparable encoding is used for translating the value for each YCQL typ
 
 ## Packed row format
 
-Packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0; packed row format for the YCQL API is {{<badge/tp>}}.
+Packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0; packed row format for the YCQL API is {{<tags/feature/tp>}}.
 
 A row corresponding to the user table is stored as multiple key value pairs in DocDB. For example, a row with one primary key `K` and `n` non-key columns, that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
@@ -134,7 +134,7 @@ The packed row feature for the YSQL API works across all features, including bac
 
 * [#21131](https://github.com/yugabyte/yugabyte-db/issues/21131) Packed row is enabled by default for YSQL in universes created in v2.20.0 and later. However, if you upgrade a universe to v2.20 from an earlier version, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first.
 
-The packed row feature for the YCQL API is {{<badge/tp>}}. There are no known limitations.
+The packed row feature for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.
 
 ## Data expiration in YCQL
 

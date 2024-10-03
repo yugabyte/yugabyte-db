@@ -3,7 +3,8 @@ title: Client drivers for YSQL
 headerTitle: Additional client drivers for YSQL
 linkTitle: Additional drivers
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
-badges: ysql
+tags:
+  other: ysql
 aliases:
   - /preview/reference/drivers/ysql-client-drivers/
 menu:
