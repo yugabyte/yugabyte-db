@@ -18,6 +18,7 @@
 
 #pragma GCC diagnostic push
 
+// Suppressing warnings in Clang
 #ifdef __clang__
 // For https://gist.githubusercontent.com/mbautin/87278fc41654c6c74cf7232960364c95/raw
 #pragma GCC diagnostic ignored "-Wpass-failed"
@@ -27,18 +28,45 @@
 // Temporarily disable failing on #warning directives inside index_plugins.hpp. This will become
 // unnecessary once we enable SimSIMD.
 #pragma GCC diagnostic ignored "-W#warnings"
-#endif
+#endif  // __aarch64__
 
 #if __clang_major__ == 14
 // For https://gist.githubusercontent.com/mbautin/7856257553a1d41734b1cec7c73a0fb4/raw
 #pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
-#endif
+#endif  // __clang_major__ == 14
 
 // Usearch 2.15.1 has unused variables in the insert_sorted function for to_move and
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #endif  // __clang__
 
+// Suppressing warnings in GCC
+#if defined(__GNUC__) && !defined(__clang__)
+// In simsimd.h:
+// error: using value of assignment with 'volatile'-qualified left operand is deprecated
+// https://github.com/ashvardanian/SimSIMD/issues/191
+#pragma GCC diagnostic ignored "-Wvolatile"
+#endif  // defined(__GNUC__) && !defined(__clang__)
+
+// ------------------------------------------------------------------------------------------------
+
+#if (defined(__clang__) || (!defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12))
+// Do not enable SimSIMD if building with GCC 11, it has a lot of compilation issues compared to
+// Clang and GCC 12+.
+
+#define USEARCH_USE_SIMSIMD 1
+
+// Getting these errors with both Clang and GCC on Linux, as well as with in an x86_64 build with
+// AppleClang 15.0.0.15000100 on macOS on Jenkins, but not with arm64 15.0.0 (clang-1500.1.0.2.5)
+// build done locally. For now, disabling native BF16 and F16 in all cases.
+//
+// https://gist.githubusercontent.com/mbautin/8975fe7fd55cd622f2f22e57aa8f0c5c/raw
+
 #define SIMSIMD_NATIVE_BF16 0
+#define SIMSIMD_NATIVE_F16 0
+
+#endif  // (defined(__clang__) || (!defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12))
+
+// ------------------------------------------------------------------------------------------------
 
 #include "usearch/index.hpp"
 #include "usearch/index_dense.hpp"

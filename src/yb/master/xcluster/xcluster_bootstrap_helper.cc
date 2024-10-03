@@ -18,6 +18,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"

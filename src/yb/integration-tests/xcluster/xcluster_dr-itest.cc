@@ -69,8 +69,15 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
     producer_snapshot_util_.SetProxy(&producer_client()->proxy_cache());
     producer_snapshot_util_.SetCluster(producer_cluster());
+
     consumer_snapshot_util_.SetProxy(&consumer_client()->proxy_cache());
     consumer_snapshot_util_.SetCluster(consumer_cluster());
+
+    // Setup PITR on both clusters. This is required to restore the clusters to the xCluster safe
+    // time on failover. Even though only target needs PITR, we setup on both clusters to keep them
+    // consistent.
+    ASSERT_OK(producer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
+    ASSERT_OK(consumer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
 
     SetReplicationDirection(ReplicationDirection::ProducerToConsumer);
   }

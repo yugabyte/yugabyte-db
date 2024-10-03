@@ -35,6 +35,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
@@ -56,6 +58,8 @@ using std::string;
 using std::vector;
 using namespace std::literals;
 
+using yb::tserver::ListTabletsForTabletServerResponsePB;
+
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
@@ -67,11 +71,32 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
   }
 
   void CreateTable(const string& tablename) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute(CreateTableStmt(tablename)));
+  }
+
+  // After the master is restarted, it will continue the rollback operations of ongoing
+  // DDL transactions. This will increment the table schema version and then propagate
+  // to all tablet leaders via AlterSchema RPC. The new master leader needs some time to
+  // learn who are the tablet leaders. If the new master does not know who is the leader
+  // of a tablet, AlterSchema RPC will fail and the tablet leader can have a stale schema
+  // version, leading to schema version mismatch error like: expected 3, got 4.
+  // This function adds a delay that is proportional to the number of tablets found in the
+  // cluster.
+  void WaitForMasterToLearnAllTabletLeaders() const {
+    std::unordered_set<std::string> tablet_id_set;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = CHECK_RESULT(cluster_->GetTablets(ts));
+      for (const auto& tablet : tablets) {
+        tablet_id_set.insert(tablet.tablet_id());
+      }
+    }
+    SleepFor(300ms * tablet_id_set.size() * RegularBuildVsDebugVsSanitizers(1, 3, 3));
   }
 
   void RestartMaster() {
@@ -83,7 +108,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
       auto s = cluster_->GetIsMasterLeaderServiceReady(master);
       return s.ok();
     }, MonoDelta::FromSeconds(60), "Wait for Master to be ready."));
-    SleepFor(5s);
+    WaitForMasterToLearnAllTabletLeaders();
+    LOG(INFO) << "Restarted Master";
   }
 
   void SetFlagOnAllProcessesWithRollingRestart(const string& flag) {
@@ -1815,9 +1841,43 @@ TEST_F(PgDdlAtomicityTest, TestAlterTableAddUniqueConstraint) {
   // a retry of the same statement to succeed, which will create another index with
   // the same name y_unique (but with a different table id).
   ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 0);
   ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT y_unique UNIQUE(y)"));
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 2);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 1);
+}
+
+TEST_F(PgDdlAtomicityTest, TestAlterTableAddCheckConstraint) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD CONSTRAINT id_check CHECK (id > 5)"));
+  // There is nothing created in DocDB for foo_id_check.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("foo_id_check")).size(), 0);
+  auto foo_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
+  std::shared_ptr<client::YBTableInfo> foo_table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(foo_table_id, foo_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(foo_table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bar(id int)"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT bar_id_check CHECK (id > 5)"));
+  auto bar_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "bar"));
+  std::shared_ptr<client::YBTableInfo> bar_table_info = std::make_shared<client::YBTableInfo>();
+  sync.Reset();
+  ASSERT_OK(client->GetTableSchemaById(bar_table_id, bar_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(bar_table_info->schema.version(), 1);
+
+  ASSERT_OK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT bar_id_check CHECK (id > 5)"));
+  bar_table_info = std::make_shared<client::YBTableInfo>();
+  sync.Reset();
+  ASSERT_OK(client->GetTableSchemaById(bar_table_id, bar_table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(bar_table_info->schema.version(), 2);
 }
 
 } // namespace pgwrapper

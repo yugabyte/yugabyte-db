@@ -27,7 +27,7 @@
 
 #include "types.h"
 
-#include "dot.h" // `_mm256_reduce_add_ps_dbl`
+#include "dot.h" // `_simsimd_reduce_f32x8_haswell`
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,6 +82,8 @@ SIMSIMD_PUBLIC void simsimd_l2sq_f32_sve(simsimd_f32_t const* a, simsimd_f32_t c
 SIMSIMD_PUBLIC void simsimd_cos_f32_sve(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n, simsimd_distance_t*);
 SIMSIMD_PUBLIC void simsimd_l2sq_f16_sve(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n, simsimd_distance_t*);
 SIMSIMD_PUBLIC void simsimd_cos_f16_sve(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n, simsimd_distance_t*);
+SIMSIMD_PUBLIC void simsimd_l2sq_bf16_sve(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t*);
+SIMSIMD_PUBLIC void simsimd_cos_bf16_sve(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t*);
 SIMSIMD_PUBLIC void simsimd_l2sq_f64_sve(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n, simsimd_distance_t*);
 SIMSIMD_PUBLIC void simsimd_cos_f64_sve(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n, simsimd_distance_t*);
 
@@ -162,11 +164,11 @@ SIMSIMD_MAKE_COS(serial, f64, f64, SIMSIMD_DEREFERENCE)  // simsimd_cos_f64_seri
 SIMSIMD_MAKE_L2SQ(serial, f32, f32, SIMSIMD_DEREFERENCE) // simsimd_l2sq_f32_serial
 SIMSIMD_MAKE_COS(serial, f32, f32, SIMSIMD_DEREFERENCE)  // simsimd_cos_f32_serial
 
-SIMSIMD_MAKE_L2SQ(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16) // simsimd_l2sq_f16_serial
-SIMSIMD_MAKE_COS(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16)  // simsimd_cos_f16_serial
+SIMSIMD_MAKE_L2SQ(serial, f16, f32, SIMSIMD_F16_TO_F32) // simsimd_l2sq_f16_serial
+SIMSIMD_MAKE_COS(serial, f16, f32, SIMSIMD_F16_TO_F32)  // simsimd_cos_f16_serial
 
-SIMSIMD_MAKE_L2SQ(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16) // simsimd_l2sq_bf16_serial
-SIMSIMD_MAKE_COS(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16)  // simsimd_cos_bf16_serial
+SIMSIMD_MAKE_L2SQ(serial, bf16, f32, SIMSIMD_BF16_TO_F32) // simsimd_l2sq_bf16_serial
+SIMSIMD_MAKE_COS(serial, bf16, f32, SIMSIMD_BF16_TO_F32)  // simsimd_cos_bf16_serial
 
 SIMSIMD_MAKE_L2SQ(serial, i8, i32, SIMSIMD_DEREFERENCE) // simsimd_l2sq_i8_serial
 SIMSIMD_MAKE_COS(serial, i8, i32, SIMSIMD_DEREFERENCE)  // simsimd_cos_i8_serial
@@ -174,11 +176,11 @@ SIMSIMD_MAKE_COS(serial, i8, i32, SIMSIMD_DEREFERENCE)  // simsimd_cos_i8_serial
 SIMSIMD_MAKE_L2SQ(accurate, f32, f64, SIMSIMD_DEREFERENCE) // simsimd_l2sq_f32_accurate
 SIMSIMD_MAKE_COS(accurate, f32, f64, SIMSIMD_DEREFERENCE)  // simsimd_cos_f32_accurate
 
-SIMSIMD_MAKE_L2SQ(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16) // simsimd_l2sq_f16_accurate
-SIMSIMD_MAKE_COS(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16)  // simsimd_cos_f16_accurate
+SIMSIMD_MAKE_L2SQ(accurate, f16, f64, SIMSIMD_F16_TO_F32) // simsimd_l2sq_f16_accurate
+SIMSIMD_MAKE_COS(accurate, f16, f64, SIMSIMD_F16_TO_F32)  // simsimd_cos_f16_accurate
 
-SIMSIMD_MAKE_L2SQ(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16) // simsimd_l2sq_bf16_accurate
-SIMSIMD_MAKE_COS(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16)  // simsimd_cos_bf16_accurate
+SIMSIMD_MAKE_L2SQ(accurate, bf16, f64, SIMSIMD_BF16_TO_F32) // simsimd_l2sq_bf16_accurate
+SIMSIMD_MAKE_COS(accurate, bf16, f64, SIMSIMD_BF16_TO_F32)  // simsimd_cos_bf16_accurate
 
 SIMSIMD_MAKE_L2SQ(accurate, i8, i32, SIMSIMD_DEREFERENCE) // simsimd_l2sq_i8_accurate
 SIMSIMD_MAKE_COS(accurate, i8, i32, SIMSIMD_DEREFERENCE)  // simsimd_cos_i8_accurate
@@ -187,24 +189,54 @@ SIMSIMD_MAKE_COS(accurate, i8, i32, SIMSIMD_DEREFERENCE)  // simsimd_cos_i8_accu
 #if SIMSIMD_TARGET_NEON
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd"))), apply_to = function)
 
-SIMSIMD_INTERNAL simsimd_distance_t simsimd_cos_normalize_f64_neon(simsimd_f64_t ab, simsimd_f64_t a2,
-                                                                   simsimd_f64_t b2) {
+#endif
+
+SIMSIMD_INTERNAL simsimd_distance_t _simsimd_cos_normalize_f32_neon(simsimd_f32_t ab, simsimd_f32_t a2,
+                                                                    simsimd_f32_t b2) {
     if (a2 == 0 && b2 == 0)
         return 0;
     if (ab == 0)
         return 1;
-    simsimd_f64_t a2_b2_arr[2] = {a2, b2};
-    float64x2_t a2_b2 = vld1q_f64(a2_b2_arr);
+    simsimd_f32_t squares_arr[2] = {a2, b2};
+    float32x2_t squares = vld1_f32(squares_arr);
     // Unlike x86, Arm NEON manuals don't explicitly mention the accuracy of their `rsqrt` approximation.
     // Third party research suggests, that it's less accurate than SSE instructions, having an error of 1.5*2^-12.
     // One or two rounds of Newton-Raphson refinement are recommended to improve the accuracy.
     // https://github.com/lighttransport/embree-aarch64/issues/24
     // https://github.com/lighttransport/embree-aarch64/blob/3f75f8cb4e553d13dced941b5fefd4c826835a6b/common/math/math.h#L137-L145
-    a2_b2 = vrsqrteq_f64(a2_b2);
-    vst1q_f64(a2_b2_arr, a2_b2);
-    return 1 - ab * a2_b2_arr[0] * a2_b2_arr[1];
+    float32x2_t rsqrts = vrsqrte_f32(squares);
+    // Perform two rounds of Newton-Raphson refinement:
+    // https://en.wikipedia.org/wiki/Newton%27s_method
+    rsqrts = vmul_f32(rsqrts, vrsqrts_f32(vmul_f32(squares, rsqrts), rsqrts));
+    rsqrts = vmul_f32(rsqrts, vrsqrts_f32(vmul_f32(squares, rsqrts), rsqrts));
+    vst1_f32(squares_arr, rsqrts);
+    return 1 - ab * squares_arr[0] * squares_arr[1];
+}
+
+SIMSIMD_INTERNAL simsimd_distance_t _simsimd_cos_normalize_f64_neon(simsimd_f64_t ab, simsimd_f64_t a2,
+                                                                    simsimd_f64_t b2) {
+    if (a2 == 0 && b2 == 0)
+        return 0;
+    if (ab == 0)
+        return 1;
+    simsimd_f64_t squares_arr[2] = {a2, b2};
+    float64x2_t squares = vld1q_f64(squares_arr);
+
+    // Unlike x86, Arm NEON manuals don't explicitly mention the accuracy of their `rsqrt` approximation.
+    // Third party research suggests, that it's less accurate than SSE instructions, having an error of 1.5*2^-12.
+    // One or two rounds of Newton-Raphson refinement are recommended to improve the accuracy.
+    // https://github.com/lighttransport/embree-aarch64/issues/24
+    // https://github.com/lighttransport/embree-aarch64/blob/3f75f8cb4e553d13dced941b5fefd4c826835a6b/common/math/math.h#L137-L145
+    float64x2_t rsqrts = vrsqrteq_f64(squares);
+    // Perform two rounds of Newton-Raphson refinement:
+    // https://en.wikipedia.org/wiki/Newton%27s_method
+    rsqrts = vmulq_f64(rsqrts, vrsqrtsq_f64(vmulq_f64(squares, rsqrts), rsqrts));
+    rsqrts = vmulq_f64(rsqrts, vrsqrtsq_f64(vmulq_f64(squares, rsqrts), rsqrts));
+    vst1q_f64(squares_arr, rsqrts);
+    return 1 - ab * squares_arr[0] * squares_arr[1];
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f32_neon(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
@@ -242,17 +274,22 @@ SIMSIMD_PUBLIC void simsimd_cos_f32_neon(simsimd_f32_t const* a, simsimd_f32_t c
         ab += ai * bi, a2 += ai * ai, b2 += bi * bi;
     }
 
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f64_neon(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON
 
 #if SIMSIMD_TARGET_NEON_F16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd+fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f16_neon(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                           simsimd_distance_t* result) {
@@ -261,8 +298,8 @@ SIMSIMD_PUBLIC void simsimd_l2sq_f16_neon(simsimd_f16_t const* a, simsimd_f16_t 
 
 simsimd_l2sq_f16_neon_cycle:
     if (n < 4) {
-        a_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a, n));
-        b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b, n));
+        a_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a, n));
+        b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b, n));
         n = 0;
     } else {
         a_vec = vcvt_f32_f16(vld1_f16((simsimd_f16_for_arm_simd_t const*)a));
@@ -284,8 +321,8 @@ SIMSIMD_PUBLIC void simsimd_cos_f16_neon(simsimd_f16_t const* a, simsimd_f16_t c
 
 simsimd_cos_f16_neon_cycle:
     if (n < 4) {
-        a_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a, n));
-        b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b, n));
+        a_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a, n));
+        b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b, n));
         n = 0;
     } else {
         a_vec = vcvt_f32_f16(vld1_f16((simsimd_f16_for_arm_simd_t const*)a));
@@ -299,17 +336,22 @@ simsimd_cos_f16_neon_cycle:
         goto simsimd_cos_f16_neon_cycle;
 
     simsimd_f32_t ab = vaddvq_f32(ab_vec), a2 = vaddvq_f32(a2_vec), b2 = vaddvq_f32(b2_vec);
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f32_neon(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_F16
 
 #if SIMSIMD_TARGET_NEON_BF16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.6-a+simd+bf16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.6-a+simd+bf16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_cos_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                           simsimd_distance_t* result) {
@@ -341,36 +383,42 @@ SIMSIMD_PUBLIC void simsimd_cos_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_
     //   }
     //   float32x4_t products_vec = vaddq_f32(products_high_vec, products_low_vec);
     //   simsimd_f32_t a2 = products_vec[0], ab = products_vec[1], b2 = products_vec[3];
+    //
+    // Another way of accomplishing the same thing is to process the odd and even elements separately,
+    // using special `vbfmlaltq_f32` and `vbfmlalbq_f32` intrinsics:
+    //
+    //      ab_high_vec = vbfmlaltq_f32(ab_high_vec, a_vec, b_vec);
+    //      ab_low_vec = vbfmlalbq_f32(ab_low_vec, a_vec, b_vec);
+    //      a2_high_vec = vbfmlaltq_f32(a2_high_vec, a_vec, a_vec);
+    //      a2_low_vec = vbfmlalbq_f32(a2_low_vec, a_vec, a_vec);
+    //      b2_high_vec = vbfmlaltq_f32(b2_high_vec, b_vec, b_vec);
+    //      b2_low_vec = vbfmlalbq_f32(b2_low_vec, b_vec, b_vec);
+    //
 
-    float32x4_t ab_high_vec = vdupq_n_f32(0), ab_low_vec = vdupq_n_f32(0);
-    float32x4_t a2_high_vec = vdupq_n_f32(0), a2_low_vec = vdupq_n_f32(0);
-    float32x4_t b2_high_vec = vdupq_n_f32(0), b2_low_vec = vdupq_n_f32(0);
+    float32x4_t ab_vec = vdupq_n_f32(0);
+    float32x4_t a2_vec = vdupq_n_f32(0);
+    float32x4_t b2_vec = vdupq_n_f32(0);
     bfloat16x8_t a_vec, b_vec;
 
 simsimd_cos_bf16_neon_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_bf16x8_neon(a, n);
-        b_vec = simsimd_partial_load_bf16x8_neon(b, n);
+        a_vec = _simsimd_partial_load_bf16x8_neon(a, n);
+        b_vec = _simsimd_partial_load_bf16x8_neon(b, n);
         n = 0;
     } else {
         a_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)a);
         b_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)b);
         n -= 8, a += 8, b += 8;
     }
-    ab_high_vec = vbfmlaltq_f32(ab_high_vec, a_vec, b_vec);
-    ab_low_vec = vbfmlalbq_f32(ab_low_vec, a_vec, b_vec);
-    a2_high_vec = vbfmlaltq_f32(a2_high_vec, a_vec, a_vec);
-    a2_low_vec = vbfmlalbq_f32(a2_low_vec, a_vec, a_vec);
-    b2_high_vec = vbfmlaltq_f32(b2_high_vec, b_vec, b_vec);
-    b2_low_vec = vbfmlalbq_f32(b2_low_vec, b_vec, b_vec);
+    ab_vec = vbfdotq_f32(ab_vec, a_vec, b_vec);
+    a2_vec = vbfdotq_f32(a2_vec, a_vec, a_vec);
+    b2_vec = vbfdotq_f32(b2_vec, b_vec, b_vec);
     if (n)
         goto simsimd_cos_bf16_neon_cycle;
 
     // Avoid `simsimd_approximate_inverse_square_root` on Arm NEON
-    simsimd_f32_t ab = vaddvq_f32(vaddq_f32(ab_high_vec, ab_low_vec)),
-                  a2 = vaddvq_f32(vaddq_f32(a2_high_vec, a2_low_vec)),
-                  b2 = vaddvq_f32(vaddq_f32(b2_high_vec, b2_low_vec));
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    simsimd_f32_t ab = vaddvq_f32(ab_vec), a2 = vaddvq_f32(a2_vec), b2 = vaddvq_f32(b2_vec);
+    *result = _simsimd_cos_normalize_f32_neon(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
@@ -380,8 +428,8 @@ SIMSIMD_PUBLIC void simsimd_l2sq_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16
 
 simsimd_l2sq_bf16_neon_cycle:
     if (n < 8) {
-        bfloat16x8_t a_vec = simsimd_partial_load_bf16x8_neon(a, n);
-        bfloat16x8_t b_vec = simsimd_partial_load_bf16x8_neon(b, n);
+        bfloat16x8_t a_vec = _simsimd_partial_load_bf16x8_neon(a, n);
+        bfloat16x8_t b_vec = _simsimd_partial_load_bf16x8_neon(b, n);
         diff_high_vec = vsubq_f32(vcvt_f32_bf16(vget_high_bf16(a_vec)), vcvt_f32_bf16(vget_high_bf16(b_vec)));
         diff_low_vec = vsubq_f32(vcvt_f32_bf16(vget_low_bf16(a_vec)), vcvt_f32_bf16(vget_low_bf16(b_vec)));
         n = 0;
@@ -400,14 +448,19 @@ simsimd_l2sq_bf16_neon_cycle:
     *result = vaddvq_f32(vaddq_f32(sum_high_vec, sum_low_vec));
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_BF16
 
 #if SIMSIMD_TARGET_NEON_I8
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+dotprod+i8mm")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+dotprod+i8mm"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_i8_neon(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
                                          simsimd_distance_t* result) {
@@ -547,17 +600,22 @@ SIMSIMD_PUBLIC void simsimd_cos_i8_neon(simsimd_i8_t const* a, simsimd_i8_t cons
         ab += ai * bi, a2 += ai * ai, b2 += bi * bi;
     }
 
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f32_neon(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_I8
 
 #if SIMSIMD_TARGET_SVE
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+sve"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f32_sve(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                          simsimd_distance_t* result) {
@@ -594,7 +652,7 @@ SIMSIMD_PUBLIC void simsimd_cos_f32_sve(simsimd_f32_t const* a, simsimd_f32_t co
     simsimd_f32_t ab = svaddv_f32(svptrue_b32(), ab_vec);
     simsimd_f32_t a2 = svaddv_f32(svptrue_b32(), a2_vec);
     simsimd_f32_t b2 = svaddv_f32(svptrue_b32(), b2_vec);
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f64_neon(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f64_sve(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n,
@@ -632,15 +690,22 @@ SIMSIMD_PUBLIC void simsimd_cos_f64_sve(simsimd_f64_t const* a, simsimd_f64_t co
     simsimd_f64_t ab = svaddv_f64(svptrue_b32(), ab_vec);
     simsimd_f64_t a2 = svaddv_f64(svptrue_b32(), a2_vec);
     simsimd_f64_t b2 = svaddv_f64(svptrue_b32(), b2_vec);
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f64_neon(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
+#endif // SIMSIMD_TARGET_SVE
 
+#if SIMSIMD_TARGET_SVE_F16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+sve+fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f16_sve(simsimd_f16_t const* a_enum, simsimd_f16_t const* b_enum, simsimd_size_t n,
                                          simsimd_distance_t* result) {
@@ -681,45 +746,95 @@ SIMSIMD_PUBLIC void simsimd_cos_f16_sve(simsimd_f16_t const* a_enum, simsimd_f16
     simsimd_f16_for_arm_simd_t ab = svaddv_f16(svptrue_b16(), ab_vec);
     simsimd_f16_for_arm_simd_t a2 = svaddv_f16(svptrue_b16(), a2_vec);
     simsimd_f16_for_arm_simd_t b2 = svaddv_f16(svptrue_b16(), b2_vec);
-    *result = simsimd_cos_normalize_f64_neon(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f32_neon(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
-#endif // SIMSIMD_TARGET_SVE
+#endif // SIMSIMD_TARGET_SVE_F16
+
+#if SIMSIMD_TARGET_SVE_BF16
+#pragma GCC push_options
+#pragma GCC target("arch=armv8.2-a+sve+bf16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("arch=armv8.2-a+sve+bf16"))), apply_to = function)
+
+#endif
+
+SIMSIMD_PUBLIC void simsimd_l2sq_bf16_sve(simsimd_bf16_t const* a_enum, simsimd_bf16_t const* b_enum, simsimd_size_t n,
+                                          simsimd_distance_t* result) {
+    simsimd_size_t i = 0;
+    svfloat32_t d2_low_vec = svdupq_n_f32(0.f, 0.f, 0.f, 0.f);
+    svfloat32_t d2_high_vec = svdupq_n_f32(0.f, 0.f, 0.f, 0.f);
+    simsimd_u16_t const* a = (simsimd_u16_t const*)(a_enum);
+    simsimd_u16_t const* b = (simsimd_u16_t const*)(b_enum);
+    do {
+        svbool_t pg_vec = svwhilelt_b16((unsigned int)i, (unsigned int)n);
+        svuint16_t a_vec = svld1_u16(pg_vec, a + i);
+        svuint16_t b_vec = svld1_u16(pg_vec, b + i);
+
+        // There is no `bf16` subtraction in SVE, so we need to convert to `u32` and shift.
+        svbool_t pg_low_vec = svwhilelt_b32((unsigned int)(i), (unsigned int)n);
+        svbool_t pg_high_vec = svwhilelt_b32((unsigned int)(i + svcnth() / 2), (unsigned int)n);
+        svfloat32_t a_low_vec = svreinterpret_f32_u32(svlsl_n_u32_x(pg_low_vec, svunpklo_u32(a_vec), 16));
+        svfloat32_t a_high_vec = svreinterpret_f32_u32(svlsl_n_u32_x(pg_high_vec, svunpkhi_u32(a_vec), 16));
+        svfloat32_t b_low_vec = svreinterpret_f32_u32(svlsl_n_u32_x(pg_low_vec, svunpklo_u32(b_vec), 16));
+        svfloat32_t b_high_vec = svreinterpret_f32_u32(svlsl_n_u32_x(pg_high_vec, svunpkhi_u32(b_vec), 16));
+
+        svfloat32_t a_minus_b_low_vec = svsub_f32_x(pg_low_vec, a_low_vec, b_low_vec);
+        svfloat32_t a_minus_b_high_vec = svsub_f32_x(pg_high_vec, a_high_vec, b_high_vec);
+        d2_low_vec = svmla_f32_x(pg_vec, d2_low_vec, a_minus_b_low_vec, a_minus_b_low_vec);
+        d2_high_vec = svmla_f32_x(pg_vec, d2_high_vec, a_minus_b_low_vec, a_minus_b_low_vec);
+        i += svcnth();
+    } while (i < n);
+    simsimd_f32_t d2 = svaddv_f32(svptrue_b32(), d2_low_vec) + svaddv_f32(svptrue_b32(), d2_high_vec);
+    *result = d2;
+}
+
+SIMSIMD_PUBLIC void simsimd_cos_bf16_sve(simsimd_bf16_t const* a_enum, simsimd_bf16_t const* b_enum, simsimd_size_t n,
+                                         simsimd_distance_t* result) {
+    simsimd_size_t i = 0;
+    svfloat32_t ab_vec = svdupq_n_f32(0.f, 0.f, 0.f, 0.f);
+    svfloat32_t a2_vec = svdupq_n_f32(0.f, 0.f, 0.f, 0.f);
+    svfloat32_t b2_vec = svdupq_n_f32(0.f, 0.f, 0.f, 0.f);
+    simsimd_bf16_for_arm_simd_t const* a = (simsimd_bf16_for_arm_simd_t const*)(a_enum);
+    simsimd_bf16_for_arm_simd_t const* b = (simsimd_bf16_for_arm_simd_t const*)(b_enum);
+    do {
+        svbool_t pg_vec = svwhilelt_b16((unsigned int)i, (unsigned int)n);
+        svbfloat16_t a_vec = svld1_bf16(pg_vec, a + i);
+        svbfloat16_t b_vec = svld1_bf16(pg_vec, b + i);
+        ab_vec = svbfdot_f32(ab_vec, a_vec, b_vec);
+        a2_vec = svbfdot_f32(a2_vec, a_vec, a_vec);
+        b2_vec = svbfdot_f32(b2_vec, b_vec, b_vec);
+        i += svcnth();
+    } while (i < n);
+
+    simsimd_f32_t ab = svaddv_f32(svptrue_b32(), ab_vec);
+    simsimd_f32_t a2 = svaddv_f32(svptrue_b32(), a2_vec);
+    simsimd_f32_t b2 = svaddv_f32(svptrue_b32(), b2_vec);
+    *result = _simsimd_cos_normalize_f32_neon(ab, a2, b2);
+}
+
+#ifdef __clang__
+#pragma clang attribute pop
+#endif
+#pragma GCC pop_options
+#endif // SIMSIMD_TARGET_SVE_BF16
 #endif // SIMSIMD_TARGET_ARM
 
 #if SIMSIMD_TARGET_X86
 #if SIMSIMD_TARGET_HASWELL
 #pragma GCC push_options
-#pragma GCC target("avx2", "f16c", "fma")
-#pragma clang attribute push(__attribute__((target("avx2,f16c,fma"))), apply_to = function)
+#pragma GCC target("avx2")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2"))), apply_to = function)
 
-SIMSIMD_PUBLIC void simsimd_l2sq_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
-                                             simsimd_distance_t* result) {
-    __m256 a_vec, b_vec;
-    __m256 d2_vec = _mm256_setzero_ps();
+#endif
 
-simsimd_l2sq_f16_haswell_cycle:
-    if (n < 8) {
-        a_vec = simsimd_partial_load_f16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_f16x8_haswell(b, n);
-        n = 0;
-    } else {
-        a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
-        b_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)b));
-        n -= 8, a += 8, b += 8;
-    }
-    __m256 d_vec = _mm256_sub_ps(a_vec, b_vec);
-    d2_vec = _mm256_fmadd_ps(d_vec, d_vec, d2_vec);
-    if (n)
-        goto simsimd_l2sq_f16_haswell_cycle;
-
-    *result = _mm256_reduce_add_ps_dbl(d2_vec);
-}
-
-SIMSIMD_INTERNAL simsimd_distance_t simsimd_cos_normalize_f64_haswell(simsimd_f64_t ab, simsimd_f64_t a2,
-                                                                      simsimd_f64_t b2) {
+SIMSIMD_INTERNAL simsimd_distance_t _simsimd_cos_normalize_f64_haswell(simsimd_f64_t ab, simsimd_f64_t a2,
+                                                                       simsimd_f64_t b2) {
 
     // If both vectors have magnitude 0, the distance is 0.
     if (a2 == 0 && b2 == 0)
@@ -732,13 +847,89 @@ SIMSIMD_INTERNAL simsimd_distance_t simsimd_cos_normalize_f64_haswell(simsimd_f6
     // https://web.archive.org/web/20210208132927/http://assemblyrequired.crashworks.org/timing-square-root/
     // The latency of the native instruction is 4 cycles and it's broadly supported.
     // For single-precision floats it has a maximum relative error of 1.5*2^-12.
-    // Higher precision isn't implemented on older CPUs. See `simsimd_cos_normalize_f64_skylake` for that.
-    __m128d rsqrts = _mm_cvtps_pd(_mm_rsqrt_ps(_mm_cvtpd_ps(_mm_set_pd(a2, b2))));
+    // Higher precision isn't implemented on older CPUs. See `_simsimd_cos_normalize_f64_skylake` for that.
+    __m128d squares = _mm_set_pd(a2, b2);
+    __m128d rsqrts = _mm_cvtps_pd(_mm_rsqrt_ps(_mm_cvtpd_ps(squares)));
+    // Newton-Raphson iteration for reciprocal square root:
+    // https://en.wikipedia.org/wiki/Newton%27s_method
+    rsqrts = _mm_add_pd( //
+        _mm_mul_pd(_mm_set1_pd(1.5), rsqrts),
+        _mm_mul_pd(_mm_mul_pd(_mm_mul_pd(squares, _mm_set1_pd(-0.5)), rsqrts), _mm_mul_pd(rsqrts, rsqrts)));
+
     simsimd_f64_t a2_reciprocal = _mm_cvtsd_f64(_mm_unpackhi_pd(rsqrts, rsqrts));
     simsimd_f64_t b2_reciprocal = _mm_cvtsd_f64(rsqrts);
     return 1 - ab * a2_reciprocal * b2_reciprocal;
-    // If we want higher accuracy, we can use Newton's method to refine the result:
-    // https://en.wikipedia.org/wiki/Newton%27s_method
+}
+
+SIMSIMD_INTERNAL simsimd_distance_t _simsimd_cos_normalize_f32_haswell(simsimd_f32_t ab, simsimd_f32_t a2,
+                                                                       simsimd_f32_t b2) {
+
+    // If both vectors have magnitude 0, the distance is 0.
+    if (a2 == 0.0f && b2 == 0.0f)
+        return 0.0f;
+    // If any one of the vectors is 0, the square root of the product is 0,
+    // the division is illformed, and the result is 1.
+    else if (ab == 0.0f)
+        return 1.0f;
+
+    // Load the squares into an __m128 register for single-precision floating-point operations
+    __m128 squares = _mm_set_ps(a2, b2, a2, b2); // We replicate to make use of full register
+
+    // Compute the reciprocal square root of the squares using _mm_rsqrt_ps (single-precision)
+    __m128 rsqrts = _mm_rsqrt_ps(squares);
+
+    // Perform one iteration of Newton-Raphson refinement to improve the precision of rsqrt:
+    // Formula: y' = y * (1.5 - 0.5 * x * y * y)
+    __m128 half = _mm_set1_ps(0.5f);
+    __m128 three_halves = _mm_set1_ps(1.5f);
+    rsqrts =
+        _mm_mul_ps(rsqrts, _mm_sub_ps(three_halves, _mm_mul_ps(half, _mm_mul_ps(squares, _mm_mul_ps(rsqrts, rsqrts)))));
+
+    // Extract the reciprocal square roots of a2 and b2 from the __m128 register
+    simsimd_f32_t a2_reciprocal = _mm_cvtss_f32(_mm_shuffle_ps(rsqrts, rsqrts, _MM_SHUFFLE(0, 0, 0, 1)));
+    simsimd_f32_t b2_reciprocal = _mm_cvtss_f32(rsqrts);
+
+    // Calculate the cosine distance: 1 - ab * a2_reciprocal * b2_reciprocal
+    return 1.0f - ab * a2_reciprocal * b2_reciprocal;
+}
+
+#ifdef __clang__
+#pragma clang attribute pop
+#endif
+#pragma GCC pop_options
+#endif // SIMSIMD_TARGET_HASWELL
+#endif // SIMSIMD_TARGET_X86
+
+#if SIMSIMD_TARGET_X86
+#if SIMSIMD_TARGET_HASWELL
+#pragma GCC push_options
+#pragma GCC target("avx2", "f16c", "fma")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,f16c,fma"))), apply_to = function)
+
+#endif
+
+SIMSIMD_PUBLIC void simsimd_l2sq_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
+                                             simsimd_distance_t* result) {
+    __m256 a_vec, b_vec;
+    __m256 d2_vec = _mm256_setzero_ps();
+
+simsimd_l2sq_f16_haswell_cycle:
+    if (n < 8) {
+        a_vec = _simsimd_partial_load_f16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_f16x8_haswell(b, n);
+        n = 0;
+    } else {
+        a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
+        b_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)b));
+        n -= 8, a += 8, b += 8;
+    }
+    __m256 d_vec = _mm256_sub_ps(a_vec, b_vec);
+    d2_vec = _mm256_fmadd_ps(d_vec, d_vec, d2_vec);
+    if (n)
+        goto simsimd_l2sq_f16_haswell_cycle;
+
+    *result = _simsimd_reduce_f32x8_haswell(d2_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_cos_f16_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
@@ -748,8 +939,8 @@ SIMSIMD_PUBLIC void simsimd_cos_f16_haswell(simsimd_f16_t const* a, simsimd_f16_
 
 simsimd_cos_f16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_f16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_f16x8_haswell(b, n);
+        a_vec = _simsimd_partial_load_f16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_f16x8_haswell(b, n);
         n = 0;
     } else {
         a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
@@ -762,10 +953,10 @@ simsimd_cos_f16_haswell_cycle:
     if (n)
         goto simsimd_cos_f16_haswell_cycle;
 
-    simsimd_f64_t ab = _mm256_reduce_add_ps_dbl(ab_vec);
-    simsimd_f64_t a2 = _mm256_reduce_add_ps_dbl(a2_vec);
-    simsimd_f64_t b2 = _mm256_reduce_add_ps_dbl(b2_vec);
-    *result = simsimd_cos_normalize_f64_haswell(ab, a2, b2);
+    simsimd_f32_t ab = _simsimd_reduce_f32x8_haswell(ab_vec);
+    simsimd_f32_t a2 = _simsimd_reduce_f32x8_haswell(a2_vec);
+    simsimd_f32_t b2 = _simsimd_reduce_f32x8_haswell(b2_vec);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_bf16_haswell(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
@@ -775,12 +966,12 @@ SIMSIMD_PUBLIC void simsimd_l2sq_bf16_haswell(simsimd_bf16_t const* a, simsimd_b
 
 simsimd_l2sq_bf16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(a, n));
-        b_vec = simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(b, n));
+        a_vec = _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(a, n));
+        b_vec = _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(b, n));
         n = 0;
     } else {
-        a_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)a));
-        b_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)b));
+        a_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)a));
+        b_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)b));
         n -= 8, a += 8, b += 8;
     }
     __m256 d_vec = _mm256_sub_ps(a_vec, b_vec);
@@ -788,7 +979,7 @@ simsimd_l2sq_bf16_haswell_cycle:
     if (n)
         goto simsimd_l2sq_bf16_haswell_cycle;
 
-    *result = _mm256_reduce_add_ps_dbl(d2_vec);
+    *result = _simsimd_reduce_f32x8_haswell(d2_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_cos_bf16_haswell(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
@@ -798,12 +989,12 @@ SIMSIMD_PUBLIC void simsimd_cos_bf16_haswell(simsimd_bf16_t const* a, simsimd_bf
 
 simsimd_cos_bf16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(a, n));
-        b_vec = simsimd_bf16x8_to_f32x8_haswell(simsimd_partial_load_bf16x8_haswell(b, n));
+        a_vec = _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(a, n));
+        b_vec = _simsimd_bf16x8_to_f32x8_haswell(_simsimd_partial_load_bf16x8_haswell(b, n));
         n = 0;
     } else {
-        a_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)a));
-        b_vec = simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)b));
+        a_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)a));
+        b_vec = _simsimd_bf16x8_to_f32x8_haswell(_mm_loadu_si128((__m128i const*)b));
         n -= 8, a += 8, b += 8;
     }
     ab_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_vec);
@@ -812,10 +1003,10 @@ simsimd_cos_bf16_haswell_cycle:
     if (n)
         goto simsimd_cos_bf16_haswell_cycle;
 
-    simsimd_f64_t ab = _mm256_reduce_add_ps_dbl(ab_vec);
-    simsimd_f64_t a2 = _mm256_reduce_add_ps_dbl(a2_vec);
-    simsimd_f64_t b2 = _mm256_reduce_add_ps_dbl(b2_vec);
-    *result = simsimd_cos_normalize_f64_haswell(ab, a2, b2);
+    simsimd_f32_t ab = _simsimd_reduce_f32x8_haswell(ab_vec);
+    simsimd_f32_t a2 = _simsimd_reduce_f32x8_haswell(a2_vec);
+    simsimd_f32_t b2 = _simsimd_reduce_f32x8_haswell(b2_vec);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_i8_haswell(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
@@ -919,7 +1110,7 @@ SIMSIMD_PUBLIC void simsimd_cos_i8_haswell(simsimd_i8_t const* a, simsimd_i8_t c
         ab += ai * bi, a2 += ai * ai, b2 += bi * bi;
     }
 
-    *result = simsimd_cos_normalize_f64_haswell(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f32_haswell(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
@@ -934,7 +1125,7 @@ SIMSIMD_PUBLIC void simsimd_l2sq_f32_haswell(simsimd_f32_t const* a, simsimd_f32
         d2_vec = _mm256_fmadd_ps(d_vec, d_vec, d2_vec);
     }
 
-    simsimd_f64_t d2 = _mm256_reduce_add_ps_dbl(d2_vec);
+    simsimd_f64_t d2 = _simsimd_reduce_f32x8_haswell(d2_vec);
     for (; i < n; ++i) {
         float d = a[i] - b[i];
         d2 += d * d;
@@ -958,24 +1149,29 @@ SIMSIMD_PUBLIC void simsimd_cos_f32_haswell(simsimd_f32_t const* a, simsimd_f32_
         b2_vec = _mm256_fmadd_ps(b_vec, b_vec, b2_vec);
     }
 
-    simsimd_f64_t ab = _mm256_reduce_add_ps_dbl(ab_vec);
-    simsimd_f64_t a2 = _mm256_reduce_add_ps_dbl(a2_vec);
-    simsimd_f64_t b2 = _mm256_reduce_add_ps_dbl(b2_vec);
+    simsimd_f64_t ab = _simsimd_reduce_f32x8_haswell(ab_vec);
+    simsimd_f64_t a2 = _simsimd_reduce_f32x8_haswell(a2_vec);
+    simsimd_f64_t b2 = _simsimd_reduce_f32x8_haswell(b2_vec);
     for (; i < n; ++i) {
         float ai = a[i], bi = b[i];
         ab += ai * bi, a2 += ai * ai, b2 += bi * bi;
     }
-    *result = simsimd_cos_normalize_f64_haswell(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f64_haswell(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_HASWELL
 
 #if SIMSIMD_TARGET_SKYLAKE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512bw", "avx512vl", "bmi2")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512bw,avx512vl,bmi2"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f32_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                              simsimd_distance_t* result) {
@@ -998,11 +1194,11 @@ simsimd_l2sq_f32_skylake_cycle:
     if (n)
         goto simsimd_l2sq_f32_skylake_cycle;
 
-    *result = _mm512_reduce_add_ps(d2_vec);
+    *result = _simsimd_reduce_f32x16_skylake(d2_vec);
 }
 
-SIMSIMD_INTERNAL simsimd_distance_t simsimd_cos_normalize_f64_skylake(simsimd_f64_t ab, simsimd_f64_t a2,
-                                                                      simsimd_f64_t b2) {
+SIMSIMD_INTERNAL simsimd_distance_t _simsimd_cos_normalize_f64_skylake(simsimd_f64_t ab, simsimd_f64_t a2,
+                                                                       simsimd_f64_t b2) {
 
     // If both vectors have magnitude 0, the distance is 0.
     if (a2 == 0 && b2 == 0)
@@ -1011,13 +1207,34 @@ SIMSIMD_INTERNAL simsimd_distance_t simsimd_cos_normalize_f64_skylake(simsimd_f6
     // the division is illformed, and the result is 1.
     else if (ab == 0)
         return 1;
+
     // We want to avoid the `simsimd_approximate_inverse_square_root` due to high latency:
     // https://web.archive.org/web/20210208132927/http://assemblyrequired.crashworks.org/timing-square-root/
     // The maximum relative error for this approximation is less than 2^-14, which is 6x lower than
-    // for single-precision floats in the `simsimd_cos_normalize_f64_haswell` implementation.
+    // for single-precision floats in the `_simsimd_cos_normalize_f64_haswell` implementation.
     // Mysteriously, MSVC has no `_mm_rsqrt14_pd` intrinsic, but has it's masked variants,
     // so let's use `_mm_maskz_rsqrt14_pd(0xFF, ...)` instead.
-    __m128d rsqrts = _mm_maskz_rsqrt14_pd(0xFF, _mm_set_pd(a2, b2));
+    __m128d squares = _mm_set_pd(a2, b2);
+    __m128d rsqrts = _mm_maskz_rsqrt14_pd(0xFF, squares);
+
+    // Let's implement a single Newton-Raphson iteration to refine the result.
+    // This is how it affects downstream applications:
+    //
+    // +--------+------+----------+---------------------+---------------------+---------------------+
+    // | Metric | NDim |  DType   |   Baseline Error    |  Old SimSIMD Error  |  New SimSIMD Error  |
+    // +--------+------+----------+---------------------+---------------------+---------------------+
+    // | cosine | 1536 | bfloat16 | 1.89e-08 ± 1.59e-08 | 3.07e-07 ± 3.09e-07 | 3.53e-09 ± 2.70e-09 |
+    // | cosine | 1536 | float16  | 1.67e-02 ± 1.44e-02 | 2.68e-05 ± 1.95e-05 | 2.02e-05 ± 1.39e-05 |
+    // | cosine | 1536 | float32  | 2.21e-08 ± 1.65e-08 | 3.47e-07 ± 3.49e-07 | 3.77e-09 ± 2.84e-09 |
+    // | cosine | 1536 | float64  | 0.00e+00 ± 0.00e+00 | 3.80e-07 ± 4.50e-07 | 1.35e-11 ± 1.85e-11 |
+    // | cosine | 1536 |   int8   | 0.00e+00 ± 0.00e+00 | 4.60e-04 ± 3.36e-04 | 4.20e-04 ± 4.88e-04 |
+    // +--------+------+----------+---------------------+---------------------+---------------------+
+    //
+    // https://en.wikipedia.org/wiki/Newton%27s_method
+    rsqrts = _mm_add_pd( //
+        _mm_mul_pd(_mm_set1_pd(1.5), rsqrts),
+        _mm_mul_pd(_mm_mul_pd(_mm_mul_pd(squares, _mm_set1_pd(-0.5)), rsqrts), _mm_mul_pd(rsqrts, rsqrts)));
+
     simsimd_f64_t a2_reciprocal = _mm_cvtsd_f64(_mm_unpackhi_pd(rsqrts, rsqrts));
     simsimd_f64_t b2_reciprocal = _mm_cvtsd_f64(rsqrts);
     return 1 - ab * a2_reciprocal * b2_reciprocal;
@@ -1047,10 +1264,10 @@ simsimd_cos_f32_skylake_cycle:
     if (n)
         goto simsimd_cos_f32_skylake_cycle;
 
-    simsimd_f64_t ab = _mm512_reduce_add_ps(ab_vec);
-    simsimd_f64_t a2 = _mm512_reduce_add_ps(a2_vec);
-    simsimd_f64_t b2 = _mm512_reduce_add_ps(b2_vec);
-    *result = simsimd_cos_normalize_f64_skylake(ab, a2, b2);
+    simsimd_f64_t ab = _simsimd_reduce_f32x16_skylake(ab_vec);
+    simsimd_f64_t a2 = _simsimd_reduce_f32x16_skylake(a2_vec);
+    simsimd_f64_t b2 = _simsimd_reduce_f32x16_skylake(b2_vec);
+    *result = _simsimd_cos_normalize_f64_skylake(ab, a2, b2);
 }
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f64_skylake(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n,
@@ -1104,54 +1321,73 @@ simsimd_cos_f64_skylake_cycle:
     simsimd_f64_t ab = _mm512_reduce_add_pd(ab_vec);
     simsimd_f64_t a2 = _mm512_reduce_add_pd(a2_vec);
     simsimd_f64_t b2 = _mm512_reduce_add_pd(b2_vec);
-    *result = simsimd_cos_normalize_f64_skylake(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f64_skylake(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SKYLAKE
 
 #if SIMSIMD_TARGET_GENOA
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))),                \
+                             apply_to = function)
 
-SIMSIMD_INTERNAL __m512i simsimd_substract_bf16x32_genoa(__m512i a_i16, __m512i b_i16) {
+#endif
+
+SIMSIMD_INTERNAL __m512i _simsimd_substract_bf16x32_genoa(__m512i a_i16, __m512i b_i16) {
 
     union {
         __m512 fvec;
         __m512i ivec;
+        simsimd_f32_t f32[16];
         simsimd_u16_t u16[32];
         simsimd_bf16_t bf16[32];
-    } d_top, d_bot, d, a_f32_bot, b_f32_bot, d_f32_bot, a_f32_top, b_f32_top, d_f32_top, a, b;
+    } d_odd, d_even, d, a_f32_even, b_f32_even, d_f32_even, a_f32_odd, b_f32_odd, d_f32_odd, a, b;
     a.ivec = a_i16;
     b.ivec = b_i16;
 
-    // Let's perform the subtraction with single-precision, while the dot-product with half-precision.
-    // For that we need to perform a couple of casts - each is a bitshift. To convert `bf16` to `f32`,
-    // expand it to 32-bit integers, then shift the bits by 16 to the left. Then subtract as floats,
-    // and shift back. During expansion, we will double the space, and should use separate registers
-    // for top and bottom halves.
-    a_f32_bot.fvec = _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(a_i16)), 16));
-    b_f32_bot.fvec = _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(b_i16)), 16));
+    // There are several approaches to perform subtraction in `bf16`. The first one is:
+    //
+    //      Perform a couple of casts - each is a bitshift. To convert `bf16` to `f32`,
+    //      expand it to 32-bit integers, then shift the bits by 16 to the left.
+    //      Then subtract as floats, and shift back. During expansion, we will double the space,
+    //      and should use separate registers for top and bottom halves.
+    //      Some compilers don't have `_mm512_extracti32x8_epi32`, so we use `_mm512_extracti64x4_epi64`:
+    //
+    //          a_f32_bot.fvec = _mm512_castsi512_ps(_mm512_slli_epi32(
+    //              _mm512_cvtepu16_epi32(_mm512_castsi512_si256(a_i16)), 16));
+    //          b_f32_bot.fvec = _mm512_castsi512_ps(_mm512_slli_epi32(
+    //              _mm512_cvtepu16_epi32(_mm512_castsi512_si256(b_i16)), 16));
+    //          a_f32_top.fvec =_mm512_castsi512_ps(
+    //              _mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(a_i16, 1)), 16));
+    //          b_f32_top.fvec =_mm512_castsi512_ps(
+    //              _mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(b_i16, 1)), 16));
+    //          d_f32_top.fvec = _mm512_sub_ps(a_f32_top.fvec, b_f32_top.fvec);
+    //          d_f32_bot.fvec = _mm512_sub_ps(a_f32_bot.fvec, b_f32_bot.fvec);
+    //          d.ivec = _mm512_castsi256_si512(_mm512_cvtepi32_epi16(
+    //              _mm512_srli_epi32(_mm512_castps_si512(d_f32_bot.fvec), 16)));
+    //          d.ivec = _mm512_inserti64x4(d.ivec, _mm512_cvtepi32_epi16(
+    //              _mm512_srli_epi32(_mm512_castps_si512(d_f32_top.fvec), 16)), 1);
+    //
+    // Instead of using multple shifts and an insertion, we can achieve similar result with fewer expensive
+    // calls to `_mm512_permutex2var_epi16`, or a cheap `_mm512_mask_shuffle_epi8` and blend:
+    //
+    a_f32_odd.ivec = _mm512_and_si512(a_i16, _mm512_set1_epi32(0xFFFF0000));
+    a_f32_even.ivec = _mm512_slli_epi32(a_i16, 16);
+    b_f32_odd.ivec = _mm512_and_si512(b_i16, _mm512_set1_epi32(0xFFFF0000));
+    b_f32_even.ivec = _mm512_slli_epi32(b_i16, 16);
 
-    // Some compilers don't have `_mm512_extracti32x8_epi32`, so we need to use `_mm512_extracti64x4_epi64`
-    a_f32_top.fvec =
-        _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(a_i16, 1)), 16));
-    b_f32_top.fvec =
-        _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(b_i16, 1)), 16));
+    d_f32_odd.fvec = _mm512_sub_ps(a_f32_odd.fvec, b_f32_odd.fvec);
+    d_f32_even.fvec = _mm512_sub_ps(a_f32_even.fvec, b_f32_even.fvec);
 
-    // Subtract in single precision
-    d_f32_top.fvec = _mm512_sub_ps(a_f32_top.fvec, b_f32_top.fvec);
-    d_f32_bot.fvec = _mm512_sub_ps(a_f32_bot.fvec, b_f32_bot.fvec);
+    d_f32_even.ivec = _mm512_srli_epi32(d_f32_even.ivec, 16);
+    d.ivec = _mm512_mask_blend_epi16(0x55555555, d_f32_odd.ivec, d_f32_even.ivec);
 
-    // Now, let's populate one ZMM register with the top 16 bits of every 32-bit float,
-    // in the "top", followed by the top parts of the "bottom" floats. Instead of using multple
-    // shifts and blends, we can achieve that with cheap `_mm512_mask_shuffle_epi8`, or a more
-    // expensive `_mm512_permutex2var_epi16`.
-    d.ivec = _mm512_castsi256_si512(_mm512_cvtepi32_epi16(_mm512_srli_epi32(_mm512_castps_si512(d_f32_bot.fvec), 16)));
-    d.ivec = _mm512_inserti64x4(d.ivec,
-                                _mm512_cvtepi32_epi16(_mm512_srli_epi32(_mm512_castps_si512(d_f32_top.fvec), 16)), 1);
     return d.ivec;
 }
 
@@ -1171,12 +1407,12 @@ simsimd_l2sq_bf16_genoa_cycle:
         b_i16_vec = _mm512_loadu_epi16(b);
         a += 32, b += 32, n -= 32;
     }
-    d_i16_vec = simsimd_substract_bf16x32_genoa(a_i16_vec, b_i16_vec);
+    d_i16_vec = _simsimd_substract_bf16x32_genoa(a_i16_vec, b_i16_vec);
     d2_vec = _mm512_dpbf16_ps(d2_vec, (__m512bh)(d_i16_vec), (__m512bh)(d_i16_vec));
     if (n)
         goto simsimd_l2sq_bf16_genoa_cycle;
 
-    *result = _mm512_reduce_add_ps(d2_vec);
+    *result = _simsimd_reduce_f32x16_skylake(d2_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_cos_bf16_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
@@ -1203,20 +1439,25 @@ simsimd_cos_bf16_genoa_cycle:
     if (n)
         goto simsimd_cos_bf16_genoa_cycle;
 
-    simsimd_f64_t ab = _mm512_reduce_add_ps(ab_vec);
-    simsimd_f64_t a2 = _mm512_reduce_add_ps(a2_vec);
-    simsimd_f64_t b2 = _mm512_reduce_add_ps(b2_vec);
-    *result = simsimd_cos_normalize_f64_skylake(ab, a2, b2);
+    simsimd_f32_t ab = _simsimd_reduce_f32x16_skylake(ab_vec);
+    simsimd_f32_t a2 = _simsimd_reduce_f32x16_skylake(a2_vec);
+    simsimd_f32_t b2 = _simsimd_reduce_f32x16_skylake(b2_vec);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_GENOA
 
 #if SIMSIMD_TARGET_SAPPHIRE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512fp16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512fp16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512fp16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_f16_sapphire(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                               simsimd_distance_t* result) {
@@ -1266,20 +1507,26 @@ simsimd_cos_f16_sapphire_cycle:
     if (n)
         goto simsimd_cos_f16_sapphire_cycle;
 
-    simsimd_f64_t ab = _mm512_reduce_add_ph(ab_vec);
-    simsimd_f64_t a2 = _mm512_reduce_add_ph(a2_vec);
-    simsimd_f64_t b2 = _mm512_reduce_add_ph(b2_vec);
-    *result = simsimd_cos_normalize_f64_skylake(ab, a2, b2);
+    simsimd_f32_t ab = _mm512_reduce_add_ph(ab_vec);
+    simsimd_f32_t a2 = _mm512_reduce_add_ph(a2_vec);
+    simsimd_f32_t b2 = _mm512_reduce_add_ph(b2_vec);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SAPPHIRE
 
 #if SIMSIMD_TARGET_ICE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512vnni")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512vnni"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512vnni")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512vnni"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_l2sq_i8_ice(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
                                         simsimd_distance_t* result) {
@@ -1352,10 +1599,12 @@ simsimd_cos_i8_ice_cycle:
     int ab = _mm512_reduce_add_epi32(_mm512_add_epi32(ab_low_i32s_vec, ab_high_i32s_vec));
     int a2 = _mm512_reduce_add_epi32(a2_i32s_vec);
     int b2 = _mm512_reduce_add_epi32(b2_i32s_vec);
-    *result = simsimd_cos_normalize_f64_skylake(ab, a2, b2);
+    *result = _simsimd_cos_normalize_f32_haswell(ab, a2, b2);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_ICE
 #endif // SIMSIMD_TARGET_X86
@@ -1367,7 +1616,7 @@ simsimd_cos_i8_ice_cycle:
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

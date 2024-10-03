@@ -38,14 +38,15 @@ YugabyteDB smart drivers have the following key features.
 | Feature | Notes |
 | :--- | :--- |
 | Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
-| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
-| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
+| [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
+| [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
 
-YugabyteDB is a distributed, fault tolerant, and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
+YugabyteDB is distributed, fault tolerant, and highly available. YugabyteDB automatically shards, replicates, and balances data across multiple nodes, which can be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
 
 You can load balance application connections to the database in the following ways:
 
@@ -81,11 +82,11 @@ Developers can use smart driver connection load balancing in two configurations:
 
 In both cases, the driver attempts to connect to the least loaded server from the available group of servers. For topology-aware load balancing, this group is determined by geo-locations specified using the topology keys connection parameter.
 
-### Cluster-aware connection load balancing
+### Cluster-aware load balancing
 
 With cluster-aware (also referred to as uniform) connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
-For example, if a client application creates a hundred connections to a YugabyteDB universe consisting of ten nodes, then the driver creates ten connections to each node. If the number of connections is not exactly divisible by the number of servers, then some servers may have one less or one more connection than the others. This is the client view of the load, so the servers may not be well-balanced if other client applications are not using a smart driver
+For example, if a client application creates a hundred connections to a YugabyteDB universe consisting of ten nodes, then the driver creates ten connections to each node. If the number of connections is not exactly divisible by the number of servers, then some servers may have one less or one more connection than the others. This is the client view of the load, so the servers may not be well-balanced if other client applications are not using a smart driver.
 
 A connection works as follows:
 
@@ -123,7 +124,23 @@ For example, using the Go smart driver, you can change the interval to four minu
 
 (Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
-### Topology-aware connection load balancing
+### Node type-aware load balancing
+
+If your cluster has read replicas, smart drivers can distribute connections based on the node type - primary or read replica. If a cluster has read replicas, you may want to load balance connections to the read replica nodes, or exclude them.
+
+To support this, the load balance property accepts the following additional values.
+
+| Value | Description |
+| :--- | :--- |
+| any | Distribute connections equally across all nodes in the cluster, irrespective of type (primary or read replica). This is an alias for value _true_. |
+| only-primary | Create connections equally across only primary nodes. If none are available, fail. |
+| only-rr | Create connections equally across only read replica nodes. If none are available, fail. |
+| prefer&#8209;primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
+| prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
+
+The default value for the load balance property remains `false`.
+
+### Topology-aware load balancing
 
 For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
 
@@ -161,7 +178,57 @@ To specify fallback locations if a location is unavailable, add `:n` to the topo
 
 Not specifying a priority is the equivalent of setting priority to 1.
 
+If you specify topology keys, you can additionally specify that connections only fall back to those nodes using the `fallback-to-topology-keys-only` property (JDBC smart driver only).
+
 If no servers are available, the request may return with a failure.
+
+### Order of node selection for new connections
+
+Consider a cluster with three primary nodes across three zones (zoneA, zoneB, and zoneC); and three read replica nodes in zoneB, zoneC, and zoneD.
+
+The following shows how nodes are selected for new connections, depending on the load balance and topology key settings.
+
+{{<tabpane text=true >}}
+{{% tab header="No topology keys" lang="no-keys" %}}
+
+When no topology keys are specified, nodes are selected as follows.
+
+| Load balance setting | Connect to |
+| :--- | :--- |
+| true / any | Any node in all zones |
+| only-primary | Primary nodes in all zones |
+| only-rr | Read replica nodes in all zones |
+| prefer-primary | Primary nodes in all zones, with fallback to read replica nodes |
+| prefer-rr | Read replica nodes in all zones, with fallback to primary nodes |
+
+{{% /tab %}}
+{{% tab header="Topology keys" lang="100-wh" %}}
+
+When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as follows.
+
+| Load balance setting | Connect to |
+| :--- | :--- |
+| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster (all zones)</li><li>If none, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster (all zones)</li><li>If none, fail |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+
+{{% /tab %}}
+{{% tab header="Fall back to topology keys" lang="100-wh" %}}
+
+When topology keys are specified as zoneA:1, zoneB:2, and fallback to topology keys only is true, nodes are selected as follows.
+
+| Load balance setting | Connect to |
+| :--- | :--- |
+| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then fail |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, fail |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+
+{{% /tab %}}
+{{</tabpane >}}
 
 ### Connection pooling
 
@@ -185,17 +252,17 @@ YugabyteDB Aeon clusters also support topology-aware load balancing. If the clus
 
 ### Deploying applications
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been [peered with the cluster VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/). For applications that access the cluster from outside the peered network or using private endpoints via a private link, set the load balance connection parameter to `false`; in this case, the cluster performs the load balancing.
 
-Applications that use smart drivers from outside the peered network fall back to the upstream driver behavior automatically. You may see a warning similar to the following:
+Applications that use smart drivers from outside the peered network with load balance on will try to connect to the inaccessible nodes before falling back to the upstream driver behavior. You may see a warning similar to the following:
 
 ```output
 WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
 ```
 
-This indicates that the smart driver was unable to perform smart load balancing, and will fall back to the upstream behavior.
+This indicates that the smart driver was unable to perform smart load balancing. To avoid the added latency incurred, turn load balance off.
 
-For applications that access the cluster from outside the peered network or using private endpoints via a private link, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing.
+For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 ### SSL/TLS verify-full support
 

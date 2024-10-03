@@ -15,7 +15,7 @@ import TriangleDownIcon from "@app/assets/caret-down.svg";
 import { MigrationDetails } from "./MigrationDetails";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import { useGetVoyagerMigrationTasksQuery, VoyagerMigrationDetails } from "@app/api/src";
-import { StringParam, useQueryParams } from "use-query-params";
+import { BooleanParam, StringParam, useQueryParams } from "use-query-params";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -101,9 +101,17 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   );
 
   const [selectedMigration, setSelectedMigration] = React.useState<Migration>();
-  const [{ migration_uuid }, setQueryParams] = useQueryParams({
+  const [isNewMigration, setIsNewMigration] = React.useState<boolean>(false);
+  const [oldMigrationUuids, setOldMigrationUuids] = React.useState<Map<string, number>>(new Map());
+
+  const [{ migration_uuid, new_migration }, setQueryParams] = useQueryParams({
     migration_uuid: StringParam,
+    new_migration: BooleanParam,
   });
+
+  // Time that the new migration page page was first opened.
+  // Is initially set to 0 and resets if user navigates away from new migration page.
+  var currentTime = 0;
 
   React.useEffect(() => {
     setSelectedMigration(
@@ -111,28 +119,65 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
         ? migrationData?.find((migration) => migration.migration_uuid === migration_uuid)
         : undefined
     );
-  }, [migration_uuid, migrationData]);
+    // Set time if navigated to new migration page
+    if (!isNewMigration && new_migration !== undefined) {
+      currentTime = new Date().getTime();
+    }
+    // Reset time if navigated away from migration page
+    if (isNewMigration && new_migration === undefined) {
+      currentTime = 0;
+    }
+    setIsNewMigration(new_migration === undefined ? false : true);
+
+    // T
+    // Look for new migration_uuid and pick the newest one
+    var migrationUuids: Map<string, number> = new Map();
+    migrationData?.map((migration) => {
+      if (migration?.migration_uuid) {
+        var startTime = migration?.start_timestamp ?
+          new Date(migration.start_timestamp).getTime() :
+          0;
+        migrationUuids.set(migration.migration_uuid, startTime);
+      }
+    });
+    var mostRecentUuid: string = "";
+    var mostRecentTime: number = currentTime;
+    migrationUuids.forEach((time, uuid) => {
+      if (!oldMigrationUuids.has(uuid)) {
+        if (time > mostRecentTime && mostRecentTime > 0) {
+          mostRecentUuid = uuid;
+          mostRecentTime = time;
+        }
+      }
+    });
+    if (isNewMigration && mostRecentUuid !== "") {
+      setQueryParams({ migration_uuid: mostRecentUuid, new_migration: undefined });
+    }
+    setOldMigrationUuids(migrationUuids);
+  }, [migration_uuid, new_migration, migrationData]);
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
       <Box>
-        {selectedMigration && (
+        {(selectedMigration || isNewMigration) && (
           <Breadcrumbs aria-label="breadcrumb">
             <Link
               className={classes.link}
               onClick={() => {
-                setQueryParams({ migration_uuid: undefined });
+                setQueryParams({ migration_uuid: undefined, new_migration: undefined });
               }}
             >
               <Typography variant="body2" color="primary">
                 {t("clusterDetail.voyager.migrations")}
               </Typography>
             </Link>
-            {selectedMigration && (
+            {(selectedMigration || isNewMigration) && (
               <YBDropdown
                 origin={
                   <Box display="flex" alignItems="center" className={classes.dropdownContent}>
-                    {selectedMigration.migration_name}
+                    {isNewMigration ?
+                      t("clusterDetail.voyager.newMigration") :
+                      selectedMigration?.migration_name}
                     <TriangleDownIcon />
                   </Box>
                 }
@@ -147,8 +192,11 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                   {migrationData?.map((migration) => (
                     <MenuItem
                       key={migration.migration_name}
-                      selected={migration.migration_name === selectedMigration.migration_name}
-                      onClick={() => setQueryParams({ migration_uuid: migration.migration_uuid })}
+                      selected={migration.migration_name === selectedMigration?.migration_name}
+                      onClick={() => setQueryParams({
+                        migration_uuid: migration.migration_uuid,
+                        new_migration: undefined,
+                      })}
                     >
                       {migration.migration_name}
                     </MenuItem>
@@ -168,12 +216,19 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
 
       {!isLoadingMigrationTasks && (
         <>
-          {!selectedMigration ? (
+          {(!selectedMigration && !isNewMigration) ? (
             <MigrationList
               migrationData={migrationData}
-              onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
+              onSelectMigration={({ migration_uuid }) => setQueryParams({
+                migration_uuid,
+                new_migration: undefined,
+            })}
               hasError={isErrorMigrationTasks}
               onRefresh={refetch}
+              onNewMigration={() => setQueryParams({
+                migration_uuid: undefined,
+                new_migration: null
+            })}
             />
           ) : (
             <MigrationDetails
@@ -181,6 +236,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
               migration={selectedMigration}
               onRefetch={refetch}
               isFetching={isFetchingMigrationTasks}
+              isNewMigration={isNewMigration}
             />
           )}
         </>

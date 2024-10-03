@@ -41,9 +41,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     if (!UseAutomaticMode()) {
       return 0;
     }
-    // So far automatic mode has one extra stream for each namespace: sequences_data.
-    // TODO(jhe): increment this when you add the DDL queue table
-    return 1;
+    // Automatic DDL mode involves 2 extra tables: sequences_data and
+    // yb_xcluster_ddl_replication.dd_queue.
+    return 2;
   }
 
   Status InitClusters(const MiniClusterOptions& opts) override;

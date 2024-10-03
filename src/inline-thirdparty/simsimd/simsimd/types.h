@@ -98,6 +98,16 @@
 #define SIMSIMD_TARGET_SVE_BF16 SIMSIMD_TARGET_SVE
 #endif // !defined(SIMSIMD_TARGET_SVE_BF16)
 
+// Compiling for Arm: SIMSIMD_TARGET_SVE2
+#if !defined(SIMSIMD_TARGET_SVE2) || (SIMSIMD_TARGET_SVE2 && !SIMSIMD_TARGET_ARM)
+#if defined(__ARM_FEATURE_SVE)
+#define SIMSIMD_TARGET_SVE2 SIMSIMD_TARGET_ARM
+#else
+#undef SIMSIMD_TARGET_SVE2
+#define SIMSIMD_TARGET_SVE2 0
+#endif // defined(__ARM_FEATURE_SVE)
+#endif // !defined(SIMSIMD_TARGET_SVE2)
+
 // Compiling for x86: SIMSIMD_TARGET_HASWELL
 //
 // Starting with Ivy Bridge, Intel supports the `F16C` extensions for fast half-precision
@@ -114,7 +124,7 @@
 #endif // defined(__AVX2__)
 #endif // !defined(SIMSIMD_TARGET_HASWELL)
 
-// Compiling for x86: SIMSIMD_TARGET_SKYLAKE, SIMSIMD_TARGET_ICE, SIMSIMD_TARGET_SAPPHIRE
+// Compiling for x86: SIMSIMD_TARGET_SKYLAKE, SIMSIMD_TARGET_ICE, SIMSIMD_TARGET_GENOA, SIMSIMD_TARGET_SAPPHIRE
 //
 // To list all available macros for x86, take a recent compiler, like GCC 12 and run:
 //      gcc-12 -march=sapphirerapids -dM -E - < /dev/null | egrep "SSE|AVX" | sort
@@ -163,11 +173,12 @@
 #include <arm_neon.h>
 #endif
 
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE || SIMSIMD_TARGET_SVE2
 #include <arm_sve.h>
 #endif
 
-#if SIMSIMD_TARGET_HASWELL || SIMSIMD_TARGET_SKYLAKE
+#if SIMSIMD_TARGET_HASWELL || SIMSIMD_TARGET_SKYLAKE || SIMSIMD_TARGET_ICE || SIMSIMD_TARGET_GENOA ||                  \
+    SIMSIMD_TARGET_SAPPHIRE
 #include <immintrin.h>
 #endif
 
@@ -225,12 +236,14 @@ typedef simsimd_f64_t simsimd_distance_t;
 #define SIMSIMD_NATIVE_F16 1
 typedef __fp16 simsimd_f16_t;
 #elif ((defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__)) &&                      \
-       (defined(__SSE2__) || defined(__AVX512FP16__)))
+       (defined(__AVX512FP16__)))
 typedef _Float16 simsimd_f16_t;
 #undef SIMSIMD_NATIVE_F16
 #define SIMSIMD_NATIVE_F16 1
-#else // Unknown compiler or architecture
+#else                                       // Unknown compiler or architecture
+#if defined(__GNUC__) || defined(__clang__) // Some compilers don't support warning pragmas
 #warning "Unknown compiler or architecture for float16."
+#endif
 #undef SIMSIMD_NATIVE_F16
 #define SIMSIMD_NATIVE_F16 0
 #endif // Unknown compiler or architecture
@@ -248,7 +261,7 @@ typedef unsigned short simsimd_f16_t;
  *  - GCC or Clang on 64-bit x86: `_BFloat16`.
  *  - Default: `unsigned short`.
  *
- *  The compilers have added __bf16 support in compliance with the x86-64 psABI spec.
+ *  The compilers have added `__bf16` support in compliance with the x86-64 psABI spec.
  *  The motivation for this new special type is summed up as:
  *
  *      Currently `__bfloat16` is a typedef of short, which creates a problem where the
@@ -271,12 +284,14 @@ typedef unsigned short simsimd_f16_t;
 #define SIMSIMD_NATIVE_BF16 1
 typedef __bf16 simsimd_bf16_t;
 #elif ((defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__)) &&                      \
-       (defined(__SSE2__) || defined(__AVX512BF16__)))
+       (defined(__AVX512BF16__)))
 typedef __bfloat16 simsimd_bf16_t;
 #undef SIMSIMD_NATIVE_BF16
 #define SIMSIMD_NATIVE_BF16 1
-#else // Unknown compiler or architecture
+#else                                       // Unknown compiler or architecture
+#if defined(__GNUC__) || defined(__clang__) // Some compilers don't support warning pragmas
 #warning "Unknown compiler or architecture for bfloat16."
+#endif
 #undef SIMSIMD_NATIVE_BF16
 #define SIMSIMD_NATIVE_BF16 0
 #endif // Unknown compiler or architecture
@@ -305,17 +320,38 @@ typedef unsigned short simsimd_bf16_t;
 #endif
 #endif
 
+/*
+ *  Let's make sure the sizes of the types are as expected.
+ *  In C the `_Static_assert` is only available with C 11 and later.
+ */
+#define SIMSIMD_STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond) ? 1 : -1]
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_i8_t) == 1, simsimd_i8_t_must_be_1_byte);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_u8_t) == 1, simsimd_u8_t_must_be_1_byte);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_i16_t) == 2, simsimd_i16_t_must_be_2_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_u16_t) == 2, simsimd_u16_t_must_be_2_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_i32_t) == 4, simsimd_i32_t_must_be_4_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_u32_t) == 4, simsimd_u32_t_must_be_4_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_i64_t) == 8, simsimd_i64_t_must_be_8_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_u64_t) == 8, simsimd_u64_t_must_be_8_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_f32_t) == 4, simsimd_f32_t_must_be_4_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_f64_t) == 8, simsimd_f64_t_must_be_8_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_f16_t) == 2, simsimd_f16_t_must_be_2_bytes);
+SIMSIMD_STATIC_ASSERT(sizeof(simsimd_bf16_t) == 2, simsimd_bf16_t_must_be_2_bytes);
+
 #define SIMSIMD_DEREFERENCE(x) (*(x))
+#define SIMSIMD_EXPORT(x, y) *(y) = x
 
 /**
  *  @brief  Returns the value of the half-precision floating-point number,
  *          potentially decompressed into single-precision.
  */
-#if !defined(SIMSIMD_UNCOMPRESS_F16)
+#if !defined(SIMSIMD_F16_TO_F32)
 #if SIMSIMD_NATIVE_F16
-#define SIMSIMD_UNCOMPRESS_F16(x) (SIMSIMD_DEREFERENCE(x))
+#define SIMSIMD_F16_TO_F32(x) (SIMSIMD_DEREFERENCE(x))
+#define SIMSIMD_F32_TO_F16(x, y) (SIMSIMD_EXPORT(x, y))
 #else
-#define SIMSIMD_UNCOMPRESS_F16(x) (simsimd_uncompress_f16(x))
+#define SIMSIMD_F16_TO_F32(x) (simsimd_f16_to_f32(x))
+#define SIMSIMD_F32_TO_F16(x, y) (simsimd_f32_to_f16(x, y))
 #endif
 #endif
 
@@ -323,15 +359,17 @@ typedef unsigned short simsimd_bf16_t;
  *  @brief  Returns the value of the half-precision brain floating-point number,
  *          potentially decompressed into single-precision.
  */
-#if !defined(SIMSIMD_UNCOMPRESS_BF16)
+#if !defined(SIMSIMD_BF16_TO_F32)
 #if SIMSIMD_NATIVE_BF16
-#define SIMSIMD_UNCOMPRESS_BF16(x) (SIMSIMD_DEREFERENCE(x))
+#define SIMSIMD_BF16_TO_F32(x) (SIMSIMD_DEREFERENCE(x))
+#define SIMSIMD_F32_TO_BF16(x, y) (SIMSIMD_EXPORT(x, y))
 #else
-#define SIMSIMD_UNCOMPRESS_BF16(x) (simsimd_uncompress_bf16(x))
+#define SIMSIMD_BF16_TO_F32(x) (simsimd_bf16_to_f32(x))
+#define SIMSIMD_F32_TO_BF16(x, y) (simsimd_f32_to_bf16(x, y))
 #endif
 #endif
 
-/** @brief  Convinience type for half-precision floating-point type conversions. */
+/** @brief  Convenience type for half-precision floating-point type conversions. */
 typedef union {
     unsigned i;
     float f;
@@ -344,7 +382,7 @@ typedef union {
  *  Subsequent additions by hardware manufacturers have made this algorithm redundant for the most part.
  *  For example, on x86, Intel introduced the SSE instruction `rsqrtss` in 1999. In a 2009 benchmark on
  *  the Intel Core 2, this instruction took 0.85ns per float compared to 3.54ns for the fast inverse
- *  square root algorithm, and had less error. Carmack’s Magic Number `rsqrt` had an average error
+ *  square root algorithm, and had less error. Carmack's Magic Number `rsqrt` had an average error
  *  of 0.0990%, while SSE `rsqrtss` had 0.0094%, a 10x improvement.
  *
  *  https://web.archive.org/web/20210208132927/http://assemblyrequired.crashworks.org/timing-square-root/
@@ -380,7 +418,7 @@ SIMSIMD_PUBLIC simsimd_f32_t simsimd_approximate_log(simsimd_f32_t number) {
  *  https://gist.github.com/milhidaka/95863906fe828198f47991c813dbe233
  *  https://github.com/OpenCyphal/libcanard/blob/636795f4bc395f56af8d2c61d3757b5e762bb9e5/canard.c#L811-L834
  */
-SIMSIMD_PUBLIC simsimd_f32_t simsimd_uncompress_f16(simsimd_f16_t const* x_ptr) {
+SIMSIMD_PUBLIC simsimd_f32_t simsimd_f16_to_f32(simsimd_f16_t const* x_ptr) {
     unsigned short x = *(unsigned short const*)x_ptr;
     unsigned int exponent = (x & 0x7C00) >> 10;
     unsigned int mantissa = (x & 0x03FF) << 13;
@@ -402,7 +440,7 @@ SIMSIMD_PUBLIC simsimd_f32_t simsimd_uncompress_f16(simsimd_f16_t const* x_ptr) 
  *  https://gist.github.com/milhidaka/95863906fe828198f47991c813dbe233
  *  https://github.com/OpenCyphal/libcanard/blob/636795f4bc395f56af8d2c61d3757b5e762bb9e5/canard.c#L811-L834
  */
-SIMSIMD_PUBLIC void simsimd_compress_f16(simsimd_f32_t x, unsigned short* result_ptr) {
+SIMSIMD_PUBLIC void simsimd_f32_to_f16(simsimd_f32_t x, simsimd_f16_t* result_ptr) {
     simsimd_f32i32_t conv;
     conv.f = x;
     unsigned int b = conv.i + 0x00001000;
@@ -411,7 +449,7 @@ SIMSIMD_PUBLIC void simsimd_compress_f16(simsimd_f32_t x, unsigned short* result
     unsigned short result = ((b & 0x80000000) >> 16) | (e > 112) * ((((e - 112) << 10) & 0x7C00) | (m >> 13)) |
                             ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) |
                             ((e > 143) * 0x7FFF);
-    *result_ptr = result;
+    *(unsigned short*)result_ptr = result;
 }
 
 /**
@@ -421,7 +459,7 @@ SIMSIMD_PUBLIC void simsimd_compress_f16(simsimd_f32_t x, unsigned short* result
  *  https://stackoverflow.com/questions/55253233/convert-fp32-to-bfloat16-in-c/55254307#55254307
  *  https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus
  */
-SIMSIMD_PUBLIC simsimd_f32_t simsimd_uncompress_bf16(simsimd_bf16_t const* x_ptr) {
+SIMSIMD_PUBLIC simsimd_f32_t simsimd_bf16_to_f32(simsimd_bf16_t const* x_ptr) {
     unsigned short x = *(unsigned short const*)x_ptr;
     simsimd_f32i32_t conv;
     conv.i = x << 16; // Zero extends the mantissa
@@ -434,15 +472,22 @@ SIMSIMD_PUBLIC simsimd_f32_t simsimd_uncompress_bf16(simsimd_bf16_t const* x_ptr
  *  https://stackoverflow.com/questions/55253233/convert-fp32-to-bfloat16-in-c/55254307#55254307
  *  https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus
  */
-SIMSIMD_PUBLIC void simsimd_compress_bf16(simsimd_f32_t x, unsigned short* result_ptr) {
+SIMSIMD_PUBLIC void simsimd_f32_to_bf16(simsimd_f32_t x, simsimd_bf16_t* result_ptr) {
     simsimd_f32i32_t conv;
     conv.f = x;
     conv.i += 0x8000; // Rounding is optional
     conv.i >>= 16;
     // The top 16 bits will be zeroed out anyways
     // conv.i &= 0xFFFF;
-    *result_ptr = (unsigned short)conv.i;
+    *(unsigned short*)result_ptr = (unsigned short)conv.i;
 }
+
+SIMSIMD_INTERNAL simsimd_u32_t simsimd_u32_rol(simsimd_u32_t x, int n) { return (x << n) | (x >> (32 - n)); }
+SIMSIMD_INTERNAL simsimd_u16_t simsimd_u16_rol(simsimd_u16_t x, int n) { return (x << n) | (x >> (16 - n)); }
+SIMSIMD_INTERNAL simsimd_u8_t simsimd_u8_rol(simsimd_u8_t x, int n) { return (x << n) | (x >> (8 - n)); }
+SIMSIMD_INTERNAL simsimd_u32_t simsimd_u32_ror(simsimd_u32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+SIMSIMD_INTERNAL simsimd_u16_t simsimd_u16_ror(simsimd_u16_t x, int n) { return (x >> n) | (x << (16 - n)); }
+SIMSIMD_INTERNAL simsimd_u8_t simsimd_u8_ror(simsimd_u8_t x, int n) { return (x >> n) | (x << (8 - n)); }
 
 #ifdef __cplusplus
 } // extern "C"
@@ -451,7 +496,7 @@ SIMSIMD_PUBLIC void simsimd_compress_bf16(simsimd_f32_t x, unsigned short* resul
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

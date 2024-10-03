@@ -435,8 +435,8 @@ public class AutoMasterFailoverScheduler {
         }
         // Verify that the replacement node exists before creating the failover schedule.
         NodeDetails node = universe.getNode(action.getNodeName());
-        NodeDetails possibleReplacementCandidate =
-            autoMasterFailover.findReplacementMaster(universe, node);
+        String possibleReplacementCandidate =
+            autoMasterFailover.findReplacementMaster(universe, node, true /* pickNewNode */);
         if (possibleReplacementCandidate == null) {
           disableSchedule(customer, failoverScheduleName, true);
           log.info(

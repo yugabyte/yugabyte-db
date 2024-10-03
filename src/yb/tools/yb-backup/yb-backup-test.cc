@@ -937,5 +937,42 @@ TEST_F(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestColocatedTableUniqueConstraint)) {
+  const string table_name = "mytbl";
+  // Create colocated database.
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE demo WITH colocation=true"));
+
+  // Create table.
+  SetDbName("demo");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT UNIQUE)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) i", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo_new", "restore"}));
+
+  SetDbName("demo_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(Format(
+      "/*+IndexOnlyScan($0)*/ SELECT v FROM $1 WHERE v <= 5 ORDER BY v", table_name, table_name),
+      R"#(
+         v
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

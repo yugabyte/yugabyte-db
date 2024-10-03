@@ -46,6 +46,7 @@
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
@@ -85,6 +86,9 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
 
+DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
+    "Time to release unused allocated big memory segment from session to pool.");
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -92,6 +96,7 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint64(rpc_max_message_size);
 
 namespace yb::tserver {
+
 namespace {
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
@@ -521,16 +526,19 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   SharedExchange* exchange;
 
+  EventStatsPtr stats_exchange_response_size;
+
   CoarseTimePoint deadline;
 
   CountDownLatch latch{1};
 
   SharedExchangeQuery(
       std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
-      SharedExchange* exchange_)
+      SharedExchange* exchange_, const EventStatsPtr& stats_exchange_response_size_)
       : PerformData(
             session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
-        session(std::move(session_)), exchange(exchange_) {
+        session(std::move(session_)), exchange(exchange_),
+        stats_exchange_response_size(stats_exchange_response_size_) {
   }
 
   // Initialize query from data stored in exchange with specified size.
@@ -560,11 +568,28 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto full_size =
         CodedOutputStream::VarintSize32(header_size) + header_size +
         CodedOutputStream::VarintSize32(body_size) + body_size;
+
+    if (stats_exchange_response_size) {
+      stats_exchange_response_size->Increment(full_size);
+    }
+
     auto* start = exchange->Obtain(full_size);
+    std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
+    std::shared_ptr<PgClientSession> locked_session;
     if (!start) {
-      buffer = RefCntBuffer(full_size - sidecars.size());
-      start = pointer_cast<std::byte*>(buffer.data());
+      locked_session = session.lock();
+      if (locked_session) {
+        shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
+        if (shared_memory_segment.second) {
+          start = shared_memory_segment.second;
+        }
+      }
+
+      if (!start) {
+        buffer = RefCntBuffer(full_size - sidecars.size());
+        start = pointer_cast<std::byte*>(buffer.data());
+      }
     }
     auto* out = start;
     out = WriteVarint32ToArray(header_size, out);
@@ -575,9 +600,16 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
       sidecars.CopyTo(out);
       out += sidecars.size();
       DCHECK_EQ(out - start, full_size);
-      exchange->Respond(full_size);
+      if (!shared_memory_segment.second) {
+        exchange->Respond(full_size);
+      } else {
+        exchange->Respond(kTooBigResponseMask | kBigSharedMemoryMask | full_size |
+                          (shared_memory_segment.first << kBigSharedMemoryIdShift));
+      }
     } else {
-      auto locked_session = session.lock();
+      if (!locked_session) {
+        locked_session = session.lock();
+      }
       auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
       exchange->Respond(kTooBigResponseMask | id);
     }
@@ -626,6 +658,26 @@ PgClientSession::UsedReadTimeApplier BuildUsedReadTimeApplier(
   };
 }
 
+Result<PgReplicaIdentity> GetReplicaIdentityEnumValue(
+    PgReplicaIdentityType replica_identity_proto) {
+  switch (replica_identity_proto) {
+    case DEFAULT:
+      return PgReplicaIdentity::DEFAULT;
+    case FULL:
+      return PgReplicaIdentity::FULL;
+    case NOTHING:
+      return PgReplicaIdentity::NOTHING;
+    case CHANGE:
+      return PgReplicaIdentity::CHANGE;
+    default:
+      RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+  }
+}
+
+std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
+  return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
+}
+
 } // namespace
 
 std::ostream& operator<<(std::ostream& str, const PgClientSession::PrefixLogger& logger) {
@@ -672,7 +724,8 @@ PgClientSession::PgClientSession(
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
     const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-    PgSequenceCache* sequence_cache)
+    PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
+    const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
       id_(id),
       client_(*client),
@@ -683,6 +736,9 @@ PgClientSession::PgClientSession(
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
       sequence_cache_(*sequence_cache),
+      shared_mem_pool_(shared_mem_pool),
+      big_shared_mem_expiration_task_(&scheduler),
+      stats_exchange_response_size_(stats_exchange_response_size),
       read_point_history_(PrefixLogger(id_)) {}
 
 Status PgClientSession::CreateTable(
@@ -826,9 +882,8 @@ Status PgClientSession::AlterTable(
     client::YBTablePtr yb_table;
     RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
     auto table_properties = yb_table->schema().table_properties();
-    PgReplicaIdentity replica_identity = PgReplicaIdentity::DEFAULT;
-    RETURN_NOT_OK(
-        GetReplicaIdentityEnumValue(req.replica_identity().replica_identity(), &replica_identity));
+    auto replica_identity = VERIFY_RESULT(GetReplicaIdentityEnumValue(
+        req.replica_identity().replica_identity()));
     table_properties.SetReplicaIdentity(replica_identity);
     alterer->SetTableProperties(table_properties);
   }
@@ -1107,12 +1162,26 @@ Status PgClientSession::FinishTransaction(
         << ", commit: " << commit_status;
     // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
     // is possible that the commit succeeded at the transaction coordinator but we failed to get
-    // the response back. Thus we will not report any status to the YB-Master in this case. It
-    // will run its background task to figure out whether the transaction succeeded or failed.
+    // the response back. Thus we will not report any status to the YB-Master in this case. But
+    // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
+    // background task to figure out whether the transaction succeeded or failed.
     if (!commit_status.ok()) {
+      auto status = DdlAtomicityFinishTransaction(
+          has_docdb_schema_changes, metadata, std::nullopt);
+      if (!status.ok()) {
+        // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
+        // not be able to start a background task to figure out whether the DDL transaction
+        // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
+        // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
+        // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
+        // for any table/index that are involved in a DDL transaction and start a background task
+        // to complete the DDL transaction at the DocDB side.
+        LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+      }
       return commit_status;
-    } else if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-               pg_node_level_mutation_counter_) {
+    }
+    if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+        pg_node_level_mutation_counter_) {
       // Gather # of mutated rows for each table (count only the committed sub-transactions).
       auto table_mutations = txn_value->GetTableMutationCounts();
       VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
@@ -1127,16 +1196,23 @@ Status PgClientSession::FinishTransaction(
     txn_value->Abort();
   }
 
+  return DdlAtomicityFinishTransaction(has_docdb_schema_changes, metadata, req.commit());
+}
+
+Status PgClientSession::DdlAtomicityFinishTransaction(
+    bool has_docdb_schema_changes, const TransactionMetadata* metadata,
+    std::optional<bool> commit) {
   // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
-  // any operations postponed to the end of transaction. Report the status of the transaction and
-  // wait for the post-processing by YB-Master to end.
+  // any operations postponed to the end of transaction. If the status is known
+  // (commit.has_value() is true), then report the status of the transaction and wait for the
+  // post-processing by YB-Master to end.
   if (YsqlDdlRollbackEnabled() && has_docdb_schema_changes && metadata) {
-    if (FLAGS_report_ysql_ddl_txn_status_to_master) {
+    if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
       // If we failed to report the status of this DDL transaction, we can just log and ignore it,
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
-      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", req.commit()));
+      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, *commit),
+                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
     }
 
     if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
@@ -1146,6 +1222,10 @@ Status PgClientSession::FinishTransaction(
       // back changes to table/column names in case of transaction abort. d) dropping a table in
       // case of DROP TABLE commit. All the above actions take place only after the transaction
       // is completed.
+      // Note that this is called even when the DDL transaction status is not known
+      // (commit.has_value() is false), the purpose is to use the side effect of
+      // WaitForDdlVerificationToFinish to trigger the start of a background task to
+      // complete the DDL transaction at the DocDB side.
       ERROR_NOT_OK(client().WaitForDdlVerificationToFinish(*metadata),
                   "WaitForDdlVerificationToFinish call failed");
     }
@@ -1846,7 +1926,7 @@ Status PgClientSession::ReadSequenceTuple(
     rpc::RpcContext* context) {
   using pggate::PgDocData;
   using pggate::PgWireDataHeader;
-
+  VLOG(5) << Format("Servicing ReadSequenceTuple RPC: $0", req.ShortDebugString());
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
@@ -1873,8 +1953,13 @@ Status PgClientSession::ReadSequenceTuple(
       table->schema().ColumnId(kPgSequenceLastValueColIdx));
   read_request->add_col_refs()->set_column_id(
       table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  std::optional<uint64_t> read_time = std::nullopt;
+  if (req.read_time() != 0) {
+    read_time = req.read_time();
+  }
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
+  auto& session =
+      EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline(), read_time);
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
 
@@ -1886,7 +1971,6 @@ Status PgClientSession::ReadSequenceTuple(
   if (row_count == 0) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
-
   if (PgDocData::ReadHeaderIsNull(&cursor)) {
     return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
   }
@@ -2033,12 +2117,26 @@ void PgClientSession::GetTableKeyRanges(
 }
 
 client::YBSessionPtr& PgClientSession::EnsureSession(
-    PgClientSessionKind kind, CoarseTimePoint deadline) {
+    PgClientSessionKind kind, CoarseTimePoint deadline, std::optional<uint64_t> read_time) {
   auto& session = Session(kind);
   if (!session) {
     session = CreateSession(&client_, deadline, clock_);
   } else {
     session->SetDeadline(deadline);
+  }
+  if (read_time) {
+    // Set the read_time only for sequence YBSession. Other types of seesions set their read_time
+    // differently.
+    DCHECK(kind == PgClientSessionKind::kSequence);
+    VLOG(4) << Format(
+        "Setting read_time of sequences_data table to: $0", ReadHybridTime::FromMicros(*read_time));
+    session->SetReadPoint(ReadHybridTime::FromMicros(*read_time));
+  } else {
+    // Reset the read_time for sequence queries to read recent data. This is required in case the
+    // user reset yb_read_time to 0 in a session.
+    if (kind == PgClientSessionKind::kSequence) {
+      session->SetReadPoint({});
+    }
   }
   return session;
 }
@@ -2090,7 +2188,8 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
-  auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
+  auto data = std::make_shared<SharedExchangeQuery>(
+      shared_this_.lock(), &table_cache_, exchange, stats_exchange_response_size_);
   auto status = data->Init(size);
   if (status.ok()) {
     static std::atomic<int64_t> next_rpc_id{0};
@@ -2114,6 +2213,67 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     return nullptr;
   }
   return rpc::SharedField(data, &data->latch);
+}
+
+void PgClientSession::ScheduleBigSharedMemExpirationCheck(
+    std::chrono::steady_clock::duration delay) {
+  big_shared_mem_expiration_task_.Schedule([this](const Status& status) {
+    if (!status.ok()) {
+      std::lock_guard lock(big_shared_mem_mutex_);
+      big_shared_mem_expiration_task_scheduled_ = false;
+      return;
+    }
+    auto expiration_time =
+        last_big_shared_memory_access_.load() +
+        FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms;
+    auto now = CoarseMonoClock::Now();
+    if (expiration_time < now) {
+      expiration_time = now + 100ms; // in case of scheduling recheck
+      std::lock_guard lock(big_shared_mem_mutex_);
+      if (big_shared_mem_handle_ && !InUseAtomic(big_shared_mem_handle_).load()) {
+        big_shared_mem_handle_ = {};
+        big_shared_mem_expiration_task_scheduled_ = false;
+        return;
+      }
+    }
+    ScheduleBigSharedMemExpirationCheck(expiration_time - now);
+  }, delay);
+}
+
+std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(size_t size) {
+  std::pair<uint64_t, std::byte*> result;
+  bool schedule_expiration_task = false;
+  {
+    std::lock_guard lock(big_shared_mem_mutex_);
+    if (big_shared_mem_handle_ && big_shared_mem_handle_.size() >= size) {
+      auto& in_use = InUseAtomic(big_shared_mem_handle_);
+      LOG_IF_WITH_PREFIX(DFATAL, in_use.load()) << "Big shared mem segment still in use";
+      in_use.store(true);
+    } else {
+      auto new_handle = shared_mem_pool_.Obtain(size + sizeof(std::atomic<bool>));
+      if (!new_handle) {
+        return {0, nullptr};
+      }
+      new (new_handle.address()) std::atomic<bool>(true);
+      new_handle.TruncateLeft(sizeof(std::atomic<bool>));
+      big_shared_mem_handle_ = std::move(new_handle);
+    }
+    result = {big_shared_mem_handle_.id(), big_shared_mem_handle_.address()};
+    last_big_shared_memory_access_ = CoarseMonoClock::now();
+    if (!big_shared_mem_expiration_task_scheduled_) {
+      big_shared_mem_expiration_task_scheduled_ = true;
+      schedule_expiration_task = true;
+    }
+  }
+  if (schedule_expiration_task) {
+    ScheduleBigSharedMemExpirationCheck(
+        FLAGS_big_shared_memory_segment_session_expiration_time_ms * 1ms);
+  }
+  return result;
+}
+
+void PgClientSession::Shutdown() {
+  big_shared_mem_expiration_task_.Shutdown();
 }
 
 }  // namespace yb::tserver

@@ -11,7 +11,9 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
@@ -50,6 +53,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
@@ -62,6 +66,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -80,6 +85,7 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -906,6 +912,159 @@ public class ModelFactory {
       }
     }
     return null;
+  }
+
+  public static PlacementInfo constructPlacementInfoObject(Map<UUID, Integer> azToNumNodesMap) {
+    Map<UUID, PlacementInfo.PlacementCloud> placementCloudMap = new HashMap<>();
+    Map<UUID, PlacementInfo.PlacementRegion> placementRegionMap = new HashMap<>();
+    for (UUID azUUID : azToNumNodesMap.keySet()) {
+      AvailabilityZone currentAz = AvailabilityZone.get(azUUID);
+
+      // Get existing PlacementInfo Cloud or set up a new one.
+      Provider currentProvider = currentAz.getProvider();
+      PlacementInfo.PlacementCloud cloudItem =
+          placementCloudMap.getOrDefault(currentProvider.getUuid(), null);
+      if (cloudItem == null) {
+        cloudItem = new PlacementInfo.PlacementCloud();
+        cloudItem.uuid = currentProvider.getUuid();
+        cloudItem.code = currentProvider.getCode();
+        cloudItem.regionList = new ArrayList<>();
+        placementCloudMap.put(currentProvider.getUuid(), cloudItem);
+      }
+
+      // Get existing PlacementInfo Region or set up a new one.
+      Region currentRegion = currentAz.getRegion();
+      PlacementInfo.PlacementRegion regionItem =
+          placementRegionMap.getOrDefault(currentRegion.getUuid(), null);
+      if (regionItem == null) {
+        regionItem = new PlacementInfo.PlacementRegion();
+        regionItem.uuid = currentRegion.getUuid();
+        regionItem.name = currentRegion.getName();
+        regionItem.code = currentRegion.getCode();
+        regionItem.azList = new ArrayList<>();
+        cloudItem.regionList.add(regionItem);
+        placementRegionMap.put(currentRegion.getUuid(), regionItem);
+      }
+
+      // Get existing PlacementInfo AZ or set up a new one.
+      PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
+      azItem.name = currentAz.getName();
+      azItem.subnet = currentAz.getSubnet();
+      azItem.replicationFactor = 1;
+      azItem.uuid = currentAz.getUuid();
+      azItem.numNodesInAZ = azToNumNodesMap.get(azUUID);
+      regionItem.azList.add(azItem);
+    }
+    PlacementInfo placementInfo = new PlacementInfo();
+    placementInfo.cloudList = ImmutableList.copyOf(placementCloudMap.values());
+    return placementInfo;
+  }
+
+  public static Pair<ObjectNode, List<AvailabilityZone>> addClusterAndNodeDetailsK8s(
+      String ybVersion, boolean createRR, Customer customer, ObjectNode deviceInfo) {
+    Provider p = ModelFactory.kubernetesProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Map<String, String> config = new HashMap<>();
+    config.put("KUBECONFIG", "xyz");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(p, config);
+    p.getDetails().getCloudInfo().getKubernetes().setLegacyK8sProvider(false);
+    p.save();
+    InstanceType i =
+        InstanceType.upsert(p.getUuid(), "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "K8sUniverseNewStyle")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("providerType", "kubernetes")
+            .put("ybSoftwareVersion", ybVersion);
+    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
+
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", deviceInfo);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            Json.fromJson(userIntentJson, UserIntent.class));
+    Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+    azToNumNodesMap.put(az1.getUuid(), 1);
+    azToNumNodesMap.put(az2.getUuid(), 1);
+    azToNumNodesMap.put(az3.getUuid(), 1);
+    PlacementInfo pi = ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+    cluster.placementInfo = pi;
+
+    NodeDetails node1 = new NodeDetails();
+    node1.cloudInfo = new CloudSpecificInfo();
+    node1.cloudInfo.instance_type = i.getInstanceTypeCode();
+    node1.cloudInfo.az = az1.getName();
+    node1.cloudInfo.region = r.getName();
+    node1.azUuid = az1.getUuid();
+    node1.placementUuid = cluster.uuid;
+    node1.isMaster = true;
+    node1.state = NodeState.ToBeAdded;
+    NodeDetails node2 = new NodeDetails();
+    node2.cloudInfo = new CloudSpecificInfo();
+    node2.cloudInfo.instance_type = i.getInstanceTypeCode();
+    node2.cloudInfo.az = az2.getName();
+    node2.cloudInfo.region = r.getName();
+    node2.azUuid = az2.getUuid();
+    node2.placementUuid = cluster.uuid;
+    node2.isMaster = true;
+    node2.state = NodeState.ToBeAdded;
+    NodeDetails node3 = new NodeDetails();
+    node3.cloudInfo = new CloudSpecificInfo();
+    node3.cloudInfo.instance_type = i.getInstanceTypeCode();
+    node3.cloudInfo.az = az3.getName();
+    node3.cloudInfo.region = r.getName();
+    node3.azUuid = az3.getUuid();
+    node3.placementUuid = cluster.uuid;
+    node3.isMaster = true;
+    node3.state = NodeState.ToBeAdded;
+
+    ArrayNode clusters = Json.newArray();
+    clusters.add(Json.toJson(cluster));
+
+    ArrayNode nodes = Json.newArray();
+    nodes.add(Json.toJson(node1)).add(Json.toJson(node2)).add(Json.toJson(node3));
+
+    List<AvailabilityZone> azs = new ArrayList<>(Arrays.asList(az1, az2, az3));
+
+    if (createRR) {
+      AvailabilityZone az4 = AvailabilityZone.createOrThrow(r, "az-4", "PlacementAZ 4", "subnet-4");
+      ObjectNode rrIntentJson = userIntentJson.deepCopy();
+      rrIntentJson.put("numNodes", 1);
+      rrIntentJson.put("replicationFactor", 1);
+      UniverseDefinitionTaskParams.Cluster rrCluster =
+          new UniverseDefinitionTaskParams.Cluster(
+              UniverseDefinitionTaskParams.ClusterType.ASYNC,
+              Json.fromJson(rrIntentJson, UserIntent.class));
+      Map<UUID, Integer> azToNumNodesMapRR = new HashMap<>();
+      azToNumNodesMapRR.put(az4.getUuid(), 1);
+      PlacementInfo piRR = ModelFactory.constructPlacementInfoObject(azToNumNodesMapRR);
+      rrCluster.placementInfo = piRR;
+      NodeDetails node1RR = new NodeDetails();
+      node1RR.cloudInfo = new CloudSpecificInfo();
+      node1RR.cloudInfo.instance_type = i.getInstanceTypeCode();
+      node1RR.cloudInfo.az = az4.getName();
+      node1RR.azUuid = az4.getUuid();
+      node1RR.state = NodeState.ToBeAdded;
+      node1RR.placementUuid = rrCluster.uuid;
+      clusters.add(Json.toJson(rrCluster));
+      nodes.add(Json.toJson(node1RR));
+      azs.add(az4);
+    }
+
+    bodyJson.set("clusters", clusters);
+    bodyJson.put("nodePrefix", Util.getNodePrefix(customer.getId(), "K8sUniverseNewStyle"));
+    bodyJson.set("nodeDetailsSet", nodes);
+    bodyJson.put("userAZSelected", true);
+    return new Pair<>(bodyJson, azs);
   }
 
   /*

@@ -19,6 +19,10 @@ import { TelemetryProviderMin } from './components/DeleteTelProviderModal';
 import { getLinkedUniverses } from './utils/helpers';
 import { TP_FRIENDLY_NAMES } from './utils/constants';
 
+//RBAC
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
+
 //styles
 import { usePillStyles } from '../../styles/styles';
 import { exportLogStyles } from './utils/ExportLogStyles';
@@ -122,17 +126,25 @@ export const ExportLog: FC<ExportLogProps> = () => {
           <img src={EllipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
-          <MenuItem
-            eventKey="1"
-            onSelect={() => {
-              setDeleteModalProps({ name: row.name, uuid: row.uuid });
-              setDeleteModal(true);
-            }}
-            data-testid="ExportLog-DeleteConfiguration"
-            disabled={!isEmpty(row.linkedUniverses)}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.DELETE_TELEMETRY_PROVIDER_BY_ID}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">{t('exportAuditLog.deleteConfig')}</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={() => {
+                setDeleteModalProps({ name: row.name, uuid: row.uuid });
+                setDeleteModal(true);
+              }}
+              data-testid="ExportLog-DeleteConfiguration"
+              disabled={!isEmpty(row.linkedUniverses)}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">
+                {t('exportAuditLog.deleteConfig')}
+              </YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );
@@ -147,15 +159,17 @@ export const ExportLog: FC<ExportLogProps> = () => {
       {!isEmpty(finalData) ? (
         <Box className={classes.exportListContainer}>
           <Box display={'flex'} flexDirection={'row'} justifyContent={'flex-end'}>
-            <YBButton
-              variant="primary"
-              size="large"
-              onClick={() => setOpenExportModal(true)}
-              data-testid="ExportLog-AddConfig"
-            >
-              <i className="fa fa-plus" />
-              {t('exportAuditLog.addConfiguration')}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_TELEMETRY_PROVIDER} isControl>
+              <YBButton
+                variant="primary"
+                size="large"
+                onClick={() => setOpenExportModal(true)}
+                data-testid="ExportLog-AddConfig"
+              >
+                <i className="fa fa-plus" />
+                {t('exportAuditLog.addConfiguration')}
+              </YBButton>
+            </RbacValidator>
           </Box>
           <Box mt={4} width="100%" height="100%">
             <YBTable

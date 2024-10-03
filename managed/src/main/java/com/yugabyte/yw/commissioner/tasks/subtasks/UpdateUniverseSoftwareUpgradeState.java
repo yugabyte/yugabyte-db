@@ -23,6 +23,7 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public SoftwareUpgradeState state;
     public Boolean isSoftwareRollbackAllowed;
+    public boolean retainPrevYBSoftwareConfig = false;
   }
 
   protected Params taskParams() {
@@ -55,7 +56,8 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
               universeDetails.softwareUpgradeState = taskParams().state;
               if (taskParams().isSoftwareRollbackAllowed != null) {
                 universeDetails.isSoftwareRollbackAllowed = taskParams().isSoftwareRollbackAllowed;
-                if (!taskParams().isSoftwareRollbackAllowed) {
+                if (!taskParams().isSoftwareRollbackAllowed
+                    && !taskParams().retainPrevYBSoftwareConfig) {
                   universeDetails.prevYBSoftwareConfig = null;
                 }
               }

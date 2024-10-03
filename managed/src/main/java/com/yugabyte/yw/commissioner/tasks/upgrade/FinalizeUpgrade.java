@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
 import lombok.extern.slf4j.Slf4j;
@@ -52,7 +53,19 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
+          Universe universe = getUniverse();
+          String currentVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          String oldVersion =
+              universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+          boolean finalizeYSQLMajorVersionUpgrade =
+              gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion);
+          if (finalizeYSQLMajorVersionUpgrade) {
+            createFinalizeUpgradeTasks(
+                taskParams().upgradeSystemCatalog, getFinalizeYSQLMajorUpgradeTask(universe));
+          } else {
+            createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
+          }
         });
   }
 }

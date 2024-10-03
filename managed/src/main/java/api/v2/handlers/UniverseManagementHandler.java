@@ -53,7 +53,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     log.info("Getting Universe with UUID: {}", uniUUID);
     // map to v2 Universe
     api.v2.models.Universe v2Response = UniverseRespMapper.INSTANCE.toV2Universe(v1Response);
-    log.trace("Got Universe {}", prettyPrint(v2Response));
+    if (log.isTraceEnabled()) {
+      log.trace("Got Universe {}", prettyPrint(v2Response));
+    }
     return v2Response;
   }
 

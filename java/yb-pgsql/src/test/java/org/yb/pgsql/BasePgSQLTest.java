@@ -188,6 +188,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "ability to configure debug logs for connection manager to be at the same levels as " +
         "tserver log levels.";
 
+  protected static final String LONG_PASSWORD_SUPPORT_NEEDED =
+      "(DB-10387) This test leads to certain I/O errors due to the usage of long passwords when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled.";
+
+  protected static final String RECREATE_USER_SUPPORT_NEEDED =
+      "(DB-10760) This test needs stricter statistic updates for when roles are recreated when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
+        "until the relevant code is pushed to master.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,

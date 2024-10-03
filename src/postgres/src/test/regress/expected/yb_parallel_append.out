@@ -203,3 +203,17 @@ select * from lp;
          ->  Seq Scan on lp_null lp_4
          ->  Seq Scan on lp_default lp_5
 (8 rows)
+
+-- union of non-YB relations (#21733)
+explain (costs off)
+/*+ Set(enable_seqscan OFF) */ select 'l' UNION ALL (SELECT 'g') ORDER BY 1;
+         QUERY PLAN
+-----------------------------
+ Sort
+   Sort Key: ('g'::text)
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  Result
+               ->  Result
+(7 rows)

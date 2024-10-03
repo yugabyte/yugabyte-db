@@ -45,7 +45,7 @@ interface MigrationSourceEnvProps {
   indexSize: string | number;
   totalSize: string | number;
   rowCount: string;
-  migration: Migration;
+  migration: Migration | undefined;
 }
 
 export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({

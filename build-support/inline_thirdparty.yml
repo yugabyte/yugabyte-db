@@ -16,7 +16,7 @@
 dependencies:
   - name: usearch
     git_url: https://github.com/unum-cloud/usearch
-    commit: 240fe9c298100f9e37a2d7377b1595be6ba1f412
+    commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
     src_dir: include
     dest_dir: usearch
 
@@ -33,7 +33,7 @@ dependencies:
     dest_dir: hnswlib/hnswlib
 
   - name: simsimd
-    git_url: https://github.com/ashvardanian/simsimd
+    git_url: https://github.com/yugabyte/simsimd
     src_dir: include
     dest_dir: simsimd
-    tag: v5.1.0
+    tag: v5.4.3-yb-1

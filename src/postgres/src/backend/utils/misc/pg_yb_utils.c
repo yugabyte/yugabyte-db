@@ -394,6 +394,33 @@ Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 	return rel->full_primary_key_bms;
 }
 
+bool
+YBIsOidCoveredByMainTable(Oid index_oid)
+{
+	Relation index = RelationIdGetRelation(index_oid);
+	bool     result = YBIsCoveredByMainTable(index);
+	RelationClose(index);
+	return result;
+}
+
+bool
+YBIsCoveredByMainTable(Relation index)
+{
+	if (!IsYBRelation(index))
+		return false;
+
+	if (index->rd_index == NULL)
+		return true;
+
+	if (index->rd_index->indisprimary)
+		return true;
+
+	if (index->rd_indam->yb_amiscoveredbymaintable)
+		return true;
+
+	return false;
+}
+
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
 	TriggerDesc *trigdesc = rel->trigdesc;
@@ -1567,9 +1594,11 @@ bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 int yb_insert_on_conflict_read_batch_size = 1024;
+bool yb_enable_fkey_catcache = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
-	.is_enabled = false,
+	.has_infra = true,
+	.is_enabled = true,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
@@ -1853,6 +1882,11 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+void
+YBAddModificationAspects(YbDdlMode mode) {
+	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+}
+
 static YbDdlMode
 YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 {
@@ -1932,7 +1966,7 @@ YBDecrementDdlNestingLevel()
 			{
 				/* Wait for tserver hearbeat */
 				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
-				elog(LOG,
+				elog(LOG_SERVER_ONLY,
 					 "connection manager: adding sleep of %d microseconds "
 					 "after DDL commit",
 					 sleep);
@@ -5297,7 +5331,8 @@ YbGetRedactedQueryString(const char* query, int query_len,
 bool
 YbIsUpdateOptimizationEnabled()
 {
-	return yb_update_optimization_options.is_enabled &&
+	return yb_update_optimization_options.has_infra &&
+		   yb_update_optimization_options.is_enabled &&
 		   yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
