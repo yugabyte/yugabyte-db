@@ -45,15 +45,8 @@ std::string GetRelevantUrl(const BuildInfo& info) {
 }
 
 Status RunCommand(const std::vector<std::string>& args) {
-  std::string output, error;
   LOG(INFO) << "Execute: " << AsString(args);
-  auto status = Subprocess::Call(args, &output, &error);
-  if (!status.ok()) {
-    return status.CloneAndAppend(error).CloneAndPrepend(
-        Format("Error running command $0: " + args.front()));
-  }
-  LOG(INFO) << "Command Output: " << output;
-  return Status::OK();
+  return Subprocess::Call(args);
 }
 
 // Get the value of the key from the xml node as a string, and trims the value.
@@ -277,7 +270,10 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
     return Status::OK();
   }
 
-  return FinalizeUpgrade();
+  RETURN_NOT_OK_PREPEND(FinalizeUpgrade(), "Failed to finalize upgrade");
+
+  LOG(INFO) << "Cluster upgraded to current version";
+  return Status::OK();
 }
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
@@ -434,6 +430,7 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
 
+  LOG(INFO) << "Cluster rolled back to old version";
   return Status::OK();
 }
 
