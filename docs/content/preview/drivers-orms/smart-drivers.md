@@ -113,19 +113,7 @@ For connections to be distributed equally, the application must use the same con
 
 Note that, for load balancing, the nodes in the universe must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
 
-#### Servers refresh interval
-
-To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
-
-For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
-
-```go
-"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
-```
-
-(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
-
-### Node type-aware load balancing
+#### Node type-aware load balancing
 
 If your cluster has read replicas, smart drivers can distribute connections based on the node type - primary or read replica. If a cluster has read replicas, you may want to load balance connections to the read replica nodes, or exclude them.
 
@@ -140,6 +128,18 @@ To support this, the load balance property accepts the following additional valu
 | prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
 
 The default value for the load balance property remains `false`.
+
+### Servers refresh interval
+
+To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
+
+For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+
+```go
+"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
+```
+
+(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware load balancing
 

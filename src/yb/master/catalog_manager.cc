@@ -117,8 +117,6 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -131,6 +129,7 @@
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
@@ -139,6 +138,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -4844,8 +4844,7 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
   // If this is a transactional table, we need to create the transaction status table (if it does
   // not exist already).
   if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
-    RETURN_NOT_OK_PREPEND(
-                          CreateGlobalTransactionStatusTableIfNotPresent(rpc, epoch),
+    RETURN_NOT_OK_PREPEND(CreateGlobalTransactionStatusTableIfNotPresent(rpc, epoch),
         "Error while creating transaction status table");
   } else {
     VLOG(1) << "Not attempting to create a transaction status table:\n"

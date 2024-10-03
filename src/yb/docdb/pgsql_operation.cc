@@ -109,7 +109,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly,
                          !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
                          "Whether packed row is enabled for YSQL.");
 
-DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, false,
+DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(
