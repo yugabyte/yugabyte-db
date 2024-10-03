@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta CL-23623>}}
+|Upgrade failure from v2.20 to v2024.1 series
+| {{<product "ybdb">}}
+| {{<release "2.20.6.x">}}
+| {{<nobreak "02 October 2024">}}
+|
 | {{<ta 23476>}}
 |YCQL currenttimestamp() precision
 | {{<product "ycql">}}
