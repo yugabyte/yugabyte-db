@@ -17,6 +17,11 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
+var (
+	PostgresVersion   string = ""
+	PrometheusVersion string = ""
+)
+
 // Get the commands that will require yba-ctl.yml to be setup before getting run
 // function because go doesn't support const <slice>
 func cmdsRequireConfigInit() []string {
@@ -96,9 +101,9 @@ func initServices() {
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres("14.13")
+	services[PostgresServiceName] = NewPostgres(PostgresVersion)
 	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
-	services[PrometheusServiceName] = NewPrometheus("2.53.1")
+	services[PrometheusServiceName] = NewPrometheus(PrometheusVersion)
 	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
@@ -141,5 +146,14 @@ func handleRootCheck(cmdName string) {
 		default:
 			log.Fatal("running as non-root user with 'as_root' set to true is not supported")
 		}
+	}
+}
+
+func init() {
+	if PostgresVersion == "" {
+		panic("PostgresVersion not set during build")
+	}
+	if PrometheusVersion == "" {
+		panic("PrometheusVersion not set during build")
 	}
 }

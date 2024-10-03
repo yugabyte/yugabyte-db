@@ -4431,6 +4431,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_table_index_id = ClassNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_class_oid;
 			break;
+		case CollationRelationId:                         // pg_collation
+			sys_table_index_id = CollationNameEncNspIndexId;
+			break;
 		case RangeRelationId:                             // pg_range
 			sys_only_filter_attr = Anum_pg_range_rngtypid;
 			break;

@@ -3,7 +3,8 @@ title: PostgreSQL JDBC driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using PostgreSQL JDBC driver
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: java-driver-3-jdbc-postgres

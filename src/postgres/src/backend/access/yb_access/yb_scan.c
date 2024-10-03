@@ -756,7 +756,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		ybScan->prepare_params.querying_colocated_table =
 			IsSystemRelation(relation) ||
 			(yb_table_prop_relation->is_colocated && index &&
-			 (index->rd_index->indisprimary ||
+			 (YBIsCoveredByMainTable(index) ||
 			  yb_table_prop_relation->tablegroup_oid ==
 				  YbGetTableProperties(index)->tablegroup_oid));
 	}

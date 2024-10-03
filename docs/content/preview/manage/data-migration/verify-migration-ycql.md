@@ -3,7 +3,8 @@ title: Verify migration for YCQL
 headerTitle: Verify migration
 linkTitle: Verify migration
 description: Verify if the migration was successful
-badges: ycql
+tags:
+  other: ycql
 menu:
   preview:
     identifier: verify-migration-ycql

@@ -4,7 +4,8 @@ headerTitle: Similarity search
 linkTitle: Similarity search
 headcontent: Learn how to do similarity search in YSQL
 description: Learn how to do similarity search in YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: similarity-search
