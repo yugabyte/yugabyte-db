@@ -98,13 +98,13 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
 | dbname | Database name | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) |  Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) |  Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
 | `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 | `fallback_to_topology_keys_only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
 | `failed_host_reconnect_delay_secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
 
-In v5.5.3-yb-4 and later, the `load-balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Read replica-aware load balancing](../../smart-drivers/#read-replica-cluster-aware).
+In v5.5.3-yb-4 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
