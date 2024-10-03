@@ -3,15 +3,16 @@ title: Connect a YCQL Java application
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 4.15 driver and SSL.
-badges: ycql
+tags:
+  other: ycql
+menu:
+  preview:
+    identifier: ycql-java-driver-ssl
+    parent: java-drivers
+    weight: 500
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
   - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
-menu:
-  preview:
-    parent: java
-    identifier: connect-ycql-application
-    weight: 200
 type: docs
 ---
 
@@ -50,6 +51,12 @@ type: docs
 </ul>
 
 [YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Aeon" >}}
+
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
+
+{{< /note >}}
 
 The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL with SSL.
 
@@ -104,7 +111,7 @@ Create a Project Object Model (POM) file, named `pom.xml`, and then copy the fol
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-6</version>
+      <version>4.15.0-yb-1</version>
     </dependency>
   </dependencies>
 
