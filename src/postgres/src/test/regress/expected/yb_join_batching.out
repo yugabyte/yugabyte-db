@@ -1286,6 +1286,44 @@ INSERT INTO s3 select i,i from generate_series(1,100) i;
 DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
+CREATE TABLE r1(a int, PRIMARY KEY(a ASC));
+CREATE TABLE r2(a int);
+/*+Leading(r2 r1)*/
+EXPLAIN (COSTS OFF)
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+                           QUERY PLAN
+----------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (r1.a = (NULL::integer))
+   ->  Limit
+         ->  Seq Scan on r2
+   ->  Index Scan using r1_pkey on r1
+         Index Cond: (a = ANY (ARRAY[(NULL::integer), $1, $2]))
+(6 rows)
+
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+ a | nullcol
+---+---------
+(0 rows)
+
+DROP TABLE r1;
+DROP TABLE r2;
 create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));
 create table s3(a int, primary key (a asc));

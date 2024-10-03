@@ -348,6 +348,34 @@ DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
 
+CREATE TABLE r1(a int, PRIMARY KEY(a ASC));
+CREATE TABLE r2(a int);
+
+/*+Leading(r2 r1)*/
+EXPLAIN (COSTS OFF)
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+
+DROP TABLE r1;
+DROP TABLE r2;
+
 create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));
 create table s3(a int, primary key (a asc));
