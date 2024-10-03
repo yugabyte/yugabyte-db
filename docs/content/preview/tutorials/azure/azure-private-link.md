@@ -35,7 +35,7 @@ In the following sections, you will:
 
 ![3-node YugabyteDB deployment in uswest3](/images/tutorials/azure/azure-private-link/yb-deployment.png "3-node YugabyteDB deployment in uswest3")
 
-Remember to save the credentials after creation and [download the CA certificate](../../../tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate) once operational, ensuring a secure connection through the Node.js Smart Client.
+Remember to save the credentials after creation and [download the CA certificate](../../build-apps/cloud-add-ip/#download-your-cluster-certificate) once operational, ensuring a secure connection through the Node.js Smart Client.
 
 ## Get started with Azure
 

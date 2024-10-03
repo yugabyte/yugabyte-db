@@ -1126,6 +1126,10 @@ public class ReleaseManager {
   }
 
   private void copyReleasesFromDockerRelease(String destinationDir, Set<String> skipVersions) {
+    if (appConfig.getBoolean("yb.cloud.enabled")) {
+      log.debug("Skipping copy of releases into release directory for cloud");
+      return;
+    }
     String ybReleasePath = appConfig.getString("yb.docker.release");
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
     Pattern ybPackagePatternCopy =

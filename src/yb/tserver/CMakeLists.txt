@@ -222,6 +222,7 @@ set(TSERVER_SRCS
   pg_mutation_counter.cc
   pg_response_cache.cc
   pg_sequence_cache.cc
+  pg_shared_mem_pool.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   tserver_xcluster_context.cc

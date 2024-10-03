@@ -13,10 +13,12 @@ import (
 
     "github.com/labstack/echo/v4"
 )
-
+const MOST_RECENT_TIMESTAMP string = "select ts " +
+        "from %s where metric='%s' and node='%s' limit 1;"
 const QUERY_LIMIT_ONE string = "select ts, value, details " +
         "from %s where metric='%s' and node='%s' limit 1;"
-
+const MRT_QUERY_METRICS string = "select ts, value, details " +
+        "from %s where metric='%s' and node='%s' and ts>=%d"
 // GetCluster - Get a cluster
 func (c *Container) GetCluster(ctx echo.Context) error {
         // Perform all necessary http requests asynchronously
@@ -181,6 +183,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // and each tserver has the flag:
         //   --use_client_to_server_encryption=true
         // If any flag on any server does not match, we don't say encryption in transit is enabled.
+        tServerSnapshotMap := make(map[string]string)
         isEncryptionInTransitEnabled := true
         for host, gFlagsTserverFuture := range gFlagsTserverFutures {
             tserverFlags := <-gFlagsTserverFuture
@@ -202,6 +205,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                     }
                     break
             }
+            tServerSnapshotMap[host] = tserverFlags.GFlags["metrics_snapshotter_interval_ms"]
         }
         // Use this to track gflag results that have been read, to avoid reading a future twice
         // which will hang
@@ -312,30 +316,48 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Thus, we will only count the metrics from non 127 addresses, unless all addresses
         // are 127, in which case we count only one of them.
         for _, host := range reducedNodeList {
+            var recentTs int64
+            var snapshotterInterval int64
+            var errDataType error
+            var refinedTs int64
+            snapshotterIntervalStr := tServerSnapshotMap[host]
+            if snapshotterIntervalStr == "" {
+                snapshotterIntervalStr = "11000" //default value is set to 11000ms
+            }
+            snapshotterInterval, errDataType = strconv.ParseInt(snapshotterIntervalStr, 10, 64)
+            if errDataType != nil {
+                fmt.Println("Error: metrics_snapshotter_interval_ms not in proper type")
+            }
+            timestamp := fmt.Sprintf(
+                MOST_RECENT_TIMESTAMP, "system.metrics", "total_disk", hostToUuid[host])
+            iter := session.Query(timestamp).Iter()
+            iter.Scan(&recentTs)
+            refinedTs = recentTs - snapshotterInterval / 2
             query := fmt.Sprintf(
-                QUERY_LIMIT_ONE, "system.metrics", "total_disk", hostToUuid[host])
-            iter := session.Query(query).Iter()
+                MRT_QUERY_METRICS, "system.metrics", "total_disk", hostToUuid[host], refinedTs)
+            iter = session.Query(query).Iter()
             var ts int64
             var value int
             var details string
-            iter.Scan(&ts, &value, &details)
+            for iter.Scan(&ts, &value, &details) {
+                totalDiskGb += float64(value) / helpers.BYTES_IN_GB
+            }
             if err := iter.Close(); err != nil {
                 c.logger.Errorf("error fetching total_disk data from %s: %s",
                     host, err.Error())
                 continue
-            } else {
-                totalDiskGb += float64(value) / helpers.BYTES_IN_GB
             }
             query = fmt.Sprintf(
-                QUERY_LIMIT_ONE, "system.metrics", "free_disk", hostToUuid[host])
+                MRT_QUERY_METRICS, "system.metrics", "free_disk", hostToUuid[host], refinedTs)
+            refinedTs = snapshotterInterval / 2
             iter = session.Query(query).Iter()
-            iter.Scan(&ts, &value, &details)
+            for iter.Scan(&ts, &value, &details) {
+                freeDiskGb += float64(value) / helpers.BYTES_IN_GB
+            }
             if err := iter.Close(); err != nil {
                 c.logger.Errorf("error fetching free_disk data from %s: %s",
                     host, err.Error())
                 continue
-            } else {
-                freeDiskGb += float64(value) / helpers.BYTES_IN_GB
             }
         }
         // Get software version

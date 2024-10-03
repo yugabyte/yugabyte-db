@@ -104,6 +104,9 @@ src/models/VersionInfo.ts
 src/models/VoyagerMigrateDataMetrics.ts
 src/models/VoyagerMigrateDataMetricsDetails.ts
 src/models/VoyagerMigrationDetails.ts
+src/models/VoyagerMigrationDetailsSourceDb.ts
+src/models/VoyagerMigrationDetailsTargetCluster.ts
+src/models/VoyagerMigrationDetailsVoyager.ts
 src/models/VoyagerMigrationsInfo.ts
 src/models/YbApiEnum.ts
 src/models/index.ts

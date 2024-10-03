@@ -3417,6 +3417,28 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
 }
 
+void TabletServiceImpl::AdminExecutePgsql(
+    const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
+    const auto& deadline = context.GetClientDeadline();
+    auto pg_conn = VERIFY_RESULT(server->CreateInternalPGConn(req->database_name(), deadline));
+    for (const auto& stmt : req->pgsql_statements()) {
+      SCHECK_LT(
+          CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");
+      RETURN_NOT_OK(pg_conn.Execute(stmt));
+    }
+    return Status::OK();
+  };
+
+  auto status = execute_pg_sql();
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {

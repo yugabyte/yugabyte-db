@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
@@ -60,4 +62,6 @@ public class BaseTaskDependencies {
   private final ImageBundleUtil imageBundleUtil;
   private final ReleaseManager releaseManager;
   private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final GFlagsValidation gFlagsValidation;
+  private final NodeUniverseManager nodeUniverseManager;
 }

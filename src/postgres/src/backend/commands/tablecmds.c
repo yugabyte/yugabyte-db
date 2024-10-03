@@ -4118,11 +4118,11 @@ RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 	/* Do the work */
 	RenameRelationInternal(relid, stmt->newname, false, is_index_stmt);
 
-	/* YB rename is not needed for a primary key dummy index. */
+	/* YB rename is not needed for a covered dummy index. */
 	rel             = RelationIdGetRelation(relid);
 	needs_yb_rename = IsYBRelation(rel) &&
 					  !(rel->rd_rel->relkind == RELKIND_INDEX &&
-						rel->rd_index->indisprimary) &&
+						YBIsCoveredByMainTable(rel)) &&
 					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX
 					  && !yb_is_internal_clone_rename;
 	RelationClose(rel);
@@ -15120,9 +15120,9 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename && 
+	if (IsYugaByteEnabled() && tablespacename &&
 		rel->rd_index &&
-		rel->rd_index->indisprimary) {
+		YBIsCoveredByMainTable(rel)) {
 		/*
 		 * Disable setting tablespaces for primary key indexes in Yugabyte
 		 * clusters.
@@ -15715,23 +15715,23 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			continue;
 
 		/*
-		 * In YB, a primary key index is an intrinsic part of its base table.
-		 * For a primary key index, we only need to update the
+		 * In YB, a covered index is an intrinsic part of its base table.
+		 * For a covered index, we only need to update the
 		 * new_tablespaceoid field in pg_class.
 		 */
 		if (relForm->relkind == RELKIND_INDEX ||
 			relForm->relkind == RELKIND_PARTITIONED_INDEX)
 		{
 			yb_index_rel = RelationIdGetRelation(relOid);
-			bool isPrimaryIndex = (yb_index_rel != NULL &&
-								   yb_index_rel->rd_index->indisprimary);
+			bool isCoveredByMainTable = (yb_index_rel != NULL &&
+				YBIsCoveredByMainTable(yb_index_rel));
 
 			RelationClose(yb_index_rel);
 
-			if (isPrimaryIndex)
+			if (isCoveredByMainTable)
 			{
 				/*
-				 * We move the primary key indexes along with the tables that
+				 * We move the covered indexes along with the tables that
 				 * they are associated with when using the following commands
 				 * ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET TABLESPACE ...
 				 */
@@ -17735,10 +17735,11 @@ AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 
 		/*
 		 * Call SetSchema handler for the related internal YB DocDB table.
-		 * No YB DocDB table for a primary key dummy index.
+		 * No YB DocDB table for a covered index.
 		 */
 		const Relation rel = RelationIdGetRelation(relOid);
-		if (IsYBRelation(rel) && !(rel->rd_index && rel->rd_index->indisprimary))
+		if (IsYBRelation(rel) && !(rel->rd_index &&
+			YBIsCoveredByMainTable(rel)))
 			YBCAlterTableNamespace(classForm, relOid);
 
 		RelationClose(rel);

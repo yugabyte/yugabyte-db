@@ -229,7 +229,10 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       String query;
       if (type == PrometheusMetricsType.PLATFORM || type == PrometheusMetricsType.PROMETHEUS) {
         query =
-            String.format("{job=\"%s\",node_prefix=\"%s\"}", type.name().toLowerCase(), nodePrefix);
+            String.format(
+                "{job=\"%s\",node_prefix=\"%s\"}",
+                type.name().toLowerCase(),
+                (type == PrometheusMetricsType.PLATFORM ? nodePrefix : ""));
       } else {
         query =
             String.format(

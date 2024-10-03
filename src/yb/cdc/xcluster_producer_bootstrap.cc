@@ -118,8 +118,6 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   SCHECK(
       !FLAGS_TEST_cdc_inject_replication_index_update_failure, InternalError,
       "Simulated error when setting the replication index");
-  RETURN_NOT_OK(SetLogRetentionForLocalTabletPeers());
-  RETURN_NOT_OK(SetLogRetentionForRemoteTabletPeers());
 
   LOG_WITH_FUNC(INFO) << "Updating cdc_state table with checkpoints.";
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
@@ -373,68 +371,6 @@ Status XClusterProducerBootstrap::VerifyTabletOpIds() {
     SCHECK_FORMAT(
         opid.is_valid_not_empty(), InternalError, "Could not retrieve op id for tablet $0",
         tablet_id);
-  }
-  return Status::OK();
-}
-
-Status XClusterProducerBootstrap::SetLogRetentionForLocalTabletPeers() {
-  for (const auto& bootstrap_id_tablet_id_pair : local_tablets_) {
-    const auto& [bootstrap_id, tablet_id] = bootstrap_id_tablet_id_pair;
-    auto tablet_peer = VERIFY_RESULT(cdc_service_context_->GetServingTablet(tablet_id));
-    const auto& op_id = tablet_op_ids_[bootstrap_id_tablet_id_pair];
-
-    // Can update directly, no need for a proxy.
-    cdc_service_->AddTabletCheckpoint(op_id, bootstrap_id, tablet_id);
-    RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(op_id.index));
-    VERIFY_RESULT(tablet_peer->GetConsensus())->UpdateCDCConsumerOpId(op_id);
-  }
-  return Status::OK();
-}
-
-Status XClusterProducerBootstrap::SetLogRetentionForRemoteTabletPeers() {
-  if (server_to_remote_tablets_.empty()) {
-    return Status::OK();
-  }
-
-  CountDownLatch rpcs_done(server_to_remote_tablets_.size());
-  // Store references to the rpc and response objects so they don't go out of scope.
-  std::vector<std::shared_ptr<rpc::RpcController>> rpcs;
-  std::vector<std::shared_ptr<UpdateCdcReplicatedIndexResponsePB>> update_index_responses;
-
-  for (const auto& [server_id, bootstrap_tablet_pairs] : server_to_remote_tablets_) {
-    UpdateCdcReplicatedIndexRequestPB update_index_req;
-    auto update_index_resp = std::make_shared<UpdateCdcReplicatedIndexResponsePB>();
-    auto rpc = std::make_shared<rpc::RpcController>();
-
-    // Store pointers to response and rpc object.
-    update_index_responses.push_back(update_index_resp);
-    rpcs.push_back(rpc);
-
-    for (const auto& bootstrap_id_tablet_id_pair : bootstrap_tablet_pairs) {
-      update_index_req.add_tablet_ids(bootstrap_id_tablet_id_pair.second);
-      update_index_req.add_replicated_indices(tablet_op_ids_[bootstrap_id_tablet_id_pair].index);
-      update_index_req.add_replicated_terms(tablet_op_ids_[bootstrap_id_tablet_id_pair].term);
-    }
-    update_index_req.set_initial_retention_barrier(true);
-
-    auto proxy = server_to_proxy_[server_id];
-    // Todo: UpdateCdcReplicatedIndex does not seem to enforce this deadline.
-    rpc.get()->set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    proxy->UpdateCdcReplicatedIndexAsync(
-        update_index_req, update_index_resp.get(), rpc.get(), rpcs_done.CountDownCallback());
-  }
-
-  // Wait for all async calls to finish.
-  rpcs_done.Wait();
-
-  // Check all responses for errors.
-  for (const auto& update_index_resp : update_index_responses) {
-    if (update_index_resp->has_error()) {
-      const std::string err_message = update_index_resp->error().status().message();
-      LOG_WITH_FUNC(WARNING) << err_message;
-      return STATUS(InternalError, err_message);
-    }
   }
   return Status::OK();
 }

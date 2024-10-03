@@ -644,7 +644,7 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 			 * Return the IndexTuple. If this is a primary key, reorder the
 			 * values first as expected in the index's column order first.
 			 */
-			if (index->rd_index->indisprimary)
+			if (YBIsCoveredByMainTable(index))
 			{
 				Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
 
@@ -764,18 +764,19 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	if (index)
 	{
 		ybScan->prepare_params.index_relfilenode_oid =
-			ybScan->prepare_params.fetch_ybctids_only && index->rd_index->indisprimary
-				? YbGetRelfileNodeId(relation)
-				: YbGetRelfileNodeId(index);
+			ybScan->prepare_params.fetch_ybctids_only &&
+				YBIsCoveredByMainTable(index)
+					? YbGetRelfileNodeId(relation)
+					: YbGetRelfileNodeId(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
 		ybScan->prepare_params.use_secondary_index =
-			!index->rd_index->indisprimary ||
+			!YBIsCoveredByMainTable(index) ||
 			(ybScan->prepare_params.fetch_ybctids_only &&
 			 !ybScan->prepare_params.querying_colocated_table);
 	}
 
 	/* Setup descriptors for target and bind. */
-	if (!index || index->rd_index->indisprimary)
+	if (!index || YBIsCoveredByMainTable(index))
 	{
 		/*
 		 * SequentialScan or PrimaryIndexScan or BitmapIndexScan on the primary index
@@ -850,7 +851,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 			ybScan->target_key_attnums[i] = key->sk_attno;
 			scan_plan->bind_key_attnums[i] = key->sk_attno;
 		}
-		else if (index->rd_index->indisprimary)
+		else if (YBIsCoveredByMainTable(index))
 		{
 			/*
 			 * PrimaryIndex scan: This is a special case in YugaByte. There is no PrimaryIndexTable.
@@ -2396,8 +2397,8 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
 {
 	Relation index = ybScan->index;
 	Relation secondary_index =
-		index && !index->rd_index->indisprimary && !is_index_only_scan ? index :
-																		 NULL;
+		index && !YBIsCoveredByMainTable(index) &&
+			!is_index_only_scan ? index : NULL;
 	int idx = -1;
 	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
 	{
@@ -2575,7 +2576,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 */
 	if (all_attrs_required)
 	{
-		if (is_index_only_scan && index->rd_index->indisprimary)
+		if (is_index_only_scan && YBIsCoveredByMainTable(index))
 		{
 			/*
 			 * Special case: For Primary-Key-ONLY-Scan, we select ONLY the
@@ -2628,13 +2629,13 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	}
 
 	// If we are using a Bitmap Index scan on non-colocated primary keys
-	if (index && index->rd_index->indisprimary &&
+	if (index && YBIsCoveredByMainTable(index) &&
 		ybScan->prepare_params.fetch_ybctids_only &&
 		!ybScan->prepare_params.querying_colocated_table)
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								ybScan->handle);
 
-	if (!is_index_only_scan && index && !index->rd_index->indisprimary)
+	if (!is_index_only_scan && index && !YBIsCoveredByMainTable(index))
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								ybScan->handle);
 
@@ -2741,7 +2742,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
 	}
 
 	/* Set ybbasectid in case of non-primary secondary index scan. */
-	if (index && !xs_want_itup && !index->rd_index->indisprimary)
+	if (index && !xs_want_itup && !YBIsCoveredByMainTable(index))
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								handle);
 }
@@ -3539,7 +3540,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
-	bool		isprimary = index->rd_index->indisprimary;
+	bool		isprimary = YBIsCoveredByMainTable(index);
 	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
 	RelOptInfo *baserel = path->path.parent;
 	ListCell   *lc;
@@ -3551,8 +3552,8 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	List	   *clauses = NIL;
 	double 		baserel_rows_estimate;
 
-	/* Primary-index scans are always covered in Yugabyte (internally) */
-	bool       is_uncovered_idx_scan = !index->rd_index->indisprimary &&
+	/* Primary/Inlined-index scans are always covered in Yugabyte (internally) */
+	bool       is_uncovered_idx_scan = !YBIsCoveredByMainTable(index) &&
 	                                   path->path.pathtype != T_IndexOnlyScan;
 
 	YbScanPlanData	scan_plan;

@@ -416,6 +416,16 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  PauseXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.PauseXClusterUniverses.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.DrConfig),
+
+  ResumeXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.ResumeXClusterUniverses.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -938,6 +948,8 @@ public enum TaskType {
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
 
+  MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
+
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
 
   UniverseUpdateRootCert(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.class),
@@ -980,6 +992,15 @@ public enum TaskType {
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  PGUpgradeTServerCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  RunYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
+
+  RollbackYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),

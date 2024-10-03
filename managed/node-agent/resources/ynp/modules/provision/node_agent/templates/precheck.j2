@@ -87,7 +87,7 @@ if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
     echo "HTTP GET request successful. Processing response..."
 
     # Extract IPs using sed and grep
-    ips=$(echo "$response_body" | sed -n 's/.*"ip":"\([a-zA-Z0-9\.-]*\)".*/\1/p')
+    ips=$(echo "$response_body" | grep -o '"ip":"[a-zA-Z0-9.:_-]*"' | cut -d '"' -f4)
     for ip in $ips; do
         if [[ "$ip" == "{{ node_ip }}" ]]; then
             matched=true

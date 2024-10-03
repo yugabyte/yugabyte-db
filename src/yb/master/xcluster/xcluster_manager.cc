@@ -42,6 +42,9 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup");
 
+DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
+    "Timeout for YSQL statements executed during xCluster operations.");
+
 // This flag will be converted to a PREVIEW, and then a kExternal Auto flag as the feature matures.
 DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");

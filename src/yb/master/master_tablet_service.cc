@@ -251,5 +251,11 @@ void MasterTabletServiceImpl::Checksum(const tserver::ChecksumRequestPB* req,
   HandleUnsupportedMethod("Checksum", &context);
 }
 
+void MasterTabletServiceImpl::AdminExecutePgsql(
+    const tserver::AdminExecutePgsqlRequestPB* req, tserver::AdminExecutePgsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  HandleUnsupportedMethod("AdminExecutePgsql", &context);
+}
+
 } // namespace master
 } // namespace yb

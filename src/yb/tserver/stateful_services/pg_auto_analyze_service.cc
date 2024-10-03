@@ -262,10 +262,12 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
       auto res =
         VERIFY_RESULT(conn.Fetch("SELECT reltuples FROM pg_class WHERE oid = "
                                   + std::to_string(table_oid)));
-      float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
-      table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
-      VLOG(4) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
-              << " reltuples";
+      if (PQntuples(res.get()) > 0) {
+        float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
+        table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
+        VLOG(4) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
+                << " reltuples";
+      }
     }
   }
 
@@ -280,6 +282,8 @@ Result<std::unordered_map<NamespaceName, std::set<TableId>>>
   std::unordered_map<NamespaceName, std::set<TableId>>
       dbname_to_analyze_target_tables;
   for (auto& [table_id, mutations] : table_id_to_mutations_maps) {
+    if (!table_tuple_count_.contains(table_id))
+      continue;
     auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
     double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
         FLAGS_ysql_auto_analyze_scale_factor * table_tuple_count_[table_id];

@@ -79,6 +79,14 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return all_results;
   }
 
+  Status SaveToFile(const std::string& file_path) const override {
+    return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
+  }
+
+  Status AttachToFile(const std::string& input_path) override {
+    return STATUS(NotSupported, "Attaching to file is not implemented for ShardedVectorIndex");
+  }
+
  private:
   std::vector<VectorIndexIfPtr<Vector, DistanceResult>> indexes_;
   std::atomic<size_t> round_robin_counter_;  // Atomic counter for thread-safe round-robin insertion

@@ -304,6 +304,7 @@ extern PGDLLIMPORT bool  yb_bnl_enable_hashing;
 extern PGDLLIMPORT int yb_explicit_row_locking_batch_size;
 extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 extern PGDLLIMPORT int yb_toast_catcache_threshold;
+extern PGDLLIMPORT bool yb_enable_fkey_catcache;
 
 /*
  * Functions exported by guc.c

@@ -337,6 +337,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> tServerNodes,
       UpgradeContext context,
       boolean isYbcPresent) {
+
+    if (context.processTServersFirst) {
+      createRollingUpgradeTaskFlow(
+          rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+    }
+
     if (context.processInactiveMaster) {
       createRollingUpgradeTaskFlow(
           rollingUpgradeLambda,
@@ -345,11 +351,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           context,
           false,
           isYbcPresent);
-    }
-
-    if (context.processTServersFirst) {
-      createRollingUpgradeTaskFlow(
-          rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
     }
 
     createRollingUpgradeTaskFlow(
@@ -376,7 +377,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         lambda, nodeSet, NodeDetails::getAllProcesses, context, true, isYbcPresent);
   }
 
-  private void createRollingUpgradeTaskFlow(
+  protected void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
       Collection<NodeDetails> nodes,
       ServerType baseProcessType,
@@ -735,7 +736,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<NodeDetails> getNonMasterNodes(
+  protected List<NodeDetails> getNonMasterNodes(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -749,7 +750,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         : null;
   }
 
-  private void createNonRollingUpgradeTaskFlow(
+  protected void createNonRollingUpgradeTaskFlow(
       IUpgradeSubTask nonRollingUpgradeLambda,
       List<NodeDetails> nodes,
       ServerType processType,

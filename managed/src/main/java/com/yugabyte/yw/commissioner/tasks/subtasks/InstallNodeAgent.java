@@ -53,10 +53,11 @@ public class InstallNodeAgent extends AbstractTaskBase {
   public static class Params extends NodeTaskParams {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
     public String nodeAgentInstallDir;
+    public String sshUser;
     public UUID customerUuid;
     public boolean reinstall;
     public boolean airgap;
-    public String sshUser;
+    public boolean sudoAccess;
   }
 
   @Override
@@ -115,10 +116,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
-    // Create the staging directory with sudo first, make it writable for all users.
-    // This is done because some on-prem nodes may not have write permission to /tmp.
-    List<String> command =
-        ImmutableList.of("sudo", "mkdir", "-m", "777", "-p", stagingDir.toString());
+    List<String> command = getCommand("mkdir", "-m", "777", "-p", stagingDir.toString());
     log.info("Creating staging directory: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
 
@@ -177,7 +175,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     if (taskParams().airgap) {
       sb.append(" --airgap");
     }
-    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", sb.toString());
+    command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);
     try {
       nodeUniverseManager
@@ -188,10 +186,15 @@ public class InstallNodeAgent extends AbstractTaskBase {
       throw e;
     }
     nodeAgent.saveState(State.REGISTERED);
+    sb.setLength(0);
+    sb.append("systemctl");
+    if (!taskParams().sudoAccess) {
+      sb.append(" --user");
+    }
+    sb.append(" is-active --quiet yb-node-agent");
+    command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Waiting for node agent service to be running");
-    command =
-        ImmutableList.of(
-            "sudo", "-H", "/bin/bash", "-c", "systemctl is-active --quiet yb-node-agent");
+    log.debug("Running systemd command: {}", command);
     try {
       nodeUniverseManager
           .runCommand(node, universe, command, shellContext)
@@ -206,5 +209,13 @@ public class InstallNodeAgent extends AbstractTaskBase {
   @Override
   public void run() {
     install();
+  }
+
+  private List<String> getCommand(String... args) {
+    ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
+    if (taskParams().sudoAccess) {
+      commandBuilder.add("sudo", "-H");
+    }
+    return commandBuilder.add(args).build();
   }
 }

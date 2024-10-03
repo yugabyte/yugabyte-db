@@ -96,9 +96,46 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           // version.
           createDownloadTasks(toOrderedSet(nodes.asPair()), newVersion);
 
-          // Install software on nodes which require new master or tserver with new version.
-          createUpgradeTaskFlowTasks(
-              nodes, newVersion, getRollbackUpgradeContext(newVersion), false);
+          boolean ysqlMajorVersionUpgrade = false;
+          if (prevYBSoftwareConfig != null) {
+            ysqlMajorVersionUpgrade =
+                gFlagsValidation.ysqlMajorVersionUpgrade(
+                    prevYBSoftwareConfig.getSoftwareVersion(),
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+          }
+
+          if (nodes.tserversList.size() > 0) {
+            createTServerUpgradeFlowTasks(
+                universe,
+                nodes.tserversList,
+                newVersion,
+                getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                false /* reProvisionRequired */);
+          }
+
+          if (nodes.mastersList.size() > 0) {
+            // Perform rollback ysql major version catalog upgrade only when
+            // none of the masters are upgraded.
+            if (ysqlMajorVersionUpgrade
+                && nodes.mastersList.size() == universe.getMasters().size()) {
+              createRollbackYsqlMajorVersionCatalogUpgradeTask();
+            }
+
+            createMasterUpgradeFlowTasks(
+                universe,
+                getNonMasterNodes(nodes.mastersList, nodes.tserversList),
+                newVersion,
+                getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                false /* activeRole */);
+
+            createMasterUpgradeFlowTasks(
+                universe,
+                nodes.mastersList,
+                newVersion,
+                getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                true /* activeRole */);
+          }
+
           // Check software version on each node.
           createCheckSoftwareVersionTask(allNodes, newVersion);
 

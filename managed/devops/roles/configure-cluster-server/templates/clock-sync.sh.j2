@@ -29,8 +29,11 @@ check_clock_sync_chrony() {
     return 1
   fi
   local skew=$(echo "${chrony_tracking}" | awk '/System time/ {print $4}')
+  local dispersion=$(echo "${chrony_tracking}" | awk '/Root dispersion/ {print $4}')
+  local delay=$(echo "${chrony_tracking}" | awk '/Root delay/ {print $4}')
+  local clock_error=$(python -c 'print('${skew}' + '${dispersion}' + (.5 * '${delay}'))')
   
-  if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_clock_skew_sec"')}'; then
+  if awk 'BEGIN{exit !('"$clock_error"' < '"$acceptable_clock_skew_sec"')}'; then
     echo "Clock skew is within acceptable limits: $skew ms"
     return 0
   else
@@ -52,6 +55,25 @@ check_clock_sync_ntpd() {
   fi
 }
 
+check_clock_sync_timesyncd() {
+  synchronized=$(timedatectl status | grep "System clock synchronized" | awk '{print $4}')
+  if [[ "${synchronized}" == "yes" ]]; then
+    echo "timesyncd reports clock is synchronized"
+    return 0
+  else
+    echo "timesyncd clock is not synchronized"
+    return 1
+  fi
+}
+
+systemd_loaded() {
+  active=$(systemctl show --no-pager $1 | grep "ActiveState" | cut -d= -f2)
+  if [[ "${active}" == "active" ]]; then
+    return 0
+  fi
+  return 1
+}
+
 iter=0
 while true; do
   # If chrony is available, use it for clock sync.
@@ -62,9 +84,11 @@ while true; do
   elif command_exists ntpd; then
     check_clock_sync_ntpd
     res=$?
-  # User has a custom way for clock sync.
+  elif systemd_loaded systemd-timesyncd; then 
+    check_clock_sync_timesyncd
+    res=$?
   else
-    echo "Chrony and NTPd are not available, but required."
+    echo "Chrony, NTPd, and timesyncd are not available, but required."
     exit 1
   fi
   ((iter++))

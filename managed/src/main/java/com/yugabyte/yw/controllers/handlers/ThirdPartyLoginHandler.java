@@ -209,7 +209,9 @@ public class ThirdPartyLoginHandler {
     headers.put("Authorization", authHeader);
     JsonNode result = apiHelper.getRequest(url, headers);
     List<String> groups = new ArrayList<>();
-    log.trace("Result from microsoft endpoint = {}", result.toPrettyString());
+    if (log.isTraceEnabled()) {
+      log.trace("Result from microsoft endpoint = {}", result.toPrettyString());
+    }
     if (result.has("error")) {
       log.error(
           "Fetching group membership from MicroSoft failed with the following error: {}\n"
