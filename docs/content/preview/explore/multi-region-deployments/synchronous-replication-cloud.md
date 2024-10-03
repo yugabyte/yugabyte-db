@@ -60,7 +60,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
 
-If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to limit connections to the closest region.
+If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 
