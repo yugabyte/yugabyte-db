@@ -13795,7 +13795,7 @@
     "Troubleshooting Platform Details Model" : {
       "properties" : {
         "apiToken" : {
-          "description" : "API Token",
+          "description" : "YBA API Token",
           "type" : "string"
         },
         "customerUUID" : {
@@ -13816,6 +13816,10 @@
         },
         "metricsUrl" : {
           "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "tpApiToken" : {
+          "description" : "TP API Token",
           "type" : "string"
         },
         "tpUrl" : {
@@ -13840,7 +13844,7 @@
       "description" : "Troubleshooting Platform Model",
       "properties" : {
         "apiToken" : {
-          "description" : "API Token",
+          "description" : "YBA API Token",
           "type" : "string"
         },
         "customerUUID" : {
@@ -13856,6 +13860,10 @@
         },
         "metricsUrl" : {
           "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "tpApiToken" : {
+          "description" : "TP API Token",
           "type" : "string"
         },
         "tpUrl" : {

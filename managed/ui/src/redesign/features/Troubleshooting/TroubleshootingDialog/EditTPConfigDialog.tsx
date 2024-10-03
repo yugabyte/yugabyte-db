@@ -42,6 +42,7 @@ export const EditTPConfigDialog = ({
       ybaUrl: data.ybaUrl,
       metricsUrl: data.metricsUrl,
       apiToken: data.apiToken,
+      tpApiToken: data.tpApiToken,
       metricsScrapePeriodSecs: data.metricsScrapePeriodSecs
     },
     mode: 'onChange',
@@ -188,6 +189,20 @@ export const EditTPConfigDialog = ({
                 rules={{
                   required: t('clusterDetail.troubleshoot.apiTokenRequired')
                 }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.tpApiTokenLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="tpApiToken"
+                style={{ width: '300px' }}
+                type="text"
               />
             </Box>
           </Box>
