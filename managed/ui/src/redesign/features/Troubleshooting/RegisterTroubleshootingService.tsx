@@ -25,6 +25,7 @@ export const RegisterTroubleshootingService = ({
       ybaUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : baseUrl,
       metricsUrl: IN_DEVELOPMENT_MODE ? 'http://localhost:9090' : `${baseUrl}:9090`,
       apiToken: '',
+      tpApiToken: '',
       metricsScrapePeriodSecs: 10
     },
     mode: 'onChange',
@@ -39,6 +40,7 @@ export const RegisterTroubleshootingService = ({
         payload.ybaUrl,
         payload.metricsUrl,
         payload.apiToken,
+        payload.tpApiToken,
         payload.metricsScrapePeriodSecs
       ),
     {
@@ -140,6 +142,20 @@ export const RegisterTroubleshootingService = ({
                 rules={{
                   required: t('clusterDetail.troubleshoot.apiTokenRequired')
                 }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.tpApiTokenLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="tpApiToken"
+                style={{ width: '300px' }}
+                type="text"
               />
             </Box>
           </Box>
