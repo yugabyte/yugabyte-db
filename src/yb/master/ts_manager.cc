@@ -39,7 +39,9 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
@@ -115,42 +117,48 @@ TSManager::TSManager(SysCatalogTable& sys_catalog) noexcept : sys_catalog_(sys_c
 Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
 
-  const TSDescriptorPtr* found_ptr =
-    FindOrNull(servers_by_id_, instance.permanent_uuid());
-  if (!found_ptr) {
+  auto maybe_desc = LookupTSInternalUnlocked(instance.permanent_uuid());
+  if (!maybe_desc) {
     return STATUS_FORMAT(
         NotFound, "Unknown tablet server ID not in map, instance data: $0",
         instance.ShortDebugString());
   }
-  const TSDescriptorPtr& found = *found_ptr;
-  auto desc_lock = found->LockForRead();
+  auto desc = std::move(maybe_desc).value();
+  auto desc_lock = desc->LockForRead();
   if (desc_lock->pb.state() == SysTServerEntryPB::REPLACED) {
     return STATUS_FORMAT(
         NotFound,
         "Trying to lookup replaced tablet server, instance data: $0, entry: $1",
-        instance.ShortDebugString(), found->ToString());
+        instance.ShortDebugString(), desc->ToString());
   }
 
   if (instance.instance_seqno() != desc_lock->pb.instance_seqno()) {
     return STATUS_FORMAT(
-        NotFound, "mismatched instance sequence number $0, instance $1", found->latest_seqno(),
+        NotFound, "mismatched instance sequence number $0, instance $1", desc->latest_seqno(),
         instance.ShortDebugString());
   }
 
-  return *found_ptr;
+  return desc;
 }
 
-// todo(zdrudi): this function can create dangling references when we begin removing TSDescriptors
-// from the registry.
 bool TSManager::LookupTSByUUID(const std::string& uuid,
                                TSDescriptorPtr* ts_desc) {
   SharedLock<decltype(map_lock_)> l(map_lock_);
-  const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, uuid);
-  if (!found_ptr || (*found_ptr)->IsRemoved()) {
+  auto maybe_desc = LookupTSInternalUnlocked(uuid);
+  if (!maybe_desc || (*maybe_desc)->IsReplaced()) {
     return false;
   }
-  *ts_desc = *found_ptr;
+  *ts_desc = std::move(maybe_desc).value();
   return true;
+}
+
+std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
+    const std::string& permanent_uuid) const {
+  const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, permanent_uuid);
+  if (!found_ptr) {
+    return std::nullopt;
+  }
+  return *found_ptr;
 }
 
 Result<std::pair<std::vector<TSDescriptorPtr>, std::vector<TSDescriptor::WriteLock>>>
@@ -334,7 +342,8 @@ TSDescriptorVector TSManager::GetAllDescriptors() const {
 }
 
 void TSManager::GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const {
-  GetDescriptorsUnlocked([](const TSDescriptorPtr& ts) -> bool { return !ts->IsRemoved(); }, descs);
+  GetDescriptorsUnlocked(
+      [](const TSDescriptorPtr& ts) -> bool { return !ts->IsReplaced(); }, descs);
 }
 
 void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs,
@@ -380,7 +389,7 @@ void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
 size_t TSManager::NumDescriptorsUnlocked() const {
   return std::count_if(
       servers_by_id_.cbegin(), servers_by_id_.cend(),
-      [](const auto& entry) -> bool { return !entry.second->IsRemoved(); });
+      [](const auto& entry) -> bool { return !entry.second->IsReplaced(); });
 }
 
 // Register a callback to be called when the number of tablet servers reaches a certain number.
@@ -441,6 +450,64 @@ Status TSManager::RunLoader() {
   // tservers but before calling the callback.  so add a check to potentially schedule the callback
   // here.
   // https://github.com/yugabyte/yugabyte-db/issues/23744
+  return Status::OK();
+}
+
+Status TSManager::RemoveTabletServer(
+    const std::string& permanent_uuid, const BlacklistSet& blacklist,
+    const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch) {
+  // Acquire registration lock so we don't race with this TS re-registering.
+  MutexLock l_reg(registration_lock_);
+  TSDescriptorPtr desc;
+  TSDescriptor::WriteLock write_lock;
+  {
+    // Best effort pre-flight checks. These conditions can change after we check them but we assume
+    // there are no concurrent blacklist modifications.
+    SharedLock<decltype(map_lock_)> l(map_lock_);
+    auto maybe_desc = LookupTSInternalUnlocked(permanent_uuid);
+    if (!maybe_desc) {
+      return STATUS(
+          NotFound, Format("Couldn't find tserver with uuid $0", permanent_uuid),
+          MasterError(MasterErrorPB::TABLET_SERVER_NOT_FOUND));
+    }
+    desc = std::move(maybe_desc).value();
+    auto desc_lock = desc->LockForWrite();
+    if (desc_lock->pb.state() == SysTServerEntryPB::LIVE) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Cannot remove tablet server $0 because it is live",
+          desc->permanent_uuid());
+    }
+    if (!IsTsBlacklisted(desc, std::optional(blacklist))) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Cannot remove tablet server $0 because it is not blacklisted",
+          desc->permanent_uuid());
+    }
+    // Verify tserver is not hosting any tablets.
+    for (const auto& table : tables) {
+      for (const auto& tablet : VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
+        auto replicas_map = tablet->GetReplicaLocations();
+        if (replicas_map->contains(desc->id())) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Cannot remove tablet server $0 because it is hosting tablet $1",
+              desc->permanent_uuid(), tablet->id());
+        }
+      }
+    }
+    write_lock = std::move(desc_lock);
+  }
+  // Update the TS to REMOVED to signal to code that still has a copy of the shared pointer that
+  // this TS has been removed from the universe.
+  write_lock.mutable_data()->pb.set_state(SysTServerEntryPB::REMOVED);
+  if (GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+    auto status = sys_catalog_.Delete(epoch, desc);
+    WARN_NOT_OK(status, Format("Failed to remove tablet server $0 from sys catalog", desc->id()));
+    RETURN_NOT_OK(status);
+  }
+  write_lock.Commit();
+  {
+    std::lock_guard map_l(map_lock_);
+    servers_by_id_.erase(desc->id());
+  }
   return Status::OK();
 }
 

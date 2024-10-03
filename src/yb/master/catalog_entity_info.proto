@@ -930,6 +930,10 @@ message SysTServerEntryPB {
     // leader. The old TServer is put into this state immediately and heartbeats from it are
     // ignored.
     REPLACED = 3;
+    // The tserver has been removed from the cluster. This state is not persisted to raft, instead
+    // the entry is deleted. This state signals to code that holds on to a shared_ptr<TSDescriptor>
+    // that the object representing the tablet server is stale and should not be used.
+    REMOVED = 4;
   }
 
   // The instance_seqno of a tserver is chosen at process start and is constant throughout the
