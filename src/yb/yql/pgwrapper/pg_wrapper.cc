@@ -207,7 +207,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1024,
     "Batch size of explicit row locking.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",

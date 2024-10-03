@@ -15,11 +15,16 @@
 #include <algorithm>
 #include <atomic>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/client/session.h"
 #include "yb/client/table_info.h"
@@ -439,6 +444,14 @@ Status YBCGetTableKeyRangesImpl(
   }
 
   return Status::OK();
+}
+
+inline YBCPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
+  return {
+      .ybc_status = YBCStatusOK(),
+      .error_info = {.is_initialized = false,
+                     .pg_wait_policy = 0,
+                     .conflicting_table_id = kInvalidOid}};
 }
 
 } // namespace
@@ -1875,15 +1888,20 @@ YBCStatus YBCAddForeignKeyReferenceIntent(
   });
 }
 
-YBCStatus YBCAddExplicitRowLockIntent(
-    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
-    YBCPgOid database_oid, const PgExplicitRowLockParams *params, bool is_region_local) {
-  return ToYBCStatus(pgapi->AddExplicitRowLockIntent(
-      {database_oid, table_relfilenode_oid}, YbctidAsSlice(ybctid), *params, is_region_local));
+YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid, YBCPgOid database_oid,
+    const PgExplicitRowLockParams *params, bool is_region_local) {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
+      PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
+      is_region_local, result.error_info));
+  return result;
 }
 
-YBCStatus YBCFlushExplicitRowLockIntents() {
-  return ToYBCStatus(pgapi->FlushExplicitRowLockIntents());
+YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
+  return result;
 }
 
 bool YBCIsInitDbModeEnvVarSet() {

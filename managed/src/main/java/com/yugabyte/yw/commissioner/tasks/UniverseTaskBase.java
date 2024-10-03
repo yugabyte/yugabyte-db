@@ -414,7 +414,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditBackupSchedule,
           TaskType.EditBackupScheduleKubernetes,
           TaskType.MultiTableBackup,
-          TaskType.ReadOnlyClusterDelete);
+          TaskType.ReadOnlyClusterDelete,
+          TaskType.ResumeUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
