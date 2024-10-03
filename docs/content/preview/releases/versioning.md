@@ -110,6 +110,8 @@ Documentation (if provided) for TP features is marked as such.
 
 A feature in Early Access (EA) is new or enhanced functionality made available for you to use.
 
+EA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](../#stable-release-support-policy).
+
 Code is well tested. Typically these features are not enabled by default. Enabling the feature is considered safe.
 
 Support for the overall feature will not be dropped, though details may change in a subsequent GA release.
