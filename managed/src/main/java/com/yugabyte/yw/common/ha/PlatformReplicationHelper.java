@@ -209,7 +209,10 @@ public class PlatformReplicationHelper {
 
       // Fill in the context.
       VelocityContext context = new VelocityContext();
-      context.put("interval", SwamperHelper.getScrapeIntervalSeconds(confGetter.getStaticConf()));
+      context.put(
+          "interval",
+          SwamperHelper.getScrapeIntervalSeconds(
+              confGetter.getGlobalConf(GlobalConfKeys.metricScrapeIntervalStandby)));
       context.put("address", remoteAddr);
       context.put("https", https);
       context.put("auth", confGetter.getGlobalConf(GlobalConfKeys.metricsAuth));
@@ -330,7 +333,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  void ensurePrometheusConfig() {
+  public void ensurePrometheusConfig() {
     HighAvailabilityConfig.get()
         .ifPresent(
             haConfig ->
