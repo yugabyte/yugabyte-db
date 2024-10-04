@@ -9,6 +9,7 @@
      "([.]txt$)",
      "(^src/odyssey/.*$)",
      "(^src/postgres/.*$)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
