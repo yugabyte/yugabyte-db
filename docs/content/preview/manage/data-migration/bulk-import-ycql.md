@@ -101,7 +101,7 @@ The import data instructions are organized by the size of the input datasets, ra
 
 ### Small datasets
 
-Cassandra's CQL shell provides the [`COPY FROM`](../../../yugabyte-clients/ycqlsh/#copy-from) command, which allows importing data from CSV files:
+Cassandra's CQL shell provides the [`COPY FROM`](../../../api/ycqlsh/#copy-from) command, which allows importing data from CSV files:
 
 ```sql
 ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
@@ -109,7 +109,7 @@ ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 
 By default, `COPY` exports timestamps in the `yyyy-MM-dd HH:mm:ss.SSSZ` format.
 
-See also [`COPY TO`](../../../yugabyte-clients/ycqlsh/#copy-to) .
+See also [`COPY TO`](../../../api/ycqlsh/#copy-to) .
 
 ### Large datasets
 

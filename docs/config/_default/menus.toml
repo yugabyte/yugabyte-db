@@ -122,7 +122,7 @@
     excludeVersion = true
 
 [[main]]
-  name = "APIs"
+  name = "API"
   weight = 4
   identifier = "yugabyte-apis"
   url = "/api/"
@@ -166,7 +166,7 @@
   weight = 5
   identifier = "client-ysqlsh"
   parent = "yugabyte-apis"
-  url = "/yugabyte-clients/ysqlsh/"
+  url = "/api/ysqlsh/"
   [main.params]
     imageUrl = "/icons/api.svg"
 
@@ -175,7 +175,7 @@
   weight = 6
   identifier = "client-ycqlsh"
   parent = "yugabyte-apis"
-  url = "/yugabyte-clients/ycqlsh/"
+  url = "/api/ycqlsh/"
   [main.params]
     imageUrl = "/icons/api.svg"
 
@@ -269,7 +269,6 @@
   parent = "releases"
   url = "/preview/releases/yugabyte-clients/"
   [main.params]
-    classes = "separator"
     excludeVersion = true
     imageUrl = "/icons/api.svg"
 
@@ -489,22 +488,6 @@
   [preview.params]
     showSection = true
 
-#[[preview]]
-#  name = "Tutorials"
-#  weight = 7
-#  identifier = "tutorials"
-#  url = "/preview/tutorials/"
-#  [preview.params]
-#    showSection = true
-
-# [[preview]]
-#   name = "Migrate"
-#   weight = 6
-#   identifier = "migrate"
-#   url = "/preview/migrate/"
-#   [preview.params]
-#     showSection = true
-
 [[preview]]
   name = "Secure"
   weight = 8
@@ -522,25 +505,17 @@
     showSection = true
 
 [[preview]]
-  name = "Benchmark"
+  name = "Reference"
   weight = 10
-  identifier = "benchmark"
-  url = "/preview/benchmark/"
+  identifier = "reference"
   [preview.params]
     showSection = true
 
-# [[preview]]
-#   name = "YugabyteDB Clients"
-#   weight = 11
-#   identifier = "yugabyte-clients"
-#   url = "/preview/yugabyte-clients/"
-#   [preview.params]
-#     showSection = true
-
 [[preview]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/preview/benchmark/"
   [preview.params]
     showSection = true
 
@@ -758,18 +733,19 @@
     showSection = true
 
 [[preview_api]]
-  name = "ysqlsh"
+  name = "YCQL"
   weight = 11
-  identifier = "ysqlsh"
-  url = "/preview/yugabyte-clients/ysqlsh/"
+  identifier = "api-cassandra"
+  url = "/preview/api/ycql/"
   [preview_api.params]
+    classes = "separator"
     showSection = true
 
 [[preview_api]]
-  name = "YCQL"
+  name = "ysqlsh"
   weight = 20
-  identifier = "api-cassandra"
-  url = "/preview/api/ycql/"
+  identifier = "ysqlsh"
+  url = "/preview/api/ysqlsh/"
   [preview_api.params]
     showSection = true
 
@@ -777,7 +753,7 @@
   name = "ycqlsh"
   weight = 21
   identifier = "ycqlsh"
-  url = "/preview/yugabyte-clients/ycqlsh/"
+  url = "/preview/api/ycqlsh/"
   [preview_api.params]
     classes = "separator"
     showSection = true

@@ -19,7 +19,7 @@ Various client-side libraries are available to allow you to send and receive req
 - [libpq — C Library](https://www.postgresql.org/docs/current/libpq.html) (documented as part of the overall PostgreSQL documentation set);
 - [pgJDBC — the PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) from _postgresql.org_;
 - [psycopg — for Python](https://www.psycopg.org/);
-- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../../yugabyte-clients/ysqlsh/).
+- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../ysqlsh/).
 
 There are many others.
 

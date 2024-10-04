@@ -23,6 +23,10 @@ ysqlsh works best with servers of the same or an older major version. [Meta-comm
 
 If you are running multiple versions of YugabyteDB, use the newest version of ysqlsh to connect. You can keep and use the matching version of ysqlsh to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
 
+### Installation
+
+ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](../../releases/yugabyte-clients/).
+
 ### Starting ysqlsh
 
 ```sh

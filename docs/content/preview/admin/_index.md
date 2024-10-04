@@ -20,7 +20,7 @@ YugabyteDB ships with a variety of tools to interact with, manage, and configure
 
 For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 
-For information about YugabyteDB API clients (YSQL shell and YCQL shell), refer to [YugabyteDB Clients](../yugabyte-clients/).
+For information about YugabyteDB API clients (YSQL shell and YCQL shell), refer to [Client shells](../api/#client-shells).
 
 {{<tip title="Specifying values that have a hypen">}}
 For all the command line tools, when passing in an argument with a value that starts with a hyphen (for example, `-1`), add a double hyphen (`--`) at the end of other arguments followed by the argument name and value. This tells the binary to treat those arguments as positional. For example, to specify `set_flag ysql_select_parallelism -1`, you need to do the following:

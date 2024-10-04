@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../yugabyte-clients/ysqlsh/) and [ycqlsh](../../../yugabyte-clients/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -126,7 +126,7 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 
 ### Prerequisites
 
-- If you are using [ysqlsh](../../../yugabyte-clients/ysqlsh/) or [ycqlsh](../../../yugabyte-clients/ycqlsh/), ensure you are running the latest versions of the shells.
+- If you are using [ysqlsh](../../../api/ysqlsh/) or [ycqlsh](../../../api/ycqlsh/), ensure you are running the latest versions of the shells.
 
 - If your universe has Client-to-Node encryption in transit enabled, you need to [download the certificate](#download-the-universe-certificate) to your computer.
 
@@ -355,7 +355,7 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 ## Learn more
 
 - [Securing YugabyteDB: Client-to-Server Encryption in Transit](https://www.yugabyte.com/blog/securing-yugabytedb-client-to-server-encryption/#verification-of-server-certificates)
-- [ysqlsh](../../../yugabyte-clients/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ysqlsh](../../../api/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
-- [ycqlsh](../../../yugabyte-clients/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ycqlsh](../../../api/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.

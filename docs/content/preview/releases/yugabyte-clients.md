@@ -11,10 +11,10 @@ type: indexpage
 
 YugabyteDB ships with command line interface (CLI) shells for interacting with each YugabyteDB API:
 
-- [ysqlsh](./ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../api/ysql/).
-- [ycqlsh](./ycqlsh/) - The CQL shell for interacting with YugabyteDB using [YCQL](../api/ycql/).
+- [ysqlsh](../../api/ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../../api/ysql/).
+- [ycqlsh](../../api/ycqlsh/) - The CQL shell for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
-For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+For information about [yugabyted](../../reference/configuration/yugabyted/) and configuring [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) services, refer to [Configuration](../../reference/configuration/).
 
 ### Installation
 
@@ -97,14 +97,14 @@ docker pull yugabytedb/yugabyte-client:latest
 
   {{<index/item
     title="ysqlsh"
-    body="Query data, create and modify database objects, and execute SQL commands and scripts using YSQL."
-    href="ysqlsh/"
+    body="CLI for interacting with YugabyteDB using YSQL."
+    href="../../api/ysqlsh/"
     icon="fa-light fa-terminal">}}
 
   {{<index/item
     title="ycqlsh"
-    body="Query data, create and modify database objects, and execute SQL commands and scripts using YCQL."
-    href="ycqlsh/"
+    body="CLI for interacting with YugabyteDB using YCQL."
+    href="../../api/ycqlsh/"
     icon="fa-light fa-terminal">}}
 
 {{</index/block>}}

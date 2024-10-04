@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB FAQS
-headerTitle: General FAQ
+headerTitle: FAQ
 linkTitle: FAQ
 description: YugabyteDB FAQ — How does YugabyteDB work? When is YugabyteDB database a good fit? What APIs does YugabyteDB support? And other frequently asked questions.
 aliases:
