@@ -8,7 +8,7 @@ menu:
   preview_integrations:
     identifier: hasura-1
     parent: hasura
-    weight: 580
+    weight: 10
 type: docs
 ---
 
