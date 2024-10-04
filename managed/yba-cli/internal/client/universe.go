@@ -57,6 +57,14 @@ func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// SetUniverseKey to change universe EAR settings
+func (a *AuthAPIClient) SetUniverseKey(uUUID string) (
+	ybaclient.UniverseManagementApiApiSetUniverseKeyRequest,
+) {
+
+	return a.APIClient.UniverseManagementApi.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {

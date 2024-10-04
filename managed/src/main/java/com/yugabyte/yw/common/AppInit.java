@@ -8,12 +8,14 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
@@ -45,6 +47,7 @@ import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Principal;
+import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -53,9 +56,12 @@ import io.ebean.DB;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -118,7 +124,8 @@ public class AppInit {
       UpdateProviderMetadata updateProviderMetadata,
       @Named("AppStartupTimeMs") Long startupTime,
       ReleasesUtils releasesUtils,
-      JobScheduler jobScheduler)
+      JobScheduler jobScheduler,
+      NodeAgentEnabler nodeAgentEnabler)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -213,19 +220,26 @@ public class AppInit {
                   }
                 });
         // Background thread to query for latest ARM release version.
-        Thread armReleaseThread =
-            new Thread(
-                () -> {
-                  try {
-                    log.info("Attempting to query latest ARM release link.");
-                    releaseManager.findLatestArmRelease(
-                        ConfigHelper.getCurrentVersion(environment));
-                    log.info("Imported ARM release download link.");
-                  } catch (Exception e) {
-                    log.warn("Error importing ARM release download link", e);
-                  }
-                });
-        armReleaseThread.start();
+        // Only run for non-cloud deployments, as YBM will add any necessary releases on their own.
+        if (!config.getBoolean("yb.cloud.enabled")) {
+          Thread armReleaseThread =
+              new Thread(
+                  () -> {
+                    try {
+                      log.info("Attempting to query latest ARM release link.");
+                      releaseManager.findLatestArmRelease(
+                          ConfigHelper.getCurrentVersion(environment));
+                      log.info("Imported ARM release download link.");
+                    } catch (Exception e) {
+                      log.warn("Error importing ARM release download link", e);
+                    }
+                  });
+          armReleaseThread.start();
+        } else {
+          log.debug("skipping fetch latest arm build for cloud enabled deployment");
+        }
+
+        updateSensitiveGflagsforRedaction(gFlagsValidation);
 
         // initialize prometheus exports
         DefaultExports.initialize();
@@ -281,6 +295,7 @@ public class AppInit {
         xClusterScheduler.start();
 
         ybcUpgrade.start();
+        nodeAgentEnabler.init();
 
         prometheusConfigManager.updateK8sScrapeConfigs();
 
@@ -324,5 +339,20 @@ public class AppInit {
   // Workaround for some tests with H2 database.
   public static boolean isH2Db() {
     return IS_H2_DB.get();
+  }
+
+  private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (Release release : Release.getAll()) {
+      // Extract sensitive flags and cache in DB for later use.
+      if (release.getSensitiveGflags() == null) {
+        release.setSensitiveGflags(
+            gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
+        release.save();
+      }
+      sensitiveGflags.addAll(release.getSensitiveGflags());
+    }
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 }

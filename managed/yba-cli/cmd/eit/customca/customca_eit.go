@@ -28,8 +28,7 @@ var CustomCAEITCmd = &cobra.Command{
 func init() {
 	CustomCAEITCmd.Flags().SortFlags = false
 
-	// CustomCAEITCmd.AddCommand(createCustomCAEITCmd)
-	// CustomCAEITCmd.AddCommand(updateCustomCAEITCmd)
+	CustomCAEITCmd.AddCommand(createCustomCAEITCmd)
 	CustomCAEITCmd.AddCommand(listCustomCAEITCmd)
 	CustomCAEITCmd.AddCommand(describeCustomCAEITCmd)
 	CustomCAEITCmd.AddCommand(deleteCustomCAEITCmd)

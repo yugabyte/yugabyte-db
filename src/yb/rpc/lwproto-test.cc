@@ -23,7 +23,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 
-DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 
 namespace yb {

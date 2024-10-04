@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js driver for YCQL
 menu:
   preview:
-    identifier: ycql-node-driver
+    identifier: node-driver-3-ycql
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-[Yugabyte Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) is based on [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 

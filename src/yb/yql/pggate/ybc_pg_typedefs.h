@@ -404,6 +404,7 @@ typedef struct YbTablePropertiesData {
   YBCPgOid tablegroup_oid; /* InvalidOid if none */
   YBCPgOid colocation_id; /* 0 if not colocated */
   size_t num_range_key_columns;
+  char *tablegroup_name;
 } YbTablePropertiesData;
 
 typedef struct YbTablePropertiesData* YbTableProperties;
@@ -703,7 +704,7 @@ typedef struct PgYCQLStatementStats {
 // Struct to store ASH samples in the circular buffer.
 typedef struct AshSample {
   // Metadata of the sample.
-  // yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
+  // top_level_node_id and rpc_request_id are also part of the metadata,
   // but the reason to not store them inside YBCAshMetadata is that these remain
   // constant in PG for all the samples of a particular node. So we don't store it
   // in YBCAshMetadata, which is stored in the procarray to save shared memory.
@@ -712,7 +713,7 @@ typedef struct AshSample {
   // UUID of the TServer where the query generated.
   // This remains constant for PG samples on a node, but can differ for TServer
   // samples as TServer can be processing requests from other nodes.
-  unsigned char yql_endpoint_tserver_uuid[16];
+  unsigned char top_level_node_id[16];
 
   // A single query can generate multiple RPCs, this is used to differentiate
   // those RPCs. This will always be 0 for PG samples
@@ -737,7 +738,7 @@ typedef struct AshSample {
 typedef struct PgAshConfig {
   YBCAshMetadata* metadata;
   bool* yb_enable_ash;
-  unsigned char yql_endpoint_tserver_uuid[16];
+  unsigned char top_level_node_id[16];
   // length of host should be equal to INET6_ADDRSTRLEN
   char host[46];
 } YBCPgAshConfig;
@@ -775,11 +776,30 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_end_len;
 } YBCPgTabletsDescriptor;
 
+typedef struct MetricsInfo {
+  const char* name;
+  const char* value;
+} YBCMetricsInfo;
+
+typedef struct PgServerMetricsInfo {
+  const char* uuid;
+  YBCMetricsInfo* metrics;
+  const size_t metrics_count;
+  const char* status;
+  const char* error;
+} YBCPgServerMetricsInfo;
+
 typedef struct PgExplicitRowLockParams {
   int rowmark;
   int pg_wait_policy;
   int docdb_wait_policy;
 } YBCPgExplicitRowLockParams;
+
+typedef struct PgExplicitRowLockErrorInfo {
+  bool is_initialized;
+  int pg_wait_policy;
+  YBCPgOid conflicting_table_id;
+} YBCPgExplicitRowLockErrorInfo;
 
 // For creating a new table...
 typedef enum PgYbrowidMode {

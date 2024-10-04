@@ -77,8 +77,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  protected void validateRerunParams(TaskInfo previousTaskInfo) {
-    Universe universe = getUniverse();
+  protected boolean checkSafeToRunOnRestriction(
+      Universe universe, TaskInfo previousTaskInfo, AllowedTasks allowedTasks) {
+    if (!allowedTasks.isRerun()) {
+      return true;
+    }
+    // Validate rerun task parameters against the old parameters from the previous task.
     GFlagsUpgradeParams prevTaskParams =
         Json.fromJson(previousTaskInfo.getTaskParams(), GFlagsUpgradeParams.class);
     // Cluster with GFlags from the previous task params.
@@ -144,6 +148,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           "Gflags upgrade rerun must affect all server types and nodes changed by the previously"
               + " failed gflags operation");
     }
+    return true;
   }
 
   @Override
@@ -367,6 +372,14 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       List<UniverseDefinitionTaskParams.Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    Universe targetUniverseState = getUniverse();
+    // Updating gflags in target universe state.
+    newClusters.forEach(cl -> targetUniverseState.getCluster(cl.uuid).userIntent = cl.userIntent);
+    UpgradeContext context =
+        UpgradeContext.builder()
+            .runBeforeStopping(true)
+            .targetUniverseState(targetUniverseState)
+            .build();
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
@@ -382,7 +395,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     newClusters),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING,
+            context,
             taskParams().isYbcInstalled());
         break;
       case NON_ROLLING_UPGRADE:
@@ -399,7 +412,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     newClusters),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING,
+            context,
             taskParams().isYbcInstalled());
         break;
       case NON_RESTART_UPGRADE:
@@ -427,7 +440,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             },
             masterNodes,
             tServerNodes,
-            DEFAULT_CONTEXT);
+            UpgradeContext.builder().targetUniverseState(targetUniverseState).build());
         break;
     }
   }

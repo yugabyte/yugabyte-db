@@ -1,12 +1,15 @@
 ---
-title: Manual review guideline for YugabyteDB Voyager
-headerTitle: Manual review guideline
-linkTitle: Manual review guideline
+title: Schema review workarounds for YugabyteDB Voyager
+headerTitle: Schema review workarounds
+linkTitle: Schema review workarounds
 image: /images/section_icons/develop/learn.png
 headcontent: What to watch out for when migrating data using YugabyteDB Voyager
 description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
+aliases:
+  - /preview/yugabyte-voyager/known-issues/general-issues/
+  - /preview/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
   preview_yugabyte-voyager:
     identifier: known-issues
@@ -28,21 +31,9 @@ Currently, yb-voyager doesn't support the following features:
 | Unsupported data types | Data migration is unsupported for some data types, such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of data types. | |
 | Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
 
-## Manual review
+## Schema review
 
 {{<index/block>}}
-
-  {{<index/item
-    title="General"
-    body="Explore workarounds for limitations associated with MySQL, PostgreSQL, and Oracle source databases."
-    href="general-issues/"
-    icon="/images/section_icons/architecture/concepts.png">}}
-
-  {{<index/item
-    title="MySQL"
-    body="Explore workarounds for limitations associated with MySQL as the source database."
-    href="mysql/"
-    icon="/images/section_icons/architecture/concepts.png">}}
 
   {{<index/item
     title="PostgreSQL"
@@ -57,9 +48,9 @@ Currently, yb-voyager doesn't support the following features:
     icon="/images/section_icons/architecture/concepts.png">}}
 
   {{<index/item
-    title="MySQL and Oracle"
-    body="Explore workarounds for limitations associated with MySQL and Oracle source databases."
-    href="mysql-oracle/"
+    title="MySQL"
+    body="Explore workarounds for limitations associated with MySQL as the source database."
+    href="mysql/"
     icon="/images/section_icons/architecture/concepts.png">}}
 
 {{</index/block>}}

@@ -30,6 +30,22 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   };
 
   void SetUp() override;
+
+  virtual bool UseAutomaticMode() {
+    // Except for parameterized tests, we currently default to semi-automatic mode.
+    return false;
+  }
+
+  // How many extra streams/tables a namespace has in DB-scoped replication
+  int OverheadStreamsCount() {
+    if (!UseAutomaticMode()) {
+      return 0;
+    }
+    // Automatic DDL mode involves 2 extra tables: sequences_data and
+    // yb_xcluster_ddl_replication.dd_queue.
+    return 2;
+  }
+
   Status InitClusters(const MiniClusterOptions& opts) override;
 
   Status SetUpWithParams(
@@ -135,7 +151,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
-  Status CheckpointReplicationGroup(
+  virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,

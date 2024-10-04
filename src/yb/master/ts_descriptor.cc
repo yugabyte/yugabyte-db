@@ -38,24 +38,17 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/master/master_fwd.h"
-#include "yb/master/master_util.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_util.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
-
-DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
-             "The period of time that a Master can go without receiving a heartbeat from a "
-             "tablet server before considering it unresponsive. Unresponsive servers are not "
-             "selected when assigning replicas during table creation or re-replication.");
-TAG_FLAG(tserver_unresponsive_timeout_ms, advanced);
-
 
 namespace yb {
 namespace master {
@@ -68,8 +61,9 @@ Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::Create
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   auto desc = std::make_shared<TSDescriptor>(
       instance.permanent_uuid(), registered_through_heartbeat);
-  auto lock = VERIFY_RESULT(
-      desc->UpdateRegistration(instance, registration, std::move(local_cloud_info), proxy_cache));
+  auto lock = VERIFY_RESULT(desc->UpdateRegistration(
+      instance, registration, std::move(local_cloud_info), registered_through_heartbeat,
+      proxy_cache));
   return std::make_pair(std::move(desc), std::move(lock));
 }
 
@@ -87,7 +81,8 @@ TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
 
 Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    CloudInfoPB local_cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& local_cloud_info, RegisteredThroughHeartbeat registered_through_heartbeat,
+    rpc::ProxyCache* proxy_cache) {
   CHECK_EQ(instance.permanent_uuid(), permanent_uuid());
 
   auto l = LockForWrite();
@@ -112,7 +107,8 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
-  l.mutable_data()->pb.set_state(SysTServerEntryPB::MAYBE_LIVE);
+  l.mutable_data()->pb.set_state(
+      registered_through_heartbeat ? SysTServerEntryPB::LIVE : SysTServerEntryPB::UNRESPONSIVE);
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
 
@@ -162,8 +158,12 @@ Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
       has_faulty_drive_ = req.faulty_drive();
     }
   }
-  if ((*lock)->pb.state() != SysTServerEntryPB::MAYBE_LIVE) {
-    lock->mutable_data()->pb.set_state(SysTServerEntryPB::MAYBE_LIVE);
+  if ((*lock)->pb.state() == SysTServerEntryPB::REMOVED) {
+    return STATUS_FORMAT(
+        IllegalState, "Processing ts heartbeat for ts $0 raced with removing the ts", id());
+  }
+  if ((*lock)->pb.state() != SysTServerEntryPB::LIVE) {
+    lock->mutable_data()->pb.set_state(SysTServerEntryPB::LIVE);
   }
   return Status::OK();
 }
@@ -435,7 +435,7 @@ std::size_t TSDescriptor::NumTasks() const {
 }
 
 bool TSDescriptor::IsLive() const {
-  return LockForRead()->pb.state() == SysTServerEntryPB::MAYBE_LIVE;
+  return LockForRead()->pb.state() == SysTServerEntryPB::LIVE;
 }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
@@ -444,7 +444,7 @@ bool TSDescriptor::IsLiveAndHasReported() const {
 
 bool TSDescriptor::HasYsqlCatalogLease() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
-         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsRemoved();
+         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {

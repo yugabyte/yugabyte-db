@@ -1099,8 +1099,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# CDC tutorials was in explore, now in Tutorials
+# Moving Drivers from reference to Develop
+[[redirects]]
+  from = "/preview/reference/drivers/"
+  to = "/preview/drivers-orms/"
+  force = true
 
+# CDC tutorials was in explore, now in Tutorials
 [[redirects]]
   from = "/preview/explore/change-data-capture/cdc-tutorials/*"
   to = "/preview/tutorials/cdc-tutorials/:splat"
@@ -1379,7 +1384,6 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://js.driftt.com/
             https://cdn.segment.com/
             https://j.6sc.co/
             https://cdn.rudderlabs.com/
@@ -1425,7 +1429,6 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
-            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
@@ -1435,7 +1438,6 @@
         ;
 
         media-src 'self' 'unsafe-inline'
-        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

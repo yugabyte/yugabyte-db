@@ -18,7 +18,7 @@ import { YBPanelItem } from '../../../../components/panels';
 import { YBTable } from '../../../../components/common/YBTable';
 import { YBSearchInput } from '../../../../components/common/forms/fields/YBSearchInput';
 import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
-import { hasNecessaryPerm, RbacValidator } from '../../rbac/common/RbacApiPermValidator';
+import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import {
   ModalTitle,
@@ -329,20 +329,21 @@ export const NewReleaseList = () => {
           })}
         {row.artifacts.length < 3 && (
           <Box className={helperClasses.addButtonBox}>
-            <YBButton
-              className={helperClasses.overrideMuiStartIcon}
-              onClick={(e: any) => {
-                setSelectedReleaseDetails(row);
-                onNewReleaseButtonClick();
-                onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
-                e.stopPropagation();
-              }}
-              data-testid="ReleaseList-AddArchitectureButton"
-              variant="secondary"
-              disabled={!hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)}
-            >
-              <img src={AddIcon} alt="add" />
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE} isControl>
+              <YBButton
+                className={helperClasses.overrideMuiStartIcon}
+                onClick={(e: any) => {
+                  setSelectedReleaseDetails(row);
+                  onNewReleaseButtonClick();
+                  onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+                  e.stopPropagation();
+                }}
+                data-testid="ReleaseList-AddArchitectureButton"
+                variant="secondary"
+              >
+                <img src={AddIcon} alt="add" />
+              </YBButton>
+            </RbacValidator>
           </Box>
         )}
       </Box>
@@ -407,18 +408,19 @@ export const NewReleaseList = () => {
     if (row.artifacts.length < 3) {
       for (const [key, value] of Object.entries(MAIN_ACTION)) {
         renderedItems.push(
-          <MenuItem
-            key={key}
-            value={value}
-            onClick={(e: any) => {
-              onActionClick(value, row);
-              e.stopPropagation();
-            }}
-            disabled={!hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)}
-            data-testid={`ReleaseList-Action${value}`}
-          >
-            {value}
-          </MenuItem>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE} isControl>
+            <MenuItem
+              key={key}
+              value={value}
+              onClick={(e: any) => {
+                onActionClick(value, row);
+                e.stopPropagation();
+              }}
+              data-testid={`ReleaseList-Action${value}`}
+            >
+              {value}
+            </MenuItem>
+          </RbacValidator>
         );
       }
     }
@@ -428,25 +430,28 @@ export const NewReleaseList = () => {
         artifact.architecture === null
           ? EDIT_ACTIONS['kubernetes']
           : EDIT_ACTIONS[artifact.architecture!];
-      const isDisabled =
-        row.universes?.length > 0 ||
-        row.state === ReleaseState.DISABLED ||
-        !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE);
+      const isDisabled = row.universes?.length > 0 || row.state === ReleaseState.DISABLED;
       renderedItems.push(
-        <MenuItem
-          key={artifact.architecture}
-          value={action}
-          onClick={(e: any) => {
-            if (!isDisabled) {
-              onActionClick(action, row);
-            }
-            e.stopPropagation();
-          }}
-          disabled={isDisabled}
-          data-testid={`ReleaseList-Action${action}`}
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          {action}
-        </MenuItem>
+          <MenuItem
+            key={artifact.architecture}
+            value={action}
+            onClick={(e: any) => {
+              if (!isDisabled) {
+                onActionClick(action, row);
+              }
+              e.stopPropagation();
+            }}
+            disabled={isDisabled}
+            data-testid={`ReleaseList-Action${action}`}
+          >
+            {action}
+          </MenuItem>
+        </RbacValidator>
       );
     });
 
@@ -470,27 +475,31 @@ export const NewReleaseList = () => {
         disabled = true;
       }
 
-      if (value === OTHER_ACTONS.DELETE_RELEASE) {
-        disabled = !hasNecessaryPerm(ApiPermissionMap.DELETE_YBDB_RELEASE);
-      } else {
-        disabled = !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE);
-      }
-
       renderedItems.push(
-        <MenuItem
-          key={key}
-          value={value}
-          onClick={(e: any) => {
-            if (!disabled) {
-              onActionClick(value, row);
-            }
-            e.stopPropagation();
-          }}
-          disabled={disabled}
-          data-testid={`ReleaseList-Action${value}`}
+        <RbacValidator
+          accessRequiredOn={
+            value === OTHER_ACTONS.DELETE_RELEASE
+              ? ApiPermissionMap.DELETE_YBDB_RELEASE
+              : ApiPermissionMap.MODIFY_YBDB_RELEASE
+          }
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          {value}
-        </MenuItem>
+          <MenuItem
+            key={key}
+            value={value}
+            onClick={(e: any) => {
+              if (!disabled) {
+                onActionClick(value, row);
+              }
+              e.stopPropagation();
+            }}
+            disabled={disabled}
+            data-testid={`ReleaseList-Action${value}`}
+          >
+            {value}
+          </MenuItem>
+        </RbacValidator>
       );
     }
 
@@ -664,30 +673,33 @@ export const NewReleaseList = () => {
             </Box>
             <Box className={clsx(helperClasses.floatBoxRight, helperClasses.flexRow)}>
               <Box mt={2}>
-                <YBButton
-                  className={clsx(
-                    helperClasses.refreshButton,
-                    helperClasses.overrideMuiRefreshIcon
-                  )}
-                  data-testid="ReleaseList-RefreshReleasesButton"
-                  size="large"
-                  startIcon={<Refresh />}
-                  variant="secondary"
-                  onClick={() => {
-                    onActionPerformed();
-                    onRefreshRelease();
-                  }}
-                />
-                <YBButton
-                  size="large"
-                  variant={'primary'}
-                  data-testid="ReleaseList-AddReleaseButton"
-                  startIcon={<Add />}
-                  onClick={onNewReleaseButtonClick}
-                  disabled={!hasNecessaryPerm(ApiPermissionMap.CREATE_YBDB_RELEASE)}
-                >
-                  {t('releases.newRelease')}
-                </YBButton>
+                <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE} isControl>
+                  <YBButton
+                    className={clsx(
+                      helperClasses.refreshButton,
+                      helperClasses.overrideMuiRefreshIcon
+                    )}
+                    data-testid="ReleaseList-RefreshReleasesButton"
+                    size="large"
+                    startIcon={<Refresh />}
+                    variant="secondary"
+                    onClick={() => {
+                      onActionPerformed();
+                      onRefreshRelease();
+                    }}
+                  />
+                </RbacValidator>
+                <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_YBDB_RELEASE} isControl>
+                  <YBButton
+                    size="large"
+                    variant={'primary'}
+                    data-testid="ReleaseList-AddReleaseButton"
+                    startIcon={<Add />}
+                    onClick={onNewReleaseButtonClick}
+                  >
+                    {t('releases.newRelease')}
+                  </YBButton>
+                </RbacValidator>
               </Box>
             </Box>
             <h2 className="content-title">{t('releases.headerTitle')}</h2>

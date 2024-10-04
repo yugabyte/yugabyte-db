@@ -397,8 +397,9 @@ Status PgDmlRead::SetRequestedYbctids(const std::vector<Slice>* ybctids) {
   return Status::OK();
 }
 
-Status PgDmlRead::ANNBindVector(PgExpr* vector) {
+Status PgDmlRead::ANNBindVector(int vec_att_no, PgExpr* vector) {
   auto vec_options = read_req_->mutable_vector_idx_options();
+  vec_options->set_vector_column_id(VERIFY_RESULT_REF(bind_.ColumnForAttr(vec_att_no)).id());
   return vector->EvalTo(vec_options->mutable_vector());
 }
 

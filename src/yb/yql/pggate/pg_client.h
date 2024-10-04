@@ -16,6 +16,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
@@ -198,18 +200,15 @@ class PgClient {
                                                          int64_t max_value,
                                                          bool cycle);
 
-  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
-                                                     int64_t seq_oid,
-                                                     uint64_t ysql_catalog_version,
-                                                     bool is_db_catalog_version_mode);
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(
+      int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
+      bool is_db_catalog_version_mode, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  PerformResultFuture PerformAsync(
-      tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations);
+  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations);
 
   Result<bool> CheckIfPitrActive();
 
@@ -247,6 +246,8 @@ class PgClient {
       const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

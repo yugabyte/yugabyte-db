@@ -92,10 +92,11 @@ export const InitiateFailoverModal = ({
   const currentSafetimesQuery = useQuery(drConfigQueryKey.safetimes(drConfig.uuid), () =>
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
+  const storageConfigs: BackupStorageConfig[] = useSelector(
+    (reduxState: any) =>
+      reduxState?.customer?.configs?.data?.filter(
+        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+      ) ?? []
   );
   const storageConfigName =
     storageConfigs?.find(
@@ -187,11 +188,11 @@ export const InitiateFailoverModal = ({
     currentSafetimesQuery.isError
   ) {
     const customErrorMessage = !drConfig.primaryUniverseUuid
-      ? t('undefinedDrPrimaryUniveresUuid', {
+      ? t('undefinedDrPrimaryUniverseUuid', {
           keyPrefix: 'clusterDetail.disasterRecovery.error'
         })
       : !drConfig.drReplicaUniverseUuid
-      ? t('undefinedDrReplicaUniveresUuid', {
+      ? t('undefinedDrReplicaUniverseUuid', {
           keyPrefix: 'clusterDetail.disasterRecovery.error'
         })
       : targetUniverseQuery.isError

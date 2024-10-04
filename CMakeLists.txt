@@ -404,8 +404,11 @@ if(IS_GCC)
     # unnecessary. This does not happen in debug.
     # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
     ADD_CXX_FLAGS("-Wno-uninitialized")
-
-    # Also the use-after-free detector complains about Boost multi index container.
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$" AND
+      "${YB_BUILD_TYPE}" STREQUAL "release")
+    # Also the use-after-free detector complains about Boost multi index container in both GCC 12
+    # and GCC 13.
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
@@ -607,6 +610,8 @@ include_directories(src)
 
 include_directories("src/inline-thirdparty/usearch")
 include_directories("src/inline-thirdparty/fp16")
+include_directories("src/inline-thirdparty/hnswlib")
+include_directories("src/inline-thirdparty/simsimd")
 
 
 enable_testing()

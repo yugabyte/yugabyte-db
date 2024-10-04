@@ -47,20 +47,4 @@ VectorIndexLevel SelectRandomLevel(double ml, VectorIndexLevel max_level) {
   return narrow_cast<VectorIndexLevel>(std::min<size_t>(level, max_level));
 }
 
-std::string VertexWithDistance::ToString() const {
-  return YB_STRUCT_TO_STRING(vertex_id, distance);
-}
-
-std::vector<VertexWithDistance> DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue& queue) {
-  std::vector<VertexWithDistance> result_list;
-  while (!queue.empty()) {
-    result_list.push_back(queue.top());
-    queue.pop();
-  }
-  // results is a max-heap, so we've got a list going from furthest to closest vector to the query.
-  // What we need is a list from lowest to highest distance.
-  std::reverse(result_list.begin(), result_list.end());
-  return result_list;
-}
-
 }  // namespace yb::vectorindex

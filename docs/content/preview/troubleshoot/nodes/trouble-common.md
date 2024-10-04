@@ -70,7 +70,7 @@ SELECT * FROM system.peers_v2;
  (ql error -2)
 ```
 
-The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../reference/drivers/ycql-client-drivers/) to find a driver for your client language.
+The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../drivers-orms/ycql-client-drivers/) to find a driver for your client language.
 
 ## Poll stopped: Service unavailable
 

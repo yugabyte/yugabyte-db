@@ -145,7 +145,7 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Use Yugabyte Kubernetes Operator to automate YBA deployments
 
-The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<badge/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
 
 Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
@@ -154,7 +154,7 @@ To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernete
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:

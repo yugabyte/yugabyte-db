@@ -35,9 +35,13 @@ VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
+# Prometheus Version
+PROMETHEUS_VERSION ?= 2.53.1
+
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2023-10-10-23-40
-PG_BINARY_NAME ?= postgres-linux-14.11.tar.gz
-PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.11.tar.gz
+POSTGRES_VERSION ?= 14.13
+PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
+PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
 # https://adoptium.net/temurin/releases/
 JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
@@ -77,7 +81,9 @@ yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}'"
 
 
 package: ${PACKAGE_NAME}

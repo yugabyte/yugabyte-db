@@ -34,7 +34,9 @@ constexpr auto kObject1 = 1;
 
 class TSLocalLockManagerTest : public YBTest {
  protected:
-  TSLocalLockManagerTest() = default;
+  TSLocalLockManagerTest() {
+    lm_.TEST_MarkBootstrapped();
+  }
 
   tablet::TSLocalLockManager lm_;
 

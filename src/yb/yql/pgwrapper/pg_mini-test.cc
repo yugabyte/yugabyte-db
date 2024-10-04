@@ -82,6 +82,10 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(TEST_enable_pg_client_mock);
+DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(use_bootstrap_intent_ht_filter);
+DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -276,7 +280,7 @@ TEST_F(PgMiniTest, FollowerReads) {
   // Setting staleness to what we require for the test.
   // Sleep and then perform an update, such that follower reads should see the old value.
   // But current reads will see the new/updated value.
-  constexpr int32_t kStalenessMs = 4000;
+  constexpr int32_t kStalenessMs = 4000 * kTimeMultiplier;
   LOG(INFO) << "Sleeping for " << kStalenessMs << " ms";
   SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
   ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
@@ -383,7 +387,11 @@ TEST_F(PgMiniTest, FollowerReads) {
         ASSERT_OK(conn.Execute(
             yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
         value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-        ASSERT_EQ(value, local ? "NEW" : "old");
+        // If for some reason things are slow, follower reads may still see the NEW value.
+        const auto time_delta_ms = MonoTime::Now().GetDeltaSince(kUpdateTime).ToMilliseconds();
+        if (time_delta_ms < kStalenessMs) {
+          ASSERT_EQ(value, local ? "NEW" : "old");
+        }
         ASSERT_OK(conn.Execute("COMMIT"));
       }  // local
 
@@ -2208,6 +2216,31 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
+TEST_F(PgMiniTest, ReadHugeRow) {
+  constexpr size_t kNumColumns = 2;
+  constexpr size_t kColumnSize = 254000000;
+
+  std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    create_query += Format(", text$0 TEXT", i);
+  }
+  create_query += ")";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(create_query));
+  ASSERT_OK(conn.Execute("INSERT INTO test(pk) VALUES(0)"));
+
+  for (size_t i = 0; i < kNumColumns; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test SET text$0 = repeat('0', $1) WHERE pk = 0",
+        i, kColumnSize));
+  }
+
+  const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
+}
+
 TEST_F_EX(
     PgMiniTest, CacheRefreshWithDroppedEntries, PgMiniTestSingleNode) {
   auto conn = ASSERT_RESULT(Connect());
@@ -2366,6 +2399,54 @@ TEST_F_EX(PgMiniTest, RegexPushdown, PgMiniTestSingleNode) {
   }
 }
 
+TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating table";
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(a int) SPLIT INTO 1 TABLETS"));
+
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : peers) {
+    if (peer->shared_tablet()->regular_db()) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  LOG(INFO) << "T1 - BEGIN/INSERT";
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
+
+  LOG(INFO) << "Flush";
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "T2 - BEGIN/INSERT";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (1)"));
+
+  LOG(INFO) << "Flush";
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "T1 - Commit";
+  ASSERT_OK(conn1.CommitTransaction());
+
+  ASSERT_OK(tablet_peer->FlushBootstrapState());
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(RestartCluster());
+
+  conn1 = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(res, 1);
+}
 
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,

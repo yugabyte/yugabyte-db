@@ -71,31 +71,27 @@ set(MASTER_SRCS
   async_rpc_tasks.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
-  master_call_home.cc
   backfill_index.cc
-  catalog_manager.cc
-  catalog_manager_ext.cc
-  catalog_manager_util.cc
   catalog_entity_base.cc
   catalog_entity_info.cc
   catalog_entity_tasks.cc
-  catalog_manager_bg_tasks.cc
   catalog_loaders.cc
-  xcluster_consumer_registry_service.cc
-  xcluster_rpc_tasks.cc
-  scoped_leader_shared_lock.cc
-  clone/clone_state_manager.cc
+  catalog_manager.cc
+  catalog_manager_bg_tasks.cc
+  catalog_manager_ext.cc
+  catalog_manager_util.cc
   clone/clone_state_entity.cc
+  clone/clone_state_manager.cc
   cluster_balance.cc
   cluster_balance_util.cc
   encryption_manager.cc
-  permissions_manager.cc
   flush_manager.cc
+  master-path-handlers.cc
   master.cc
   master_admin_service.cc
   master_auto_flags_manager.cc
-  tablet_health_manager.cc
   master_backup_service.cc
+  master_call_home.cc
   master_client_service.cc
   master_cluster_handler.cc
   master_cluster_service.cc
@@ -103,21 +99,22 @@ set(MASTER_SRCS
   master_ddl_service.cc
   master_encryption_service.cc
   master_heartbeat_service.cc
-  master_replication_service.cc
   master_options.cc
+  master_replication_service.cc
   master_service_base.cc
+  master_snapshot_coordinator.cc
   master_tablet_service.cc
   master_test_service.cc
-  master_types.cc
   master_tserver.cc
-  master-path-handlers.cc
+  master_types.cc
   mini_master.cc
-  master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
-  object_lock.cc
+  object_lock_info_manager.cc
+  permissions_manager.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
+  scoped_leader_shared_lock.cc
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
@@ -129,6 +126,7 @@ set(MASTER_SRCS
   system_tablet.cc
   table_index.cc
   tablet_creation_limits.cc
+  tablet_health_manager.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   test_async_rpc_manager.cc
@@ -143,6 +141,7 @@ set(MASTER_SRCS
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
+  xcluster/xcluster_inbound_replication_group_setup_task.cc
   xcluster/xcluster_manager.cc
   xcluster/xcluster_outbound_replication_group.cc
   xcluster/xcluster_outbound_replication_group_tasks.cc
@@ -151,7 +150,8 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
-  xcluster/xcluster_inbound_replication_group_setup_task.cc
+  xcluster_consumer_registry_service.cc
+  xcluster_rpc_tasks.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -234,8 +234,9 @@ ADD_YB_LIBRARY(master_util
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
-  master-test_base.cc
   master-test-util.cc
+  master-test_base.cc
+  master_cluster_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
@@ -258,6 +259,7 @@ ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(master-test)
+ADD_YB_TEST(master_cluster_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
@@ -266,8 +268,8 @@ ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
 ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_creation_limits_test)
-ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
+ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a

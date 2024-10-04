@@ -16,6 +16,7 @@
 #include "yb/server/auto_flags_manager_base.h"
 
 #include "yb/master/master_cluster.pb.h"
+
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/unique_lock.h"
 

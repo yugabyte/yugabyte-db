@@ -1307,6 +1307,10 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 
 bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
 
+bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
+  return yb::master::IsAutomaticDdlMode(pb);
+}
+
 // ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================

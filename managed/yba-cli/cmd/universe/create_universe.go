@@ -84,7 +84,7 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		enableYbc := true
-		communicationPorts := buildCommunicationPorts(cmd)
+		communicationPorts := buildCommunicationPorts()
 
 		certUUID := ""
 		clientRootCA := v1.GetString("root-ca")
@@ -113,7 +113,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = "ENABLE"
+			opType = util.EnableKMSOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -149,7 +149,7 @@ var createUniverseCmd = &cobra.Command{
 			cpuArch = util.X86_64
 		}
 
-		clusters, err := buildClusters(cmd, authAPI, universeName)
+		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -204,8 +204,9 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: universe.NewUniverseFormat(viper.GetString("output")),
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  universe.NewUniverseFormat(viper.GetString("output")),
 			}
 
 			universe.Write(universesCtx, universeData)

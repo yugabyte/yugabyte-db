@@ -86,9 +86,11 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
 
-	// Ignore temporary tables and primary indexes (same as main table).
+	// Ignore temporary tables and covered indexes (same as main table).
 	if (!IsYBBackedRelation(rel) ||
-		(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary))
+		((rel->rd_rel->relkind == RELKIND_INDEX ||
+		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		 YBIsCoveredByMainTable(rel)))
 	{
 		RelationClose(rel);
 		return false;

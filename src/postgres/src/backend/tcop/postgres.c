@@ -191,9 +191,6 @@ static bool yb_need_cache_refresh = false;
 /* whether or not we are executing a multi-statement query received via simple query protocol */
 static bool yb_is_multi_statement_query = false;
 
-/* whether ASH metadata is set or not */
-static bool yb_is_ash_metadata_set = false;
-
 /*
  * String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
@@ -3969,9 +3966,12 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * transaction for future queries (before commit).
 	 * So we just re-throw the error in that case.
 	 *
+	 * Do not retry statements in a batch for the same reason.
+	 *
 	 */
 	if (consider_retry &&
 			!IsTransactionBlock() &&
+			!YbIsBatchedExecution() &&
 			!YBCGetDisableTransparentCacheRefreshRetry())
 	{
 		/* Clear error state */
@@ -5461,10 +5461,10 @@ PostgresMain(int argc, char *argv[],
 			 * ASH metadata because here we are sure that the previous request
 			 * has been completely processed by the server.
 			 */
-			if (IsYugaByteEnabled() && yb_enable_ash && yb_is_ash_metadata_set)
+			if (IsYugaByteEnabled() && yb_enable_ash && MyProc->yb_is_ash_metadata_set)
 			{
 				YbAshUnsetMetadata();
-				yb_is_ash_metadata_set = false;
+				MyProc->yb_is_ash_metadata_set = false;
 			}
 
 			ReadyForQuery(whereToSendOutput);
@@ -5501,10 +5501,10 @@ PostgresMain(int argc, char *argv[],
 		 * parse, bind, describe, execute and sync. We only want to set the metadata
 		 * once during this process.
 		 */
-		if (IsYugaByteEnabled() && yb_enable_ash && !yb_is_ash_metadata_set)
+		if (IsYugaByteEnabled() && yb_enable_ash && !MyProc->yb_is_ash_metadata_set)
 		{
 			YbAshSetMetadata();
-			yb_is_ash_metadata_set = true;
+			MyProc->yb_is_ash_metadata_set = true;
 		}
 
 		/*

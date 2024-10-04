@@ -264,7 +264,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 				{
 					Relation index;
 					index = RelationIdGetRelation(indexinfo->indexoid);
-					bool is_primary = index->rd_index->indisprimary;
+					bool is_primary = YBIsCoveredByMainTable(index);
 					RelationClose(index);
 
 					if (is_primary)
@@ -712,9 +712,6 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 									 const Relation rel,
 									 Bitmapset *update_attrs)
 {
-	if (!YbIsUpdateOptimizationEnabled())
-		return NULL;
-
 	/* Fetch a list of candidate entities that may be impacted by the update. */
 	List *fkeylist = copyObject(RelationGetFKeyList(rel));
 	List *fkeyreflist = YbRelationGetFKeyReferencedByList(rel);

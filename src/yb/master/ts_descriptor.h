@@ -94,14 +94,14 @@ typedef util::SharedPtrTuple<
     consensus::ConsensusServiceProxy>
     ProxyTuple;
 
-struct PersistentServerInfo
+struct PersistentTServerInfo
     : public Persistent<SysTServerEntryPB> {};
 
 // Master-side view of a single tablet server.
 //
 // Tracks the last heartbeat, status, instance identifier, etc.
 // This class is thread-safe.
-class TSDescriptor : public MetadataCowWrapper<PersistentServerInfo> {
+class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
  public:
   static Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> CreateNew(
       const NodeInstancePB& instance,
@@ -137,7 +137,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentServerInfo> {
 
   Result<TSDescriptor::WriteLock> UpdateRegistration(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      CloudInfoPB local_cloud_info, rpc::ProxyCache* proxy_cache);
+      CloudInfoPB&& local_cloud_info, RegisteredThroughHeartbeat registered_through_heartbeat,
+      rpc::ProxyCache* proxy_cache);
 
   const std::string& permanent_uuid() const { return permanent_uuid_; }
   const std::string& id() const override { return permanent_uuid(); }
@@ -310,7 +311,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentServerInfo> {
   std::string ToString() const override;
 
   // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
-  bool IsRemoved() const {
+  bool IsReplaced() const {
     return LockForRead()->pb.state() == SysTServerEntryPB::REPLACED;
   }
 

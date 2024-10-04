@@ -49,6 +49,7 @@ enum SysRowEntryType {
   XCLUSTER_OUTBOUND_REPLICATION_GROUP = 18;
   CLONE_STATE = 19;
   TSERVER_REGISTRATION = 20;
+  OBJECT_LOCK_ENTRY = 21;
 
   // Each value must have a corresponding entry in CATALOG_ENTITY_TYPE_MAP of
   // catalog_entity_types.h
@@ -155,6 +156,8 @@ message MasterErrorPB {
 
     // The number of existing replication slots have reached `max_replication_slots`.
     REPLICATION_SLOT_LIMIT_REACHED = 41;
+
+    TABLET_SERVER_NOT_FOUND = 42;
   }
 
   // The error code.

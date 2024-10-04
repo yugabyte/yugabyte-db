@@ -95,6 +95,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
+      createCheckCertificateConfigTask(universe, Collections.singletonList(cluster));
+
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(

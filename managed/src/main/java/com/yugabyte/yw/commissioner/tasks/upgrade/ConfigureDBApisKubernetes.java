@@ -50,6 +50,12 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           // by the tasks below.
           syncTaskParamsToUserIntent();
 
+          // Drop system_platform.write_read_table while disabling YSQL.
+          if (!taskParams().enableYSQL
+              && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+            createDropSystemPlatformDBTablesTask(universe, getTaskSubGroupType());
+          }
+
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 

@@ -85,7 +85,23 @@ var describeBackupCmd = &cobra.Command{
 			}
 		}
 
-		if len(r.GetEntities()) > 0 && util.IsOutputType("table") {
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Describe - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+		}
+
+		if len(r.GetEntities()) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullBackupContext := *backup.NewFullBackupContext()
 			fullBackupContext.Output = os.Stdout
 			fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
@@ -103,8 +119,9 @@ var describeBackupCmd = &cobra.Command{
 		}
 
 		backupCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: backup.NewBackupFormat(viper.GetString("output")),
+			Command: "describe",
+			Output:  os.Stdout,
+			Format:  backup.NewBackupFormat(viper.GetString("output")),
 		}
 		backup.Write(backupCtx, r.GetEntities())
 	},

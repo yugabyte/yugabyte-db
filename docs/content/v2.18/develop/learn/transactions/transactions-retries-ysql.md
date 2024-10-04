@@ -37,7 +37,7 @@ Follow the [setup instructions](../../../../explore#tabs-00-00) to start a singl
 
 ## Automatic retries
 
-YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered transactions. In [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation mode, the server retries indefinitely.
+YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered transactions.
 
 In some scenarios, a server-side retry is not suitable. For example, the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer.
 
@@ -82,7 +82,7 @@ SerializationFailure errors happen when multiple transactions are updating the s
     ERROR:  40001: All transparent retries exhausted.
     ```
 
-- All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. For this scenario, the client might receive a message similar to the following:
+- All transactions are given a dynamic priority. If another higher priority transaction aborts the current transaction, the client might receive a message similar to the following:
 
     ```output
     ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict

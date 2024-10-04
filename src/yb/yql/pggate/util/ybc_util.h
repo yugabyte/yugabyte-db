@@ -348,6 +348,7 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
 int YBCGetRandomUniformInt(int a, int b);
 YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
+int YBCGetCircularBufferSizeInKiBs();
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 

@@ -3,6 +3,8 @@ title: Java Driver 4.15 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 4.15 driver
+tags:
+  other: ycql
 menu:
   preview:
     identifier: ycql-java-driver-4.x
@@ -31,13 +33,19 @@ type: docs
   <li >
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (3.10)
+      YCQL (3.10)
     </a>
   </li>
   <li >
     <a href="../ycql-4.x/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.15)
+      YCQL (4.15)
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL (4.15) with SSL
     </a>
   </li>
 </ul>
@@ -46,7 +54,7 @@ type: docs
 
 {{< note title="YugabyteDB Aeon" >}}
 
-To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 

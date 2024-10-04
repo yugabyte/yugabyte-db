@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
-import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
@@ -11,7 +10,6 @@ import {
 } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { DurationUnit } from '../constants';
-import { I18N_DURATION_KEY_PREFIX } from '../../../../redesign/helpers/constants';
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
 
@@ -27,18 +25,18 @@ const TRANSLATION_KEY_PREFIX =
 // The expectation is that all `DurationUnit`s are presented as options here.
 export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
   {
-    label: i18next.t('seconds', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    label: 'Seconds',
     value: DurationUnit.SECOND
   },
   {
-    label: i18next.t('minutes', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    label: 'Minutes',
     value: DurationUnit.MINUTE
   },
   {
-    label: i18next.t('hours', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    label: 'Hours',
     value: DurationUnit.HOUR
   },
-  { label: i18next.t('days', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
+  { label: 'Days', value: DurationUnit.DAY }
 ];
 
 export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) => {

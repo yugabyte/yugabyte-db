@@ -34,6 +34,7 @@ rightNav:
 ##### YugabyteDB
 
 - [What version of YugabyteDB does my cluster run on?](#what-version-of-yugabytedb-does-my-cluster-run-on)
+- [Why does the database admin user not have superuser privileges?](#why-does-the-database-admin-user-not-have-superuser-privileges)
 - [Can I test YugabyteDB locally?](#can-i-test-yugabytedb-locally)
 
 ##### Support
@@ -57,6 +58,7 @@ rightNav:
 ##### Backups
 
 - [How are clusters backed up?](#how-are-clusters-backed-up)
+- [Where are clusters backed up?](#where-are-clusters-backed-up)
 - [Can I download backups?](#can-i-download-backups)
 
 ## YugabyteDB Aeon
@@ -144,17 +146,21 @@ For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-
 
 ### What version of YugabyteDB does my cluster run on?
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
+In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#preview-releases) series.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
+
+### Why does the database admin user not have superuser privileges?
+
+For security reasons, in YugabyteDB Aeon you can't use the yugabyte or postgres users that are available in open-source YugabyteDB, and the cluster database admin user does not have YSQL superuser privileges. Instead, the admin is a member of yb_superuser, a role specific to YugabyteDB Aeon clusters. For information on database roles and privileges in YugabyteDB Aeon clusters, refer to [Database authorization](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/).
 
 ### Can I test YugabyteDB locally?
 
@@ -294,13 +300,19 @@ Sandbox clusters are paused after 10 days of inactivity. To keep your cluster fr
 
 By default, every cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
 
-YugabyteDB Aeon runs full backups, not incremental.
-
-Backups are retained in the same region as the cluster.
+YugabyteDB Aeon supports full backups, and incremental backups.
 
 Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys. Backups for Azure clusters are encrypted using Azure-managed server-side encryption keys and client-side encryption is done using [GCM mode with AES](https://learn.microsoft.com/en-us/azure/storage/common/storage-service-encryption#client-side-encryption-for-blobs-and-queues).
 
 Currently, YugabyteDB Aeon does not support backups of Sandbox clusters.
+
+### Where are clusters backed up?
+
+Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster.
+
+For [Replicate across region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+
+For [Partition by region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ### Can I download backups?
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "yb/client/tablet_server.h"
 
@@ -134,7 +136,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState* session_stats);
+  Status InitSession(YBCPgExecStatsState& session_stats);
 
   uint64_t GetSessionID() const;
 
@@ -602,7 +604,7 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
-  Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
+  Status DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
@@ -613,11 +615,11 @@ class PgApiImpl {
   Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
 
   Status AddFunctionParam(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       uint64_t datum, bool is_null);
 
   Status AddFunctionTarget(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       const YBCPgTypeAttrs type_attrs);
 
   Status FinalizeFunctionTargets(PgFunction *handle);
@@ -718,8 +720,9 @@ class PgApiImpl {
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
-      const PgExplicitRowLockParams& params, bool is_region_local);
-  Status FlushExplicitRowLockIntents();
+      const PgExplicitRowLockParams& params, bool is_region_local,
+      PgExplicitRowLockErrorInfo& error_info);
+  Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
@@ -798,6 +801,8 @@ class PgApiImpl {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
 

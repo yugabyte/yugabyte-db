@@ -82,7 +82,6 @@ public class EditUniverse extends EditUniverseTaskBase {
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
                 != universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
       }
-
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();

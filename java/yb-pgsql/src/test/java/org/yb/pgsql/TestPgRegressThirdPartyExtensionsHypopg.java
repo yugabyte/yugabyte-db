@@ -15,6 +15,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.YBTestRunner;
 
 import java.io.File;
@@ -24,6 +25,12 @@ public class TestPgRegressThirdPartyExtensionsHypopg extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
   }
 
   @Test

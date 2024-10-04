@@ -36,7 +36,7 @@ func (fiT *FullInstanceTypesContext) SetFullInstanceTypes(provider ybaclient.Ins
 // NewFullInstanceTypesFormat for formatting output
 func NewFullInstanceTypesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultInstanceTypesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

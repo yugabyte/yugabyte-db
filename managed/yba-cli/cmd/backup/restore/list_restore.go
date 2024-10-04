@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -21,11 +20,8 @@ var listRestoreCmd = &cobra.Command{
 	Short: "List YugabyteDB Anywhere restores",
 	Long:  "List restores in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		universeUUIDs, err := cmd.Flags().GetString("universe-uuids")
 		if err != nil {
@@ -38,8 +34,9 @@ var listRestoreCmd = &cobra.Command{
 		}
 
 		restoreCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: restore.NewRestoreFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  restore.NewRestoreFormat(viper.GetString("output")),
 		}
 
 		var limit int32 = 10
@@ -70,7 +67,8 @@ var listRestoreCmd = &cobra.Command{
 		}
 
 		restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
-
+		restores := make([]ybaclient.RestoreResp, 0)
+		force := viper.GetBool("force")
 		for {
 			// Execute backup list request
 			r, response, err := restoreListRequest.Execute()
@@ -81,27 +79,35 @@ var listRestoreCmd = &cobra.Command{
 
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
-				if util.IsOutputType("table") {
-					logrus.Infoln("No restores found\n")
+				if util.IsOutputType(formatter.TableFormatKey) {
+					logrus.Info("No restores found\n")
 				} else {
-					logrus.Infoln("[]\n")
+					logrus.Info("[]\n")
 				}
 				return
 			}
 
-			// Write backup entities
-			restore.Write(restoreCtx, r.GetEntities())
+			// Write restore entities
+			if force {
+				restores = append(restores, r.GetEntities()...)
+			} else {
+				restore.Write(restoreCtx, r.GetEntities())
+			}
 
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
 			if !hasNext {
-				logrus.Infoln("No more restores present\n")
+				if util.IsOutputType(formatter.TableFormatKey) && !force {
+					logrus.Info("No more restores present\n")
+				}
 				break
 			}
 
-			// Prompt user for more entries
-			if !promptForMoreEntries() {
-				break
+			err = util.ConfirmCommand(
+				"List more entries",
+				force)
+			if err != nil {
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 
 			offset += int32(len(r.GetEntities()))
@@ -110,16 +116,11 @@ var listRestoreCmd = &cobra.Command{
 			restoreAPIQuery.Offset = offset
 			restoreListRequest = authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
 		}
+		if force {
+			restore.Write(restoreCtx, restores)
+		}
 
 	},
-}
-
-// Function to prompt user for more entries
-func promptForMoreEntries() bool {
-	var input string
-	fmt.Print("More entries? (yes/no): ")
-	fmt.Scanln(&input)
-	return strings.ToLower(input) == "yes"
 }
 
 func init() {
@@ -128,4 +129,6 @@ func init() {
 		"[Optional] Comma separated list of universe uuids")
 	listRestoreCmd.Flags().String("universe-names", "",
 		"[Optional] Comma separated list of universe names")
+	listRestoreCmd.Flags().BoolP("force", "f", false,
+		"[Optional] Bypass the prompt for non-interactive usage.")
 }

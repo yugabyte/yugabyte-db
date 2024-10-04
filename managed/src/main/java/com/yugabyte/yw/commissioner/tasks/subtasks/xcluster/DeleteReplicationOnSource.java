@@ -11,11 +11,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.client.MasterErrorException;
 import org.yb.client.XClusterDeleteOutboundReplicationGroupResponse;
 import org.yb.client.YBClient;
 
 @Slf4j
 public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
+
   @Inject
   protected DeleteReplicationOnSource(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
@@ -36,19 +38,29 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
         ybService.getClient(
             sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
 
-      // TODO: Check whether the replication group exists on the source universe first.
-
-      XClusterDeleteOutboundReplicationGroupResponse response =
-          client.xClusterDeleteOutboundReplicationGroup(xClusterConfig.getReplicationGroupName());
-
-      if (response.hasError()) {
-        throw new RuntimeException(
-            String.format(
-                "Failed to delete replication for XClusterConfig(%s) on on source universe %s."
-                    + " Error: %s",
-                xClusterConfig.getUuid(),
-                sourceUniverse.getUniverseUUID(),
-                response.errorMessage()));
+      try {
+        XClusterDeleteOutboundReplicationGroupResponse response =
+            client.xClusterDeleteOutboundReplicationGroup(xClusterConfig.getReplicationGroupName());
+        if (response.hasError()) {
+          throw new RuntimeException(
+              String.format(
+                  "Failed to delete replication for XClusterConfig(%s) on on source universe %s."
+                      + " Error: %s",
+                  xClusterConfig.getUuid(),
+                  sourceUniverse.getUniverseUUID(),
+                  response.errorMessage()));
+        }
+      } catch (MasterErrorException e) {
+        // If it is not `NOT_FOUND` exception, rethrow the exception.
+        if (!e.getMessage().contains("NOT_FOUND[code 1]")) {
+          throw new RuntimeException(e);
+        }
+        log.warn(
+            "Outbound replication group {} does not exist on the source universe, NOT_FOUND"
+                + " exception occurred in xClusterDeleteOutboundReplicationGroup RPC call is"
+                + " ignored: {}",
+            xClusterConfig.getReplicationGroupName(),
+            e.getMessage());
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

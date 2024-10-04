@@ -9,7 +9,7 @@
 
 import { forwardRef, Fragment, useContext, useImperativeHandle } from 'react';
 import cronstrue from 'cronstrue';
-import { useMutation } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { values } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
@@ -28,7 +28,7 @@ import { BACKUP_API_TYPES } from '../../../../../../../components/backupv2';
 
 import { GetUniverseUUID, prepareScheduledBackupPayload } from '../../../ScheduledBackupUtils';
 
-import { createScheduledBackup } from '../../../api/api';
+import { createScheduledBackupPolicy } from '../../../api/api';
 
 import { ReactComponent as CheckIcon } from '../../../../../../assets/check-white.svg';
 import BulbIcon from '../../../../../../assets/bulb.svg';
@@ -89,6 +89,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
+  
   const [scheduledBackupContext, { setPage, setIsSubmitting }, { hideModal }] = (useContext(
     ScheduledBackupContext
   ) as unknown) as ScheduledBackupContextMethods;
@@ -99,18 +100,20 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
 
   const classes = useStyles();
   const universeUUID = GetUniverseUUID();
+  const queryClient = useQueryClient();
 
   const doCreateScheduledBackup = useMutation(
-    (payload: ExtendedBackupScheduleProps) => createScheduledBackup(payload),
+    (payload: ExtendedBackupScheduleProps) => createScheduledBackupPolicy(payload),
     {
       onSuccess: () => {
         toast.success(
-          <span className={classes.successMsg}>
+          <span className={classes.successMsg} style={{ display: 'flex' }}>
             <CheckIcon />
             {t('successMsg')}
           </span>
         );
         hideModal();
+        queryClient.invalidateQueries('scheduled_backup_list');
       },
       onError: (error: any) => {
         toast.error(error?.response?.data?.error || t('errorMsg'));
@@ -147,8 +150,8 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
   const fullBackup = backupFrequency.useCronExpression
     ? cronstrue.toString(backupFrequency.cronExpression)
     : `${t('every', {
-        keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
-      })} ${backupFrequency.frequency} ${backupFrequency.frequencyTimeUnit}`;
+      keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
+    })} ${backupFrequency.frequency} ${backupFrequency.frequencyTimeUnit}`;
 
   let tablesList: JSX.Element | string = t('allTables');
 
@@ -191,7 +194,7 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
       {
         name: t(dbType),
         value: backupObjects.keyspace?.isDefaultOption
-          ? t(apiType === 'Ysql' ? 'allDatabases' : 'allKeyspaces')
+          ? t(apiType === 'Ysql' ? 'allDatabase' : 'allKeyspaces', { keyPrefix: 'backup' })
           : backupObjects.keyspace?.label
       },
       {
@@ -212,10 +215,9 @@ const BackupSummary = forwardRef<PageRef>((_, forwardRef) => {
         name: t('incrementalBackup'),
         value: backupFrequency.useIncrementalBackup
           ? `${t('every', {
-              keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
-            })} ${backupFrequency.incrementalBackupFrequency} ${
-              backupFrequency.incrementalBackupFrequencyTimeUnit
-            }`
+            keyPrefix: 'backup.scheduled.create.backupFrequency.backupFrequencyField'
+          })} ${backupFrequency.incrementalBackupFrequency} ${backupFrequency.incrementalBackupFrequencyTimeUnit
+          }`
           : '-'
       },
       {

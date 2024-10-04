@@ -6,6 +6,14 @@
 {{- $numversions := len $versions -}}
 {{- $count := 0 -}}
 {{- range $version := $versions -}}
+    {{- if or (eq $version "preview") (eq $version "stable") -}}
+        {{- range page.Site.Data.currentVersions.dbVersions -}}
+            {{- if eq $version .alias -}}
+                {{- $version = .version -}}
+                {{- break -}}
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
     {{- /* retain the original text for display */ -}}
     {{- $orig := trim $version " " -}}
     {{- /* trim the spaces,+,.,x,X */ -}}

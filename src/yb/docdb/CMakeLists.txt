@@ -81,6 +81,7 @@ set(DOCDB_SRCS
         vector_index.cc
         vector_index_read.cc
         vector_index_update.cc
+        vector_lsm.cc
         wait_queue.cc
         )
 
@@ -98,6 +99,7 @@ set(DOCDB_DEPS
         yb_pggate
         ql_util
         yb_pgbackend
+        yb_vector
         )
 
 ADD_YB_LIBRARY(yb_docdb

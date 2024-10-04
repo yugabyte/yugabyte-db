@@ -43,7 +43,7 @@
 
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
-#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_replication.proxy.h"
@@ -99,14 +99,15 @@ void MasterTestBase::SetUp() {
   rpc::ProxyCache proxy_cache(client_messenger_.get());
   proxy_client_ = std::make_unique<MasterClientProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
-  proxy_cluster_ = std::make_unique<MasterClusterProxy>(
-      &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_ddl_ = std::make_unique<MasterDdlProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_heartbeat_ = std::make_unique<MasterHeartbeatProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_replication_ = std::make_unique<MasterReplicationProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
+
+  cluster_client_ = std::make_unique<MasterClusterClient>(
+      MasterClusterProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
 
   // Create the default test namespace.
   CreateNamespaceResponsePB resp;
@@ -545,16 +546,13 @@ void MasterTestBase::CheckTables(
   ASSERT_EQ(tables.tables_size(), table_info.size());
 }
 
-void MasterTestBase::UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
-  ChangeMasterClusterConfigRequestPB change_req;
-  change_req.mutable_cluster_config()->CopyFrom(*cluster_config);
-  ChangeMasterClusterConfigResponsePB change_resp;
-  rpc::ProxyCache proxy_cache(client_messenger_.get());
-  master::MasterClusterProxy proxy(&proxy_cache, mini_master_->bound_rpc_addr());
-  ASSERT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
+Status MasterTestBase::UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
+  RETURN_NOT_OK(
+      cluster_client_->ChangeMasterClusterConfig(SysClusterConfigEntryPB(*cluster_config)));
   // Bump version number by 1, so we do not have to re-query.
   cluster_config->set_version(cluster_config->version() + 1);
   LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
+  return Status::OK();
 }
 
 } // namespace master

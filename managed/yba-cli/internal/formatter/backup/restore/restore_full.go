@@ -38,7 +38,7 @@ func (fr *FullRestoreContext) SetFullRestore(restore ybaclient.RestoreResp) {
 // NewFullRestoreFormat for formatting output
 func NewFullRestoreFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultRestoreListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

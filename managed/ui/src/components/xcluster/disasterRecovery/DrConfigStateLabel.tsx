@@ -83,7 +83,7 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           </YBTooltip>
         </Typography>
       );
-    case DrConfigState.ERROR:
+    case DrConfigState.FAILED:
       return (
         <Typography
           variant={variant}

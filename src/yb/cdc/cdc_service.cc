@@ -43,10 +43,11 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/colocated_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -185,7 +186,7 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "The maximum interval in seconds that the xcluster checkpoint map can go without being "
     "refreshed. If the map is not refreshed within this interval, it is considered stale, "
     "and all WAL segments will be retained until the next refresh. "
-    "Setting to 0 will disable Opid-based WAL segment retention for XCluster.");
+    "Setting to 0 will disable Opid-based and time-based WAL segment retention for XCluster.");
 
 DEFINE_RUNTIME_int32(
     cdcsdk_max_expired_tables_to_clean_per_run, 1,
@@ -198,7 +199,7 @@ DEFINE_RUNTIME_AUTO_bool(
     cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
     "When enabled, Update Peers and Metrics will look for entries in the state table that have "
     "either become not of interest or have expired for a stream. The cleanup logic will then "
-    "update these entries in cdc_state table and also move the corresponing table's entry to "
+    "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -1301,7 +1302,8 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  table_name.set_table_id(table_id);
+  auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+  table_name.set_table_id(stripped_table_id);
   RPC_STATUS_RETURN_ERROR(
       client()->GetTablets(
           table_name, 0, &tablets, /* partition_list_version =*/nullptr,
@@ -1483,7 +1485,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
 
   for (const auto& table_id : table_ids) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    table_name.set_table_id(table_id);
+    auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+    table_name.set_table_id(stripped_table_id);
     Status s = client()->GetTablets(
         table_name, 0, &tablets, /* partition_list_version =*/nullptr,
         RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue);
@@ -2972,8 +2975,9 @@ void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
 
     if (!s.ok()) {
       failed_tablet_ids->insert(tablet_id);
-      VLOG(1) << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
-              << ", on all tablet peers";
+      YB_LOG_EVERY_N_SECS(INFO, 300)
+          << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
+          << ", on all tablet peers - " << s;
     }
   }
 }

@@ -150,7 +150,7 @@ var deleteBackupScheduleCmd = &cobra.Command{
 		}
 
 		if rDelete.GetSuccess() {
-			logrus.Info(fmt.Sprintf("The schedule %s (%s) has being deleted",
+			logrus.Info(fmt.Sprintf("The schedule %s (%s) has been deleted",
 				formatter.Colorize(scheduleName, formatter.GreenColor), scheduleUUID))
 
 		} else {

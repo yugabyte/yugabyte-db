@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "yb/master/master_fwd.h"
+#include "yb/util/status_callback.h"
 
 namespace yb::master {
 class TableInfo;
@@ -27,9 +28,40 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
 // Get the table name along with the YSQL schema name if this is a YSQL table.
 std::string GetFullTableName(const TableInfo& table_info);
 
-Result<std::vector<TableInfoPtr>> GetTablesEligibleForXClusterReplication(
-    const CatalogManager& catalog_manager, const NamespaceId& namespace_id);
+// A wrapper over TableInfo that allows us to use an alias TableId. This is useful for
+// sequences_data table for which we use a special TableId in xCluster. Check
+// GetSequencesDataAliasForNamespace.
+struct TableDesignator {
+  // Non-sequences_data table constructor.
+  explicit TableDesignator(TableInfoPtr table_info);
+
+  static TableDesignator CreateSequenceTableDesignator(
+      TableInfoPtr sequence_table_info, const NamespaceId& namespace_id);
+
+  const TableId id;
+  const TableInfoPtr table_info;
+  TableName name() const;
+  PgSchemaName pgschema_name() const;
+
+  std::string ToString() const;
+
+ private:
+  // Constructor for sequences_data table.
+  TableDesignator(TableInfoPtr sequence_table_info, const NamespaceId& namespace_id);
+};
+
+Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
+    const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
+    bool include_sequences_data);
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
+
+bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info);
+
+YB_DEFINE_ENUM(XClusterDDLReplicationRole, (kSource)(kTarget));
+
+Status SetupDDLReplicationExtension(
+    CatalogManagerIf& catalog_manager, const std::string& database_name,
+    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback);
 
 }  // namespace yb::master

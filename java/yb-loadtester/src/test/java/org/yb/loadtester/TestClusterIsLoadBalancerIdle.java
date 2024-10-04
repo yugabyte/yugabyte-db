@@ -16,9 +16,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.util.BuildTypeUtil;
 
-import static junit.framework.TestCase.assertTrue;
 import static junit.framework.TestCase.assertFalse;
+import static junit.framework.TestCase.assertTrue;
 
 /**
  * This is an integration test that ensures we can fully move a YB cluster
@@ -49,9 +50,13 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
     for (int i = 0; i < num_tables; i++) {
       setupTable("test_table_" + i, 2);
     }
+    long wait_time = num_tables * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000;
+    if (BuildTypeUtil.isTSAN()) {
+      wait_time *= 2;
+    }
 
     // Wait for the partition metadata to refresh.
-    Thread.sleep(num_tables * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+    Thread.sleep(wait_time);
 
     // Wait for load to balance across the three tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS));
@@ -65,7 +70,7 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
     addNewTServers(1);
 
     // Wait for the partition metadata to refresh.
-    Thread.sleep(num_tables * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+    Thread.sleep(wait_time);
 
     verifyClusterHealth(NUM_TABLET_SERVERS + 1);
 

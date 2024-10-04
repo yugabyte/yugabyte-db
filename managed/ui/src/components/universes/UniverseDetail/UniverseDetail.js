@@ -51,9 +51,10 @@ import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportB
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
-import { EditPGCompatibilityModal } from '../../../redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
+import { EditPGCompatibilityModal } from '../../../redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
+import { EditConnectionPoolModal } from '../../../redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
@@ -64,31 +65,39 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
 import { TroubleshootRegistrationDetails } from '../TroubleshootUniverse/TroubleshootRegistrationDetails';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 
 import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import {
   getCurrentVersion,
-  isVersionPGSupported
+  isVersionPGSupported,
+  isVersionConnectionPoolSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
 import ClockRewindDisabled from '../../../redesign/assets/clock-rewind-disabled.svg';
+import PGIcon from '../../../redesign/assets/pg-compatibility.svg';
+import PGDisabled from '../../../redesign/assets/pg-disabled.svg';
+import ConnectionPoolIcon from '../../../redesign/assets/connection-pooling.svg';
+import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-disabled.svg';
 
 import './UniverseDetail.scss';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
+  'gr6','i3','i3en','i4g','i4i','im4gn',
+  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) || 
+    instanceType?.split?.('.')[0].includes('d');
 };
 
 class UniverseDetail extends Component {
@@ -295,6 +304,7 @@ class UniverseDetail extends Component {
       showEnableYSQLModal,
       showEnableYCQLModal,
       showPGCompatibilityModal,
+      showConnectionPoolModal,
       updateBackupState,
       closeModal,
       customer,
@@ -347,11 +357,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_NODE_AGENT
       )?.value === 'true';
     runtimeConfigs?.data?.configEntries?.find(
-      (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+      (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
     )?.value === 'true';
     const isPerfAdvisorEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+        (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
     const isDrEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -409,6 +419,11 @@ class UniverseDetail extends Component {
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+      )?.value === 'true';
+
+    const isConnectionPoolEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
       )?.value === 'true';
 
     if (
@@ -513,6 +528,10 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_UNIVERSE) || isK8ActionsDisabled;
 
     const isPGCompatibilitySupported = isVersionPGSupported(
+      getCurrentVersion(currentUniverse.data.universeDetails)
+    );
+
+    const isVersionConPoolSupported = isVersionConnectionPoolSupported(
       getCurrentVersion(currentUniverse.data.universeDetails)
     );
 
@@ -623,7 +642,7 @@ class UniverseDetail extends Component {
             mountOnEnter={true}
             unmountOnExit={true}
           >
-            <DrPanel currentUniverseUuid={currentUniverse.data.universeUUID} />
+            <DrConfigList currentUniverseUuid={currentUniverse.data.universeUUID} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
@@ -764,11 +783,6 @@ class UniverseDetail extends Component {
         universeDetails: { nodeDetailsSet }
       }
     } = currentUniverse;
-
-    const isEphemeralAwsStorage =
-      nodeDetailsSet.find?.((node) => {
-        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
-      }) !== undefined;
 
     /**
      * Handle the backup state toggle.
@@ -1128,39 +1142,6 @@ class UniverseDetail extends Component {
                       </YBMenuItem>
                     </RbacValidator>
                   )}
-                  {!universePaused && isPGCompatibilitySupported && (
-                    <RbacValidator
-                      accessRequiredOn={{
-                        onResource: uuid,
-                        ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
-                      }}
-                      isControl
-                    >
-                      <YBTooltip
-                        title={
-                          hasAsymmetricPrimaryCluster
-                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                            : ''
-                        }
-                        placement="left"
-                      >
-                        <span>
-                          <YBMenuItem
-                            disabled={isEditGFlagsDisabled}
-                            onClick={showPGCompatibilityModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-retweet fa-fw">
-                              Edit Postgres Compatibility
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        </span>
-                      </YBTooltip>
-                    </RbacValidator>
-                  )}
                   {!universePaused && isConfigureYSQLEnabled && (
                     <RbacValidator
                       accessRequiredOn={{
@@ -1205,6 +1186,80 @@ class UniverseDetail extends Component {
                       </YBMenuItem>
                     </RbacValidator>
                   )}
+                  {!universePaused && isPGCompatibilitySupported && (
+                    <RbacValidator
+                      accessRequiredOn={{
+                        onResource: uuid,
+                        ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
+                      }}
+                      isControl
+                    >
+                      <YBTooltip
+                        title={
+                          hasAsymmetricPrimaryCluster
+                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                            : ''
+                        }
+                        placement="left"
+                      >
+                        <span>
+                          <YBMenuItem
+                            disabled={isEditGFlagsDisabled}
+                            onClick={showPGCompatibilityModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editGFlags'
+                            )}
+                          >
+                            <YBLabelWithIcon>
+                              <img
+                                src={isUniverseStatusPending ? PGDisabled : PGIcon}
+                                height="16px"
+                                width="16px"
+                              />
+                              &nbsp; Edit Postgres Compatibility
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </span>
+                      </YBTooltip>
+                    </RbacValidator>
+                  )}
+                  {!universePaused &&
+                    !isItKubernetesUniverse &&
+                    isConnectionPoolEnabled &&
+                    isConfigureYSQLEnabled &&
+                    isYSQLEnabledInUniverse &&
+                    isVersionConPoolSupported && (
+                      <RbacValidator
+                        accessRequiredOn={{
+                          onResource: uuid,
+                          ...ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL
+                        }}
+                        isControl
+                      >
+                        <YBMenuItem
+                          disabled={isYSQLConfigDisabled}
+                          onClick={showConnectionPoolModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editUniverse'
+                          )}
+                        >
+                          <YBLabelWithIcon>
+                            <img
+                              src={
+                                isUniverseStatusPending
+                                  ? ConnectionPoolDisabled
+                                  : ConnectionPoolIcon
+                              }
+                              height="16px"
+                              width="16px"
+                            />
+                            &nbsp; Edit Connection Pooling
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      </RbacValidator>
+                    )}
                   {!universePaused && (
                     <RbacValidator
                       isControl
@@ -1374,7 +1429,6 @@ class UniverseDetail extends Component {
                   */}
 
                   {isPausableUniverse(currentUniverse?.data) &&
-                    !isEphemeralAwsStorage &&
                     (featureFlags.test['pausedUniverse'] ||
                       featureFlags.released['pausedUniverse']) && (
                       <RbacValidator
@@ -1572,16 +1626,6 @@ class UniverseDetail extends Component {
           />
         )}
 
-        <EditPGCompatibilityModal
-          open={showModal && visibleModal === 'enablePGCompatibility'}
-          onClose={() => {
-            closeModal();
-            this.props.fetchCustomerTasks();
-            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
-          }}
-          universeData={currentUniverse.data}
-        />
-
         <EnableYSQLModal
           open={showModal && visibleModal === 'enableYSQLModal'}
           onClose={() => {
@@ -1592,6 +1636,7 @@ class UniverseDetail extends Component {
           enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
         />
+
         <EnableYCQLModal
           open={showModal && visibleModal === 'enableYCQLModal'}
           onClose={() => {
@@ -1602,6 +1647,26 @@ class UniverseDetail extends Component {
           enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
           isItKubernetesUniverse={isItKubernetesUniverse}
+        />
+
+        <EditPGCompatibilityModal
+          open={showModal && visibleModal === 'enablePGCompatibility'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
+
+        <EditConnectionPoolModal
+          open={showModal && visibleModal === 'enableConnectionPooling'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>

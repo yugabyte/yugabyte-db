@@ -233,6 +233,6 @@ struct FlagInfo {
 std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
     std::function<bool(const std::string&)> auto_flags_filter,
     std::function<bool(const std::string&)> default_flags_filter,
-    const std::map<std::string, std::string>& custom_varz);
+    const std::map<std::string, std::string>& custom_varz, bool mask_value_if_private = false);
 
 } // namespace yb

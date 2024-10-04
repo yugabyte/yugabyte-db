@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 
@@ -128,8 +128,8 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 You can provide the connection details in one of the following ways:
 
@@ -184,7 +184,7 @@ The following is an example for connecting to a YugabyteDB cluster with SSL enab
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/path/to/root.crt")
 ```
 
-The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in YugabyteDB Aeon. Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Aeon, use the cluster credentials for user and password, and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in YugabyteDB Aeon. Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Aeon, use the cluster credentials for user and password, and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 ### Step 3: Write your application
 
@@ -272,8 +272,4 @@ Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and
 
 ## Learn more
 
-- Refer to [YugabyteDB Psycopg2 driver reference](../../../reference/drivers/python/yugabyte-psycopg2-reference/) and [Try it out](../../../reference/drivers/python/yugabyte-psycopg2-reference/#try-it-out) for detailed smart driver examples.
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Build Python applications using [PostgreSQL Psycopg2 smart driver](../postgres-psycopg2/)
-- Build Python applications using [Django](../django/)
-- Build Python applications using [SQLAlchemy](../sqlalchemy/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

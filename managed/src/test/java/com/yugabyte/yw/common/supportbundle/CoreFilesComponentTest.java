@@ -107,7 +107,7 @@ public class CoreFilesComponentTest extends FakeDBApplication {
             new Pair<>(10L, "core_test.4"));
     doReturn(fileSizeNameList)
         .when(mockNodeUniverseManager)
-        .getNodeFilePathsAndSize(any(), any(), any());
+        .getNodeFilePathsAndSize(any(), any(), any(), any(), any());
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(

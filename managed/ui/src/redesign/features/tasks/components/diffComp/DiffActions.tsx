@@ -7,13 +7,13 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC } from 'react';
+import { FC, useState } from 'react';
 import { Grid, Typography } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import { useTranslation } from 'react-i18next';
 
 interface DiffActionsProps {
-  onExpandAll: () => void;
+  onExpandAll: (flag: boolean) => void;
   changesCount: number;
 }
 
@@ -21,14 +21,23 @@ export const DiffActions: FC<DiffActionsProps> = ({ onExpandAll, changesCount })
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.diffModal'
   });
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <Grid container spacing={2} justifyContent="space-between" alignItems="center">
       <Grid item>
         <Typography variant="h5">{changesCount} changes</Typography>
       </Grid>
       <Grid item>
-        <YBButton onClick={onExpandAll} variant="secondary" data-testid="diff-expand-all">
-          {t('expandAll')}
+        <YBButton
+          onClick={() => {
+            setExpanded(!expanded);
+            onExpandAll(!expanded);
+          }}
+          variant="secondary"
+          data-testid="diff-expand-all"
+        >
+          {expanded ? t('collapseAll') : t('expandAll')}
         </YBButton>
       </Grid>
     </Grid>

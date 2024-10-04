@@ -647,7 +647,7 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 			 * Return the IndexTuple. If this is a primary key, reorder the
 			 * values first as expected in the index's column order first.
 			 */
-			if (index->rd_index->indisprimary)
+			if (YBIsCoveredByMainTable(index))
 			{
 				Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
 
@@ -758,7 +758,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		ybScan->prepare_params.querying_colocated_table =
 			IsSystemRelation(relation) ||
 			(yb_table_prop_relation->is_colocated && index &&
-			 (index->rd_index->indisprimary ||
+			 (YBIsCoveredByMainTable(index) ||
 			  yb_table_prop_relation->tablegroup_oid ==
 				  YbGetTableProperties(index)->tablegroup_oid));
 	}
@@ -766,18 +766,19 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	if (index)
 	{
 		ybScan->prepare_params.index_relfilenode_oid =
-			ybScan->prepare_params.fetch_ybctids_only && index->rd_index->indisprimary
-				? YbGetRelfileNodeId(relation)
-				: YbGetRelfileNodeId(index);
+			ybScan->prepare_params.fetch_ybctids_only &&
+				YBIsCoveredByMainTable(index)
+					? YbGetRelfileNodeId(relation)
+					: YbGetRelfileNodeId(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
 		ybScan->prepare_params.use_secondary_index =
-			!index->rd_index->indisprimary ||
+			!YBIsCoveredByMainTable(index) ||
 			(ybScan->prepare_params.fetch_ybctids_only &&
 			 !ybScan->prepare_params.querying_colocated_table);
 	}
 
 	/* Setup descriptors for target and bind. */
-	if (!index || index->rd_index->indisprimary)
+	if (!index || YBIsCoveredByMainTable(index))
 	{
 		/*
 		 * SequentialScan or PrimaryIndexScan or BitmapIndexScan on the primary index
@@ -852,7 +853,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 			ybScan->target_key_attnums[i] = key->sk_attno;
 			scan_plan->bind_key_attnums[i] = key->sk_attno;
 		}
-		else if (index->rd_index->indisprimary)
+		else if (YBIsCoveredByMainTable(index))
 		{
 			/*
 			 * PrimaryIndex scan: This is a special case in YugaByte. There is no PrimaryIndexTable.
@@ -1586,7 +1587,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 					YBCNewConstant(
 						ybScan->handle,
 						ybc_get_atttypid(scan_plan->bind_desc,
-										 current->sk_attno),
+										 scan_plan->bind_key_attnums[current->sk_attno]),
 						current->sk_collation,
 						current->sk_argument,
 						false);
@@ -2394,8 +2395,8 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
 {
 	Relation index = ybScan->index;
 	Relation secondary_index =
-		index && !index->rd_index->indisprimary && !is_index_only_scan ? index :
-																		 NULL;
+		index && !YBIsCoveredByMainTable(index) &&
+			!is_index_only_scan ? index : NULL;
 	int idx = -1;
 	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
 	{
@@ -2579,7 +2580,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 */
 	if (all_attrs_required)
 	{
-		if (is_index_only_scan && index->rd_index->indisprimary)
+		if (is_index_only_scan && YBIsCoveredByMainTable(index))
 		{
 			/*
 			 * Special case: For Primary-Key-ONLY-Scan, we select ONLY the
@@ -2632,13 +2633,13 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	}
 
 	// If we are using a Bitmap Index scan on non-colocated primary keys
-	if (index && index->rd_index->indisprimary &&
+	if (index && YBIsCoveredByMainTable(index) &&
 		ybScan->prepare_params.fetch_ybctids_only &&
 		!ybScan->prepare_params.querying_colocated_table)
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								ybScan->handle);
 
-	if (!is_index_only_scan && index && !index->rd_index->indisprimary)
+	if (!is_index_only_scan && index && !YBIsCoveredByMainTable(index))
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								ybScan->handle);
 
@@ -2745,7 +2746,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
 	}
 
 	/* Set ybbasectid in case of non-primary secondary index scan. */
-	if (index && !xs_want_itup && !index->rd_index->indisprimary)
+	if (index && !xs_want_itup && !YBIsCoveredByMainTable(index))
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
 								handle);
 }
@@ -3502,7 +3503,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
-	bool		isprimary = index->rd_index->indisprimary;
+	bool		isprimary = YBIsCoveredByMainTable(index);
 	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
 	RelOptInfo *baserel = path->path.parent;
 	List	   *qinfos = NIL;
@@ -3515,8 +3516,8 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	List	   *clauses = NIL;
 	double 		baserel_rows_estimate;
 
-	/* Primary-index scans are always covered in Yugabyte (internally) */
-	bool       is_uncovered_idx_scan = !index->rd_index->indisprimary &&
+	/* Primary/Inlined-index scans are always covered in Yugabyte (internally) */
+	bool       is_uncovered_idx_scan = !YBIsCoveredByMainTable(index) &&
 	                                   path->path.pathtype != T_IndexOnlyScan;
 
 	YbScanPlanData	scan_plan;
@@ -3709,13 +3710,57 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	return tuple;
 }
 
-// TODO: Substitute the YBSetRowLockPolicy with this function
-static int
-YBCGetRowLockPolicy(LockWaitPolicy pg_wait_policy)
+void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 {
-	int docdb_wait_policy;
-	YBSetRowLockPolicy(&docdb_wait_policy, pg_wait_policy);
-	return docdb_wait_policy;
+	if (wait_policy == LockWaitError)
+	{
+		// In case the user has specified NOWAIT, the intention is to error out immediately. If
+		// we raise TransactionErrorCode::kConflict, the statement might be retried by our
+		// retry logic in yb_attempt_to_restart_on_error().
+
+		if (rel)
+			ereport(ERROR,
+				(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					errmsg("could not obtain lock on row in relation \"%s\"",
+							RelationGetRelationName(rel))));
+		else
+		{
+			// It is not expected that relation is null. Raise an error wihout
+			// relation name in release mode.
+			Assert(false);
+			ereport(ERROR,
+				(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+				errmsg("could not obtain lock on row")));
+		}
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				errmsg("could not serialize access due to concurrent update"),
+				yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+}
+
+static bool
+YBCIsExplicitRowLockConflictStatus(YBCStatus status)
+{
+	Assert(status);
+	const uint16_t txn_error = YBCStatusTransactionError(status);
+	return YBCIsTxnConflictError(txn_error) || YBCIsTxnAbortedError(txn_error);
+}
+
+static void
+HandleExplicitRowLockStatus(YBCPgExplicitRowLockStatus status)
+{
+	if (status.error_info.is_initialized &&
+		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
+	{
+		YBCHandleConflictError(
+			OidIsValid(status.error_info.conflicting_table_id)
+				? RelationIdGetRelation(status.error_info.conflicting_table_id)
+				: NULL,
+			status.error_info.pg_wait_policy);
+	}
+	HandleYBStatus(status.ybc_status);
 }
 
 /*
@@ -3731,21 +3776,21 @@ YBCLockTuple(
 	Relation relation, Datum ybctid, RowMarkType mode,
 	LockWaitPolicy pg_wait_policy, EState* estate)
 {
-	int docdb_wait_policy = YBCGetRowLockPolicy(pg_wait_policy);
 	const YBCPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
 		.pg_wait_policy = pg_wait_policy,
-		.docdb_wait_policy = docdb_wait_policy};
+		.docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy)};
 
 	const Oid relfile_oid = YbGetRelfileNodeId(relation);
 	const Oid db_oid = YBCGetDatabaseOid(relation);
 
-	if (yb_explicit_row_locking_batch_size > 1
-	    && lock_params.pg_wait_policy != LockWaitSkip)
+	if (yb_explicit_row_locking_batch_size > 1 &&
+		lock_params.pg_wait_policy != LockWaitSkip)
 	{
-		// TODO: Error message requires conversion
-		HandleYBStatus(YBCAddExplicitRowLockIntent(
-			relfile_oid, ybctid, db_oid, &lock_params, YBCIsRegionLocal(relation)));
+		HandleExplicitRowLockStatus(
+			YBCAddExplicitRowLockIntent(
+				relfile_oid, ybctid, db_oid, &lock_params,
+				YBCIsRegionLocal(relation)));
 		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
 		return HeapTupleMayBeUpdated;
 	}
@@ -3799,7 +3844,8 @@ YBCLockTuple(
 
 		elog(DEBUG2, "Error when trying to lock row. "
 			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
-			 pg_wait_policy, docdb_wait_policy, edata->yb_txn_errcode, edata->message);
+			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
+			 edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			res = HeapTupleUpdated;
@@ -3823,8 +3869,7 @@ YBCLockTuple(
 void
 YBCFlushTupleLocks()
 {
-	// TODO: Error message requires conversion
-	HandleYBStatus(YBCFlushExplicitRowLockIntents());
+	HandleExplicitRowLockStatus(YBCFlushExplicitRowLockIntents());
 }
 
 /*

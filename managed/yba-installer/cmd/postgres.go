@@ -685,7 +685,8 @@ func (pg Postgres) createFilesAndDirs() error {
 		if err := common.Chown(filepath.Dir(pg.LogFile), userName, userName, true); err != nil {
 			return err
 		}
-		if err := common.Chown(pg.MountPath, userName, userName, true); err != nil {
+		if err := common.Chown(filepath.Join(common.GetBaseInstall(), "data/pgsql"),
+			userName, userName, true); err != nil {
 			return err
 		}
 	}

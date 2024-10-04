@@ -113,6 +113,7 @@ checksumming
 CIDRs
 Citrix
 Citus
+CLion
 clonable
 Cloudwatch
 CMake
@@ -205,6 +206,7 @@ downvoted
 downvotes
 Dpl
 Dreamweaver
+Ebean
 Ecto
 Elasticsearch
 enablement
@@ -296,6 +298,7 @@ hotfixes
 hotfixing
 http
 https
+Hudi
 idempotence
 idmapper
 Iglu
@@ -319,6 +322,7 @@ Javafuzz
 JavaScript
 Jenkins
 Jenkinsfile
+Jepsen
 Jira
 jq
 jQuery
@@ -425,6 +429,7 @@ Nokogiri
 Northwind
 noteable
 noteables
+Npgsql
 npm
 nullability
 nullable

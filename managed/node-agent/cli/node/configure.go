@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"node-agent/app/executor"
 	"node-agent/app/server"
 	"node-agent/app/task"
@@ -165,28 +164,22 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent IP - %s", err.Error())
 	}
 	nodeIp := config.String(util.NodeIpKey)
-	parsedIp := net.ParseIP(nodeIp)
-	if parsedIp == nil {
-		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
-		_, err = config.StoreCommandFlagString(
-			ctx,
-			cmd,
-			"bind_ip",
-			util.NodeBindIpKey,
-			&nodeIp,
-			true, /* isRequired */
-			nil,  /* validator */
-		)
-		if err != nil {
-			util.ConsoleLogger().
-				Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-		}
-	} else {
-		// Use the node IP as the bind IP.
-		err = config.Update(util.NodeBindIpKey, nodeIp)
-		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-		}
+	bindIp, err := cmd.Flags().GetString("bind_ip")
+	if err != nil {
+		util.FileLogger().Infof(ctx, "Unable to get bind IP - %s", err.Error())
+		util.FileLogger().Infof(ctx, "Using parsed node ip")
+		bindIp = nodeIp
+	}
+	util.FileLogger().Infof(ctx, "Bind IP: %s", bindIp)
+	// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
+	err = config.Update(util.NodeBindIpKey, bindIp)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+	}
+
+	if err != nil {
+		util.ConsoleLogger().
+			Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
 		ctx,
@@ -300,32 +293,20 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		checkConfigAndUpdate(ctx, util.NodeIpKey, nil, "Node IP")
 	}
 	nodeIp := config.String(util.NodeIpKey)
-	parsedIp := net.ParseIP(nodeIp)
-	if parsedIp == nil {
-		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
-		if silent {
-			_, err = config.StoreCommandFlagString(
-				ctx,
-				cmd,
-				"bind_ip",
-				util.NodeBindIpKey,
-				&nodeIp,
-				true, /* isRequired */
-				nil,  /* validator */
-			)
-			if err != nil {
-				util.ConsoleLogger().
-					Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-			}
-		} else {
-			checkConfigAndUpdate(ctx, util.NodeBindIpKey, &nodeIp, "Bind IP")
-		}
-	} else {
-		// Use the node IP as the bind IP.
-		err = config.Update(util.NodeBindIpKey, nodeIp)
+	bindIp, err := cmd.Flags().GetString("bind_ip")
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Unable to get bind IP - %s", err.Error())
+		util.FileLogger().Infof(ctx, "Using node ip")
+		bindIp = nodeIp
+	}
+	util.FileLogger().Infof(ctx, "Bind IP: %s", bindIp)
+	if silent {
+		err = config.Update(util.NodeBindIpKey, bindIp)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
 		}
+	} else {
+		checkConfigAndUpdate(ctx, util.NodeBindIpKey, &bindIp, "Bind IP")
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)

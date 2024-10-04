@@ -16,6 +16,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -25,6 +27,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -59,6 +62,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private ExecutorService executorService;
   private NodeAgentInstaller mockNodeAgentInstaller;
   private NodeAgentEnabler nodeAgentEnabler;
+  private TestUniverseTaskBase universeTaskBase;
 
   @Before
   public void setUp() {
@@ -82,6 +86,10 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         new NodeAgentEnabler(
             confGetter, platformExecutorFactory, platformScheduler, mockNodeAgentInstaller);
     nodeAgentEnabler.setUniverseInstallerExecutor(executorService);
+    nodeAgentEnabler.enable();
+    universeTaskBase =
+        new TestUniverseTaskBase(
+            app.injector().instanceOf(BaseTaskDependencies.class), nodeAgentEnabler);
   }
 
   @After
@@ -89,6 +97,39 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     if (executorService != null) {
       executorService.shutdownNow();
     }
+  }
+
+  private static class TestUniverseTaskBase extends UniverseTaskBase {
+    private final NodeAgentEnabler nodeAgentEnabler;
+    private final RunnableTask runnableTask;
+
+    public TestUniverseTaskBase(
+        BaseTaskDependencies baseTaskDependencies, NodeAgentEnabler nodeAgentEnabler) {
+      super(baseTaskDependencies);
+      this.nodeAgentEnabler = nodeAgentEnabler;
+      runnableTask = mock(RunnableTask.class);
+      taskParams = mock(UniverseTaskParams.class);
+    }
+
+    @Override
+    protected <T> T getInstanceOf(Class<T> clazz) {
+      if (clazz == NodeAgentEnabler.class) {
+        return clazz.cast(nodeAgentEnabler);
+      }
+      return super.getInstanceOf(clazz);
+    }
+
+    public UniverseTaskParams getMockParams() {
+      return (UniverseTaskParams) super.taskParams();
+    }
+
+    @Override
+    protected RunnableTask getRunnableTask() {
+      return runnableTask;
+    }
+
+    @Override
+    public void run() {}
   }
 
   private Universe createAwsUniverse(
@@ -200,6 +241,33 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testMarkUniversesOnInstallNodeAgentSubTask() {
+    provider1.getDetails().setEnableNodeAgent(true);
+    provider1.save();
+    provider2.getDetails().setEnableNodeAgent(true);
+    provider2.save();
+    settableRuntimeConfigFactory
+        .forProvider(provider1)
+        .setValue(ProviderConfKeys.enableNodeAgentClient.getKey(), String.valueOf(false));
+    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
+    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
+    assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+    // Node agent is disabled for provider1.
+    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid1);
+    universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid1).getNodes());
+    // Node agent is enabled for provider2.
+    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid2);
+    universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid2).getNodes());
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe2 = Universe.getOrBadRequest(universeUuid2);
+    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+  }
+
+  @Test
   public void testInstallNodeAgentFailure() throws Exception {
     markUniverses();
     nodeAgentEnabler.scanUniverses();
@@ -287,7 +355,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     verify(mockNodeAgentInstaller, times(1)).migrate(eq(customer1.getUuid()), eq(universeUuid01));
     verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer2.getUuid()), eq(universeUuid2));
     universe01 = Universe.getOrBadRequest(universeUuid01);
-    // InstallNodeAgent must not be cleared because migration did not succeed.
+    // Field disableNodeAgent must not be cleared because migration did not succeed.
     assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
   }
 
@@ -322,7 +390,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     verify(mockNodeAgentInstaller, times(1)).migrate(eq(customer1.getUuid()), eq(universeUuid01));
     verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer2.getUuid()), eq(universeUuid2));
     universe01 = Universe.getOrBadRequest(universeUuid01);
-    // InstallNodeAgent must not be cleared because migration did not succeed.
+    // Field disableNodeAgent must not be cleared because migration did not succeed.
     assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
   }
 
@@ -353,7 +421,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer2.getUuid()), eq(universeUuid2));
     universe1 = Universe.getOrBadRequest(universeUuid1);
     universe01 = Universe.getOrBadRequest(universeUuid01);
-    // InstallNodeAgent must not be cleared because migration did not succeed.
+    // Field disableNodeAgent must not be cleared because migration did not succeed.
     assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
   }
@@ -451,7 +519,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer2.getUuid()), eq(universeUuid2));
     universe1 = Universe.getOrBadRequest(universeUuid1);
     universe01 = Universe.getOrBadRequest(universeUuid01);
-    // InstallNodeAgent must not be cleared because migration did not succeed.
+    // Field disableNodeAgent must not be cleared because migration did not succeed.
     assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
   }
@@ -482,7 +550,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
-    // InstallNodeAgent must be cleared because migration did not succeed.
+    // Field disableNodeAgent must be cleared because migration did not succeed.
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe01.getUniverseDetails().installNodeAgent);
     // Run scan again that should not have any effect.

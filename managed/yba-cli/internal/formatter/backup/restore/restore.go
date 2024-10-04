@@ -24,10 +24,6 @@ const (
 
 	restoreUUIDHeader    = "Restore UUID"
 	sourceUniverseHeader = "Source Universe"
-	backupTypeHeader     = "Backup Type"
-	stateHeader          = "State"
-	createTimeHeader     = "Create Time"
-	completionTimeHeader = "Completion Time"
 )
 
 // Context for restore outputs
@@ -40,7 +36,7 @@ type Context struct {
 // NewRestoreFormat for formatting output
 func NewRestoreFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultRestoreListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -60,7 +56,7 @@ type restoreContext struct {
 // Write renders the context for a list of restores
 func Write(ctx formatter.Context, restores []ybaclient.RestoreResp) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of restores into JSON
 		var output []byte
 		var err error
@@ -116,10 +112,10 @@ func NewRestoreContext() *Context {
 		"RestoreUUID":    restoreUUIDHeader,
 		"Universe":       backup.UniverseHeader,
 		"SourceUniverse": sourceUniverseHeader,
-		"BackupType":     backupTypeHeader,
-		"State":          stateHeader,
-		"CreateTime":     createTimeHeader,
-		"CompletionTime": completionTimeHeader,
+		"BackupType":     backup.BackupTypeHeader,
+		"State":          backup.StateHeader,
+		"CreateTime":     backup.CreateTimeHeader,
+		"CompletionTime": backup.CompletionTimeHeader,
 	}
 	return &restoreCtx
 }

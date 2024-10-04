@@ -18,13 +18,16 @@ const (
 		"\t{{.HostedZoneName}}\t{{.VpcType}}"
 
 	// Region provides header for AWS Region Cloud Info
-	Region = "table {{.Arch}}\t{{.SecurityGroupID}}\t{{.VNet}}\t{{.YbImage}}"
+	Region = "table {{.Arch}}\t{{.SecurityGroupID}}\t{{.VNet}}"
 
 	// EAR1 for EAR listing
 	EAR1 = "table {{.AccessKeyID}}\t{{.AccessKeySecret}}\t{{.EndPoint}}"
 
 	// EAR2 for EAR listing
-	EAR2 = "table {{.Region}}\t{{.CMKPolicy}}\t{{.CMKID}}"
+	EAR2 = "table {{.Region}}\t{{.CMKID}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.CMKPolicy}}"
 
 	// AccessKeyIDHeader for Access key ID header
 	AccessKeyIDHeader = "AWS Access Key ID"
@@ -37,7 +40,6 @@ const (
 	archHeader           = "Arch"
 	sgIDHeader           = "Security Group ID"
 	vnetHeader           = "Virual Network"
-	ybImageHeader        = "YB Image"
 	endPointHeader       = "EndPoint"
 	cmkPolicyHeader      = "CMK Policy"
 	cmkIDHeader          = "CMK ID"
@@ -67,7 +69,7 @@ type EARContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -78,7 +80,7 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -89,7 +91,7 @@ func NewRegionFormat(source string) formatter.Format {
 // NewEARFormat for formatting output
 func NewEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -117,7 +119,6 @@ func NewRegionContext() *RegionContext {
 		"Arch":            archHeader,
 		"SecurityGroupID": sgIDHeader,
 		"VNet":            vnetHeader,
-		"YbImage":         ybImageHeader,
 	}
 	return &awsRegionCtx
 }
@@ -179,11 +180,6 @@ func (c *RegionContext) SecurityGroupID() string {
 // VNet fetches AWS Region virtual network
 func (c *RegionContext) VNet() string {
 	return c.Region.GetVnet()
-}
-
-// YbImage fetches AWS Region yb image
-func (c *RegionContext) YbImage() string {
-	return c.Region.GetYbImage()
 }
 
 // MarshalJSON function

@@ -115,6 +115,31 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+/ybc/gflags-metadata:
+  get:
+    operationId: listYbcGflagsMetadata
+    summary: List YBC Gflags metadata
+    description: Get list of all YBC gflags and related metadata.
+    tags:
+      - Backup and Restore
+    responses:
+      '200':
+        $ref: "../components/responses/YbcGflagsResp.yaml"
+      '404':
+        description: Not found
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
     - name: cUUID

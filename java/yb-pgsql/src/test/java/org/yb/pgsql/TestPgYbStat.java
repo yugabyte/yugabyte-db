@@ -14,6 +14,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -146,6 +147,10 @@ public class TestPgYbStat extends BasePgSQLTest {
 
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
+    // (DB-12741) Test is flaky with connection manager irrespective of warmup
+    // mode. Disable the test for now when running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.

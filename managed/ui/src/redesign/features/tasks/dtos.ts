@@ -60,6 +60,7 @@ export interface Task {
   retryable: boolean;
   correlationId: string;
   userEmail: string;
+  subtaskInfos: SubTaskInfo[];
 }
 
 export interface FailedTask {
@@ -70,4 +71,26 @@ export interface FailedTask {
     subTaskType: string;
     subTaskUUID: string;
   }[];
-}
+};
+
+export interface SubTaskInfo {
+  uuid: string;
+  parentUuid: Task['id'];
+  taskType: string;
+  taskState: TaskStates;
+  subTaskGroupType: Task['type'];
+  createTime: number;
+  updateTime: number;
+  percentDone: number;
+  position: number;
+  details?: {
+    error?: {
+      code: string;
+      message: string;
+    }
+  }
+};
+
+export type SubTaskDetailsResp = {
+  [key: string]: Task[];
+};

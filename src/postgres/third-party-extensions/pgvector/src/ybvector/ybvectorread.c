@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 
 #include "pgstat.h"
+#include "pg_yb_utils.h"
 #include "utils/memutils.h"
 
 /*
@@ -42,12 +43,23 @@
 static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
 							  int norderbys, YbVectorScanOpaque so)
 {
+	int ind_dim = TupleDescAttr(scan->indexRelation->rd_att, 0)->atttypmod;
+	int vec_dim = ((Vector*) scan->orderByData->sk_argument)->dim;
+	if (ind_dim != vec_dim)
+		ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					errmsg("different vector dimensions %d and %d", ind_dim, vec_dim)));
+
 	so->query_vector = scan->orderByData->sk_argument;
 	YBCPgExpr vec_handle = YBCNewConstant(
 		so->yb_scan_desc->handle, BYTEAOID, InvalidOid /* collation_id */,
 		so->query_vector, false);
 
-	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_handle);
+	int vec_attno = scan->indexRelation->rd_att->natts;
+	if (YBIsCoveredByMainTable(scan->indexRelation))
+		vec_attno = scan->indexRelation->rd_index->indkey.values[0];
+
+	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_attno, vec_handle);
 	YBCPgDmlANNSetPrefetchSize(so->yb_scan_desc->handle, so->limit);
 }
 

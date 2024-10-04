@@ -22,7 +22,7 @@ var RestoreCmd = &cobra.Command{
 func init() {
 	RestoreCmd.Flags().SortFlags = false
 
-	RestoreCmd.AddCommand(createBackupRestoreCmd)
+	RestoreCmd.AddCommand(createRestoreCmd)
 	RestoreCmd.AddCommand(listRestoreCmd)
 	RestoreCmd.AddCommand(describeRestoreCmd)
 }

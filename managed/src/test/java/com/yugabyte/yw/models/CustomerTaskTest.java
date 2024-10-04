@@ -143,11 +143,17 @@ public class CustomerTaskTest extends FakeDBApplication {
         CustomerTask th = createTask(targetType, targetUUID, taskType);
         assertThat(
             th.getFriendlyDescription(),
-            is(allOf(notNullValue(), equalTo(taskType.toString(false) + targetType + " : Foo"))));
+            is(
+                allOf(
+                    notNullValue(),
+                    equalTo(taskType.toString(false) + " " + targetType + " : Foo"))));
         th.markAsCompleted();
         assertThat(
             th.getFriendlyDescription(),
-            is(allOf(notNullValue(), equalTo(taskType.toString(true) + targetType + " : Foo"))));
+            is(
+                allOf(
+                    notNullValue(),
+                    equalTo(taskType.toString(true) + " " + targetType + " : Foo"))));
       }
     }
   }

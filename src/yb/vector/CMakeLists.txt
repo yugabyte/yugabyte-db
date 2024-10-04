@@ -1,4 +1,4 @@
-# Copyright (c) YugaByteDB, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -18,16 +18,16 @@ set(YB_PCH_PREFIX vector)
 set(VECTOR_SRCS
   ann_validation.cc
   benchmark_data.cc
-  distance.cc
   hnsw_options.cc
   hnsw_util.cc
+  hnswlib_wrapper.cc
   usearch_wrapper.cc
+  vectorann.cc
   )
 
 set(VECTOR_LIBS
   yb_common
   yb_util
-  yb_docdb
   )
 
 ADD_YB_LIBRARY(yb_vector

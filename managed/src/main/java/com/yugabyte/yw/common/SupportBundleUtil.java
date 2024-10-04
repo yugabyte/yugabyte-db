@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -893,6 +894,16 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "xcluster_namespace_config.json");
   }
 
+  public void getTaskInfo(Customer customer, String destDir, Date startDate, Date endDate) {
+    List<TaskInfo> taskInfos =
+        TaskInfo.find.all().stream()
+            .filter(ti -> ti.getCreateTime().after(startDate) && ti.getCreateTime().before(endDate))
+            .collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(taskInfos), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "task_info.json");
+  }
+
   public void gatherAndSaveAllMetadata(
       Customer customer, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
@@ -904,5 +915,6 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
     ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
+    ignoreExceptions(() -> getTaskInfo(customer, destDir, startDate, endDate));
   }
 }

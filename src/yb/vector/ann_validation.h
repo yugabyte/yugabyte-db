@@ -37,14 +37,15 @@ using PrecomputedGroundTruthMatrix = std::vector<std::vector<VertexId>>;
 // only a minor part of the overall time spent querying the vector index.
 using AtomicUInt64Vector = std::vector<std::atomic<uint64_t>>;
 
-// Computes ground truth of approximate nearest neighbor search. Parameterized by the query.
-template<IndexableVectorType Vector>
+// Computes ground truth of approximate nearest neighbor search.
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
 class GroundTruth {
  public:
-  using IndexReader = VectorIndexReaderIf<Vector>;
+  using IndexReader = VectorIndexReaderIf<Vector, DistanceResult>;
 
   GroundTruth(
-      const VertexIdToVectorDistanceFunction<Vector>& distance_fn,
+      const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
       size_t k,
       const std::vector<Vector>& queries,
       const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
@@ -73,10 +74,11 @@ class GroundTruth {
       const std::vector<VertexId>& correct_result,
       AtomicUInt64Vector& total_overlap_counters);
 
-  VerticesWithDistances AugmentWithDistances(
-      const std::vector<VertexId>& vertex_ids, const Vector& query);
+  // This works on queries convertered from input vector io indexed vector format.
+  VerticesWithDistances<DistanceResult> AugmentWithDistances(
+      const std::vector<VertexId>& vertex_ids, const Vector& converted_query);
 
-  VertexIdToVectorDistanceFunction<Vector> distance_fn_;
+  VertexIdToVectorDistanceFunction<Vector, DistanceResult> distance_fn_;
   size_t k_;
   const std::vector<Vector>& queries_;
   const PrecomputedGroundTruthMatrix& precomputed_ground_truth_;
@@ -91,8 +93,85 @@ class GroundTruth {
 // same distance to the query. This corresponds to a situation when a group of items with the same
 // distance to the query, ordered differently in the two result sets, was cut in the middle by the
 // result set boundary.
-bool ResultSetsEquivalent(const VerticesWithDistances& a, const VerticesWithDistances& b);
+template<ValidDistanceResultType DistanceResult>
+bool ResultSetsEquivalent(const VerticesWithDistances<DistanceResult>& a,
+                          const VerticesWithDistances<DistanceResult>& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  const auto k = a.size();
+  bool matches = true;
+  for (size_t i = 0; i < k; ++i) {
+    if (a[i] != b[i]) {
+      matches = false;
+      break;
+    }
+  }
+  if (matches) {
+    return true;
+  }
 
-std::string ResultSetDifferenceStr(const VerticesWithDistances& a, const VerticesWithDistances& b);
+  // Sort both result sets by increasing distance, and for the same distance, increasing vertex id.
+  auto a_sorted = a;
+  std::sort(a_sorted.begin(), a_sorted.end());
+  auto b_sorted = b;
+  std::sort(b_sorted.begin(), b_sorted.end());
+
+  size_t discrepancy_index = k;
+  for (size_t i = 0; i < k; ++i) {
+    if (a_sorted[i] != b_sorted[i]) {
+      discrepancy_index = i;
+      break;
+    }
+  }
+  if (discrepancy_index == k) {
+    // The arrays became the same after sorting.
+    return true;
+  }
+
+  // We allow a situation where vertex ids are different as long as distances are the same until
+  // the end of both result sets. In that case we still consider the two result sets equivalent.
+  float expected_distance = a_sorted[discrepancy_index].distance;
+  for (size_t i = discrepancy_index; i < k; ++i) {
+    float a_dist = a_sorted[i].distance;
+    float b_dist = b_sorted[i].distance;
+    if (a_dist != expected_distance && b_dist != expected_distance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<ValidDistanceResultType DistanceResult>
+std::string ResultSetDifferenceStr(const VerticesWithDistances<DistanceResult>& a,
+                                   const VerticesWithDistances<DistanceResult>& b) {
+  if (a.size() != b.size()) {
+    // This should not occur, so no details here.
+    return Format("Result set size: $0 vs. $1", a.size(), b.size());
+  }
+  const size_t k = a.size();
+
+  auto a_sorted = a;
+  std::sort(a_sorted.begin(), a_sorted.end());
+  auto b_sorted = b;
+  std::sort(b_sorted.begin(), b_sorted.end());
+
+  std::ostringstream diff_str;
+
+  bool found_differences = false;
+  for (size_t j = 0; j < k; ++j) {
+    if (a_sorted[j] != b_sorted[j]) {
+      if (found_differences) {
+        diff_str << "\n";
+      }
+      found_differences = true;
+      diff_str << "    " << a_sorted[j].ToString() << " vs. " << b_sorted[j].ToString();
+    }
+  }
+  if (found_differences) {
+    return diff_str.str();
+  }
+  return "No differences";
+}
 
 }  // namespace yb::vectorindex

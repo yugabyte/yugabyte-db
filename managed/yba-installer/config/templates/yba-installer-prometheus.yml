@@ -201,6 +201,8 @@
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
+      StandardOutput=append:{{ .DataDir }}/prometheus.log
+      StandardError=append:{{ .DataDir }}/prometheus.log
       OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
 
       [Install]

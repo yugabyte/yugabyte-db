@@ -3,6 +3,8 @@ title: Connect applications
 linkTitle: Connect applications
 description: Connect applications to YugabyteDB Aeon clusters
 headcontent: Get the database connection parameters for your application
+aliases:
+  - /preview/yugabyte-cloud/cloud-examples/
 menu:
   preview_yugabyte-cloud:
     identifier: connect-applications
@@ -46,7 +48,7 @@ Clusters deployed in VPCs don't expose public IP addresses unless you explicitly
 
 #### Using smart drivers
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, the smart driver falls back to the upstream driver behavior. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, although the smart driver falls back to the upstream driver behavior, it first attempts to connect to the inaccessible nodes, incurring added latency. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 
@@ -102,7 +104,7 @@ The connection string includes parameters for TLS settings (`ssl`, `sslmode`, an
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
-If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../cloud-examples/hasura-cloud/).
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../../integrations/hasura/hasura-cloud/).
 
   {{% /tab %}}
 

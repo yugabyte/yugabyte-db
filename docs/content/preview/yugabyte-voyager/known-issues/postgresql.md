@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-voyager:
     identifier: postgresql-issues
     parent: known-issues
-    weight: 102
+    weight: 101
 type: docs
 rightNav:
   hideH3: true
@@ -20,7 +20,6 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Adding primary key to a partitioned table results in an error](#adding-primary-key-to-a-partitioned-table-results-in-an-error)
 - [Index creation on partitions fail for some YugabyteDB builds](#index-creation-on-partitions-fail-for-some-yugabytedb-builds)
 - [Creation of certain views in the rule.sql file](#creation-of-certain-views-in-the-rule-sql-file)
-- [Indexes on INET type are not supported](#indexes-on-inet-type-are-not-supported)
 - [Create or alter conversion is not supported](#create-or-alter-conversion-is-not-supported)
 - [GENERATED ALWAYS AS STORED type column is not supported](#generated-always-as-stored-type-column-is-not-supported)
 - [Unsupported ALTER TABLE DDL variants in source schema](#unsupported-alter-table-ddl-variants-in-source-schema)
@@ -38,6 +37,10 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [GIN indexes on multiple columns are not supported](#gin-indexes-on-multiple-columns-are-not-supported)
 - [Policies on users in source require manual user creation](#policies-on-users-in-source-require-manual-user-creation)
 - [VIEW WITH CHECK OPTION is not supported](#view-with-check-option-is-not-supported)
+- [UNLOGGED table is not supported](#unlogged-table-is-not-supported)
+- [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
+- [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
+- [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -155,40 +158,6 @@ CREATE OR REPLACE VIEW public.v1 AS
   FROM public.foo
   GROUP BY foo.n1;
 ```
-
----
-
-### Indexes on INET type are not supported
-
-**GitHub**: [Issue #17017](https://github.com/yugabyte/yb-voyager/issues/17017)
-
-**Description**: If there is an index on a column of the INET type, it errors out during import.
-
-**Workaround**: Modify the column to a TEXT type.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-create table test( id int primary key, f1 inet);
-create index test_index on test(f1);
-```
-
-The import schema error is as follows:
-
-```sql
-INDEXES_table.sql: CREATE INDEX test_index ON public.test USING btree (f1);
-ERROR: INDEX on column of type 'INET' not yet supported (SQLSTATE 0A000)
-```
-
-Suggested workaround is to change the INET column to TEXT for the index creation to succeed as follows:
-
-```sql
-create table test( id int primary key, f1 text);
-```
-
----
 
 ### Create or alter conversion is not supported
 
@@ -590,9 +559,9 @@ CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
 
 ### Indexes on some complex data types are not supported
 
-**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [Issue #17017](https://github.com/yugabyte/yugabyte-db/issues/17017)
 
-**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSON, UDTs, citext, and so on, those will error out in import schema phase with the following error:
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, ARRAYs, INET, UDTs, citext, and so on, those will error out in import schema phase with the following error:
 
 ```output
  ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
@@ -623,7 +592,7 @@ CREATE TABLE public.ts_query_table (
 
 CREATE TABLE public.test_json (
     id integer,
-    data json
+    data jsonb
 );
 
 CREATE INDEX tsvector_idx ON public.documents  (title_tsvector);
@@ -909,5 +878,141 @@ CREATE TRIGGER trigger_modify_employee_12000
     FOR EACH ROW
     EXECUTE FUNCTION modify_employees_less_than_12000();
 ```
+
+---
+
+
+### UNLOGGED table is not supported
+
+**GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
+
+**Description**: If there are UNLOGGED tables in the source schema, they will error out during the import schema with the following error as it is not supported in target YugabyteDB.
+
+```output
+ERROR:  UNLOGGED database object not supported yet
+```
+
+**Workaround**: Convert it to a LOGGED table.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE UNLOGGED TABLE tbl_unlogged (
+  id int,
+  val text
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+CREATE TABLE tbl_unlogged (
+  id int,
+  val text
+);
+```
+
+---
+
+### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+
+**Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
+
+**Workaround**: Manually add the ASC (range) clause to the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE INDEX ON timestamp_demo (ts);
+```
+
+Suggested change to the schema is to add the `ASC` clause as follows:
+
+```sql
+CREATE INDEX ON timestamp_demo (ts ASC);
+```
+
+---
+
+### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+
+**GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+
+**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
+
+**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
+
+**Example**
+
+An example schema on the source MySQL database is as follows:
+
+```sql
+CREATE TABLE `xyz abc`(id int);
+INSERT INTO `xyz abc` VALUES(1);
+INSERT INTO `xyz abc` VALUES(2);
+INSERT INTO `xyz abc` VALUES(3);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE "xyz abc" (id bigint);
+```
+
+The preceding example may hang or result in an error.
+
+---
+
+### Importing with case-sensitive schema names
+
+**GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+
+**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
+
+**Workaround**: Currently, yb-voyager does not support case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+
+**Example**
+
+An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
+
+```sh
+yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema "\"Test\""
+```
+
+The preceding example will result in an error as follows:
+
+```output
+ERROR: no schema has been selected to create in (SQLSTATE 3F000)
+```
+
+Suggested changes to the schema can be done using the following steps:
+
+1. Change the case sensitive schema name during schema migration as follows:
+
+    ```sh
+    yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema test
+    ```
+
+1. Alter the schema name post migration as follows:
+
+    ```sh
+    ALTER SCHEMA "test" RENAME TO "Test";
+    ```
 
 ---

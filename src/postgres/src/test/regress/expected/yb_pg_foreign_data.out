@@ -1814,10 +1814,6 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 --
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
-ERROR:  ALTER TABLE VALIDATE CONSTRAINT not supported yet
-LINE 1: ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
-                           ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -1826,7 +1822,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
-    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+    "fd_pt1chk3" CHECK (c2 <> ''::text)
 
 -- ^^^ originally extra:
 -- Child tables: ft2
@@ -1862,7 +1858,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
-    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+    "fd_pt1chk3" CHECK (c2 <> ''::text)
 
 -- ^^^ originally extra:
 -- Child tables: ft2
@@ -1897,7 +1893,7 @@ ALTER TABLE fd_pt1 SET WITHOUT OIDS;
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
-    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+    "fd_pt1chk3" CHECK (c2 <> ''::text)
 
 -- ^^^ originally extra:
 -- Child tables: ft2
@@ -1933,7 +1929,7 @@ ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
  f2     | text    |           |          |         | extended |              |
  f3     | date    |           |          |         | plain    |              |
 Check constraints:
-    "f2_check" CHECK (f2 <> ''::text) NOT VALID
+    "f2_check" CHECK (f2 <> ''::text)
 
 -- ^^^ originally extra:
 -- Child tables: ft2

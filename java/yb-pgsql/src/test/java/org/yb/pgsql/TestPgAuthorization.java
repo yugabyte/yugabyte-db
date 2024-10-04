@@ -356,6 +356,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAttributes() throws Exception {
+    // (DB-10760) Role OID-based pool design is needed in addition to waiting
+    // for connection count-related statistics for this test to pass when
+    // Connection Manager is enabled. Skipping this test temporarily.
+    assumeFalse(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -2707,6 +2712,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testRevokeLoginMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2847,6 +2855,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testConnectionLimitDecreasedMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -3219,6 +3230,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
+    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
+    // causes I/O errors during test execution. Skip this test temporarily
+    // until support for the same can be provided with Connection Manager.
+    // This test will further need the support of role OID-based pooling
+    // to help support recreate role operations (DROP ROLE followed by
+    // CREATE ROLE).
+    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 

@@ -3978,11 +3978,18 @@ struct YsqlMetric {
   std::unordered_map<std::string, std::string> labels;
   int64_t value;
   int64_t time;
+  std::string type;
+  std::string description;
 
   YsqlMetric(
       std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time)
-      : name(std::move(name)), labels(std::move(labels)), value(value), time(time) {}
+      int64_t time, std::string type = "", std::string description = "")
+      : name(std::move(name)),
+        labels(std::move(labels)),
+        value(value),
+        time(time),
+        type(type),
+        description(description) {}
 };
 
 static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
@@ -3994,13 +4001,29 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
   // Splits the list of labels into individual label-value pairs.
   const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
 
+  // Parses the HELP and TYPE lines into the metric name and the description/type.
+  // HELP and TYPE lines are formatted as:
+  // # HELP <metric_name> <description>
+  // # TYPE <metric_name> <type>
+  const std::regex help_regex(R"(# HELP (\S+) (.+))");
+  const std::regex type_regex(R"(# TYPE (\S+) (\w+))");
+
   std::vector<YsqlMetric> parsed_metrics;
   std::istringstream stream(metrics_output);
   std::string line;
+  std::unordered_map<std::string, std::string> descriptions;
+  std::unordered_map<std::string, std::string> types;
 
   while (std::getline(stream, line)) {
+    std::smatch help_match;
+    std::smatch type_match;
     std::smatch metric_match;
-    if (std::regex_search(line, metric_match, metric_regex)) {
+
+    if (std::regex_search(line, help_match, help_regex)) {
+      descriptions[help_match[1].str()] = help_match[2].str();
+    } else if (std::regex_search(line, type_match, type_regex)) {
+      types[type_match[1].str()] = type_match[2].str();
+    } else if (std::regex_search(line, metric_match, metric_regex)) {
       std::unordered_map<std::string, std::string> labels;
       const std::string labels_str = metric_match[2].str();
       auto search_start = labels_str.cbegin();
@@ -4011,10 +4034,45 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
         search_start = label_match.suffix().first;
       }
 
+      std::string metric_name = metric_match[1].str();
+
       parsed_metrics.emplace_back(
-          metric_match[1].str(), std::move(labels), std::stoll(metric_match[3].str()),
-          std::stoll(metric_match[4].str()));
+          metric_name, std::move(labels), std::stoll(metric_match[3].str()),
+          std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
     }
+  }
+
+  return parsed_metrics;
+}
+
+// Parse metrics from the JSON output of the /metrics endpoint.
+// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
+static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
+  std::vector<YsqlMetric> parsed_metrics;
+
+  // Parse the JSON string
+  rapidjson::Document document;
+  document.Parse(metrics_output.c_str());
+
+  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
+  const auto& server = document[0];
+  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
+  const auto& metrics = server["metrics"];
+  for (const auto& metric : metrics.GetArray()) {
+    EXPECT_TRUE(
+        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
+        metric.HasMember("rows"));
+    std::unordered_map<std::string, std::string> labels;
+    if (metric.HasMember("table_name")) {
+      labels["table_name"] = metric["table_name"].GetString();
+    } else {
+      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    }
+
+    parsed_metrics.emplace_back(
+        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        0  // JSON doesn't include timestamp
+    );
   }
 
   return parsed_metrics;
@@ -4030,58 +4088,65 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
   ExternalTabletServer* ts = cluster_->tablet_server(0);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
-  auto pg_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
-  string page_content = buf.ToString();
-  auto metrics = ParsePrometheusMetrics(page_content);
 
-  int64_t expected_total_cache_misses = 0;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
-        metric.labels.find("table_name") == metric.labels.end()) {
-      expected_total_cache_misses = metric.value;
-      break;
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+  for (const auto& metrics : {json_metrics, prometheus_metrics}) {
+    int64_t expected_total_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") == metric.labels.end()) {
+        expected_total_cache_misses = metric.value;
+        break;
+      }
     }
-  }
-  ASSERT_GT(expected_total_cache_misses, 0);
-  LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
+    ASSERT_GT(expected_total_cache_misses, 0);
+    LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
 
-  // Sum the cache miss metrics for each index.
-  int64_t total_index_cache_misses = 0;
-  std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
-        metric.labels.find("table_name") != metric.labels.end()) {
-      auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
-      ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
-                              << metric.labels.at("table_name");
+    // Go through the per-index metrics and aggregate them by table.
+    int64_t total_index_cache_misses = 0;
+    std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") != metric.labels.end()) {
+        auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
+        ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
+                                << metric.labels.at("table_name");
 
-      per_table_index_cache_misses[*table_name] += metric.value;
-      total_index_cache_misses += metric.value;
-      LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
-                                     << metric.value << " cache misses";
+        per_table_index_cache_misses[*table_name] += metric.value;
+        total_index_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
+                                       << metric.value << " cache misses";
+      }
     }
-  }
-  ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
+    ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
 
-  // Check that the sum of the cache misses for all the indexes on each table is equal to the
-  // table-level cache miss metric.
-  int64_t total_table_cache_misses = 0;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count") {
-      auto table_name = metric.labels.at("table_name");
-      ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
-          << "Expected sum of index cache misses for table " << table_name
-          << " to be equal to the table cache misses";
-      total_table_cache_misses += metric.value;
-      LOG_IF(INFO, metric.value > 0)
-          << "Table " << table_name << " has " << metric.value << " cache misses";
+    // Check that the sum of the cache misses for all the indexes on each table is equal to the
+    // table-level cache miss metric.
+    int64_t total_table_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
+            << "Expected sum of index cache misses for table " << table_name
+            << " to be equal to the table cache misses";
+        total_table_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " cache misses";
+      }
     }
+    ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
   }
-  ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
@@ -4248,6 +4313,65 @@ TEST_F(PgPostmasterExitTest, YB_LINUX_ONLY_TEST(SignalBackendOnPostmasterDeath))
 // This test validates that in an all environments, an idle backend exits when the postmaster exits.
 TEST_F(PgPostmasterExitTest, SignalIdleBackendOnPostmasterDeath) {
   ASSERT_OK(TestPostmasterExit());
+}
+
+TEST_F(PgLibPqTest, FillShellTypeDefinition) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  // Create a shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type; -- create shell type
+CREATE FUNCTION base_type_in(cstring) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2in';
+CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
+CREATE FUNCTION base_type_recv(internal) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
+CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
+      )#"));
+
+  // Using a shell type as column type is an error. Note that shell type is now
+  // cached in conn2.
+  ASSERT_NOK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+
+  // Fill the definition of the shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type (
+   INPUT = base_type_in,
+   OUTPUT = base_type_out,
+   RECEIVE = base_type_recv,
+   SEND = base_type_send,
+   LIKE = smallint,
+   CATEGORY = 'N',
+   PREFERRED = FALSE,
+   DELIMITER = ',',
+   COLLATABLE = FALSE
+); -- fill definition
+      )#"));
+  // Wait for heartbeat to propagate the new catalog version to trigger
+  // catalog cache refresh on conn2.
+  SleepFor(2s);
+
+  // Now that the shell type definition is filled, we should not get an error any more.
+  ASSERT_OK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+}
+
+TEST_F(PgLibPqTest, CollationWithPartitionedTable) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE n_tablespace LOCATION '/data_n'"));
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE e_tablespace LOCATION '/data_e'"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE a"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+  ASSERT_OK(conn.Execute("CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a text NOT NULL collate numeric) PARTITION BY RANGE(a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_n PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('A') TO ('Lzzzzz') TABLESPACE n_tablespace"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_e PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('M') TO ('Zzzzzz') TABLESPACE e_tablespace"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
 }
 
 } // namespace pgwrapper

@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import pwd
 
 
 def setup_logger(config):
@@ -53,3 +54,13 @@ def setup_logger(config):
     os.chmod(os.path.join(log_dir, log_file), 0o644)
     logger = logging.getLogger()
     logger.info("Logging Setup Done")
+
+    if 'SUDO_USER' in os.environ:
+        original_user = os.environ['SUDO_USER']
+    else:
+        original_user = os.getlogin()
+    user_info = pwd.getpwnam(original_user)
+    uid = user_info.pw_uid
+    gid = user_info.pw_gid
+    os.chown(log_dir, uid, gid)
+    os.chown(os.path.join(log_dir, log_file), uid, gid)

@@ -122,7 +122,7 @@ def parse_config_file(config_path):
         with open(config_path, 'r') as file:
             for line in file:
                 line = line.strip()
-                key, value = line[2:].split('=')
+                key, value = line[2:].split('=', 1)
                 if key == PROCESS_NAMES_ARG:
                     args[key] = value.split()
                 elif key == TIME_LIMIT_ARG:

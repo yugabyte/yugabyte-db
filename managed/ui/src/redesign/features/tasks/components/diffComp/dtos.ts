@@ -13,7 +13,8 @@ import { Task } from '../../dtos';
 export enum DiffOperation {
   ADDED = 'Added',
   REMOVED = 'Removed',
-  CHANGED = 'Changed'
+  CHANGED = 'Changed',
+  UNCHANGED = 'Unchanged'
 }
 
 export interface DiffProps {
@@ -38,13 +39,12 @@ export type GFlagDiff = {
   old: string | null;
   new: string | null;
   default: string;
-}
+};
 export interface GFlagsDiffProps {
   gflags: {
-    master: GFlagDiff[],
-    tserver: GFlagDiff[]
-  }
-
+    master: GFlagDiff[];
+    tserver: GFlagDiff[];
+  };
 }
 export interface AuditLogProps {
   customerUUID: string;
@@ -55,4 +55,4 @@ export interface AuditLogProps {
   action: string;
   taskUUID: string;
   auditID: number;
-};
+}

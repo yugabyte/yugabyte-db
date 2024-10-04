@@ -73,6 +73,7 @@
 #include "parser/parse_utilcmd.h"
 
 /* Yugabyte includes */
+#include "catalog/binary_upgrade.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "optimizer/clauses.h"
 
@@ -539,7 +540,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 	}
 }
 
-/* 
+/*
  * The fields pgTableId and oldRelfileNodeId are used during table rewrite.
  * During table rewrite, pgTableId is used to relay to DocDB the pg table OID,
  * so that DocDB has a mapping from the table to the correct pg table OID.
@@ -552,7 +553,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
  * However, during table rewrites, stmt->relation points to the new transient
  * PG relation (named pg_temp_xxxx), but we want to create a DocDB table with
  * the same name as the original PG relation.
- */ 
+ */
 void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
@@ -716,6 +717,16 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	{
 		char *tablegroup_name = NULL;
 
+		/*
+		 * If the default tablespace of the current database is explicitly
+		 * mentioned in CREATE TABLE ... TABLESPACE, then use InvalidOid as
+		 * tablespaceId instead.
+		 * This prevents creating redundant default tablegroup.
+		 * Postgres does the similar thing with its default tablespaces.
+		 */
+		if (tablespaceId == MyDatabaseTableSpace)
+			tablespaceId = InvalidOid;
+
 		if (is_colocated_tables_with_tablespace_enabled &&
 			OidIsValid(tablespaceId))
 		{
@@ -733,6 +744,26 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			tablegroup_name = OidIsValid(tablegroupId) ?
 								  get_tablegroup_name(tablegroupId) :
 								  get_implicit_tablegroup_name(tablespaceId);
+		}
+		else if (yb_binary_restore &&
+				 is_colocated_tables_with_tablespace_enabled &&
+				 OidIsValid(binary_upgrade_next_tablegroup_oid))
+		{
+			/*
+			 * In yb_binary_restore if tablespaceId is not valid but
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
+			 * restoring without tablespace information.
+			 * In this case all tables are restored to default tablespace,
+			 * while maintaining the colocation properties, and tablegroup's name
+			 * will be colocation_restore_tablegroupId, while default tablegroup's
+			 * name would still be default.
+			 */
+			tablegroup_name = binary_upgrade_next_tablegroup_default ?
+								DEFAULT_TABLEGROUP_NAME :
+								get_restore_tablegroup_name(
+									binary_upgrade_next_tablegroup_oid);
+			binary_upgrade_next_tablegroup_default = false;
+			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
 		}
 		else
 		{
@@ -1183,8 +1214,7 @@ static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
 						YBCPgStatement* rollbackHandle,
-						bool isPartitionOfAlteredTable,
-						int rewrite)
+						bool isPartitionOfAlteredTable)
 {
 	Oid relationId = RelationGetRelid(rel);
 	Oid relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1201,6 +1231,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			case AT_DropColumnRecurse:
 			case AT_AddConstraintRecurse:
 			case AT_DropConstraintRecurse:
+			case AT_ValidateConstraintRecurse:
 				break;
 			default:
 				/*
@@ -1372,6 +1403,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		case AT_AttachPartition:
 		case AT_DetachPartition:
 		case AT_SetTableSpace:
+		case AT_ValidateConstraint:
+		case AT_ValidateConstraintRecurse:
 		{
 			Assert(cmd->subtype != AT_DropConstraint);
 			if (cmd->subtype == AT_AlterColumnType)
@@ -1387,13 +1420,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 								cmd->name, RelationGetRelationName(rel))));
 				}
 				ReleaseSysCache(typeTuple);
-
-				/*
-				 * If this ALTER TYPE operation doesn't require a rewrite
-				 * we do not need to increment the schema version.
-				 */
-				if (!(rewrite & AT_REWRITE_COLUMN_REWRITE))
-					break;
 			}
 			/*
 			 * For these cases a YugaByte metadata does not need to be updated
@@ -1604,8 +1630,7 @@ YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YBCPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable,
-					 int rewriteState)
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -1633,7 +1658,7 @@ YBCPrepareAlterTable(List** subcmds,
 			handles = YBCPrepareAlterTableCmd(
 						(AlterTableCmd *) lfirst(lcmd), rel, handles,
 						&col, &needsYBAlter, rollbackHandle,
-						isPartitionOfAlteredTable, rewriteState);
+						isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -2024,14 +2049,32 @@ YBCDropReplicationSlot(const char *slot_name)
 		YBCPgExecDropReplicationSlot(handle), error_message);
 }
 
+/*
+ * Returns an of relfilenodes corresponding to input table_oids array.
+ */
+static Oid *
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+{
+	Oid			*relfilenodes;
+
+	relfilenodes = palloc(sizeof(Oid) * num_relations);
+	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
+		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
+
+	return relfilenodes;
+}
+
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations)
 {
 	Assert(MyDatabaseId);
 
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
-											 numrelations));
+											 relfilenodes, numrelations));
 }
 
 void
@@ -2040,7 +2083,11 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 {
 	Assert(MyDatabaseId);
 
-	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId, relations,
+	Oid *relfilenodes;
+	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+
+	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
+												   relations, relfilenodes,
 												   numrelations));
 }
 

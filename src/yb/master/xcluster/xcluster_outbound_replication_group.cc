@@ -12,9 +12,10 @@
 //
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
-#include "yb/common/xcluster_util.h"
+
 #include "yb/client/xcluster_client.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/util/is_operation_done_result.h"
@@ -23,6 +24,8 @@
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
+
+DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 using namespace std::placeholders;
 
@@ -76,6 +79,7 @@ XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
     XClusterOutboundReplicationGroupTaskFactory& task_factory)
     : CatalogEntityWithTasks(std::move(tasks_tracker)),
       helper_functions_(std::move(helper_functions)),
+      automatic_ddl_mode_(outbound_replication_group_pb.automatic_ddl_mode()),
       task_factory_(task_factory) {
   outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
   outbound_rg_info_->Load(outbound_replication_group_pb);
@@ -263,19 +267,21 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
       "Namespace in unexpected state");
 
   if (table_ids.empty()) {
-    auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+    auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
+        namespace_id, /*include_sequences_data=*/(
+            AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
     std::set<TableId> tables;
     std::transform(
-        table_infos.begin(), table_infos.end(), std::inserter(tables, tables.begin()),
-        [](const auto& table_info) { return table_info->id(); });
+        table_designators.begin(), table_designators.end(), std::inserter(tables, tables.begin()),
+        [](const auto& table_designator) { return table_designator.id; });
 
-    std::set<TableId> checkpointed_tables;
-    std::transform(
-        ns_info->table_infos().begin(), ns_info->table_infos().end(),
-        std::inserter(checkpointed_tables, checkpointed_tables.begin()),
-        [](const auto& table_info) { return table_info.first; });
-
-    auto diff = STLSetSymmetricDifference(tables, checkpointed_tables);
+    std::set<TableId> initial_tables;
+    for (const auto& [table_id, table_info] : ns_info->table_infos()) {
+      if (table_info.is_part_of_initial_bootstrap()) {
+        initial_tables.insert(table_id);
+      }
+    }
+    auto diff = STLSetSymmetricDifference(tables, initial_tables);
     SCHECK_FORMAT(
         diff.empty(), IllegalState,
         "List of tables changed during xCluster checkpoint of replication group $0: $1", ToString(),
@@ -342,11 +348,14 @@ Result<NamespaceName> XClusterOutboundReplicationGroup::GetNamespaceName(
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
-  auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
-  VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_infos);
+  auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
+      namespace_id, /*include_sequences_data=*/(
+          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_designators);
 
+  // In automatic DDL mode the DDL queue table and sequences tables will be created automatically.
   SCHECK(
-      !table_infos.empty(), InvalidArgument,
+      AutomaticDDLMode() || !table_designators.empty(), InvalidArgument,
       "Database should have at least one table in order to be part of xCluster replication");
 
   auto yb_ns_info = VERIFY_RESULT(GetYbNamespaceInfo(namespace_id));
@@ -355,9 +364,10 @@ XClusterOutboundReplicationGroup::CreateNamespaceInfo(
       "Only YSQL databases are supported in xCluster DB Scoped replication");
 
   if (yb_ns_info->colocated()) {
-    bool has_any_colocated_table =
-        std::any_of(table_infos.begin(), table_infos.end(), [](const TableInfoPtr& table_info) {
-          return IsColocatedDbTablegroupParentTableId(table_info->id());
+    bool has_any_colocated_table = std::any_of(
+        table_designators.begin(), table_designators.end(),
+        [](const TableDesignator& table_designator) {
+          return IsColocatedDbTablegroupParentTableId(table_designator.id);
         });
     SCHECK(
         has_any_colocated_table, InvalidArgument,
@@ -368,14 +378,61 @@ XClusterOutboundReplicationGroup::CreateNamespaceInfo(
   NamespaceInfoPB ns_info;
   ns_info.set_state(NamespaceInfoPB::CHECKPOINTING);
 
-  for (size_t i = 0; i < table_infos.size(); ++i) {
+  for (size_t i = 0; i < table_designators.size(); ++i) {
     NamespaceInfoPB::TableInfoPB table_info;
     table_info.set_is_checkpointing(true);
     table_info.set_is_part_of_initial_bootstrap(true);
-    ns_info.mutable_table_infos()->insert({table_infos[i]->id(), std::move(table_info)});
+    ns_info.mutable_table_infos()->insert({table_designators[i].id, std::move(table_info)});
   }
 
   return ns_info;
+}
+
+Status XClusterOutboundReplicationGroup::AddTableToInitialBootstrapMapping(
+    const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForWrite());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  if (ns_info->mutable_table_infos()->count(table_id) > 0) {
+    return Status::OK();
+  }
+  SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::TableInfoPB table_info;
+  table_info.set_is_checkpointing(true);
+  table_info.set_is_part_of_initial_bootstrap(true);
+  ns_info->mutable_table_infos()->insert({table_id, std::move(table_info)});
+
+  return Upsert(l, epoch);
+}
+
+Status XClusterOutboundReplicationGroup::SetDDLQueueTableIsPartOfInitialBootstrap(
+    const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
+  auto table_designators = VERIFY_RESULT(
+      helper_functions_.get_tables_func(namespace_id, /*include_sequences_data=*/false));
+
+  std::lock_guard mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForWrite());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  bool table_found = false;
+  for (const auto& table_designator : table_designators) {
+    if (!table_designator.table_info->IsXClusterDDLReplicationDDLQueueTable()) {
+      continue;
+    }
+    table_found = true;
+    const auto& table_id = table_designator.id;
+    auto namespace_table_info = FindOrNull(*ns_info->mutable_table_infos(), table_id);
+    SCHECK_FORMAT(
+        namespace_table_info, IllegalState,
+        "Table $0 not found in namespace info of replication group $1", table_id, ToString());
+    namespace_table_info->set_is_part_of_initial_bootstrap(true);
+    break;
+  }
+  SCHECK(
+      table_found, IllegalState, "xCluster DDL queue table not found in namespace $0 of $1",
+      namespace_id, ToString());
+
+  return Upsert(l, epoch);
 }
 
 Result<bool> XClusterOutboundReplicationGroup::AddNamespaceInternal(
@@ -576,14 +633,25 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
   NamespaceCheckpointInfo ns_info;
   ns_info.initial_bootstrap_required = namespace_info->initial_bootstrap_required();
 
-  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
-  std::vector<scoped_refptr<TableInfo>> table_infos;
+  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
+      namespace_id, /*include_sequences_data=*/(
+          AutomaticDDLMode() && FLAGS_TEST_xcluster_enable_sequence_replication)));
+  std::vector<TableDesignator> table_descriptors;
 
   if (!table_names.empty()) {
-    std::unordered_map<TableSchemaNamePair, scoped_refptr<TableInfo>, TableSchemaNamePairHash>
+    std::unordered_map<TableSchemaNamePair, TableDesignator, TableSchemaNamePairHash>
         table_names_map;
-    for (auto& table_info : all_tables) {
-      table_names_map[{table_info->name(), table_info->pgschema_name()}] = table_info;
+    for (auto& table_descriptor : all_tables) {
+      auto it = InsertOrReturnExisting(
+          &table_names_map,
+          {TableSchemaNamePair(table_descriptor.name(), table_descriptor.pgschema_name()),
+           table_descriptor});
+      SCHECK(
+          !it, AlreadyPresent,
+          Format(
+              "$0: Multiple table ids found for table $1.$2. Table ids: $3, $4", ToString(),
+              table_descriptor.pgschema_name(), table_descriptor.name(), it->id,
+              table_descriptor.id));
     }
 
     for (auto& table : table_names) {
@@ -592,14 +660,14 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
           Format("Table $0.$1 not found in namespace $2", table.second, table.first, namespace_id));
 
       // Order of elements in table_infos should match the order in input table_names.
-      table_infos.push_back(table_names_map[table]);
+      table_descriptors.emplace_back(table_names_map.at(table));
     }
   } else {
-    table_infos = std::move(all_tables);
+    table_descriptors = std::move(all_tables);
   }
 
-  for (const auto& table_info : table_infos) {
-    const auto& table_id = table_info->id();
+  for (const auto& table_descriptor : table_descriptors) {
+    const auto& table_id = table_descriptor.id;
     if (namespace_info->table_infos().count(table_id) == 0) {
       // We do not have this table! It has been manually removed using the repair APIs.
       // If user explicitly requested this table then fail the request.
@@ -624,8 +692,8 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     NamespaceCheckpointInfo::TableInfo ns_table_info{
         .table_id = table_id,
         .stream_id = std::move(stream_id),
-        .table_name = table_info->name(),
-        .pg_schema_name = table_info->pgschema_name()};
+        .table_name = table_descriptor.name(),
+        .pg_schema_name = table_descriptor.pgschema_name()};
 
     ns_info.table_infos.emplace_back(std::move(ns_table_info));
   }
@@ -728,9 +796,9 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
   auto target_uuid =
       VERIFY_RESULT(remote_client->GetXClusterClient().SetupDbScopedUniverseReplication(
           Id(), source_master_addresses, namespace_names, namespace_ids, source_table_ids,
-          bootstrap_ids));
+          bootstrap_ids, AutomaticDDLMode()));
 
-  auto* target_universe_info = l.mutable_data()->pb.mutable_target_universe_info();
+  auto* target_universe_info = outbound_group.mutable_target_universe_info();
 
   target_universe_info->set_universe_uuid(target_uuid.ToString());
   target_universe_info->set_state(
@@ -1145,6 +1213,11 @@ Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
   SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
 
   return table_info->stream_id();
+}
+
+Status XClusterOutboundReplicationGroup::SetupDDLReplicationExtension(
+    const NamespaceId& namespace_id, StdStatusCallback callback) const {
+  return helper_functions_.setup_ddl_replication_extension_func(namespace_id, std::move(callback));
 }
 
 }  // namespace yb::master

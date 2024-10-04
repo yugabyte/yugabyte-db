@@ -595,6 +595,14 @@ extern List *ExecInsertIndexTuplesOptimized(TupleTableSlot *slot, HeapTuple tupl
 extern void ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate);
 extern void ExecDeleteIndexTuplesOptimized(Datum ybctid, HeapTuple tuple,
 										   EState *estate);
+extern List *YbExecUpdateIndexTuples(TupleTableSlot *slot,
+									 Datum ybctid,
+									 HeapTuple oldtuple,
+									 HeapTuple tuple,
+									 EState *estate,
+									 Bitmapset *updatedCols,
+									 bool is_pk_updated);
+
 extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
 						  ItemPointer conflictTid, List *arbiterIndexes,
 						  TupleTableSlot **ybConflictSlot);
@@ -623,5 +631,9 @@ extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 
 extern void CheckSubscriptionRelkind(char relkind, const char *nspname,
 						 const char *relname);
+
+extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										EState *estate,
+										List *arbiterIndexes);
 
 #endif							/* EXECUTOR_H  */

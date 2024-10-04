@@ -149,6 +149,10 @@ struct FullCompactionStatus {
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
+  // todo(zdrudi): this is not safe because we can free TSDescriptor objects now. Safe-ish for now
+  // because we look at these structs to verify no raw pointers exist before freeing any
+  // TSDescriptor object.
+  // https://github.com/yugabyte/yugabyte-db/issues/24044
   TSDescriptor* ts_desc;
   tablet::RaftGroupStatePB state;
   PeerRole role;
@@ -941,6 +945,25 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
   DISALLOW_COPY_AND_ASSIGN(UDTypeInfo);
 };
 
+// This wraps around the proto containing information about what locks have been taken.
+// It will be used for LockObject persistence.
+struct PersistentObjectLockInfo : public Persistent<SysObjectLockEntryPB> {};
+
+class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
+ public:
+  explicit ObjectLockInfo(const std::string& ts_uuid) : ts_uuid_(ts_uuid) {}
+  ~ObjectLockInfo() = default;
+
+  // Return the user defined type's ID. Does not require synchronization.
+  virtual const std::string& id() const override { return ts_uuid_; }
+
+ private:
+  // The ID field is used in the sys_catalog table.
+  const std::string ts_uuid_;
+
+  DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
+};
+
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {};
@@ -1210,6 +1233,7 @@ struct PersistentUniverseReplicationInfo
   }
 
   bool IsDbScoped() const;
+  bool IsAutomaticDdlMode() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,

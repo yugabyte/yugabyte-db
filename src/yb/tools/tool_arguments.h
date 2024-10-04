@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
+#include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/program_options.hpp>
 
@@ -252,7 +256,7 @@ Status CommonHelpExecute(const CommonHelpArguments& args) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Helpers for specifying valid ranges of options
+// Helpers for specifying valid ranges of options, and various custom types of options
 // ------------------------------------------------------------------------------------------------
 
 template<typename OptionType>
@@ -267,6 +271,37 @@ auto OptionLowerBound(const char* option_name, OptionType lower_bound) ->
             std::to_string(value));
     }
   };
+}
+
+template<typename EnumType>
+std::string ValidEnumValuesCommaSeparatedForHelp() {
+  std::vector<std::string> string_values;
+  bool all_start_with_k = true;  // Initialize to true to check if all start with 'k'
+
+  // Collect the enum values as strings and check the starting character
+  for (auto element : List(static_cast<EnumType*>(nullptr))) {
+    const auto s = ToString(element);
+    string_values.push_back(s);
+    if (s.size() <= 1 || s[0] != 'k') {
+      all_start_with_k = false;
+    }
+  }
+
+  std::vector<std::string> final_values;
+
+  if (all_start_with_k) {
+    // If all start with 'k', modify each string by stripping 'k'
+    final_values.reserve(string_values.size());
+    for (auto& s : string_values) {
+      final_values.push_back(s.substr(1));  // Move stripped string
+    }
+  } else {
+    // If not all start with 'k', move the entire vector
+    final_values = std::move(string_values);
+  }
+
+  // Use Boost to join the final values into a comma-separated string
+  return boost::algorithm::join(final_values, ", ");
 }
 
 } // namespace tools

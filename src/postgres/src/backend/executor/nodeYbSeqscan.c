@@ -143,9 +143,8 @@ YbSeqNext(YbSeqScanState *node)
 			{
 				scandesc->ybscan->exec_params->rowmark = erm->markType;
 				scandesc->ybscan->exec_params->pg_wait_policy = erm->waitPolicy;
-				YBSetRowLockPolicy(
-					&scandesc->ybscan->exec_params->docdb_wait_policy,
-					erm->waitPolicy);
+				scandesc->ybscan->exec_params->docdb_wait_policy =
+					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
 			break;
 		}

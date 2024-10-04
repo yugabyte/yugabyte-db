@@ -19,6 +19,7 @@ import (
 
 // DeleteEITValidation validates the delete config command
 func DeleteEITValidation(cmd *cobra.Command) {
+	viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 	configNameFlag, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

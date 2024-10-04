@@ -19,6 +19,9 @@
 #include <cstdint>
 #include <vector>
 
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+
 namespace yb {
 
 using FloatVector = std::vector<float>;

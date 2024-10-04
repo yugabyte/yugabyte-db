@@ -1,0 +1,10 @@
+module CSimSIMD {
+    header "simsimd/simsimd.h"
+    export *
+}
+
+// This file is part of the simsimd inline third-party dependency of YugabyteDB.
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
+//
+// See also src/inline-thirdparty/README.md.

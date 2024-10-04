@@ -28,10 +28,12 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 To develop Elixir applications for YugabyteDB, you need the following:
 
-- **Elixir**\
+- **Elixir**
+
   Install the latest versions of [Elixir, Erlang VM, IEx and Mix](https://elixir-lang.org/docs.html) (tested with Elixir 1.17.1 and Erlang/OTP 26 erts-14.2.5).
 
 - **YugabyteDB cluster**
+
   - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 

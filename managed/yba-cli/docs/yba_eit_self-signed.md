@@ -34,6 +34,7 @@ yba eit self-signed [flags]
 ### SEE ALSO
 
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
+* [yba eit self-signed create](yba_eit_self-signed_create.md)	 - Create a YugabyteDB Anywhere Self Signed encryption in transit configuration
 * [yba eit self-signed delete](yba_eit_self-signed_delete.md)	 - Delete a YugabyteDB Anywhere Self Signed encryption in transit configuration
 * [yba eit self-signed describe](yba_eit_self-signed_describe.md)	 - Describe a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 * [yba eit self-signed list](yba_eit_self-signed_list.md)	 - List Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations

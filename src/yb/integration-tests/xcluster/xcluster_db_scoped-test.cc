@@ -11,16 +11,20 @@
 // under the License.
 //
 
-#include "yb/common/xcluster_util.h"
+#include <gmock/gmock.h>
+
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);
+DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 
 using namespace std::chrono_literals;
@@ -34,8 +38,20 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   XClusterDBScopedTest() = default;
   ~XClusterDBScopedTest() = default;
 
-  virtual void SetUp() override {
+  void SetUp() override {
     XClusterYsqlTestBase::SetUp();
+    // Make sure we use new databases so the database OIDs will differ in automatic mode.
+    // This ensures that the sequence_data aliases will be different in the two universes.
+    // See XClusterYsqlTestBase::SetUpClusters() for the code that does this.
+    namespace_name = "new_db";
+  }
+
+  std::vector<TableId> ExtractTableIds(const master::GetUniverseReplicationResponsePB& resp) {
+    std::vector<TableId> results;
+    for (const auto& table_id : resp.entry().tables()) {
+      results.push_back(table_id);
+    }
+    return results;
   }
 
   Result<master::GetXClusterStreamsResponsePB> GetXClusterStreams(
@@ -54,6 +70,19 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   Result<master::GetXClusterStreamsResponsePB> GetAllXClusterStreams(
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
+  }
+
+  Status EnablePITROnClusters() {
+    return RunOnBothClusters([this](Cluster* cluster) -> Status {
+      client::SnapshotTestUtil snapshot_util;
+      snapshot_util.SetProxy(&cluster->client_->proxy_cache());
+      snapshot_util.SetCluster(cluster->mini_cluster_.get());
+
+      RETURN_NOT_OK(snapshot_util.CreateSchedule(
+          nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue,
+          2s * kTimeMultiplier, 20h));
+      return Status::OK();
+    });
   }
 };
 
@@ -79,12 +108,12 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_OK(ClearFailedUniverse(consumer_cluster_));
 
   ASSERT_NOK_STR_CONTAINS(
-      CreateReplicationFromCheckpoint(), "Could not find matching table for yugabyte.test_table_0");
+      CreateReplicationFromCheckpoint(), "Could not find matching table for new_db.test_table_0");
   ASSERT_OK(ClearFailedUniverse(consumer_cluster_));
 
   auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/0, /*num_tablets=*/3, &consumer_cluster_));
-  ASSERT_OK(producer_client()->OpenTable(consumer_table_name, &consumer_table_));
+  ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table_));
 
   auto consumer_extra_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_));
@@ -104,8 +133,8 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+  ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 
   // Verify the groups shows up in GetUniverseReplications and GetUniverseReplicationInfo client
   // APIs.
@@ -114,7 +143,7 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_EQ(replication_groups.size(), 1);
   ASSERT_EQ(replication_groups.front(), kReplicationGroupId);
   replication_groups = ASSERT_RESULT(
-      target_xcluster_client.GetUniverseReplications(producer_table_->name().namespace_id()));
+      target_xcluster_client.GetUniverseReplications(consumer_table_->name().namespace_id()));
   ASSERT_EQ(replication_groups.size(), 1);
   ASSERT_EQ(replication_groups.front(), kReplicationGroupId);
   auto replication_info =
@@ -122,12 +151,27 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_EQ(replication_info.replication_type, XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED);
   ASSERT_EQ(replication_info.db_scope_namespace_id_map.size(), 1);
   const auto& source_namespace_id = producer_table_->name().namespace_id();
-  ASSERT_TRUE(replication_info.db_scope_namespace_id_map.contains(source_namespace_id));
   const auto& target_namespace_id = consumer_table_->name().namespace_id();
-  ASSERT_EQ(replication_info.db_scope_namespace_id_map[source_namespace_id], target_namespace_id);
-  ASSERT_EQ(replication_info.table_infos.size(), 1);
-  ASSERT_EQ(replication_info.table_infos[0].source_table_id, producer_table_->id());
-  ASSERT_EQ(replication_info.table_infos[0].target_table_id, consumer_table_->id());
+  EXPECT_THAT(
+      replication_info.db_scope_namespace_id_map,
+      testing::Contains(testing::Key(target_namespace_id)));
+  ASSERT_EQ(replication_info.db_scope_namespace_id_map[target_namespace_id], source_namespace_id);
+  ASSERT_EQ(replication_info.table_infos.size(), 1 + OverheadStreamsCount());
+  bool found = false;
+  for (const auto& table_info : replication_info.table_infos) {
+    if (table_info.source_table_id == producer_table_->id() &&
+        table_info.target_table_id == consumer_table_->id()) {
+      found = true;
+    }
+  }
+  ASSERT_TRUE(found) << "Unable to find normal table in replication_info.table_infos";
+
+  if (UseAutomaticMode()) {
+    // In automatic mode, sequences_data should have been created on the target universe.
+    ASSERT_TRUE(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
+                    ->catalog_manager_impl()
+                    .GetTableInfo(kPgSequencesDataTableId));
+  }
 
   ASSERT_OK(InsertRowsInProducer(50, 100));
 
@@ -161,7 +205,7 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 2);
+  ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
 
   ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
 
@@ -201,8 +245,14 @@ TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
   ASSERT_STR_CONTAINS(result.status().ToString(), "test_table_0 not found in namespace");
 
   auto get_streams_resp = ASSERT_RESULT(GetAllXClusterStreams(namespace_id));
-  ASSERT_EQ(get_streams_resp.table_infos_size(), 1);
-  ASSERT_EQ(get_streams_resp.table_infos(0).table_id(), producer_tables_[1]->id());
+  ASSERT_EQ(get_streams_resp.table_infos_size(), 1 + OverheadStreamsCount());
+  bool found = false;
+  for (const auto& table_info : get_streams_resp.table_infos()) {
+    if (table_info.table_id() == producer_tables_[1]->id()) {
+      found = true;
+    }
+  }
+  ASSERT_TRUE(found) << "Unable to find producer table in get_streams_resp.table_infos";
 }
 
 // Test dropping all tables and then creating new tables.
@@ -223,10 +273,10 @@ TEST_F(XClusterDBScopedTest, DropAllTables) {
 
   auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
   auto outbound_streams = ASSERT_RESULT(GetAllXClusterStreams(namespace_id));
-  ASSERT_EQ(outbound_streams.table_infos_size(), 0);
+  ASSERT_EQ(outbound_streams.table_infos_size(), 0 + OverheadStreamsCount());
 
   auto resp = ASSERT_RESULT(GetUniverseReplicationInfo(consumer_cluster_, kReplicationGroupId));
-  ASSERT_EQ(resp.entry().tables_size(), 0);
+  ASSERT_EQ(resp.entry().tables_size(), 0 + OverheadStreamsCount());
 
   // Add a new table.
   auto producer_table2_name = ASSERT_RESULT(CreateYsqlTable(
@@ -239,7 +289,7 @@ TEST_F(XClusterDBScopedTest, DropAllTables) {
   auto consumer_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/2, /*num_tablets=*/3, &consumer_cluster_));
   std::shared_ptr<client::YBTable> consumer_table2;
-  ASSERT_OK(producer_client()->OpenTable(consumer_table2_name, &consumer_table2));
+  ASSERT_OK(consumer_client()->OpenTable(consumer_table2_name, &consumer_table2));
 
   ASSERT_OK(VerifyWrittenRecords(producer_table2, consumer_table2));
 }
@@ -288,7 +338,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
   // Make sure we only colocated parent table and one non-colocated table
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().tables_size(), 2);
+  ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
 
   auto producer_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/2, /*num_tablets=*/3, &producer_cluster_));
@@ -300,7 +350,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
   auto consumer_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/2, /*num_tablets=*/3, &consumer_cluster_));
   std::shared_ptr<client::YBTable> consumer_table2;
-  ASSERT_OK(producer_client()->OpenTable(consumer_table2_name, &consumer_table2));
+  ASSERT_OK(consumer_client()->OpenTable(consumer_table2_name, &consumer_table2));
 
   ASSERT_OK(VerifyWrittenRecords(producer_table2, consumer_table2));
 
@@ -324,7 +374,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
   ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_colocated_table));
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().tables_size(), 3);
+  ASSERT_EQ(resp.entry().tables_size(), 3 + OverheadStreamsCount());
 
   // Insert some rows to the initial table.
   ASSERT_OK(InsertRowsInProducer(10, 20, producer_table_));
@@ -339,7 +389,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
   ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table2));
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().tables_size(), 2);
+  ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
 }
 
 // When disable_xcluster_db_scoped_new_table_processing is set make sure we do not checkpoint new
@@ -361,8 +411,8 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+  ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 
   auto producer_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
@@ -371,8 +421,14 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
 
   auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
   auto get_streams_resp = ASSERT_RESULT(GetAllXClusterStreams(namespace_id));
-  ASSERT_EQ(get_streams_resp.table_infos_size(), 1);
-  ASSERT_EQ(get_streams_resp.table_infos(0).table_id(), producer_table_->id());
+  ASSERT_EQ(get_streams_resp.table_infos_size(), 1 + OverheadStreamsCount());
+  bool found = false;
+  for (const auto& table_info : get_streams_resp.table_infos()) {
+    if (table_info.table_id() == producer_table_->id()) {
+      found = true;
+    }
+  }
+  ASSERT_TRUE(found) << "Unable to find producer table in get_streams_resp.table_infos";
 
   ASSERT_OK(InsertRowsInProducer(0, 100, producer_table2));
   ASSERT_NOK(VerifyWrittenRecords(producer_table2, consumer_table2));
@@ -420,6 +476,8 @@ class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
     return Status::OK();
   }
 
+  void TestAddRemoveNamespace();
+
   const NamespaceName namespace_name2_ = "db2";
   const TableName namespace2_table_name_ = "test_table";
   NamespaceId source_namespace2_id_, target_namespace2_id_;
@@ -427,7 +485,7 @@ class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
 };
 
 // Testing adding and removing namespaces to replication.
-TEST_F_EX(XClusterDBScopedTest, AddRemoveNamespace, XClusterDBScopedTestWithTwoDBs) {
+void XClusterDBScopedTestWithTwoDBs::TestAddRemoveNamespace() {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
@@ -444,9 +502,15 @@ TEST_F_EX(XClusterDBScopedTest, AddRemoveNamespace, XClusterDBScopedTestWithTwoD
 
   // Validate streams on source.
   auto streams = ASSERT_RESULT(GetAllXClusterStreams(source_namespace2_id_));
-  ASSERT_EQ(streams.table_infos_size(), 1);
-  ASSERT_EQ(streams.table_infos(0).table_name(), namespace2_table_name_);
-  ASSERT_EQ(streams.table_infos(0).table_id(), source_namespace2_table_->id());
+  ASSERT_EQ(streams.table_infos_size(), 1 + OverheadStreamsCount());
+  bool found = false;
+  for (const auto& table_info : streams.table_infos()) {
+    if (table_info.table_name() == namespace2_table_name_ &&
+        table_info.table_id() == source_namespace2_table_->id()) {
+      found = true;
+    }
+  }
+  ASSERT_TRUE(found) << "Unable to find source_namespace2_table in streams.table_infos";
 
   // Add the namespace to the target.
   ASSERT_OK(AddNamespaceToXClusterReplication(source_namespace2_id_, target_namespace2_id_));
@@ -455,7 +519,7 @@ TEST_F_EX(XClusterDBScopedTest, AddRemoveNamespace, XClusterDBScopedTestWithTwoD
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 2);
+  EXPECT_EQ(resp.entry().tables_size(), 2 + 2 * OverheadStreamsCount());
 
   auto replication_info = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
                               ->catalog_manager_impl()
@@ -475,9 +539,9 @@ TEST_F_EX(XClusterDBScopedTest, AddRemoveNamespace, XClusterDBScopedTestWithTwoD
   // Check the target side.
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
   // Only the first table should be left.
-  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 
   replication_info = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
                          ->catalog_manager_impl()
@@ -496,6 +560,19 @@ TEST_F_EX(XClusterDBScopedTest, AddRemoveNamespace, XClusterDBScopedTestWithTwoD
   bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_namespace2_id_));
   ASSERT_TRUE(bootstrap_required) << "Bootstrap should be required";
+}
+
+TEST_F(XClusterDBScopedTestWithTwoDBs, AddRemoveNamespace) {
+  ASSERT_NO_FATALS(TestAddRemoveNamespace());
+}
+
+class XClusterDBScopedTestWithTwoDBsAutomaticDDLMode : public XClusterDBScopedTestWithTwoDBs {
+ public:
+  bool UseAutomaticMode() override { return true; }
+};
+
+TEST_F(XClusterDBScopedTestWithTwoDBsAutomaticDDLMode, AddRemoveNamespace) {
+  ASSERT_NO_FATALS(TestAddRemoveNamespace());
 }
 
 // Remove a namespaces from replication when the target side is down.
@@ -532,7 +609,7 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 2);
+  EXPECT_EQ(resp.entry().tables_size(), 2 + 2 * OverheadStreamsCount());
 
   auto target_xcluster_client = client::XClusterClient(*consumer_client());
 
@@ -546,8 +623,8 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
       kReplicationGroupId, source_namespace2_id_, UniverseUuid::Nil()));
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+  ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 }
 
 // Remove a namespaces from replication when the source side is down.
@@ -575,8 +652,8 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenSourceIsDown, XClusterDBScope
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+  ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 
   // Bring the source back up.
   {
@@ -586,7 +663,7 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenSourceIsDown, XClusterDBScope
 
   // Source should still have the namespace and stream.
   auto streams = ASSERT_RESULT(GetAllXClusterStreams(source_namespace2_id_));
-  ASSERT_EQ(streams.table_infos_size(), 1);
+  ASSERT_EQ(streams.table_infos_size(), 1 + OverheadStreamsCount());
 
   // Remove the namespace from source side.
   ASSERT_OK(source_xcluster_client.RemoveNamespaceFromOutboundReplicationGroup(
@@ -657,7 +734,7 @@ TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-  ASSERT_EQ(resp.entry().tables_size(), 1);
+  EXPECT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());
 
   auto target_xcluster_client = client::XClusterClient(*consumer_client());
 
@@ -706,7 +783,7 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
   auto source_namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
   // Source should still have the replication group and streams.
   auto streams = ASSERT_RESULT(GetAllXClusterStreams(source_namespace_id));
-  ASSERT_EQ(streams.table_infos_size(), 1);
+  ASSERT_EQ(streams.table_infos_size(), 1 + OverheadStreamsCount());
 
   auto source_xcluster_client = client::XClusterClient(*producer_client());
 
@@ -717,125 +794,202 @@ TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
   ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
 }
 
-// Validate that we can only have one inbound replication group per database.
-TEST_F(XClusterDBScopedTest, MultipleInboundReplications) {
+  // Validate that we can only have one inbound replication group per database.
+  TEST_F(XClusterDBScopedTest, MultipleInboundReplications) {
+    ASSERT_OK(SetUpClusters());
+    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+
+    auto group2 = xcluster::ReplicationGroupId("group2");
+
+    ASSERT_OK(CheckpointReplicationGroup(group2));
+    ASSERT_NOK_STR_CONTAINS(
+        CreateReplicationFromCheckpoint(/*target_master_addresses=*/"", group2),
+        "already included in replication group");
+  }
+
+  TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
+    // TODO: replace this once there is a way to use automatic mode with ybadmin.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_automatic_ddl_replication_mode) =
+        UseAutomaticMode();
+
+    ASSERT_OK(SetUpClusters());
+
+    // Create replication with 1 db.
+    auto result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "is_xcluster_bootstrap_required", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+
+    const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
+        target_master_address));
+
+    result =
+        ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    const auto source_namespace_id = producer_table_->name().namespace_id();
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "list_xcluster_outbound_replication_groups", source_namespace_id));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "get_xcluster_outbound_replication_group_info",
+        kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, source_namespace_id);
+    ASSERT_STR_CONTAINS(result, producer_table_->id());
+    ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
+    ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
+
+    // Test target side commands.
+    const auto target_namespace_id = consumer_table_->name().namespace_id();
+    result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "na"));
+    ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(
+        CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace2_id_));
+    ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(
+        CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace_id));
+    ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+    result = ASSERT_RESULT(CallAdmin(
+        consumer_cluster(), "get_universe_replication_info", kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_DB_SCOPED));
+    ASSERT_STR_CONTAINS(result, namespace_name);
+    ASSERT_STR_CONTAINS(result, target_namespace_id);
+    ASSERT_STR_CONTAINS(result, source_namespace_id);
+    ASSERT_STR_NOT_CONTAINS(result, target_namespace2_id_);
+
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    ASSERT_OK(InsertRowsInProducer(0, 10));
+    ASSERT_OK(VerifyWrittenRecords());
+
+    // Add second db to replication.
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
+        namespace_name2_));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
+
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "get_xcluster_outbound_replication_group_info",
+        kReplicationGroupId.ToString()));
+    ASSERT_STR_CONTAINS(result, namespace_name);
+    ASSERT_STR_CONTAINS(result, producer_table_->id());
+    ASSERT_STR_CONTAINS(result, namespace_name2_);
+    ASSERT_STR_CONTAINS(result, source_namespace2_table_->id());
+
+    // Remove database from both sides with one command.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
+
+    // Remove database from replication from each cluster individually.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
+        namespace_name2_));
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
+        namespace_name2_, target_master_address));
+    ASSERT_OK(CallAdmin(
+        consumer_cluster(), "alter_universe_replication", kReplicationGroupId, "remove_namespace",
+        namespace_name2_));
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
+        namespace_name2_));
+
+    // Drop replication on both sides.
+    ASSERT_OK(CallAdmin(
+        producer_cluster(), "drop_xcluster_replication", kReplicationGroupId,
+        target_master_address));
+
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_NOK_STR_CONTAINS(
+        VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
+
+    ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
+
+    result = ASSERT_RESULT(CallAdmin(
+        producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
+    ASSERT_STR_CONTAINS(result, "Bootstrap is required");
+  }
+
+// Make sure we can setup replication with hidden tables.
+TEST_F(XClusterDBScopedTest, CreateReplicationWithHiddenTables) {
   ASSERT_OK(SetUpClusters());
+  // Setup PITR schedule so that dropped tables are hidden.
+  ASSERT_OK(EnablePITROnClusters());
+
+  // Create and drop a table to create a hidden table.
+  auto table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+  std::shared_ptr<client::YBTable> new_table;
+  ASSERT_OK(producer_client()->OpenTable(table_name, &new_table));
+  const auto hidden_table_id = new_table->id();
+
+  auto& catalog_mgr = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+  auto table = catalog_mgr.GetTableInfo(hidden_table_id);
+  ASSERT_TRUE(table);
+  ASSERT_TRUE(table->LockForRead()->visible_to_client());
+
+  ASSERT_OK(DropYsqlTable(
+      &producer_cluster_, table_name.namespace_name(), table_name.pgschema_name(),
+      table_name.table_name()));
+  ASSERT_NOK(producer_client()->OpenTable(table_name, &new_table));
+
+  ASSERT_FALSE(table->LockForRead()->visible_to_client());
+
+  // Setup replication and make sure it is healthy.
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
-  auto group2 = xcluster::ReplicationGroupId("group2");
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
+  ASSERT_THAT(ExtractTableIds(resp), testing::Not(testing::Contains(hidden_table_id)));
 
-  ASSERT_OK(CheckpointReplicationGroup(group2));
-  ASSERT_NOK_STR_CONTAINS(
-      CreateReplicationFromCheckpoint(/*target_master_addresses=*/"", group2),
-      "already included in replication group");
-}
-
-TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
-  ASSERT_OK(SetUpClusters());
-
-  // Create replication with 1 db.
-  auto result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
-
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "is_xcluster_bootstrap_required", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
-
-  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
-      target_master_address));
-
-  result =
-      ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  const auto source_namespace_id = producer_table_->name().namespace_id();
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "list_xcluster_outbound_replication_groups", source_namespace_id));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "get_xcluster_outbound_replication_group_info",
-      kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, source_namespace_id);
-  ASSERT_STR_CONTAINS(result, producer_table_->id());
-  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
-  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
-
-  // Test target side commands.
-  const auto target_namespace_id = consumer_table_->name().namespace_id();
-  result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "na"));
-  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(
-      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace2_id_));
-  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(
-      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace_id));
-  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
-  result = ASSERT_RESULT(CallAdmin(
-      consumer_cluster(), "get_universe_replication_info", kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_DB_SCOPED));
-  ASSERT_STR_CONTAINS(result, namespace_name);
-  ASSERT_STR_CONTAINS(result, target_namespace_id);
-  ASSERT_STR_CONTAINS(result, source_namespace_id);
-  ASSERT_STR_NOT_CONTAINS(result, target_namespace2_id_);
-
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  ASSERT_OK(InsertRowsInProducer(0, 10));
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
   ASSERT_OK(VerifyWrittenRecords());
 
-  // Add second db to replication.
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
-      namespace_name2_));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is not required");
+  // Make sure the hidden table is still there.
+  ASSERT_TRUE(table->LockForRead()->is_hidden_but_not_deleting());
+}
 
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
+// Create and drop tables in a loop with PITR which will keep the dropped tables in hidden state.
+TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnablePITROnClusters());
 
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "get_xcluster_outbound_replication_group_info",
-      kReplicationGroupId.ToString()));
-  ASSERT_STR_CONTAINS(result, namespace_name);
-  ASSERT_STR_CONTAINS(result, producer_table_->id());
-  ASSERT_STR_CONTAINS(result, namespace_name2_);
-  ASSERT_STR_CONTAINS(result, source_namespace2_table_->id());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
-  // Remove database from both sides with one command.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
+  for (int i = 0; i < 5; i++) {
+    auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+    std::shared_ptr<client::YBTable> new_producer_table;
+    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
 
-  // Remove database from replication from each cluster individually.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_checkpoint", kReplicationGroupId,
-      namespace_name2_));
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
-      namespace_name2_, target_master_address));
-  ASSERT_OK(CallAdmin(
-      consumer_cluster(), "alter_universe_replication", kReplicationGroupId, "remove_namespace",
-      namespace_name2_));
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "remove_namespace_from_xcluster_replication", kReplicationGroupId,
-      namespace_name2_));
+    auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_));
+    std::shared_ptr<client::YBTable> new_consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &new_consumer_table));
 
-  // Drop replication on both sides.
-  ASSERT_OK(CallAdmin(
-      producer_cluster(), "drop_xcluster_replication", kReplicationGroupId, target_master_address));
+    ASSERT_OK(InsertRowsInProducer(0, 10, new_producer_table));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
 
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_NOK_STR_CONTAINS(
-      VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
+    ASSERT_OK(DropYsqlTable(producer_cluster_, *new_producer_table.get()));
+    ASSERT_OK(DropYsqlTable(consumer_cluster_, *new_consumer_table.get()));
+  }
 
-  ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
-
-  result = ASSERT_RESULT(CallAdmin(
-      producer_cluster(), "create_xcluster_checkpoint", kReplicationGroupId, namespace_name));
-  ASSERT_STR_CONTAINS(result, "Bootstrap is required");
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 }  // namespace yb

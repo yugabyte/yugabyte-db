@@ -3,7 +3,8 @@ title: Bulk import YCQL
 headerTitle: Import data
 linkTitle: Import data
 description: Import data from Apache Cassandra to YugabyteDB.
-badges: ycql
+tags:
+  other: ycql
 menu:
   stable:
     identifier: manage-bulk-import-ycql

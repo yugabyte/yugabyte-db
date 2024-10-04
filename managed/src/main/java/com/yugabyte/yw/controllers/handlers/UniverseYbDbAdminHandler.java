@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_STABLE_VERSION;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +20,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -34,6 +37,7 @@ import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -213,6 +217,36 @@ public class UniverseYbDbAdminHandler {
             BAD_REQUEST,
             "Connection pooling is not allowed. Please set runtime flag"
                 + " 'yb.universe.allow_connection_pooling' to true.");
+      }
+
+      String softwareVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      if (universe
+          .getUniverseDetails()
+          .softwareUpgradeState
+          .equals(SoftwareUpgradeState.PreFinalize)) {
+        if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+          softwareVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+        }
+      }
+
+      if (Util.compareYBVersions(
+              softwareVersion,
+              CONNECTION_POOLING_STABLE_VERSION,
+              CONNECTION_POOLING_PREVIEW_VERSION,
+              true)
+          < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
+                CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
+      }
+
+      if (CloudType.kubernetes.equals(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
       }
     }
     // Verify request params

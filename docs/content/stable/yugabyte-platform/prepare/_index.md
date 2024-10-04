@@ -15,6 +15,10 @@ type: indexpage
 
 YugabyteDB Anywhere is a control plane used to deploy and manage YugabyteDB database clusters.
 
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
+
 To prepare your infrastructure for YugabyteDB Anywhere, you need to do the following:
 
 - [Configure cloud permissions](./cloud-permissions/)
@@ -34,7 +38,7 @@ To prepare your infrastructure for YugabyteDB Anywhere, you need to do the follo
   - Minimum hardware requirements for architecture, CPU, and disk
   - Minimum software requirements, including Linux OS and additional software and utilities
 
-- Prepare servers for database nodes
+- [Prepare servers for database nodes](./server-nodes/)
 
   The nodes that YugabyteDB Anywhere deploys for use in a YugabyteDB database cluster need to be provisioned for use with YugabyteDB. This includes the following:
 

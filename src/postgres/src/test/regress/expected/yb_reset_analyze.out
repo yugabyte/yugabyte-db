@@ -12,67 +12,69 @@ CREATE USER yb_user2;
 CREATE USER yb_user3;
 -- Create a database
 CREATE DATABASE reset_analyze_test OWNER = yb_user1;
+ALTER DATABASE reset_analyze_test SET yb_enable_optimizer_statistics=ON;
+ALTER DATABASE reset_analyze_test SET yb_enable_base_scans_cost_model=ON;
 -- Create tables owned by each user
 \c reset_analyze_test yb_user1
 CREATE SEQUENCE seq_u1;
 CREATE TABLE table_u1 (id int, c1 int, c2 int);
 INSERT INTO table_u1
     SELECT nextval('seq_u1'), i % 4, i / 2 FROM generate_series(1, 10) i;
-CREATE INDEX table_u1_c2_idx on table_u1 (c2, c1);
+CREATE INDEX NONCONCURRENTLY table_u1_c2_idx on table_u1 (c2, c1);
 CREATE TABLE partitioned_u1 (id int, c1 int, c2 int) PARTITION BY RANGE (c2);
 CREATE TABLE part1_u1 PARTITION OF partitioned_u1 FOR VALUES FROM (minvalue) TO (5);
 CREATE TABLE part2_u1 PARTITION OF partitioned_u1 FOR VALUES FROM (5) TO (maxvalue);
-CREATE INDEX part_u1_c2_c1_idx ON partitioned_u1 (c2, c1);
+CREATE INDEX NONCONCURRENTLY part_u1_c2_c1_idx ON partitioned_u1 (c2, c1);
 INSERT INTO partitioned_u1 SELECT * FROM table_u1;
 CREATE MATERIALIZED VIEW mv_u1 AS SELECT t1.c1, t2.c2 FROM table_u1 t1 JOIN table_u1 t2 ON t1.id = t2.c1;
-CREATE INDEX mv_u1_c1 ON mv_u1 (c1);
+CREATE INDEX NONCONCURRENTLY mv_u1_c1 ON mv_u1 (c1);
 CREATE STATISTICS sta_table_u1 ON c2, c1 FROM table_u1;
 \c - yb_user2
 CREATE SEQUENCE seq_u2;
 CREATE TABLE table_u2 (id int, c1 int, c2 int);
 INSERT INTO table_u2
     SELECT nextval('seq_u2'), i % 4, i / 2 FROM generate_series(1, 10) i;
-CREATE INDEX table_u2_c2_idx on table_u2 (c2, c1);
+CREATE INDEX NONCONCURRENTLY table_u2_c2_idx on table_u2 (c2, c1);
 CREATE TABLE partitioned_u2 (id int, c1 int, c2 int) PARTITION BY RANGE (c2);
 CREATE TABLE part1_u2 PARTITION OF partitioned_u2 FOR VALUES FROM (minvalue) TO (5);
 CREATE TABLE part2_u2 PARTITION OF partitioned_u2 FOR VALUES FROM (5) TO (maxvalue);
-CREATE INDEX part_u2_c2_c1_idx ON partitioned_u2 (c2, c1);
+CREATE INDEX NONCONCURRENTLY part_u2_c2_c1_idx ON partitioned_u2 (c2, c1);
 INSERT INTO partitioned_u2 SELECT * FROM table_u2;
 CREATE MATERIALIZED VIEW mv_u2 AS SELECT t1.c1, t2.c2 FROM table_u2 t1 JOIN table_u2 t2 ON t1.id = t2.c1;
-CREATE INDEX mv_u2_c1 ON mv_u2 (c1);
+CREATE INDEX NONCONCURRENTLY mv_u2_c1 ON mv_u2 (c1);
 CREATE STATISTICS sta_table_u2 ON c1, c2 FROM table_u2;
 \c - yb_user3
 CREATE SEQUENCE seq_u3;
 CREATE TABLE table_u3 (id int, c1 int, c2 int);
 INSERT INTO table_u3
     SELECT nextval('seq_u3'), i % 4, i / 2 FROM generate_series(1, 10) i;
-CREATE INDEX table_u3_c2_idx on table_u3 (c2, c1);
+CREATE INDEX NONCONCURRENTLY table_u3_c2_idx on table_u3 (c2, c1);
 CREATE TABLE partitioned_u3 (id int, c1 int, c2 int) PARTITION BY RANGE (c2);
 CREATE TABLE part1_u3 PARTITION OF partitioned_u3 FOR VALUES FROM (minvalue) TO (5);
 CREATE TABLE part2_u3 PARTITION OF partitioned_u3 FOR VALUES FROM (5) TO (maxvalue);
-CREATE INDEX part_u3_c2_c1_idx ON partitioned_u3 (c2, c1);
+CREATE INDEX NONCONCURRENTLY part_u3_c2_c1_idx ON partitioned_u3 (c2, c1);
 INSERT INTO partitioned_u3 SELECT * FROM table_u3;
 CREATE MATERIALIZED VIEW mv_u3 AS SELECT t1.c1, t2.c2 FROM table_u3 t1 JOIN table_u3 t2 ON t1.id = t2.c1;
-CREATE INDEX mv_u3_c1 ON mv_u3 (c1);
+CREATE INDEX NONCONCURRENTLY mv_u3_c1 ON mv_u3 (c1);
 CREATE STATISTICS sta_table_u3 ON c1, c2 FROM table_u3;
 \c - yb_su
 CREATE SEQUENCE seq_su;
 CREATE TABLE table_su (id int, c1 int, c2 int);
 INSERT INTO table_su
     SELECT nextval('seq_su'), i % 4, i / 2 FROM generate_series(1, 10) i;
-CREATE INDEX table_su_c2_idx on table_su (c2, c1);
+CREATE INDEX NONCONCURRENTLY table_su_c2_idx on table_su (c2, c1);
 CREATE TABLE partitioned_su (id int, c1 int, c2 int) PARTITION BY RANGE (c2);
 CREATE TABLE part1_su PARTITION OF partitioned_su FOR VALUES FROM (minvalue) TO (5);
 CREATE TABLE part2_su PARTITION OF partitioned_su FOR VALUES FROM (5) TO (maxvalue);
-CREATE INDEX part_su_c2_c1_idx ON partitioned_su (c2, c1);
+CREATE INDEX NONCONCURRENTLY part_su_c2_c1_idx ON partitioned_su (c2, c1);
 INSERT INTO partitioned_su SELECT * FROM table_su;
 CREATE MATERIALIZED VIEW mv_su AS SELECT t1.c1, t2.c2 FROM table_su t1 JOIN table_su t2 ON t1.id = t2.c1;
-CREATE INDEX mv_su_c1 ON mv_su (c1);
+CREATE INDEX NONCONCURRENTLY mv_su_c1 ON mv_su (c1);
 CREATE STATISTICS sta_table_su ON c2, c1 FROM table_su;
 -- Create views and procedures for verifications
 SET client_min_messages = warning;
 CREATE OR REPLACE VIEW all_stats AS
-    SELECT rolname AS owner, nspname AS schemaname, relname,
+    SELECT c.oid AS id, rolname AS owner, nspname AS schemaname, relname,
            relkind AS kind, relisshared AS shared, reltuples,
            ncolstats, xn_distinct, xdependencies
     FROM pg_class c
@@ -99,7 +101,10 @@ CREATE OR REPLACE VIEW all_stats AS
          ) AS xstats ON stxrelid = attrelid;
 GRANT SELECT ON all_stats TO PUBLIC;
 DROP TABLE IF EXISTS x_stats;
-CREATE TABLE x_stats AS SELECT * FROM all_stats LIMIT 0;
+CREATE TABLE x_stats(id oid, owner name, schemaname name, relname name,
+    kind "char", shared boolean, reltuples real, ncolstats bigint,
+    xn_distinct text, xdependencies text, PRIMARY KEY (id));
+INSERT INTO x_stats SELECT * FROM all_stats;
 CREATE OR REPLACE PROCEDURE record_stats() AS
 $$
 BEGIN
@@ -109,19 +114,23 @@ END
 $$
 LANGUAGE plpgsql
 SECURITY DEFINER;
-CREATE OR REPLACE VIEW diff_stats(d, owner, schemaname, relname,
-    k, s, reltuples, ncolstats, xndv, xdep) AS
-(
-    SELECT '-' AS d, t.* FROM x_stats AS t
-    EXCEPT ALL
-    SELECT '-' AS d, t.* FROM all_stats AS t
-)
-UNION ALL
-(
-    SELECT '+' AS d, t.* FROM all_stats AS t
-    EXCEPT ALL
-    SELECT '+' AS d, t.* FROM x_stats AS t
-)
+CREATE OR REPLACE VIEW diff_stats AS
+    SELECT
+        CASE WHEN t.id IS NULL THEN '-' WHEN t0.id IS NULL THEN '+' END AS d,
+        coalesce(t0.owner, t.owner) AS owner,
+        coalesce(t0.schemaname, t.schemaname) AS schemaname,
+        coalesce(t0.relname, t.relname) AS relname,
+        coalesce(t0.kind, t.kind) AS k,
+        coalesce(t0.shared, t.shared) AS s,
+        coalesce(t0.reltuples, t.reltuples) AS reltuples,
+        coalesce(t0.ncolstats, t.ncolstats) AS ncolstats,
+        coalesce(t0.xn_distinct, t.xn_distinct) AS xndv,
+        coalesce(t0.xdependencies, t.xdependencies) AS xdep
+    FROM x_stats AS t0 FULL JOIN all_stats AS t
+        ON t0.id = t.id
+            AND t0.reltuples = t.reltuples
+            AND t0.ncolstats = t.ncolstats
+    WHERE t.id IS NULL OR t0.id IS NULL
 ORDER BY 2, 3, 4, 5, 1 DESC LIMIT ALL;
 GRANT SELECT ON diff_stats TO PUBLIC;
 -- Superuser
@@ -577,7 +586,7 @@ SELECT * FROM diff_stats;
 
 -- Clean up
 \c yugabyte yugabyte
-DROP DATABASE reset_analyze_test;
+DROP DATABASE reset_analyze_test WITH (FORCE);
 DROP USER yb_su;
 DROP USER yb_user1;
 DROP USER yb_user2;

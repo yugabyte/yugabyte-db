@@ -25,11 +25,12 @@
 
 namespace yb::vectorindex {
 
-using unum::usearch::metric_punned_t;
-using unum::usearch::metric_kind_t;
-using unum::usearch::scalar_kind_t;
-using unum::usearch::index_dense_gt;
 using unum::usearch::index_dense_config_t;
+using unum::usearch::index_dense_gt;
+using unum::usearch::metric_kind_t;
+using unum::usearch::metric_punned_t;
+using unum::usearch::output_file_t;
+using unum::usearch::scalar_kind_t;
 
 index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   index_dense_config_t config;
@@ -40,14 +41,16 @@ index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   return config;
 }
 
-metric_kind_t MetricKindFromDistanceType(VectorDistanceType distance_type) {
-  switch (distance_type) {
-    case VectorDistanceType::kL2Squared:
+metric_kind_t MetricKindFromDistanceType(DistanceKind distance_kind) {
+  switch (distance_kind) {
+    case DistanceKind::kL2Squared:
       return metric_kind_t::l2sq_k;
-    case VectorDistanceType::kCosine:
+    case DistanceKind::kInnerProduct:
+      return metric_kind_t::ip_k;
+    case DistanceKind::kCosine:
       return metric_kind_t::cos_k;
   }
-  FATAL_INVALID_ENUM_VALUE(VectorDistanceType, distance_type);
+  FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
 }
 
 scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
@@ -62,90 +65,89 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
   FATAL_INVALID_ENUM_VALUE(CoordinateKind, coordinate_kind);
 }
 
-template<IndexableVectorType Vector>
-class UsearchIndex<Vector>::Impl {
+namespace {
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
-  explicit Impl(const HNSWOptions& options)
+  explicit UsearchIndex(const HNSWOptions& options)
       : dimensions_(options.dimensions),
-        distance_type_(options.distance_type),
+        distance_kind_(options.distance_kind),
         metric_(dimensions_,
-                MetricKindFromDistanceType(distance_type_),
-                ConvertCoordinateKind(
-                    CoordinateTypeTraits<typename Vector::value_type>::Kind())),
+                MetricKindFromDistanceType(distance_kind_),
+                ConvertCoordinateKind(CoordinateTypeTraits<typename Vector::value_type>::kKind)),
         index_(decltype(index_)::make(
             metric_,
             CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
   }
 
-  void Reserve(size_t num_vectors) {
+  Status Reserve(size_t num_vectors) override {
     index_.reserve(num_vectors);
+    return Status::OK();
   }
 
-  Status Insert(VertexId vertex_id, const Vector& v) {
+  Status Insert(VertexId vertex_id, const Vector& v) override {
     if (!index_.add(vertex_id, v.data())) {
       return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
     }
     return Status::OK();
   }
 
-  std::vector<VertexWithDistance> Search(const Vector& query_vector, size_t max_num_results) {
+  Status SaveToFile(const std::string& file_path) const override {
+    if (!index_.save(output_file_t(file_path.c_str()))) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", file_path);
+    }
+    return Status::OK();
+  }
+
+
+  Status AttachToFile(const std::string& input_path) override {
+    auto result = decltype(index_)::make(input_path.c_str(), /* view= */ true);
+    if (result) {
+      index_ = std::move(result.index);
+      return Status::OK();
+    }
+    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", input_path);
+  }
+
+
+  std::vector<VertexWithDistance<DistanceResult>> Search(
+      const Vector& query_vector, size_t max_num_results) const override {
     auto usearch_results = index_.search(query_vector.data(), max_num_results);
-    std::vector<VertexWithDistance> result_vec;
+    std::vector<VertexWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
     for (size_t i = 0; i < usearch_results.size(); ++i) {
       auto match = usearch_results[i];
-      result_vec.push_back(VertexWithDistance(match.member.key, match.distance));
+      result_vec.push_back(VertexWithDistance<DistanceResult>(match.member.key, match.distance));
     }
     return result_vec;
   }
 
-  Vector GetVector(VertexId vertex_id) const {
+  Result<Vector> GetVector(VertexId vertex_id) const override {
     Vector result;
     result.resize(dimensions_);
     if (index_.get(vertex_id, result.data())) {
       return result;
     }
-    return {};
+    return Vector();
   }
 
  private:
   size_t dimensions_;
-  VectorDistanceType distance_type_;
+  DistanceKind distance_kind_;
   metric_punned_t metric_;
   index_dense_gt<VertexId> index_;
 };
 
-template<IndexableVectorType Vector>
-UsearchIndex<Vector>::UsearchIndex(const HNSWOptions& options)
-    : impl_(std::make_unique<UsearchIndex::Impl>(options)) {
+}  // namespace
+
+template <class Vector, class DistanceResult>
+VectorIndexIfPtr<Vector, DistanceResult> UsearchIndexFactory<Vector, DistanceResult>::Create(
+    const HNSWOptions& options) {
+  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(options);
 }
 
-template<IndexableVectorType Vector>
-UsearchIndex<Vector>::~UsearchIndex() = default;
-
-template<IndexableVectorType Vector>
-void UsearchIndex<Vector>::Reserve(size_t num_vectors) {
-  impl_->Reserve(num_vectors);
-}
-
-template<IndexableVectorType Vector>
-Status UsearchIndex<Vector>::Insert(VertexId vertex_id, const Vector& v) {
-  return impl_->Insert(vertex_id, v);
-}
-
-template<IndexableVectorType Vector>
-std::vector<VertexWithDistance> UsearchIndex<Vector>::Search(
-    const Vector& query_vector, size_t max_num_results) const {
-  return impl_->Search(query_vector, max_num_results);
-}
-
-template<IndexableVectorType Vector>
-Vector UsearchIndex<Vector>::GetVector(VertexId vertex_id) const {
-  return impl_->GetVector(vertex_id);
-}
-
-BOOST_PP_SEQ_FOR_EACH(
-    YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_OF, UsearchIndex, YB_USEARCH_SUPPORTED_COORDINATE_TYPES)
+template class UsearchIndexFactory<FloatVector, float>;
 
 }  // namespace yb::vectorindex

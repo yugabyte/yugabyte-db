@@ -67,6 +67,7 @@ DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_int32(log_min_seconds_to_retain);
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -189,6 +190,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 900;
 
     CreateSingleTablet();
   }

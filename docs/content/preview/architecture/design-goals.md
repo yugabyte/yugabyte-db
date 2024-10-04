@@ -17,15 +17,15 @@ type: docs
 
 ## Scalability
 
-YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link "../../explore/linear-scalability/">}}
+YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link dest="../../explore/linear-scalability/">}}
 
 ## High Availability
 
-YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link "../../explore/fault-tolerance">}}
+YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link dest="../../explore/fault-tolerance">}}
 
 ## Fault Tolerance
 
-YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link "../../explore/fault-tolerance">}}
+YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link dest="../../explore/fault-tolerance">}}
 
 ## Consistency
 
@@ -47,7 +47,7 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
 
-- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation {{<badge/ea>}} using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation {{<tags/feature/ea>}} using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
 - The [YCQL API](../../api/ycql/) supports only Snapshot isolation (default) using the [BEGIN TRANSACTION](../../api/ycql/dml_transaction/) syntax.
 
 ## Partition Tolerance - CAP
@@ -66,7 +66,7 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../../explore/colocation">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link dest="../../explore/colocation">}}
 
 ## Security
 
@@ -78,13 +78,13 @@ YugabyteDB has been designed with operational simplicity in mind, providing feat
 
 ## Heterogeneous workload support
 
-Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](../../tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
+Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/preview/tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
 
 ## Transaction isolation levels
 
 Transaction isolation is foundational to handling concurrent transactions in databases. YugabyteDB supports three strict transaction isolation levels in [YSQL](../../api/ysql/).
 
-- [Read Committed](../transactions/read-committed/) {{<badge/ea>}}, which maps to the SQL isolation level of the same name
+- [Read Committed](../transactions/read-committed/) {{<tags/feature/ea>}}, which maps to the SQL isolation level of the same name
 - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), which maps to the SQL isolation level of the same name
 - [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation), which maps to the SQL Repeatable Read isolation level
 
@@ -113,7 +113,7 @@ In addition:
 
 ## Cassandra compatibility
 
-[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../query-layer">}}
+[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link dest="../query-layer">}}
 
 ## Performance
 
@@ -143,7 +143,7 @@ YugabyteDB has been designed with several cloud-native principles in mind.
 
 ## Kubernetes-ready
 
-YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link "../../deploy/kubernetes/">}}
+YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link dest="../../deploy/kubernetes/">}}
 
 ## Open source
 

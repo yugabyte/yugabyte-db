@@ -246,6 +246,10 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
+  if (index_info && index_info->is_vector_idx()) {
+    doc_read_context->SetVectorIdxOptions(index_info->get_vector_idx_options());
+  }
+
   if (!index_info || !index_info->is_unique()) {
     return;
   }
@@ -557,25 +561,9 @@ Result<TableInfo*> KvStoreInfo::FindMatchingTable(
         snapshot_table.schema().colocated_table_id().colocation_id());
     return nullptr;
   }
-  // Sanity check names and schemas. Because colocation ids are chosen at restore time for colocated
-  // partitioned tables in backups made prior to 29681f579760703663cdcbd2abbfe4c9eb6e533c yb-master
-  // may have randomly chosen a colocation id for a partitioned table that matches the colocation id
-  // of a partitioned table in the snapshot with an incompatible schema.
-  auto& local_table = table_it->second;
-  if (local_table->table_name != snapshot_table.table_name() ||
-      (snapshot_table.schema().has_pgschema_name() && local_table->schema().has_pgschema_name() &&
-       snapshot_table.schema().pgschema_name() != local_table->schema().SchemaName())) {
-    LOG(WARNING) << Format(
-        "Skipping schema merging for snapshot table $0.$1 due to mismatch with local "
-        "table names, local table is $2.$3",
-        snapshot_table.schema().pgschema_name(),
-        snapshot_table.table_name(),
-        local_table->schema().SchemaName(),
-        local_table->table_name);
-    return nullptr;
-  }
 
   // Sanity check: the same table should have same TableInfo in both tables and colocation_to_table.
+  auto& local_table = table_it->second;
   auto tables_it = tables.find(local_table->table_id);
   RSTATUS_DCHECK(
       tables_it != tables.end(), NotFound,
@@ -2060,6 +2048,10 @@ void RaftGroupMetadata::GetTableIdToSchemaVersionMap(
   }
 }
 
+SchemaVersion RaftGroupMetadata::primary_table_schema_version() const {
+  return schema_version("");
+}
+
 SchemaVersion RaftGroupMetadata::schema_version(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id));
@@ -2078,8 +2070,8 @@ Result<SchemaVersion> RaftGroupMetadata::schema_version(ColocationId colocation_
 Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   if (cotable_id.IsNil()) {
-    // Return the parent table schema version
-    return schema_version();
+    // Return the parent table schema version.
+    return schema_version("");
   }
 
   auto res = GetTableInfo(cotable_id.ToHexString());

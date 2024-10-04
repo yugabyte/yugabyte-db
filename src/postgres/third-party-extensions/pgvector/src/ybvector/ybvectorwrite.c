@@ -412,6 +412,13 @@ ybvectordelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
 				  false /* isinsert */);
 }
 
+void
+ybvectorinupdate(Relation index, Datum *values, bool *isnull, Datum oldYbctid,
+				 Datum newYbctid, Relation heap, struct IndexInfo *indexInfo)
+{
+	elog(ERROR, "Unexpected in-place update of ybvector index requested");
+}
+
 IndexBuildResult *
 ybvectorbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
 			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)

@@ -28,7 +28,7 @@ const (
 	activeHeader          = "Active"
 	globalYbImageHeader   = "Global YB Image"
 	archHeader            = "Architecture"
-	useIMDSv2Header       = "Use IMDS V2"
+	useIMDSv2Header       = "Use IMDS V2 (AWS)"
 	regionOverridesHeader = "Region Overrides"
 	imageBundleTypeHeader = "Image Bundle Type"
 	versionHeader         = "Version"
@@ -44,7 +44,7 @@ type ImageBundleContext struct {
 // NewImageBundleFormat for formatting output
 func NewImageBundleFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultImageBundle
 		return formatter.Format(format)
 	default: // custom format or json or pretty

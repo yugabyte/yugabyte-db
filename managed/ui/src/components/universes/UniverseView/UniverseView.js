@@ -279,10 +279,6 @@ export const UniverseView = (props) => {
   };
 
   const formatUniverseActions = (_, row) => {
-    const isEphemeralAwsStorage =
-      row.universeDetails.nodeDetailsSet.find?.((node) => {
-        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
-      }) !== undefined;
     const universePaused = row.universeDetails.universePaused;
     return (
       <Dropdown id="table-actions-dropdown" pullRight>
@@ -291,7 +287,6 @@ export const UniverseView = (props) => {
         </Dropdown.Toggle>
         <Dropdown.Menu>
           {isPausableUniverse(row) &&
-            !isEphemeralAwsStorage &&
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
               <RbacValidator
                 isControl

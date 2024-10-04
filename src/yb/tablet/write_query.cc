@@ -197,7 +197,7 @@ WriteQuery::WriteQuery(
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      start_time_(CoarseMonoClock::Now()),
+      start_time_(MonoTime::Now()),
       execute_mode_(ExecuteMode::kSimple) {
   IncrementActiveWriteQueryObjectsBy(1);
 }
@@ -308,7 +308,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+          make_unsigned(MonoDelta(MonoTime::Now() - start_time_).ToMicroseconds());
+
       metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
@@ -319,7 +320,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     if (!status.IsAborted()) {
       auto schema_version = 0;
       if (sv.table_id().empty()) {
-        schema_version = metadata.schema_version();
+        schema_version = metadata.primary_table_schema_version();
       } else {
         auto uuid = Uuid::FromSlice(sv.table_id());
         CHECK(uuid.ok());
@@ -450,7 +451,7 @@ Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   auto& metadata = *tablet->metadata();
   VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
-                    << metadata.schema_version();
+                    << metadata.primary_table_schema_version();
   // Check if the schema version set in client_request_->ql_write_batch() is compatible with
   // the current schema pointed to by the tablet's metadata.
   if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
@@ -462,7 +463,7 @@ Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
       IllegalState, "Unexpected value encountered for write_batch().table_schema_version_size()");
   auto* write_batch = request().mutable_write_batch();
   const auto& schema_version = write_batch->table_schema_version().front().schema_version();
-  if (schema_version == metadata.schema_version()) {
+  if (schema_version == metadata.primary_table_schema_version()) {
     return true;
   }
   // It could still happen that the schema version set in request() is one behind the current
@@ -473,11 +474,11 @@ Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
   // of requests in ql_write_batch with that of the current metadata and doesn't check the
   // schema compatibility for operations in 'request().write_batch()'.
   SCHECK_EQ(
-      schema_version + 1, metadata.schema_version(),
+      schema_version + 1, metadata.primary_table_schema_version(),
       IllegalState, "Expected current schema version to be ahead by at most 1");
   write_batch->mutable_table_schema_version()->Clear();
   docdb::AddTableSchemaVersion(
-      Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
+      Uuid::Nil(), metadata.primary_table_schema_version(), request().mutable_write_batch());
   RETURN_NOT_OK(
       CqlPopulateDocOps(tablet, client_request_, &doc_ops_, response_, true /* reset_ops */));
   return true;
@@ -489,14 +490,14 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
 
   auto& metadata = *tablet->metadata();
   VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
-                    << metadata.schema_version();
+                    << metadata.primary_table_schema_version();
 
   if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
     return false;
   }
 
   docdb::AddTableSchemaVersion(
-      Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
+      Uuid::Nil(), metadata.primary_table_schema_version(), request().mutable_write_batch());
   RETURN_NOT_OK(CqlPopulateDocOps(tablet, client_request_, &doc_ops_, response_));
   return true;
 }

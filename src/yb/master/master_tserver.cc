@@ -36,6 +36,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 
 namespace yb {
@@ -204,6 +206,10 @@ void MasterTabletServer::ClearAllMetaCachesOnServer() {
   client()->ClearAllMetaCachesOnServer();
 }
 
+Status MasterTabletServer::ClearMetacache(const std::string& namespace_id) {
+  return client()->ClearMetacache(namespace_id);
+}
+
 Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const {
   LOG(FATAL) << "Unexpected call of YCQLStatementStats()";
@@ -213,6 +219,17 @@ Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStat
 Result<std::vector<tablet::TabletStatusPB>> MasterTabletServer::GetLocalTabletsMetadata() const {
   LOG(DFATAL) << "Unexpected call of GetLocalTabletsMetadata()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetLocalTabletsMetadata()");
+}
+
+Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const {
+  LOG(DFATAL) << "Unexpected call of GetMetrics()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetMetrics()");
+}
+
+Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
+    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+  LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
 
 } // namespace master

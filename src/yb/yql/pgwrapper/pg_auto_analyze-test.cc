@@ -21,6 +21,8 @@
 #include "yb/client/session.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 
@@ -118,10 +120,9 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
         FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 50 * kTimeMultiplier;
     std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
 
-    std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;
     RETURN_NOT_OK(WaitFor([this, &table_mutations_in_cql_table_before,
-                           &table_mutations_in_cql_table_after,
                            &expected_table_mutations]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;
       GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_after);
       LOG(INFO) << "table_mutations_in_cql_table_before: "
                 << yb::ToString(table_mutations_in_cql_table_before)
@@ -519,6 +520,67 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeDatabaseRenameAndDelete) {
   ASSERT_OK(conn3.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(2, 20) AS s",
                                 table_name));
   ASSERT_OK(WaitForTableReltuples(conn3, table_name, 20));
+}
+
+// For DDLs inserting/updating/deleting entries of catalog tables, auto analyze service
+// should track mutations count of them.
+TEST_F(PgAutoAnalyzeTest, CheckDDLMutationsCount) {
+  // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+  auto database_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = 'yugabyte'"));
+  auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute("CREATE TABLE my_tbl (k INT)"));
+      },
+      {{pg_class_table_id, 1}}));
+}
+
+// Auto analyze service should skip increasing mutations count for indexes.
+TEST_F(PgAutoAnalyzeTest, CheckIndexMutationsCount) {
+  // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+  std::string table_name = "my_tbl";
+  std::string index_name = "my_idx";
+  std::string unique_index_name = "my_unique_index";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, r1 INT, v1 INT, v2 INT, PRIMARY KEY(h1, r1))", table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v1)", index_name, table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (v2)", unique_index_name, table_name));
+
+  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  auto indexes = ASSERT_RESULT(client_->ListTables(/* filter */ index_name));
+  ASSERT_EQ(1, indexes.size());
+  const auto index_id = indexes.front().table_id();
+
+  auto unique_indexes = ASSERT_RESULT(client_->ListTables(/* filter */ unique_index_name));
+  ASSERT_EQ(1, unique_indexes.size());
+  const auto unique_index_id = unique_indexes.front().table_id();
+
+  // Perform a sequence of DMLs on the base table.
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, table_name] {
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0 SELECT s, s, s, s FROM generate_series(1, 100) AS s", table_name));
+        ASSERT_OK(conn.ExecuteFormat(
+            "UPDATE $0 SET v1=v1+5 WHERE h1 = 11", table_name));
+        ASSERT_OK(conn.ExecuteFormat(
+            "DELETE FROM $0 WHERE h1 = 31", table_name));
+      },
+      {{table_id, 102}}));
+
+  // Verify no mutations counts for index and unique index are collected.
+  std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+  GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+  ASSERT_TRUE(!table_mutations_in_cql_table.contains(index_id));
+  ASSERT_TRUE(!table_mutations_in_cql_table.contains(unique_index_id));
 }
 
 } // namespace pgwrapper

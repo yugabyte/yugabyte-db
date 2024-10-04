@@ -3,7 +3,8 @@ title: Read Committed isolation level
 headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
-techPreview: /preview/releases/versioning/#feature-availability
+tags:
+  feature: tech-preview
 menu:
   v2.14:
     identifier: architecture-read-committed

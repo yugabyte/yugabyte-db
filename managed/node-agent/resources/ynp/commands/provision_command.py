@@ -76,16 +76,16 @@ class ProvisionCommand(Command):
     def add_results_helper(self, file):
         file.write("""
             # Initialize the JSON results array
-            json_results='{"results":['
+            json_results='{\n"results":[\n'
 
             add_result() {
                 local check="$1"
                 local result="$2"
                 local message="$3"
-                if [ "${#json_results}" -gt 12 ]; then
-                    json_results+=','
+                if [ "${#json_results}" -gt 20 ]; then
+                    json_results+=',\n'
                 fi
-                json_results+='{"check":"'$check'","result":"'$result'","message":"'$message'"}'
+                json_results+='    {\n      "check": "'$check'",\n      "result": "'$result'",\n      "message": "'$message'"\n    }'
             }
         """)
 
@@ -93,10 +93,10 @@ class ProvisionCommand(Command):
         file.write("""
             print_results() {
                 any_fail=0
-                if [[ $json_results == *'"result":"FAIL"'* ]]; then
+                if [[ $json_results == *'"result": "FAIL"'* ]]; then
                     any_fail=1
                 fi
-                json_results+=']}'
+                json_results+='\n]}'
 
                 # Output the JSON
                 echo "$json_results"

@@ -178,6 +178,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
+  protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
+      "Skipping this test with Connection Manager enabled. The connections may not be in the " +
+        "expected state due to the way physical connections are attached and detached from " +
+        "logical connections, where certain setting changes should only exist in new connections.";
+
+  protected static final String CONFIGURABLE_DEBUG_LOGS_NEEDED =
+      "(DB-12742) Skipping this test with Connection Manager enabled. The test requires the " +
+        "ability to configure debug logs for connection manager to be at the same levels as " +
+        "tserver log levels.";
+
+  protected static final String LONG_PASSWORD_SUPPORT_NEEDED =
+      "(DB-10387) This test leads to certain I/O errors due to the usage of long passwords when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled.";
+
+  protected static final String RECREATE_USER_SUPPORT_NEEDED =
+      "(DB-10760) This test needs stricter statistic updates for when roles are recreated when " +
+        "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
+        "until the relevant code is pushed to master.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,
@@ -607,7 +626,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     Map<String, String> tsFlagMap = getTServerFlags();
     tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
-      warmupMode.toString().toLowerCase());
+      wm.toString().toLowerCase());
     warmupMode = wm;
     Map<String, String> masterFlagMap = getMasterFlags();
     restartClusterWithFlags(masterFlagMap, tsFlagMap);

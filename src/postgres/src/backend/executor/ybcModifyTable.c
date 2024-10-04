@@ -491,6 +491,30 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 			transaction_setting);
 }
 
+bool
+YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
+{
+	/*
+	 * TODO(jason): figure out how to enable triggers.
+	 * TODO(jason): disable (or handle) NULLS NOT DISTINCT indexes once that is
+	 * officially allowed.
+	 */
+	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
+			resultRelInfo->ri_BatchSize > 1 &&
+			!resultRelInfo->ri_projectReturning &&
+			!(resultRelInfo->ri_TrigDesc &&
+			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_delete_instead_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_instead_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_instead_row)));
+}
+
 static YBCPgYBTupleIdDescriptor*
 YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 {
@@ -1082,6 +1106,32 @@ bool YBCExecuteUpdate(Relation rel,
 	return rows_affected_count > 0;
 }
 
+void YBCExecuteUpdateIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum oldYbctid,
+						   Datum newYbctid,
+						   yb_assign_for_write_function callback)
+{
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	YBCPgStatement update_stmt = NULL;
+
+	/* Create the UPDATE request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewUpdate(dboid,
+								  YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index),
+								  &update_stmt,
+								  YB_TRANSACTIONAL));
+
+	callback(update_stmt, index, values, isnull,
+			 RelationGetNumberOfAttributes(index),
+			 oldYbctid, newYbctid);
+
+	YBCApplyWriteStmt(update_stmt, index);
+}
+
 bool
 YBCExecuteUpdateLoginAttempts(Oid roleid,
 							  int failed_attempts,
@@ -1283,10 +1333,45 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	YBCApplyWriteStmt(update_stmt, rel);
 }
 
+/*
+ * This checks if a YB relation has any separate index DocDB tables.
+ * Covered/primary indexes do not have separate DocDB tables.
+ */
 bool
 YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 {
-	return resultRelInfo->ri_NumIndices > 1 ||
-			(resultRelInfo->ri_NumIndices == 1 &&
-			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary);
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		if (YBIsCoveredByMainTable(index))
+			continue;
+
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * This code is authored by upstream PG and moved from ExecInsertIndexTuples in
+ * order to be reused in various other places by YB.
+ */
+bool
+YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo, EState *estate)
+{
+	ExprState  *predicate;
+
+	/*
+	 * If predicate state not set up yet, create it (in the estate's
+	 * per-query context)
+	 */
+	predicate = indexInfo->ii_PredicateState;
+	if (predicate == NULL)
+	{
+		predicate = ExecPrepareQual(indexInfo->ii_Predicate, estate);
+		indexInfo->ii_PredicateState = predicate;
+	}
+
+	/* Skip this index-update if the predicate isn't satisfied */
+	return ExecQual(predicate, GetPerTupleExprContext(estate));
 }

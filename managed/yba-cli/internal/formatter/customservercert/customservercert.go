@@ -29,7 +29,7 @@ type EITContext struct {
 // NewEITFormat for formatting output
 func NewEITFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := EIT
 		return formatter.Format(format)
 	default: // custom format or json or pretty

@@ -138,6 +138,7 @@ public class XClusterScheduler {
   }
 
   private Set<String> getTableIdsToRemove(
+      XClusterConfig xClusterConfig,
       Set<String> tableIdsInReplication,
       Set<String> tableIdsInYbaXClusterConfig,
       Set<String> sourceUniverseTableIds,
@@ -153,14 +154,10 @@ public class XClusterScheduler {
               if (tableIdsInReplication.contains(tableId)) {
                 return false;
               }
-              // Exclude tables that are still present in the source universe.
-              if (sourceUniverseTableIds.contains(tableId)) {
-                return false;
-              }
               // Exclude tables that have no associated xClusterTableConfig or have a null
               // streamId.
               Optional<XClusterTableConfig> xClusterTableConfig =
-                  XClusterTableConfig.maybeGetByTableId(tableId);
+                  xClusterConfig.maybeGetTableById(tableId);
               if (xClusterTableConfig.isEmpty()
                   || xClusterTableConfig.get().getStreamId() == null) {
                 return false;
@@ -255,6 +252,7 @@ public class XClusterScheduler {
 
       Set<String> tableIdsToRemove =
           getTableIdsToRemove(
+              config,
               tableIdsInReplication,
               tableIdsInYbaXClusterConfig,
               sourceUniverseTableIds,

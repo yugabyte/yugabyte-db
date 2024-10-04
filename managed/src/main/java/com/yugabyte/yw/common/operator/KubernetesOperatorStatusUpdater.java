@@ -101,7 +101,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
         for (RestoreJob restoreJob :
             kubernetesClient.resources(RestoreJob.class).inNamespace(namespace).list().getItems()) {
-          if (restoreJob.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+          if (restoreJob.getStatus() != null
+              && restoreJob.getStatus().getTaskUUID().equals(taskUUID.toString())) {
             // Found our Restore.
             log.info("Found RestoreJob {} task {} ", restoreJob, taskUUID);
             RestoreJobStatus status = restoreJob.getStatus();
@@ -143,7 +144,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
             for (Backup backupCr :
                 kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
-              if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+              if (backupCr.getStatus() != null
+                  && backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
                 // Found our backup.
                 log.info("Found Backup {} task {} ", backupCr, taskUUID);
                 BackupStatus status = backupCr.getStatus();

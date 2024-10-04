@@ -2068,7 +2068,8 @@ static struct config_bool ConfigureNamesBool[] =
 					"Enable this with high caution. It was added to avoid disruption for users who were "
 					"already using advisory locks but seeing success messages without the lock really being "
 					"acquired. Such users should take the necessary steps to modify their application to "
-					"remove usage of advisory locks."),
+					"remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
+					"for details."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
@@ -2451,6 +2452,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_make_next_ddl_statement_nonincrementing", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "catalog version to increment. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonincrementing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("Disable prefetching in a PLPGSQL FOR loop over a query."),
 			NULL
@@ -2626,6 +2639,43 @@ static struct config_bool ConfigureNamesBool[] =
 		yb_enable_ash_check_hook, NULL, NULL
 	},
 
+	{
+		{"yb_update_optimization_infra", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables optimizations of YSQL UPDATE queries. This includes "
+						 "(but not limited to) skipping redundant secondary index updates "
+						 "and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_update_optimization_options.has_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_skip_redundant_update_ops", PGC_SIGHUP, QUERY_TUNING_OTHER,
+			gettext_noop("Enables the comparison of old and new values of columns specified in the "
+						 "SET clause of YSQL UPDATE queries to skip redundant secondary index " 
+						 "updates and redundant constraint checks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_update_optimization_options.is_enabled,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable preloading of foreign key information into the relation cache."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -2674,7 +2724,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_explicit_row_locking_batch_size,
-		1, 1, INT_MAX,
+		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
 	},
 	{
@@ -4021,6 +4071,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
+		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
+			gettext_noop("A value of 1 disables this feature."),
+			0
+		},
+		&yb_insert_on_conflict_read_batch_size,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_max_in_flight_ops", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum number of in-flight operations allowed from YSQL to tablet servers"),
 			NULL,
@@ -4111,7 +4173,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,
-		0, 0, INT_MAX,
+		50, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4158,12 +4220,12 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Size (in KiBs) of ASH circular buffer that stores the samples"),
-			NULL,
+			gettext_noop("If this is 0, the size will be calculated based on the number of cores"),
 			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
-		16 * 1024, 1, INT_MAX,
-		NULL, NULL, NULL
+		0, 0, INT_MAX,
+		yb_ash_circular_buffer_size_check_hook, NULL, NULL
 	},
 
 	{
@@ -5417,7 +5479,12 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&wal_level,
-		WAL_LEVEL_REPLICA, wal_level_options,
+		/*
+		 * YB NOTE: wal_level is not applicable to YB. So for user experience,
+		 * we set the default to logical, so that any logical replication
+		 * client doesn't throw any errors based on the value of the wal_level.
+		 */
+		WAL_LEVEL_LOGICAL, wal_level_options,
 		NULL, NULL, NULL
 	},
 
@@ -5619,6 +5686,7 @@ static const char *const map_old_guc_names[] = {
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
 };
 
 
@@ -11593,6 +11661,12 @@ read_gucstate_binary(char **srcptr, char *srcend, void *dest, Size size)
 
 	memcpy(dest, *srcptr, size);
 	*srcptr += size;
+}
+
+void YbSetParallelWorker()
+{
+	yb_is_parallel_worker = true;
+	elog(LOG, "yb_is_parallel_worker has been set to true");
 }
 
 /*

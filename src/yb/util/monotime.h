@@ -235,6 +235,8 @@ class MonoTime {
   // Set this time to the given value if it is lower than that or uninitialized.
   void MakeAtLeast(MonoTime rhs);
 
+  void MakeAtMost(MonoTime rhs);
+
   TimePoint ToSteadyTimePoint() const {
     return value_;
   }

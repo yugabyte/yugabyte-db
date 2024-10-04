@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 
 #include "yb/util/debug-util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -53,7 +54,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 0,
     "Size (in KiBs) of ASH circular buffer that stores the samples");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
@@ -252,7 +253,7 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
-      yql_endpoint_tserver_uuid, root_request_id, query_id, database_id,
+      top_level_node_id, root_request_id, query_id, database_id,
       rpc_request_id, client_host_port);
 }
 
@@ -330,9 +331,9 @@ void WaitStateInfo::set_client_host_port(const HostPort &host_port) {
   metadata_.set_client_host_port(host_port);
 }
 
-void WaitStateInfo::set_yql_endpoint_tserver_uuid(const Uuid &yql_endpoint_tserver_uuid) {
+void WaitStateInfo::set_top_level_node_id(const Uuid &top_level_node_id) {
   std::lock_guard lock(mutex_);
-  metadata_.yql_endpoint_tserver_uuid = yql_endpoint_tserver_uuid;
+  metadata_.top_level_node_id = top_level_node_id;
 }
 
 void WaitStateInfo::UpdateMetadata(const AshMetadata &meta) {
@@ -382,6 +383,25 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
     desc.emplace_back(code, GetWaitStateDescription(code));
   }
   return desc;
+}
+
+int WaitStateInfo::GetCircularBufferSizeInKiBs() {
+  int num_cpus = base::NumCPUs();
+  int bytes;
+  if (num_cpus <= 2) {
+    bytes = 32_MB;
+  } else if (num_cpus <= 4) {
+    bytes = 64_MB;
+  } else if (num_cpus <= 8) {
+    bytes = 128_MB;
+  } else if (num_cpus <= 16) {
+    bytes = 256_MB;
+  } else if (num_cpus <= 32) {
+    bytes = 512_MB;
+  } else {
+    bytes = 1024_MB;
+  }
+  return bytes / 1024;
 }
 
 //

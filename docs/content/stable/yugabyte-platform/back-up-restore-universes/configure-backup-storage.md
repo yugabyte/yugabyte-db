@@ -16,26 +16,6 @@ Before you can back up universes, you need to configure a storage location for y
 
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
-## Local storage
-
-If your YugabyteDB universe has one node, you can create a local directory on a T-Server to which to back up, as follows:
-
-1. Navigate to **Universes**, select your universe, and then select **Nodes**.
-
-2. Click **Connect**.
-
-3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
-
-    ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
-
-4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
-
-    ```sh
-    sudo mkdir /backup; sudo chown yugabyte /backup
-    ```
-
-If there is more than one node, you should consider using a network file system mounted on each server.
-
 ## Amazon S3
 
 You can configure Amazon S3 as your backup target, as follows:
@@ -46,7 +26,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
     ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
+3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
 4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
 
@@ -78,33 +58,17 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
-## Network File System
-
-You can configure Network File System (NFS) as your backup target, as follows:
-
-1. Navigate to **Integrations > Backup > Network File System**.
-
-2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
-
-    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
-
-3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
-
-4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
-
-5. Click **Save**.
-
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Navigate to **Integrations > Backup > Google Cloud Storage**.
 
-1. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
+1. Click **Create GCS Backup**.
 
     ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
 
-1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
 1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
 
@@ -141,15 +105,33 @@ By using Workload Identity, you avoid the need for manually managing service acc
 
 For instructions on setting up Workload Identity, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
 
-To enable GCP IAM when installing YBA, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
+To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
 
 To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides).
 
 To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
+## Network File System
+
+You can configure Network File System (NFS) as your backup target, as follows:
+
+1. Navigate to **Integrations > Backup > Network File System**.
+
+2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
+
+    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
+
+3. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
+
+5. Click **Save**.
+
 ## Azure Storage
 
-You can configure Azure as your backup target, as follows:
+You can configure Azure as your backup target.
+
+### Configure storage on Azure
 
 1. Create a storage account in Azure, as follows:
 
@@ -177,12 +159,38 @@ You can configure Azure as your backup target, as follows:
 
         ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
-1. On your YugabyteDB Anywhere instance, provide the container URL and SAS token for creating a backup, as follows:
+### Create an Azure storage configuration
 
-    - Navigate to **Integrations** > **Backup** > **Azure Storage**.
-    - Click **Create AZ Backup** to access the configuration form shown in the following illustration:
+In YugabyteDB Anywhere:
 
-        ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+1. Navigate to **Integrations > Backup > Azure Storage**.
 
-    - Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
-    - Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
+1. Click **Create AZ Backup**.
+
+    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter values for the **Container URL** and **SAS Token** fields.
+
+1. Click **Save**.
+
+## Local storage
+
+If your YugabyteDB universe has one node, you can create a local directory on a YB-TServer to which to back up, as follows:
+
+1. Navigate to **Universes**, select your universe, and then select **Nodes**.
+
+2. Click **Connect**.
+
+3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
+
+    ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
+
+4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
+
+    ```sh
+    sudo mkdir /backup; sudo chown yugabyte /backup
+    ```
+
+If there is more than one node, you should consider using a [network file system](#network-file-system) mounted on each server.

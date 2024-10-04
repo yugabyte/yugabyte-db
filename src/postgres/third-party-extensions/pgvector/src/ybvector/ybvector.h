@@ -29,6 +29,7 @@
 
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "src/vector.h"
 
 #define YB_VECTOR_DIST_PROCNUM 1
 
@@ -82,6 +83,9 @@ extern bool ybvectorinsert(Relation rel, Datum *values, bool *isnull,
 extern void ybvectordelete(Relation rel, Datum *values, bool *isnull,
 						Datum ybctid, Relation heapRel,
 						struct IndexInfo *indexInfo);
+extern void ybvectorinupdate(Relation index, Datum *values, bool *isnull,
+						  Datum oldYbctid, Datum newYbctid, Relation heap,
+						  struct IndexInfo *indexInfo);
 extern IndexBuildResult *ybvectorbackfill(Relation heap, Relation index,
 									   struct IndexInfo *indexInfo,
 									   struct YbBackfillInfo *bfinfo,

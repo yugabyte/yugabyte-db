@@ -113,9 +113,9 @@ TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
 DEFINE_RUNTIME_bool(
     split_respects_tablet_replica_limits, false,
-    "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
-    "system will no longer split tablets when the limit machinery determines the cluster cannot "
-    "support any more tablet replicas.");
+    "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
+    "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
+    "the limit machinery determines the universe cannot support any more tablet replicas.");
 TAG_FLAG(split_respects_tablet_replica_limits, advanced);
 
 METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
@@ -233,6 +233,14 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     if (l->started_deleting()) {
       return STATUS_FORMAT(
           NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table->id());
+    }
+
+    if (l->is_index() && l->pb.index_info().has_vector_idx_options() &&
+        l->pb.index_info().vector_idx_options().idx_type() == PgVectorIndexType::DUMMY) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Tablet splitting is not supported for dummy vector index tables, table_id: $0",
+          table->id());
     }
   }
 

@@ -31,9 +31,9 @@ For higher availability, you can install additional YugabyteDB Anywhere instance
 
 </ul>
 
-Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YBA.
+Use YBA Installer to install YugabyteDB Anywhere on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YugabyteDB Anywhere.
 
-You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
+You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
 -> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
@@ -48,6 +48,10 @@ After the installation is complete, you can use YBA Installer to manage your ins
 ## Before you begin
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
+
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
 
 ## Quick start
 

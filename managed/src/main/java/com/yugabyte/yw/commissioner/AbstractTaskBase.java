@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -16,12 +17,14 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -29,6 +32,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -66,7 +70,7 @@ public abstract class AbstractTaskBase implements ITask {
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
 
-  protected final Application application;
+  private final Application application;
   protected final play.Environment environment;
   protected final Config config;
   protected final ConfigHelper configHelper;
@@ -89,6 +93,8 @@ public abstract class AbstractTaskBase implements ITask {
   protected final ImageBundleUtil imageBundleUtil;
   protected final ReleaseManager releaseManager;
   protected final YsqlQueryExecutor ysqlQueryExecutor;
+  protected final GFlagsValidation gFlagsValidation;
+  protected final NodeUniverseManager nodeUniverseManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -115,6 +121,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
     this.releaseManager = baseTaskDependencies.getReleaseManager();
     this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
+    this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
+    this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
   }
 
   protected ITaskParams taskParams() {
@@ -146,16 +154,19 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public synchronized void terminate() {
-    if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(
-          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-      executor = null;
+    if (getUserTaskUUID().equals(getTaskUUID())) {
+      if (executor != null && !executor.isShutdown()) {
+        log.info("Shutting down executor with name: {}", getExecutorPoolName());
+        MoreExecutors.shutdownAndAwaitTermination(
+            executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+        executor = null;
+      }
     }
   }
 
   protected synchronized ExecutorService getOrCreateExecutorService() {
     if (executor == null) {
-      log.info("Executor name: {}", getExecutorPoolName());
+      log.info("Creating executor with name: {}", getExecutorPoolName());
       ThreadFactory namedThreadFactory =
           new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
       executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);
@@ -298,39 +309,41 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   /**
-   * This function is used to retry a function with a delay between retries. The delay is
-   * modifiable. The function will be retried on exceptions until the total delay has passed or the
-   * function returns.
+   * This function retries a function with a modifiable delay between retries. The function will
+   * retry on any exception but will not retry if the exception is an UnrecoverableException.
    *
    * @param delayFunct Function to calculate the delay between retries
    * @param totalDelayMs Total delay to wait before giving up
    * @param funct Function to retry; must abide by the Runnable interface
-   * @throws RuntimeException If the function does not return before the total delay
+   * @throws RuntimeException If the function does not succeed before the total delay, or if an
+   *     UnrecoverableException is thrown.
    */
   protected void doWithModifyingTimeout(
       Function<Long, Long> delayFunct, long totalDelayMs, Runnable funct) throws RuntimeException {
     long currentDelayMs = 0;
     long startTime = System.currentTimeMillis();
-    while (System.currentTimeMillis() < startTime + totalDelayMs - currentDelayMs) {
+    while (true) {
+      currentDelayMs = delayFunct.apply(currentDelayMs);
       try {
         funct.run();
         return;
+      } catch (UnrecoverableException e) {
+        log.error(
+            "Won't retry; Unrecoverable error while running the function: {}", e.getMessage());
+        throw e;
       } catch (Exception e) {
-        log.warn("Will retry; Error while running the function: {}", e.getMessage());
+        if (System.currentTimeMillis() < startTime + totalDelayMs - currentDelayMs) {
+          log.warn("Will retry; Error while running the function: {}", e.getMessage());
+        } else {
+          log.error("Retry timed out; Error while running the function: {}", e.getMessage());
+          Throwables.propagate(e);
+        }
       }
-      currentDelayMs = delayFunct.apply(currentDelayMs);
       log.debug(
           "Waiting for {} ms between retry, total delay remaining {} ms",
           currentDelayMs,
-          (startTime + totalDelayMs - System.currentTimeMillis()));
+          totalDelayMs - (System.currentTimeMillis() - startTime));
       waitFor(Duration.ofMillis(currentDelayMs));
-    }
-    // Retry for the last time and then throw the exception that funct raised.
-    try {
-      funct.run();
-    } catch (Exception e) {
-      log.error("Retry timed out; Error while running the function: {}", e.getMessage());
-      throw new RuntimeException(e);
     }
   }
 
@@ -348,5 +361,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected TaskCache getTaskCache() {
     return getRunnableTask().getTaskCache();
+  }
+
+  protected <T> T getInstanceOf(Class<T> clazz) {
+    return application.injector().instanceOf(clazz);
   }
 }

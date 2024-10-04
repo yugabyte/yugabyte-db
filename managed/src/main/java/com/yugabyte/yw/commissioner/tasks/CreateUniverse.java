@@ -157,6 +157,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
+      // Create certificate config check tasks for on-prem nodes.
+      createCheckCertificateConfigTask(universe, taskParams().clusters);
+
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
@@ -201,7 +204,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster, newMasters);
+      createConfigureUniverseTasks(primaryCluster, newMasters, null /* gflagsUpgradeSubtasks */);
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =

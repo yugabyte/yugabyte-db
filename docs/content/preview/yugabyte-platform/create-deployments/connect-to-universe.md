@@ -33,9 +33,9 @@ If the universe uses Client-to-Node encryption in transit, to connect you need t
 
 For information on connecting using a client shell using this certificate, see [Connect from your desktop](#connect-from-your-desktop).
 
-To use TLS to connect an application, refer to the [driver documentation](../../../reference/drivers/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+To use TLS to connect an application, refer to the [driver documentation](../../../drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
 
 ## Connect to a universe node
 
@@ -109,7 +109,7 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 [Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YugabyteDB Anywhere is shipped with a trial version of Tectia SSH client that requires a license to notify YugabyteDB Anywhere to permanently use Tectia instead of OpenSSH.
 
-To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during the Replicated installation.
+To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during installation.
 
 After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 

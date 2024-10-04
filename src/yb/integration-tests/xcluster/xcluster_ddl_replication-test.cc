@@ -12,11 +12,13 @@
 //
 
 #include "yb/cdc/xcluster_types.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/tsan_util.h"
 
@@ -33,10 +35,46 @@ const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
 class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {};
 
+// In automatic mode, sequences_data should have been created on both universe.
+TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    auto table_info = VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())
+                          ->catalog_manager_impl()
+                          .GetTableInfo(kPgSequencesDataTableId);
+    SCHECK_NOTNULL(table_info);
+    return Status::OK();
+  }));
+}
+
+TEST_F(XClusterDDLReplicationTest, CheckExtensionTableTabletCount) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Ensure that tables are properly created with only one tablet each.
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = VERIFY_RESULT(
+          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
+      std::shared_ptr<client::YBTable> table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(yb_table_name, &table));
+      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
+    }
+    return Status::OK();
+  }));
+}
+
 TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
   // Ensure that splitting of xCluster DDL Replication tables is disabled on both sides.
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
   for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
     for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
@@ -56,8 +94,17 @@ TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
 
 TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
   // Ensure that xCluster DDL Replication system tables are not colocated.
+
   ASSERT_OK(SetUpClusters(/* is_colocated */ true));
-  ASSERT_OK(EnableDDLReplicationExtension());
+  // Create a colocated table so that we can run xCluster setup.
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    RETURN_NOT_OK(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, cluster, /*tablegroup_name=*/{}, /*colocated=*/true));
+    return Status::OK();
+  }));
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
   for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
     for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
@@ -75,7 +122,6 @@ TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -132,7 +178,6 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
 
 TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -171,7 +216,6 @@ TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
 
 TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -209,7 +253,7 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().tables_size(), 3);  // ddl_queue + base_table + index
+    EXPECT_EQ(resp.entry().tables_size(), 4);  // ddl_queue + base_table + index + sequences_data
   }
   ASSERT_TRUE(ASSERT_RESULT(c_conn.HasIndexScan(kCol2CountStmt)));
 
@@ -234,7 +278,6 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   const int kNumTablets = 3;
 
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -279,7 +322,6 @@ TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
 
   const int kNumTablets = 3;
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 

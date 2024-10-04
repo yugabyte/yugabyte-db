@@ -19,7 +19,7 @@ Clusters [replicated across regions](../../create-clusters-topology/#replicate-a
 
 You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred region.
 
 When no region is preferred, YugabyteDB Aeon distributes requests equally across regions. You can set or change the preferred region after cluster creation.
 

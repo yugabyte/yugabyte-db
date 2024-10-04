@@ -1364,7 +1364,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../reference/drivers/java/yugabyte-jdbc-reference). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 

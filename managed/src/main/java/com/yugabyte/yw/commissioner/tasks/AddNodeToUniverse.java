@@ -29,10 +29,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -116,12 +120,24 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           EncryptionInTransitUtil.isClientRootCARequired(taskParams())
               ? taskParams().getClientRootCA()
               : null);
+
+      createCheckCertificateConfigTask(
+          Collections.singleton(cluster),
+          Collections.singleton(currentNodeClone),
+          taskParams().rootCA,
+          EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+              ? taskParams().getClientRootCA()
+              : null,
+          userIntent.enableClientToNodeEncrypt);
     }
   }
 
   private void freezeUniverseInTxn(Universe universe) {
     NodeDetails universeNode = universe.getNode(taskParams().nodeName);
     universeNode.nodeUuid = currentNode.nodeUuid;
+    if (addMaster) {
+      universeNode.masterState = MasterState.ToStart;
+    }
     // Confirm the node on hold.
     commitReservedNodes();
   }
@@ -327,5 +343,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt) {
+    createCheckCertificateConfigTask(
+        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 }

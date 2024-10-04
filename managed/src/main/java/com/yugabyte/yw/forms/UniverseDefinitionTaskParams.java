@@ -78,7 +78,9 @@ import play.libs.Json;
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
-      ImmutableSet.of("i3.", "c5d.", "c6gd.");
+      ImmutableSet.of(
+          "g5.", "g6.", "g6e.", "gr6.", "i3.", "i3en.", "i4g.", "i4i.", "im4gn.", "is4gen.", "p5.",
+          "p5e.", "trn1.", "trn1n.", "x1.", "x1e.");
 
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
@@ -298,7 +300,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public boolean skipMatchWithUserIntent = false;
 
-  @ApiModelProperty(value = "YbaApi Internal. Install node agent if it is set to true")
+  @ApiModelProperty(value = "YbaApi Internal. Install node agent in background if it is true")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
   public boolean installNodeAgent = false;
 
@@ -558,6 +560,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     if (providerType == CloudType.aws && instanceType != null) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
         if (instanceType.startsWith(prefix)) {
+          return true;
+        }
+        String[] typeParts = instanceType.split("\\.");
+        // AWS has a convention of using 'd' in the instance type for most local storage
+        // instance types. Ideally, we can figure this out from the pricing data instead
+        // so we don't have to hack this way.
+        if (typeParts.length >= 1 && typeParts[0].contains("d")) {
           return true;
         }
       }
@@ -853,6 +862,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Setting at user intent level since it can be unique across types of clusters.
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Default service scope for Kubernetes universes")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
 

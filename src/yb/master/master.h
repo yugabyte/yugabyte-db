@@ -44,8 +44,8 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/master/tablet_health_manager.h"
@@ -260,6 +260,7 @@ class Master : public tserver::DbServerBase {
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
 
+  std::unique_ptr<SysCatalogTable> sys_catalog_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
   std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;

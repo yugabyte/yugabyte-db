@@ -33,7 +33,7 @@ type Context struct {
 // NewTaskFormat for formatting output
 func NewTaskFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultTaskListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -44,7 +44,7 @@ func NewTaskFormat(source string) formatter.Format {
 // Write renders the context for a list of Tasks
 func Write(ctx formatter.Context, tasks []ybaclient.CustomerTaskData) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of tasks into JSON
 		var output []byte
 		var err error

@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
@@ -392,6 +393,28 @@ message SysClusterConfigEntryPB {
   optional string universe_uuid = 8;
 }
 
+message SysObjectLockEntryPB {
+  message LockTypesPB { repeated TableLockType lock_type = 1; }
+  message ObjectLocksMapPB {
+    // object_id -> Locks taken
+    map<uint64, LockTypesPB> objects = 1;
+  }
+  message DBObjectsMapPB {
+    // db_id -> map of objects/locks-taken
+    map<uint64, ObjectLocksMapPB> dbs = 1;
+  }
+  message SessionDBMapPB {
+    // session_id -> DB ...
+    map<uint64, DBObjectsMapPB> sessions = 1;
+  }
+
+  // host_uid is part of the key. Thus not stored
+  // explicitly in this proto again.
+
+  // incarnation id -> Session ...
+  map<uint64, SessionDBMapPB> incarnations = 1;
+}
+
 message SysXClusterConfigEntryPB {
   optional uint32 version = 1;
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
@@ -708,12 +731,15 @@ message SysUniverseReplicationEntryPB {
 
   // DB Scoped repication.
   message DBScopeInfo {
+    optional bool automatic_ddl_mode = 1; // [default = false]
+
     message NamespaceInfo {
       required string consumer_namespace_id = 1;
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
   }
+
   optional DBScopeInfo db_scoped_info = 13;
 }
 
@@ -881,6 +907,8 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     DELETED = 1;
   }
   optional State state = 3 [ default = READY ];
+
+  optional bool automatic_ddl_mode = 4; // [default = false]
 }
 
 message SysTServerEntryPB {
@@ -890,7 +918,7 @@ message SysTServerEntryPB {
     UNSPECIFIED = 0;
     // TServer may be live. Clients need to check the in-memory last heartbeat time to be sure the
     // TServer has heartbeated recently.
-    MAYBE_LIVE = 1;
+    LIVE = 1;
     // TServer has not heartbeated recently.
     UNRESPONSIVE = 2;
     // Another tserver which started more recently has registered with a conflicting
@@ -902,6 +930,10 @@ message SysTServerEntryPB {
     // leader. The old TServer is put into this state immediately and heartbeats from it are
     // ignored.
     REPLACED = 3;
+    // The tserver has been removed from the cluster. This state is not persisted to raft, instead
+    // the entry is deleted. This state signals to code that holds on to a shared_ptr<TSDescriptor>
+    // that the object representing the tablet server is stale and should not be used.
+    REMOVED = 4;
   }
 
   // The instance_seqno of a tserver is chosen at process start and is constant throughout the

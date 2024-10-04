@@ -22,11 +22,7 @@ var describeRestoreCmd = &cobra.Command{
 	Short:   "List YugabyteDB Anywhere restores",
 	Long:    "List restores in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		restoreUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
@@ -64,7 +60,7 @@ var describeRestoreCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(r.GetEntities()) > 0 && util.IsOutputType("table") {
+		if len(r.GetEntities()) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullRestoreContext := *restore.NewFullRestoreContext()
 			fullRestoreContext.Output = os.Stdout
 			fullRestoreContext.Format = restore.NewRestoreFormat(viper.GetString("output"))
@@ -82,8 +78,9 @@ var describeRestoreCmd = &cobra.Command{
 		}
 
 		restoreCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: restore.NewRestoreFormat(viper.GetString("output")),
+			Command: "describe",
+			Output:  os.Stdout,
+			Format:  restore.NewRestoreFormat(viper.GetString("output")),
 		}
 		restore.Write(restoreCtx, r.GetEntities())
 

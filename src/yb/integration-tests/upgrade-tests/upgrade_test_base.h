@@ -94,17 +94,6 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 // Supported builds
 static constexpr auto kBuild_2_20_2_4 = "2.20.2.4";
 static constexpr auto kBuild_2024_1_0_1 = "2024.1.0.1";
-
-// Helper classes for specific versions
-class TestUpgradeFrom_2_20_2_4 : public UpgradeTestBase {
- public:
-  TestUpgradeFrom_2_20_2_4() : UpgradeTestBase(kBuild_2_20_2_4) {}
-  virtual ~TestUpgradeFrom_2_20_2_4() = default;
-};
-
-class TestUpgradeFrom_2024_1_0_1 : public UpgradeTestBase {
- public:
-  TestUpgradeFrom_2024_1_0_1() : UpgradeTestBase(kBuild_2024_1_0_1) {}
-};
+static constexpr auto kBuild_2024_2_0_0 = "2024.2.0.0";
 
 }  // namespace yb

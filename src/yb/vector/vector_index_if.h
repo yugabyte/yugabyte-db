@@ -13,21 +13,24 @@
 
 // Interface definitions for a vector index.
 
+#pragma once
+
+#include "yb/util/result.h"
+
 #include "yb/common/vector_types.h"
 
-#include "yb/vector/distance.h"
 #include "yb/vector/coordinate_types.h"
-
-#pragma once
+#include "yb/vector/distance.h"
+#include "yb/vector/hnsw_options.h"
 
 namespace yb::vectorindex {
 
-template<IndexableVectorType Vector>
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
   virtual ~VectorIndexReaderIf() = default;
 
-  virtual std::vector<VertexWithDistance> Search(
+  virtual std::vector<VertexWithDistance<DistanceResult>> Search(
       const Vector& query_vector, size_t max_num_results) const = 0;
 };
 
@@ -37,14 +40,41 @@ class VectorIndexWriterIf {
   virtual ~VectorIndexWriterIf() = default;
 
   // Reserves capacity for this number of vectors.
-  virtual void Reserve(size_t num_vectors) = 0;
+  virtual Status Reserve(size_t num_vectors) = 0;
 
   virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
 
-  // Returns the vector with the given id, or an empty vector if it does not exist.
-  virtual Vector GetVector(VertexId vertex_id) const = 0;
+  // Saves the current state of the vector index to a file.
+  virtual Status SaveToFile(const std::string& file_path) const = 0;
+
+  // Returns the vector with the given id, an empty vector if such VertexId does not exist, or
+  // a non-OK status if an error occurred.
+  virtual Result<Vector> GetVector(VertexId vertex_id) const = 0;
 };
 
-using FloatVectorIndexReader = VectorIndexReaderIf<FloatVector>;
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
+                      public VectorIndexWriterIf<Vector> {
+ public:
+  using VectorType = Vector;
+  using DistanceResultType = DistanceResult;
+
+  virtual Status AttachToFile(const std::string& output_path) = 0;
+
+  virtual ~VectorIndexIf() = default;
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using VectorIndexIfPtr = std::shared_ptr<VectorIndexIf<Vector, DistanceResult>>;
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>()>;
+
+template<class Index>
+  auto CreateIndexFactory(const HNSWOptions& options) {
+  return [options]() {
+    return std::make_shared<Index>(options);
+  };
+}
 
 }  // namespace yb::vectorindex

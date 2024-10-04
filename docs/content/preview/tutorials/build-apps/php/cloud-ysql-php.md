@@ -14,12 +14,12 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) that connects to a YugabyteDB cluster using the [php-pgsql](../../../../reference/drivers/ysql-client-drivers/#php-pgsql) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in PHP.
+The following tutorial shows a small [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) that connects to a YugabyteDB cluster using the [php-pgsql](../../../../drivers-orms/php/ysql/) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in PHP.
 
 ## Prerequisites
 
 - PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`.
-- [php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql).
+- [php-pgsql driver](../../../../drivers-orms/php/ysql/).
   - On macOS, Homebrew automatically installs the driver with `brew install php`.
   - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
   - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
@@ -146,4 +146,4 @@ try {
 
 ## Learn more
 
-[php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql)
+[php-pgsql driver](../../../../drivers-orms/php/ysql/)

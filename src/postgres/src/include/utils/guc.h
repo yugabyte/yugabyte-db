@@ -269,6 +269,7 @@ extern int yb_explicit_row_locking_batch_size;
 extern bool yb_lock_pk_single_rpc;
 
 extern int yb_toast_catcache_threshold;
+extern bool yb_enable_fkey_catcache;
 
 extern int	temp_file_limit;
 
@@ -421,6 +422,8 @@ extern ArrayType *GUCArrayReset(ArrayType *array);
 extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
+
+extern void YbSetParallelWorker();
 
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);

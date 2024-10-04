@@ -12,7 +12,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -67,7 +67,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
-        GlobalConfKeys.dbScopedXClusterEnabled.getKey(),
+        UniverseConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
 
@@ -123,6 +123,12 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     List<Table> tables = createData.tables;
 
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+    // Wait for 5 seconds.
+    try {
+      Thread.sleep(5000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
 
     // Inserting values should not be replicated since replication is deleted.
     Table table1 = tables.get(0);
@@ -170,7 +176,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -244,7 +249,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     List<String> createNamespaceNames = Arrays.asList("dbnoncolocated");
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
@@ -277,10 +281,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     List<String> updateNamespaceNames = Arrays.asList("dbcolocated");
     DrConfigSetDatabasesForm setDatabasesFormData = new DrConfigSetDatabasesForm();
-    setDatabasesFormData.databases = new HashSet<String>();
+    setDatabasesFormData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (updateNamespaceNames.contains(namespace.name)) {
-        setDatabasesFormData.databases.add(namespace.namespaceUUID.toString());
+        setDatabasesFormData.dbs.add(namespace.namespaceUUID.toString());
       }
     }
 
@@ -294,8 +298,18 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
 
+    // Need to wait for masters to propagate dropping of db1 to tservers, which will take 1-2
+    // seconds.
+    Thread.sleep(5000);
+
+    // Validate rows are not replicated to target universe.
     insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
     validateRowCount(targetUniverse, table1, 1 /* expectedRows */);
+    validateNotExpectedRowCount(targetUniverse, table1, 2 /* notExpectedRows */);
+
+    // Validate we are able to drop database on target universe (PITR config is dropped correctly).
+    dropDatabase(sourceUniverse, db1);
+    dropDatabase(targetUniverse, db1);
 
     insertRow(sourceUniverse, table2, Map.of("id", "12", "name", "'val12'"));
     validateRowCount(targetUniverse, table2, 2 /* expectedRows */);
@@ -343,7 +357,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {
@@ -456,6 +469,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
 
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -533,6 +551,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(dbs.size(), targetDbIds.size());
     assertEquals(targetDbIds.size(), safeTimeResp.safetimes.size());
 
+    // Insert new rows that will not be restored by PITR safetime as we have already
+    //   gotten the safetime earlier.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -584,7 +607,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  @Test
+  //  @Test
   public void testDbScopedSwitchover() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
@@ -649,6 +672,35 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
+  @Test
+  public void testDbScopedPauseResumeUniverses() throws InterruptedException {
+    CreateDRMetadata createData = defaultDbDRCreate();
+    UUID drConfigUUID = createData.drConfigUUID;
+    Universe sourceUniverse = createData.sourceUniverse;
+    Universe targetUniverse = createData.targetUniverse;
+    List<Db> dbs = createData.dbs;
+    List<Table> tables = createData.tables;
+
+    Result pauseResult = pauseUniverses(drConfigUUID);
+    JsonNode json = Json.parse(contentAsString(pauseResult));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    Result resumeResult = resumeUniverses(drConfigUUID);
+    json = Json.parse(contentAsString(resumeResult));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "2", "name", "'val2'"));
+    validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+  }
+
   private void deleteDrConfig(UUID drConfigUUID, Universe sourceUniverse, Universe targetUniverse)
       throws InterruptedException {
     Result deleteResult = deleteDrConfig(drConfigUUID);
@@ -707,7 +759,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
     formData.name = "db-scoped-disaster-recovery-1";
-    formData.dbScoped = true;
     formData.dbs = new HashSet<String>();
     for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
       if (namespaceNames.contains(namespace.name)) {

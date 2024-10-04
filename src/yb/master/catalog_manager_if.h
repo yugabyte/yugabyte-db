@@ -147,7 +147,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
 
-  virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
+  virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
       const ReplicationInfoPB& table_replication_info,
@@ -342,6 +342,8 @@ class CatalogManagerIf {
 
   virtual Status CanSupportAdditionalTablet(
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
+
+  virtual Result<TSDescriptorPtr> GetClosestLiveTserver() const = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

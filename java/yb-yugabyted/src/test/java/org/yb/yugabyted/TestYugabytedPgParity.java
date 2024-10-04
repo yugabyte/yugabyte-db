@@ -38,7 +38,7 @@ public class TestYugabytedPgParity extends BaseYbdClientTest {
 
         clusterConfigurations = new ArrayList<>();
         Map<String, String> yugabytedFlags = new HashMap<>();
-        yugabytedFlags.put("enable_pg_parity_tech_preview", "");
+        yugabytedFlags.put("enable_pg_parity_early_access", "");
 
         for (int i = 0; i < clusterParameters.numNodes; i++) {
             MiniYugabytedNodeConfigurations nodeConfigurations =
@@ -121,7 +121,7 @@ public class TestYugabytedPgParity extends BaseYbdClientTest {
         boolean ysqlPgConfCsvFound = false;
         String expectedValue = "yb_enable_base_scans_cost_model=true," +
             "yb_enable_optimizer_statistics=true,yb_bnl_batch_size=1024," +
-            "yb_fetch_row_limit=0,yb_fetch_size_limit=1MB,yb_use_hash_splitting_by_default=false";
+            "yb_use_hash_splitting_by_default=false,yb_enable_bitmapscan=true";
 
         for (int i = 0; i < flags.length(); i++) {
             JSONObject flag = flags.getJSONObject(i);

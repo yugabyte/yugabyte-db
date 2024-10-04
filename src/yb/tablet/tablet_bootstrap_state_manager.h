@@ -42,14 +42,17 @@ class TabletBootstrapState {
 
   void CopyFrom(const TabletBootstrapState& rhs);
 
-  void SetMinRunningHybridTime(HybridTime min_running_ht) { min_running_ht_.store(min_running_ht); }
-  HybridTime GetMinRunningHybridTime() const { return min_running_ht_.load(); }
+  void SetMinReplayTxnStartTime(HybridTime min_replay_txn_start_ht) {
+    min_replay_txn_start_ht_.store(min_replay_txn_start_ht);
+  }
+
+  HybridTime GetMinReplayTxnStartTime() const { return min_replay_txn_start_ht_.load(); }
 
   void ToPB(consensus::TabletBootstrapStatePB* pb) const;
   void FromPB(const consensus::TabletBootstrapStatePB& pb);
 
  private:
-  std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
+  std::atomic<HybridTime> min_replay_txn_start_ht_{HybridTime::kInvalid};
 };
 
 class TabletBootstrapStateManager {
@@ -74,7 +77,7 @@ class TabletBootstrapStateManager {
   }
 
   // Flush the pb as the latest version.
-  Status SaveToDisk(consensus::RaftConsensus& raft_consensus);
+  Status SaveToDisk(const TabletWeakPtr& tablet_ptr, consensus::RaftConsensus& raft_consensus);
 
   // Load the latest version from disk if any.
   Result<consensus::TabletBootstrapStatePB> LoadFromDisk();

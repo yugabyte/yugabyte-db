@@ -91,5 +91,8 @@ export type { VersionInfo } from  './VersionInfo';
 export type { VoyagerMigrateDataMetrics } from  './VoyagerMigrateDataMetrics';
 export type { VoyagerMigrateDataMetricsDetails } from  './VoyagerMigrateDataMetricsDetails';
 export type { VoyagerMigrationDetails } from  './VoyagerMigrationDetails';
+export type { VoyagerMigrationDetailsSourceDb } from  './VoyagerMigrationDetailsSourceDb';
+export type { VoyagerMigrationDetailsTargetCluster } from  './VoyagerMigrationDetailsTargetCluster';
+export type { VoyagerMigrationDetailsVoyager } from  './VoyagerMigrationDetailsVoyager';
 export type { VoyagerMigrationsInfo } from  './VoyagerMigrationsInfo';
 export { YbApiEnum } from './YbApiEnum';

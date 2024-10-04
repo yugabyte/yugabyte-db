@@ -2013,6 +2013,25 @@ ysql_sql_advanced_latency:
         "OtherStmts": "Others"
       ticksuffix: "&nbsp;\u00B5s"
 
+ysql_conn_mgr_active_connections:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_idle_or_pending_clients|ysql_conn_mgr_clients_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Connection Pooling - Client Connections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ysql_conn_mgr_active_clients": "Active"
+        "ysql_conn_mgr_queued_clients": "Queued"
+        "ysql_conn_mgr_idle_or_pending_clients": "Idle/Pending"
+        "ysql_conn_mgr_clients_total": "Total"
+
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -3700,4 +3719,23 @@ process_open_files:
         "yb-postmaster": "Postmaster"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
-        "node_exporter": "Node Exporter"
+
+
+ysql_catalog_cache_misses:
+  metric: "rpc_latency_count"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "CatalogCacheTableMisses"
+    table_name: "..*"
+  panel_group: "YSQL"
+  layout:
+    title: "Catalog Cache Misses"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        rpc_latency_count: "Catalog Cache Miss Count"

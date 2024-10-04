@@ -37,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.Mockito.*;
 import org.mockito.MockitoAnnotations;
 
 @RunWith(JUnitParamsRunner.class)
@@ -135,7 +136,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             RuntimeException.class,
             () ->
                 kubernetesManager.getPreferredServiceIP(
-                    configProvider, "demo-az1", "demo-universe", true, false));
+                    configProvider, "demo-az1", "demo-universe", true, false, universe.getName()));
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
     assertEquals(
         ImmutableList.of(
@@ -150,7 +151,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "json"),
         command.getValue());
     assertEquals(
-        "There must be exactly one Master or TServer endpoint service, got 0",
+        "There must be atleast one Master or TServer endpoint service, got 0",
         exception.getMessage());
   }
 
@@ -159,7 +160,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response = ShellResponse.create(0, "{\"items\": [{\"kind\": \"Service\"}]}");
     when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
     kubernetesManager.getPreferredServiceIP(
-        configProvider, "demo-az2", "demo-universe", false, true);
+        configProvider, "demo-az2", "demo-universe", false, true, universe.getName());
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
     assertEquals(
         ImmutableList.of(
@@ -169,7 +170,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-l",
-            "release=demo-az2,app.kubernetes.io/name=yb-tserver,"
+            "app.kubernetes.io/part-of=testUniverse,app.kubernetes.io/name=yb-tserver,"
                 + "service-type notin (headless, non-endpoint)",
             "-o",
             "json"),
@@ -240,5 +241,70 @@ public class KubernetesManagerTest extends FakeDBApplication {
         assertEquals(expected, serverTypeChecksumMap.get(ServerType.TSERVER));
       }
     }
+  }
+
+  @Test
+  public void testCheckStatefulSetStatus_Failure_ReplicaMismatch() {
+    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
+    ShellResponse response2 =
+        ShellResponse.create(0, "replicas=3|readyReplicas=1|availableReplicas=1");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    boolean status =
+        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
+    assertEquals(false, status);
+  }
+
+  @Test
+  public void testCheckStatefulSetStatus_success() {
+    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
+    ShellResponse response2 =
+        ShellResponse.create(0, "replicas=3|readyReplicas=3|availableReplicas=3");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    boolean status =
+        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
+    assertEquals(true, status);
+  }
+
+  @Test
+  public void testCheckStatefulSetStatus_success_malformed_1() {
+    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
+    ShellResponse response2 =
+        ShellResponse.create(0, "replicas=3|readyReplicas=3|availableReplicas=");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    boolean status =
+        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
+    assertEquals(true, status);
+  }
+
+  @Test
+  public void testCheckStatefulSetStatus_success_malformed_2() {
+    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
+    ShellResponse response2 =
+        ShellResponse.create(0, "replicas=3|readyReplicas=|availableReplicas=3");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    boolean status =
+        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
+    assertEquals(true, status);
+  }
+
+  @Test
+  public void testCheckStatefulSetStatus_success_no_replicas() {
+    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
+    ShellResponse response2 =
+        ShellResponse.create(0, "replicas=0|readyReplicas=|availableReplicas=3");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    boolean status =
+        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
+    assertEquals(true, status);
   }
 }

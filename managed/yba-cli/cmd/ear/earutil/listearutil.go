@@ -57,7 +57,7 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	kmsConfigs := make([]util.KMSConfig, 0)
 	if strings.TrimSpace(earName) != "" {
 		for _, k := range kmsConfigsCode {
-			if strings.Compare(k.Name, earName) != 0 {
+			if strings.Compare(k.Name, earName) == 0 {
 				kmsConfigs = append(kmsConfigs, k)
 			}
 		}
@@ -66,11 +66,12 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	}
 
 	earCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: ear.NewEARFormat(viper.GetString("output")),
+		Command: "list",
+		Output:  os.Stdout,
+		Format:  ear.NewEARFormat(viper.GetString("output")),
 	}
 	if len(kmsConfigs) < 1 {
-		if util.IsOutputType("table") {
+		if util.IsOutputType(formatter.TableFormatKey) {
 			logrus.Infoln("No encryption at rest configurations found\n")
 		} else {
 			logrus.Infoln("[]\n")

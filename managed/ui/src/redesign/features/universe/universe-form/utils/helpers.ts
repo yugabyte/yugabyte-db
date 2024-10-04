@@ -33,8 +33,12 @@ import {
 import {
   GFLAG_GROUPS,
   MIN_PG_SUPPORTED_PREVIEW_VERSION,
-  MIN_PG_SUPPORTED_STABLE_VERSION
+  MIN_PG_SUPPORTED_STABLE_VERSION,
+  CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+  CONNECTION_POOL_SUPPORTED_STABLE_VERSION
 } from '../../../../helpers/constants';
+import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
+import { ProviderCode } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
@@ -60,11 +64,11 @@ export const getCurrentVersion = (universeData: UniverseDetails) => {
 export const getUniverseName = (universeData: UniverseDetails) =>
   _.get(getClusterByType(universeData, ClusterType.PRIMARY), 'userIntent.universeName');
 
-export const getPrimaryFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.PRIMARY);
+export const getPrimaryFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.PRIMARY, providerConfig);
 
-export const getAsyncFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.ASYNC);
+export const getAsyncFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.ASYNC, providerConfig);
 
 //returns fields needs to be copied from Primary to Async in Create+RR flow
 export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
@@ -171,7 +175,11 @@ export const isPGEnabledFromIntent = (intent: UserIntent) => {
 };
 
 //Transform universe data to form data
-export const getFormData = (universeData: UniverseDetails, clusterType: ClusterType) => {
+export const getFormData = (
+  universeData: UniverseDetails,
+  clusterType: ClusterType,
+  providerConfig?: YBProvider
+) => {
   const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
@@ -184,7 +192,11 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       universeName: userIntent.universeName,
       provider: {
         code: userIntent.providerType,
-        uuid: userIntent.provider
+        uuid: userIntent.provider,
+        isOnPremManuallyProvisioned:
+          (providerConfig?.code === ProviderCode.ON_PREM &&
+            providerConfig.details?.skipProvisioning) ??
+          false
       },
       regionList: userIntent.regionList,
       numNodes: userIntent.numNodes,
@@ -227,7 +239,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       communicationPorts,
       customizePort: false, //** */
       ybcPackagePath: null, //** */,
-      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent)
+      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -303,6 +316,7 @@ export const getUserIntent = (
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
     useSystemd: advancedConfig.useSystemd,
+    enableConnectionPooling: _.get(advancedConfig, 'enableConnectionPooling', false),
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
@@ -522,6 +536,20 @@ export const isVersionPGSupported = (dbVersion: string) => {
       versionB: isVersionStable(dbVersion)
         ? MIN_PG_SUPPORTED_STABLE_VERSION
         : MIN_PG_SUPPORTED_PREVIEW_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
+};
+
+export const isVersionConnectionPoolSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? CONNECTION_POOL_SUPPORTED_STABLE_VERSION
+        : CONNECTION_POOL_SUPPORTED_PREV_VERSION,
       options: {
         suppressFormatError: true
       }

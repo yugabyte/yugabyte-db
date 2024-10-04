@@ -411,6 +411,21 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  EditDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfigParams.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
+  PauseXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.PauseXClusterUniverses.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.DrConfig),
+
+  ResumeXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.ResumeXClusterUniverses.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -584,6 +599,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreateYbaBackup,
       CustomerTask.TargetType.Yba),
 
+  EnableNodeAgentInUniverse(
+      com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
+      CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -639,6 +659,8 @@ public enum TaskType {
 
   ChangeAdminPassword(com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword.class),
 
+  DropTable(com.yugabyte.yw.commissioner.tasks.subtasks.DropTable.class),
+
   CreateTable(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable.class),
 
   DeleteNode(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode.class),
@@ -688,6 +710,9 @@ public enum TaskType {
 
   UpdateAndPersistKubernetesOverrides(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides.class),
+
+  HandleKubernetesNamespacedServices(
+      com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedServices.class),
 
   UpdatePlacementInfo(com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.class),
 
@@ -772,6 +797,9 @@ public enum TaskType {
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
+
+  UpdateDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams.class),
 
   XClusterAddNamespaceToOutboundReplicationGroup(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
@@ -920,6 +948,8 @@ public enum TaskType {
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
 
+  MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
+
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
 
   UniverseUpdateRootCert(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.class),
@@ -954,11 +984,23 @@ public enum TaskType {
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
+  CheckCertificateConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig.class),
+
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  PGUpgradeTServerCheck(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  RunYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
+
+  RollbackYsqlMajorVersionCatalogUpgrade(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade.class),
 
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
