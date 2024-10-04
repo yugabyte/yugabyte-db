@@ -9,7 +9,8 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-badges: tp
+tags:
+  feature: tech-preview
 type: docs
 ---
 

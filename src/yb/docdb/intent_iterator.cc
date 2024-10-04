@@ -25,6 +25,8 @@
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -75,8 +77,11 @@ IntentIterator::IntentIterator(
   VLOG(4) << "IntentIterator, read_time: " << read_time << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
+    // TODO: make sure `cache_restart_block_keys` argument has a proper value when IntentIterator
+    // will be used in production (currently it is used in tests only).
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
-        intents_db, txn_op_context.txn_status_manager, docdb_key_bounds, &upperbound_);
+        intents_db, txn_op_context.txn_status_manager, docdb_key_bounds,
+        &upperbound_, rocksdb::CacheRestartBlockKeys::kFalse);
   }
   VTRACE(2, "Created intent iterator - initialized? - $0", intent_iter_.Initialized());
 }

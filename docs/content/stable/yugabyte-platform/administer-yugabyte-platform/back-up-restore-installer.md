@@ -1,5 +1,5 @@
 ---
-title: Back up and restore YugabyteDB Anywhere using yb-ctl
+title: Back up and restore YugabyteDB Anywhere using yba-ctl
 headerTitle: Back up and restore YugabyteDB Anywhere
 description: Back up and restore YugabyteDB Anywhere using YBA Installer.
 headcontent: Back up your YugabyteDB Anywhere installation
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
+Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

@@ -16,8 +16,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "yb/client/tablet_server.h"
 
@@ -717,8 +719,9 @@ class PgApiImpl {
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
-      const PgExplicitRowLockParams& params, bool is_region_local);
-  Status FlushExplicitRowLockIntents();
+      const PgExplicitRowLockParams& params, bool is_region_local,
+      PgExplicitRowLockErrorInfo& error_info);
+  Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

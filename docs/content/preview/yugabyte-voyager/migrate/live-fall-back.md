@@ -9,7 +9,8 @@ menu:
     identifier: live-fall-back
     parent: migration-types
     weight: 104
-badges: tp
+tags:
+  feature: tech-preview
 type: docs
 ---
 

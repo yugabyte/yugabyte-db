@@ -374,6 +374,7 @@ extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple);
 extern void YBCFlushTupleLocks();
+extern void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
 
 /*
  * ANALYZE support: sampling of table data

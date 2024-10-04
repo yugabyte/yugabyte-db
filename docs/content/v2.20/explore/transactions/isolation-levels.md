@@ -35,7 +35,7 @@ YugabyteDB supports three isolation levels in the transactional layer:
 
 - Serializable
 - Snapshot
-- Read committed {{<badge/ea>}}
+- Read committed {{<tags/feature/ea>}}
 
 The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
@@ -57,8 +57,8 @@ The following table shows the mapping between the PostgreSQL isolation levels in
 
 | PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
 | :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
-| Read uncommitted | Read Committed {{<badge/ea>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
-| Read committed   | Read Committed {{<badge/ea>}} | Not possible | Possible     | Possible | Possible |
+| Read uncommitted | Read Committed {{<tags/feature/ea>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
+| Read committed   | Read Committed {{<tags/feature/ea>}} | Not possible | Possible     | Possible | Possible |
 | Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |
 | Serializable     | Serializable                  | Not possible | Not possible | Not possible | Not possible |
 

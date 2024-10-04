@@ -311,7 +311,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   std::string ToString() const override;
 
   // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
-  bool IsRemoved() const {
+  bool IsReplaced() const {
     return LockForRead()->pb.state() == SysTServerEntryPB::REPLACED;
   }
 

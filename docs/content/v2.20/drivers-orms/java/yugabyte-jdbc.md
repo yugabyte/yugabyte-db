@@ -85,6 +85,8 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
+Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
+
 Install the added dependency using `mvn install`.
 
 #### Gradle dependency
@@ -113,13 +115,13 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
 | `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300 |
-| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 | `fallback-to-topology-keys-only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
 | `failed-host-reconnect-delay-secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
 
-In v42.3.5-yb-8 and later, the `load-balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Read replica-aware load balancing](../../smart-drivers/#read-replica-cluster-aware).
+In v42.3.5-yb-8 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
