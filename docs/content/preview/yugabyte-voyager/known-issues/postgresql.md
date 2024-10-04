@@ -41,6 +41,9 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
 - [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
 - [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
+- [Unsupported datatypes by the YugabyteDB](#unsupported-datatypes-by-the-yugabytedb)
+- [Unsupported datatypes by Voyager during the Live migration](#unsupported-datatypes-by-voyager-during-the-live-migration)
+- [XID functions not supported yet](#xid-functions-not-supported-yet)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1014,5 +1017,75 @@ Suggested changes to the schema can be done using the following steps:
     ```sh
     ALTER SCHEMA "test" RENAME TO "Test";
     ```
+
+---
+
+### Unsupported datatypes by the YugabyteDB
+
+**GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
+
+**Description**: If your source datatabase has any of these datatypes on the columns - `GEOMETRY`, `GEOGRAPHY`, `RASTER`, `PG_LSN`,`TXID_SNAPSHOT`,  it will be skipped during the migration.
+
+**Workaround**: No workaround available currently.
+
+**Example**
+
+```sql
+CREATE TABLE public.locations (
+    id integer NOT NULL,
+    name character varying(100),
+    geom geometry(Point,4326)
+ );
+
+```
+
+---
+
+### Unsupported datatypes by Voyager during the Live migration
+
+**GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
+
+**Description**: If your source datatabase has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`,  it will be skipped during the migration.
+
+**Workaround**: No workaround available currently.
+
+**Example**
+
+```sql
+CREATE TABLE combined_tbl (
+	id int, 
+	l line, 
+	ls lseg, 
+	p point, 
+	p1 path, 
+	p2 polygon
+);
+```
+
+---
+
+
+### XID functions not supported yet
+
+**GitHub**: [Issue #15638](https://github.com/yugabyte/yugabyte-db/issues/15638)
+
+**Description**: If you have XID datatype in the source database, its functions e.g. `txid_current()` are not suppported yet on the YugabyteDB.
+ 
+```output
+ ERROR: Yugabyte does not support xid
+```
+
+**Workaround**: No workaround yet for these functions
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE xid_example (
+      id integer,
+      tx_id xid
+);
+```
 
 ---
