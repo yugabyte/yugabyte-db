@@ -49,9 +49,9 @@ To learn how to set up asynchronous replication and understand how it works, see
 
 Cluster topology in YugabyteDB involves the arrangement of nodes in a cluster, both in terms of their physical placement and logical organization. Selecting an appropriate cluster topology is important for efficiently designing, deploying, and managing your database infrastructure. You can use the `yb_servers()` function to access the list of nodes in your cluster and their respective locations.
 
-{{<lead link="./cluster-topology/">}}
+{{<tip>}}
 To learn more about the how to use the `yb_servers()` function, see [Cluster topology](./cluster-topology/).
-{{</lead>}}
+{{</tip>}}
 
 ## Cluster-aware drivers
 
