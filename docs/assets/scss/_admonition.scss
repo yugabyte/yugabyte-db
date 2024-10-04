@@ -9,7 +9,7 @@ main {
       color: #25323d;
       background: #fff;
 
-      >p {
+      > p {
         font-family: 'inter';
         font-style: normal;
         font-weight: 400;
@@ -84,7 +84,7 @@ main {
       }
 
 
-      >*:not(code) {
+      > *:not(code) {
         margin: 1em 0;
 
         &:first-child:not(code) {
@@ -100,7 +100,7 @@ main {
         }
       }
 
-      >ul {
+      > ul {
         &:last-child {
           li {
             &:last-child {
@@ -110,7 +110,7 @@ main {
         }
       }
 
-      >ol {
+      > ol {
         &:last-child {
           li {
             &:last-child {
@@ -133,16 +133,18 @@ main {
     .admonition.waving {
       border: 1px solid #CAC9DF;
       background: #F5F5FF;
-      margin:20px 0 40px ;
-      display:flex;
-      justify-content:space-between;
+      margin: 20px 0 40px;
+      display: flex;
+      justify-content: space-between;
       padding-top: 10px;
       padding-bottom: 10px;
-      align-items:center;
-      .cross-btn{
-        cursor:pointer;
-        display:inline-block;
+      align-items: center;
+
+      .cross-btn {
+        cursor: pointer;
+        display: inline-block;
       }
+
       p {
         font-family: 'inter';
         color: #5D5FEF;
@@ -159,30 +161,32 @@ main {
           font-style: normal;
           font-weight: 600;
           line-height: 16px;
-          text-underline-offset:2px;
+          text-underline-offset: 2px;
 
           &:hover {
             text-decoration: underline;
             border: 0;
-            text-underline-offset:2px;
+            text-underline-offset: 2px;
           }
         }
       }
+
       &::before {
         width: 24px;
         height: 25px;
         background-image: url(/icons/waving-icon.svg);
         background-size: contain;
-        top:10px;
+        top: 10px;
       }
     }
+
     .admonition.note {
       &::before {
         background-size: 19px 20px;
       }
 
       p {
-        >code {
+        > code {
           box-shadow: 0 0 1px 0 #cbdbff;
         }
       }
@@ -216,7 +220,7 @@ main {
       border: 1px solid #cdefe1;
 
       &::before {
-        opacity:0;
+        opacity: 0;
       }
 
       i[class*="fa-"] {
@@ -228,7 +232,7 @@ main {
         z-index: 0;
       }
 
-      img{
+      img {
         &.icon {
           position: absolute;
           width: 23px;
@@ -244,8 +248,94 @@ main {
         inset: 0;
         font-size: 0;
         transition: all 250ms ease;
+
         &:hover {
-          background:rgba(0, 0, 0, 0.02);
+          background: rgba(0, 0, 0, 0.02);
+        }
+      }
+    }
+
+    .admonition.callout {
+      border-radius: 8px;
+      padding: 16px;
+      padding-left: 56px;
+      border: 1px solid rgba(203, 219, 255, 0.80);
+      background: rgba(242, 246, 255, 0.50);
+
+      &::before {
+        display: none;
+      }
+
+      .icon {
+        content: "";
+        width: 24px;
+        height: 24px;
+        position: absolute;
+        display: flex;
+        align-items: center;
+        top: 16px;
+        left: 16px;
+
+        i,
+        svg {
+          width: 24px;
+          font-size: 19px;
+        }
+      }
+
+      &.release {
+        .icon {
+          i {
+            color: #09735A;
+          }
+
+          svg {
+            path {
+              fill: #09735A;
+            }
+          }
+        }
+      }
+
+      .content-area {
+        margin-bottom: 0;
+
+        a {
+          color: #2B59C3;
+        }
+
+        .heading {
+          color: #25323D;
+          font-size: 13px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 22px;
+          margin-bottom: 4px;
+
+          .tag {
+            margin: 0 4px;
+          }
+
+          .versions {
+            display: inline-block;
+            margin-left: 8px;
+          }
+
+          .admonition-title {
+            color: #25323D;
+            font-size: 13px;
+            font-style: normal;
+            font-weight: 600;
+            line-height: 22px;
+          }
+        }
+
+        .desc {
+          color: #6D7C88;
+          font-size: 13px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 22px;
         }
       }
     }
