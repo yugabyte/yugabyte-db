@@ -572,6 +572,10 @@ public class SwamperHelper {
   }
 
   public static long getScrapeIntervalSeconds(Config config) {
-    return Util.goDurationToJava(config.getString(SCRAPE_INTERVAL_PARAM)).getSeconds();
+    return getScrapeIntervalSeconds(config.getString(SCRAPE_INTERVAL_PARAM));
+  }
+
+  public static long getScrapeIntervalSeconds(String scrapeIntervalStr) {
+    return Util.goDurationToJava(scrapeIntervalStr).getSeconds();
   }
 }
