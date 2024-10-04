@@ -36,15 +36,11 @@ For more information, refer to [How the connector works](../../../explore/change
 
 ## Prerequisites
 
-- Cluster running YugabyteDB v2024.1.1 or later
+- Cluster running YugabyteDB v2024.1.1 or later.
 
-- Customer Kafka environment
+- Kafka environment. This can be a [Self-managed Kafka](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
 
-  - [Self-managed Kafka](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as Confluent Cloud or AWS MSK Connect.
-
-- YugabyteDB Connector v2.5.2
-
-  - Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
+- YugabyteDB Connector v2.5.2. Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
 
 ## Limitations
 
@@ -120,7 +116,7 @@ The following example shows the required and common properties:
 
 For a full list of YugabyteDB Connector properties, refer to [Connector properties](../../../explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties).
 
-### Configure provider
+### Configure the Kafka provider
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -130,13 +126,13 @@ For a full list of YugabyteDB Connector properties, refer to [Connector properti
       Confluent Cloud
     </a>
   </li>
-  <li >
+<!--  <li >
     <a href="#msk" class="nav-link" id="msk-tab" data-bs-toggle="tab"
       role="tab" aria-controls="msk" aria-selected="false">
       <i class="icon-aws" aria-hidden="true"></i>
       Amazon MSK
     </a>
-  </li>
+  </li> -->
   <li >
     <a href="#self" class="nav-link" id="self-tab" data-bs-toggle="tab"
       role="tab" aria-controls="self" aria-selected="false">
@@ -170,11 +166,13 @@ To set up the connector using the plugin:
 After the connector starts, it performs a consistent snapshot of the YugabyteDB databases that the connector is configured for. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
 
   </div>
+<!--
   <div id="msk" class="tab-pane fade" role="tabpanel" aria-labelledby="msk-tab">
 
-AWS MSK instructions
+<!--AWS MSK instructions
 
   </div>
+-->
   <div id="self" class="tab-pane fade" role="tabpanel" aria-labelledby="self-tab">
 
 For information on using the YugabyteDB Connector with a self-managed Kafka cluster, refer to:
