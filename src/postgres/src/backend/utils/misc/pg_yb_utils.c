@@ -1189,6 +1189,12 @@ YBPgTypeOidToStr(Oid type_id) {
 		case INDEX_AM_HANDLEROID: return "INDEX_AM_HANDLER";
 		case TSM_HANDLEROID: return "TSM_HANDLER";
 		case ANYRANGEOID: return "ANYRANGE";
+		// My contribution begins below.
+		case BPCHARARRAYOID: return "BPCHARARRAY"; // The case for char[].
+        case VARCHARARRAYOID: return "VARCHARARRAY";  // The case for varchar[].
+        case NUMERICARRAYOID: return "NUMERICARRAY";  // The case for numeric[].
+        case DATEARRAYOID: return "DATEARRAY";        // The case for date[].
+        case JSONARRAYOID: return "JSONARRAY";        // The case for json[].
 		default: return "user_defined_type";
 	}
 }
