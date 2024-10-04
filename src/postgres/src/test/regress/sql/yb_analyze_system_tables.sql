@@ -33,7 +33,6 @@ ANALYZE pg_opclass;
 ANALYZE pg_operator;
 ANALYZE pg_opfamily;
 ANALYZE pg_partitioned_table;
-ANALYZE pg_pltemplate;
 ANALYZE pg_policy;
 ANALYZE pg_proc;
 ANALYZE pg_publication;

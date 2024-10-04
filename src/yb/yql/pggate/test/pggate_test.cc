@@ -173,7 +173,7 @@ Status PggateTest::Init(
 
   YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
 
-  CHECK_YBC_STATUS(YBCPgInitSession(session_stats));
+  CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
   if (should_create_db) {
     CreateDB();
   }

@@ -431,7 +431,7 @@ CREATE TABLE tbl7 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES (('a'), ('b'), ('c'));
-ERROR:  invalid input syntax for integer: "a"
+ERROR:  invalid input syntax for type integer: "a"
 CREATE TABLE tbl8 (
 	a			text,
 	primary key (a asc)
@@ -798,3 +798,40 @@ BEGIN
 	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
 END$$;
 DROP TABLE wide_table;
+-- Test CREATE TABLE PARTITION OF with CONSTRAINT .. PRIMARY KEY 
+CREATE TABLE t (
+    id uuid NOT NULL,
+    geo_partition character varying NOT NULL
+)
+PARTITION BY LIST (geo_partition);
+CREATE TABLE t1 PARTITION OF t (
+    CONSTRAINT t1_pkey PRIMARY KEY ((id) HASH)
+)
+FOR VALUES IN ('1');
+-- Test that LZ4 TOAST compression is enabled
+SET default_toast_compression = 'lz4';
+CREATE TEMP TABLE default_compression_table (
+	a TEXT
+);
+INSERT INTO default_compression_table VALUES (repeat('a', 10000));
+SELECT pg_column_compression(a) FROM default_compression_table;
+ pg_column_compression
+-----------------------
+ lz4
+(1 row)
+
+CREATE TEMP TABLE lz4_table (
+	a TEXT COMPRESSION lz4
+);
+INSERT INTO lz4_table VALUES (repeat('a', 10000));
+SELECT pg_column_compression(a) FROM lz4_table;
+ pg_column_compression
+-----------------------
+ lz4
+(1 row)
+
+SHOW default_toast_compression;
+ default_toast_compression
+---------------------------
+ lz4
+(1 row)

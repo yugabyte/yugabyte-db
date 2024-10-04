@@ -9,9 +9,9 @@
  * for an external function is found - not guaranteed! - the index will then
  * be used to judge their instruction count / inline worthiness. After doing
  * so for all external functions, all the referenced functions (and
- * prerequisites) will be imorted.
+ * prerequisites) will be imported.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/llvmjit/llvmjit_inline.cpp
@@ -42,6 +42,9 @@ extern "C"
 #include <llvm-c/Core.h>
 #include <llvm-c/BitReader.h>
 
+/* Avoid macro clash with LLVM's C++ headers */
+#undef Min
+
 #include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/StringSet.h>
 #include <llvm/ADT/StringMap.h>
@@ -53,13 +56,13 @@ extern "C"
 #include <llvm/Support/Error.h>
 #endif
 #include <llvm/IR/Attributes.h>
-#include <llvm/IR/CallSite.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/ModuleSummaryIndex.h>
 #include <llvm/Linker/IRMover.h>
 #include <llvm/Support/ManagedStatic.h>
+#include <llvm/Support/MemoryBuffer.h>
 
 
 /*
@@ -171,7 +174,7 @@ llvm_inline(LLVMModuleRef M)
 static std::unique_ptr<ImportMapTy>
 llvm_build_inline_plan(llvm::Module *mod)
 {
-	std::unique_ptr<ImportMapTy> globalsToInline = llvm::make_unique<ImportMapTy>();
+	std::unique_ptr<ImportMapTy> globalsToInline(new ImportMapTy());
 	FunctionInlineStates functionStates;
 	InlineWorkList worklist;
 
@@ -308,7 +311,7 @@ llvm_build_inline_plan(llvm::Module *mod)
 				 * Check whether function and all its dependencies are too
 				 * big. Dependencies already counted for other functions that
 				 * will get inlined are not counted again. While this make
-				 * things somewhat order dependant, I can't quite see a point
+				 * things somewhat order dependent, I can't quite see a point
 				 * in a different behaviour.
 				 */
 				if (running_instcount > inlineState.costLimit)
@@ -592,7 +595,11 @@ function_inlinable(llvm::Function &F,
 	if (F.materialize())
 		elog(FATAL, "failed to materialize metadata");
 
-	if (F.getAttributes().hasFnAttribute(llvm::Attribute::NoInline))
+#if LLVM_VERSION_MAJOR < 14
+#define hasFnAttr hasFnAttribute
+#endif
+
+	if (F.getAttributes().hasFnAttr(llvm::Attribute::NoInline))
 	{
 		ilog(DEBUG1, "ineligibile to import %s due to noinline",
 			 F.getName().data());
@@ -869,7 +876,9 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 	llvm::Function *AF;
 	llvm::BasicBlock *BB;
 	llvm::CallInst *fwdcall;
+#if LLVM_VERSION_MAJOR < 14
 	llvm::Attribute inlineAttribute;
+#endif
 
 	AF = llvm::Function::Create(F->getFunctionType(),
 								LinkageTypes::AvailableExternallyLinkage,
@@ -878,9 +887,13 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 
 	Builder.SetInsertPoint(BB);
 	fwdcall = Builder.CreateCall(F, &*AF->arg_begin());
+#if LLVM_VERSION_MAJOR < 14
 	inlineAttribute = llvm::Attribute::get(Context,
 										   llvm::Attribute::AlwaysInline);
 	fwdcall->addAttribute(~0U, inlineAttribute);
+#else
+	fwdcall->addFnAttr(llvm::Attribute::AlwaysInline);
+#endif
 	Builder.CreateRet(fwdcall);
 
 	return AF;

@@ -1,18 +1,18 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 #################################################################
 # version_stamp.pl -- update version stamps throughout the source tree
 #
-# Copyright (c) 2008-2018, PostgreSQL Global Development Group
+# Copyright (c) 2008-2022, PostgreSQL Global Development Group
 #
 # src/tools/version_stamp.pl
 #################################################################
 
 #
-# This script updates the version stamp in configure.in, and also in assorted
+# This script updates the version stamp in configure.ac, and also in assorted
 # other files wherein it's not convenient to obtain the version number from
 # configure's output.  Note that you still have to run autoconf afterward
-# to regenerate configure from the updated configure.in.
+# to regenerate configure from the updated configure.ac.
 #
 # Usage: cd to top of source tree and issue
 #	src/tools/version_stamp.pl MINORVERSION
@@ -21,41 +21,37 @@
 #
 
 use strict;
+use warnings;
 
 # Major version is hard-wired into the script.  We update it when we branch
 # a new development version.
-my $majorversion = 11;
+my $majorversion = 15;
 
 # Validate argument and compute derived variables
 my $minor = shift;
 defined($minor) || die "$0: missing required argument: minor-version\n";
 
-my ($dotneeded, $numericminor);
+my ($dotneeded);
 
 if ($minor =~ m/^\d+$/)
 {
-	$dotneeded    = 1;
-	$numericminor = $minor;
+	$dotneeded = 1;
 }
 elsif ($minor eq "devel")
 {
-	$dotneeded    = 0;
-	$numericminor = 0;
+	$dotneeded = 0;
 }
 elsif ($minor =~ m/^alpha\d+$/)
 {
-	$dotneeded    = 0;
-	$numericminor = 0;
+	$dotneeded = 0;
 }
 elsif ($minor =~ m/^beta\d+$/)
 {
-	$dotneeded    = 0;
-	$numericminor = 0;
+	$dotneeded = 0;
 }
 elsif ($minor =~ m/^rc\d+$/)
 {
-	$dotneeded    = 0;
-	$numericminor = 0;
+	$dotneeded = 0;
 }
 else
 {
@@ -73,14 +69,12 @@ else
 {
 	$fullversion = $majorversion . $minor;
 }
-my $numericversion = $majorversion . "." . $numericminor;
-my $padnumericversion = sprintf("%d%04d", $majorversion, $numericminor);
 
 # Get the autoconf version number for eventual nag message
 # (this also ensures we're in the right directory)
 
 my $aconfver = "";
-open(my $fh, '<', "configure.in") || die "could not read configure.in: $!\n";
+open(my $fh, '<', "configure.ac") || die "could not read configure.ac: $!\n";
 while (<$fh>)
 {
 	if (m/^m4_if\(m4_defn\(\[m4_PACKAGE_VERSION\]\), \[(.*)\], \[\], \[m4_fatal/
@@ -92,37 +86,14 @@ while (<$fh>)
 }
 close($fh);
 $aconfver ne ""
-  || die "could not find autoconf version number in configure.in\n";
+  || die "could not find autoconf version number in configure.ac\n";
 
-# Update configure.in and other files that contain version numbers
+# Update configure.ac and other files that contain version numbers
 
 my $fixedfiles = "";
 
-sed_file("configure.in",
+sed_file("configure.ac",
 	"-e 's/AC_INIT(\\[PostgreSQL\\], \\[[0-9a-z.]*\\]/AC_INIT([PostgreSQL], [$fullversion]/'"
-);
-
-sed_file("doc/bug.template",
-	"-e 's/PostgreSQL version (example: PostgreSQL .*) *:  PostgreSQL .*/PostgreSQL version (example: PostgreSQL $fullversion):  PostgreSQL $fullversion/'"
-);
-
-sed_file("src/include/pg_config.h.win32",
-	"-e 's/#define PACKAGE_STRING \"PostgreSQL .*\"/#define PACKAGE_STRING \"PostgreSQL $fullversion\"/' "
-	  . "-e 's/#define PACKAGE_VERSION \".*\"/#define PACKAGE_VERSION \"$fullversion\"/' "
-	  . "-e 's/#define PG_VERSION \".*\"/#define PG_VERSION \"$fullversion\"/' "
-	  . "-e 's/#define PG_VERSION_NUM .*/#define PG_VERSION_NUM $padnumericversion/'"
-);
-
-sed_file("src/interfaces/libpq/libpq.rc.in",
-	"-e 's/FILEVERSION [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION $majorversion,0,$numericminor,0/' "
-	  . "-e 's/PRODUCTVERSION [0-9]*,[0-9]*,[0-9]*,0/PRODUCTVERSION $majorversion,0,$numericminor,0/' "
-	  . "-e 's/VALUE \"FileVersion\", \"[0-9.]*/VALUE \"FileVersion\", \"$numericversion/' "
-	  . "-e 's/VALUE \"ProductVersion\", \"[0-9.]*/VALUE \"ProductVersion\", \"$numericversion/'"
-);
-
-sed_file("src/port/win32ver.rc",
-	"-e 's/FILEVERSION    [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION    $majorversion,0,$numericminor,0/' "
-	  . "-e 's/PRODUCTVERSION [0-9]*,[0-9]*,[0-9]*,0/PRODUCTVERSION $majorversion,0,$numericminor,0/'"
 );
 
 print "Stamped these files with version number $fullversion:\n$fixedfiles";

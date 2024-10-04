@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/plperl.sgml -->
 
  <chapter id="plperl">
-  <title>PL/Perl - Perl Procedural Language</title>
+  <title>PL/Perl &mdash; Perl Procedural Language</title>
 
   <indexterm zone="plperl">
    <primary>PL/Perl</primary>
@@ -13,13 +13,13 @@
 
   <para>
    PL/Perl is a loadable procedural language that enables you to write
-   <productname>PostgreSQL</productname> functions in the
-   <ulink url="http://www.perl.org">Perl programming language</ulink>.
+   <productname>PostgreSQL</productname> functions and procedures in the
+   <ulink url="https://www.perl.org">Perl programming language</ulink>.
   </para>
 
   <para>
    The main advantage to using PL/Perl is that this allows use,
-   within stored functions, of the manyfold <quote>string
+   within stored functions and procedures, of the manyfold <quote>string
    munging</quote> operators and functions available for Perl.  Parsing
    complex strings might be easier using Perl than it is with the
    string functions and control structures provided in PL/pgSQL.
@@ -55,8 +55,11 @@
    syntax:
 
 <programlisting>
-CREATE FUNCTION <replaceable>funcname</replaceable> (<replaceable>argument-types</replaceable>) RETURNS <replaceable>return-type</replaceable> AS $$
-    # PL/Perl function body
+CREATE FUNCTION <replaceable>funcname</replaceable> (<replaceable>argument-types</replaceable>)
+RETURNS <replaceable>return-type</replaceable>
+-- function attributes can go here
+AS $$
+    # PL/Perl function body goes here
 $$ LANGUAGE plperl;
 </programlisting>
 
@@ -186,6 +189,39 @@ $$ LANGUAGE plperl;
    must be in the external text representation format. For example, the
    <function>encode_bytea</function> function can be used to
    escape binary data for a return value of type <type>bytea</type>.
+  </para>
+
+  <para>
+   One case that is particularly important is boolean values.  As just
+   stated, the default behavior for <type>bool</type> values is that they
+   are passed to Perl as text, thus either <literal>'t'</literal>
+   or <literal>'f'</literal>.  This is problematic, since Perl will not
+   treat <literal>'f'</literal> as false!  It is possible to improve matters
+   by using a <quote>transform</quote> (see
+   <xref linkend="sql-createtransform"/>).  Suitable transforms are provided
+   by the <filename>bool_plperl</filename> extension.  To use it, install
+   the extension:
+<programlisting>
+CREATE EXTENSION bool_plperl;  -- or bool_plperlu for PL/PerlU
+</programlisting>
+   Then use the <literal>TRANSFORM</literal> function attribute for a
+   PL/Perl function that takes or returns <type>bool</type>, for example:
+<programlisting>
+CREATE FUNCTION perl_and(bool, bool) RETURNS bool
+TRANSFORM FOR TYPE bool
+AS $$
+  my ($a, $b) = @_;
+  return $a &amp;&amp; $b;
+$$ LANGUAGE plperl;
+</programlisting>
+   When this transform is applied, <type>bool</type> arguments will be seen
+   by Perl as being <literal>1</literal> or empty, thus properly true or
+   false.  If the function result is type <type>bool</type>, it will be true
+   or false according to whether Perl would evaluate the returned value as
+   true.
+   Similar transformations are also performed for boolean query arguments
+   and results of SPI queries performed inside the function
+   (<xref linkend="plperl-database"/>).
   </para>
 
   <para>
@@ -381,6 +417,13 @@ use strict;
    Conversely, the <function>return</function> and <function>return_next</function>
    commands will accept any string that is acceptable input format
    for the function's declared return type.
+  </para>
+
+  <para>
+   If this behavior is inconvenient for a particular case, it can be
+   improved by using a transform, as already illustrated
+   for <type>bool</type> values.  Several examples of transform modules
+   are included in the <productname>PostgreSQL</productname> distribution.
   </para>
  </sect1>
 
@@ -589,7 +632,7 @@ SELECT * from lotsa_md5(500);
     <para>
     <literal>spi_prepare</literal>, <literal>spi_query_prepared</literal>, <literal>spi_exec_prepared</literal>,
     and <literal>spi_freeplan</literal> implement the same functionality but for prepared queries.
-    <literal>spi_prepare</literal> accepts a query string with numbered argument placeholders ($1, $2, etc)
+    <literal>spi_prepare</literal> accepts a query string with numbered argument placeholders ($1, $2, etc.)
     and a string list of argument types:
 <programlisting>
 $plan = spi_prepare('SELECT * FROM test WHERE id &gt; $1 AND name = $2',
@@ -634,7 +677,7 @@ SELECT done();
  2005-12-10 | 2005-12-11 | 2005-12-12
 </programlisting>
     Note that the parameter subscript in <literal>spi_prepare</literal> is defined via
-    $1, $2, $3, etc, so avoid declaring query strings in double quotes that might easily
+    $1, $2, $3, etc., so avoid declaring query strings in double quotes that might easily
     lead to hard-to-catch bugs.
     </para>
 
@@ -666,7 +709,7 @@ SELECT init_hosts_query();
 SELECT query_hosts('192.168.1.0/30');
 SELECT release_hosts_query();
 
-    query_hosts    
+    query_hosts
 -----------------
  (1,192.168.1.1)
  (2,192.168.1.2)
@@ -1008,7 +1051,7 @@ $$ LANGUAGE plperl;
    PL/Perl functions will share the same value of <varname>%_SHARED</varname>
    if and only if they are executed by the same SQL role.  In an application
    wherein a single session executes code under multiple SQL roles (via
-   <literal>SECURITY DEFINER</literal> functions, use of <command>SET ROLE</command>, etc)
+   <literal>SECURITY DEFINER</literal> functions, use of <command>SET ROLE</command>, etc.)
    you may need to take explicit steps to ensure that PL/Perl functions can
    share data via <varname>%_SHARED</varname>.  To do that, make sure that
    functions that should communicate are owned by the same user, and mark

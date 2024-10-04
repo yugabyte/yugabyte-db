@@ -1,6 +1,14 @@
 -- Tests for nlssort
+-- Skip this test unless it's a Linux/glibc system with the "en_US.utf8" locale installed.
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       NOT EXISTS (SELECT 1 FROM pg_collation WHERE collname = 'en_US' AND collencoding = pg_char_to_encoding('UTF8')) OR
+       version() !~ 'linux-gnu'
+       AS skip_test \gset
+\if :skip_test
+\quit
+\endif
 \set ECHO none
-  name
+  name  
 --------
  brown
  Purple
@@ -8,7 +16,7 @@
  yellow
 (4 rows)
 
-  name
+  name  
 --------
  Purple
  brown
@@ -16,19 +24,19 @@
  yellow
 (4 rows)
 
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
 ERROR:  failed to set the requested LC_COLLATE value [invalid]
 CONTEXT:  SQL function "nlssort" statement 1
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
-  name
+  name  
 --------
  Purple
  brown
@@ -36,12 +44,12 @@ CONTEXT:  SQL function "nlssort" statement 1
  yellow
 (4 rows)
 
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
-  name
+  name  
 --------
  brown
  Purple
@@ -49,11 +57,12 @@ CONTEXT:  SQL function "nlssort" statement 1
  yellow
 (4 rows)
 
-  name
+  name  
 --------
  brown
  Purple
  red
  yellow
-
+ 
 (5 rows)
+

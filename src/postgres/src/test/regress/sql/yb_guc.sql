@@ -149,10 +149,6 @@ select myfunc(0), current_setting('work_mem');
 -- test SET unrecognized parameter
 SET foo = false;  -- no such setting
 
--- test setting a parameter with a registered prefix (plpgsql)
-SET plpgsql.extra_foo_warnings = false;  -- no such setting
-SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
-
 -- test temp_file_limit default
 SHOW temp_file_limit;
 -- test temp_File_limit update
@@ -174,5 +170,4 @@ RESET track_functions;
 
 -- cleanup
 RESET foo;
-RESET plpgsql.extra_foo_warnings;
 RESET yb_enable_bitmapscan;

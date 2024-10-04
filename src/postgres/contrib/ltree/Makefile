@@ -1,12 +1,20 @@
 # contrib/ltree/Makefile
 
 MODULE_big = ltree
-OBJS = 	ltree_io.o ltree_op.o lquery_op.o _ltree_op.o crc32.o \
-	ltxtquery_io.o ltxtquery_op.o ltree_gist.o _ltree_gist.o $(WIN32RES)
-PG_CPPFLAGS = -DLOWER_NODE
+OBJS = \
+	$(WIN32RES) \
+	_ltree_gist.o \
+	_ltree_op.o \
+	crc32.o \
+	lquery_op.o \
+	ltree_gist.o \
+	ltree_io.o \
+	ltree_op.o \
+	ltxtquery_io.o \
+	ltxtquery_op.o
 
 EXTENSION = ltree
-DATA = ltree--1.1.sql ltree--1.0--1.1.sql ltree--unpackaged--1.0.sql
+DATA = ltree--1.1--1.2.sql ltree--1.1.sql ltree--1.0--1.1.sql
 PGFILEDESC = "ltree - hierarchical label data type"
 
 HEADERS = ltree.h

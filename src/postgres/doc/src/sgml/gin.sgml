@@ -75,53 +75,62 @@
 
   <table id="gin-builtin-opclasses-table">
    <title>Built-in <acronym>GIN</acronym> Operator Classes</title>
-   <tgroup cols="3">
+   <tgroup cols="2">
     <thead>
      <row>
       <entry>Name</entry>
-      <entry>Indexed Data Type</entry>
       <entry>Indexable Operators</entry>
      </row>
     </thead>
     <tbody>
      <row>
-      <entry><literal>array_ops</literal></entry>
-      <entry><type>anyarray</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&lt;@</literal>
-       <literal>=</literal>
-       <literal>@&gt;</literal>
-      </entry>
+      <entry morerows="3" valign="middle"><literal>array_ops</literal></entry>
+      <entry><literal>&amp;&amp; (anyarray,anyarray)</literal></entry>
      </row>
      <row>
-      <entry><literal>jsonb_ops</literal></entry>
-      <entry><type>jsonb</type></entry>
-      <entry>
-       <literal>?</literal>
-       <literal>?&amp;</literal>
-       <literal>?|</literal>
-       <literal>@&gt;</literal>
-       <literal>@?</literal>
-       <literal>@@</literal>
-      </entry>
+      <entry><literal>@&gt; (anyarray,anyarray)</literal></entry>
      </row>
      <row>
-      <entry><literal>jsonb_path_ops</literal></entry>
-      <entry><type>jsonb</type></entry>
-      <entry>
-       <literal>@&gt;</literal>
-       <literal>@?</literal>
-       <literal>@@</literal>
-      </entry>
+      <entry><literal>&lt;@ (anyarray,anyarray)</literal></entry>
      </row>
      <row>
-      <entry><literal>tsvector_ops</literal></entry>
-      <entry><type>tsvector</type></entry>
-      <entry>
-       <literal>@@</literal>
-       <literal>@@@</literal>
-      </entry>
+      <entry><literal>= (anyarray,anyarray)</literal></entry>
+     </row>
+     <row>
+      <entry morerows="5" valign="middle"><literal>jsonb_ops</literal></entry>
+      <entry><literal>@&gt; (jsonb,jsonb)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>@? (jsonb,jsonpath)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>@@ (jsonb,jsonpath)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>? (jsonb,text)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>?| (jsonb,text[])</literal></entry>
+     </row>
+     <row>
+      <entry><literal>?&amp; (jsonb,text[])</literal></entry>
+     </row>
+     <row>
+      <entry morerows="2" valign="middle"><literal>jsonb_path_ops</literal></entry>
+      <entry><literal>@&gt; (jsonb,jsonb)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>@? (jsonb,jsonpath)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>@@ (jsonb,jsonpath)</literal></entry>
+     </row>
+     <row>
+      <entry morerows="1" valign="middle"><literal>tsvector_ops</literal></entry>
+      <entry><literal>@@ (tsvector,tsquery)</literal></entry>
+     </row>
+     <row>
+      <entry><literal>@@@ (tsvector,tsquery)</literal></entry>
      </row>
     </tbody>
    </tgroup>
@@ -227,7 +236,7 @@
       <para>
        <literal>pmatch</literal> is an output argument for use when partial match
        is supported.  To use it, <function>extractQuery</function> must allocate
-       an array of <literal>*nkeys</literal> bools and store its address at
+       an array of <literal>*nkeys</literal> <type>bool</type>s and store its address at
        <literal>*pmatch</literal>.  Each element of the array should be set to true
        if the corresponding key requires partial match, false if not.
        If <literal>*pmatch</literal> is set to <symbol>NULL</symbol> then GIN assumes partial match
@@ -255,12 +264,12 @@
   </variablelist>
 
   An operator class must also provide a function to check if an indexed item
-  matches the query. It comes in two flavors, a boolean <function>consistent</function>
+  matches the query. It comes in two flavors, a Boolean <function>consistent</function>
   function, and a ternary <function>triConsistent</function> function.
   <function>triConsistent</function> covers the functionality of both, so providing
-  <function>triConsistent</function> alone is sufficient. However, if the boolean
+  <function>triConsistent</function> alone is sufficient. However, if the Boolean
   variant is significantly cheaper to calculate, it can be advantageous to
-  provide both.  If only the boolean variant is provided, some optimizations
+  provide both.  If only the Boolean variant is provided, some optimizations
   that depend on refuting index items before fetching all the keys are
   disabled.
 
@@ -323,11 +332,11 @@
      <listitem>
       <para>
        <function>triConsistent</function> is similar to <function>consistent</function>,
-       but instead of booleans in the <literal>check</literal> vector, there are
+       but instead of Booleans in the <literal>check</literal> vector, there are
        three possible values for each
        key: <literal>GIN_TRUE</literal>, <literal>GIN_FALSE</literal> and
        <literal>GIN_MAYBE</literal>. <literal>GIN_FALSE</literal> and <literal>GIN_TRUE</literal>
-       have the same meaning as regular boolean values, while
+       have the same meaning as regular Boolean values, while
        <literal>GIN_MAYBE</literal> means that the presence of that key is not known.
        When <literal>GIN_MAYBE</literal> values are present, the function should only
        return <literal>GIN_TRUE</literal> if the item certainly matches whether or
@@ -342,7 +351,7 @@
        When there are no <literal>GIN_MAYBE</literal> values in the <literal>check</literal>
        vector, a <literal>GIN_MAYBE</literal> return value is the equivalent of
        setting the <literal>recheck</literal> flag in the
-       boolean <function>consistent</function> function.
+       Boolean <function>consistent</function> function.
       </para>
      </listitem>
     </varlistentry>
@@ -379,8 +388,8 @@
  </para>
 
  <para>
-  Optionally, an operator class for <acronym>GIN</acronym> can supply the
-  following method:
+  An operator class for <acronym>GIN</acronym> can optionally supply the
+  following methods:
 
   <variablelist>
     <varlistentry>
@@ -399,6 +408,30 @@
        <literal>extra_data</literal> is the corresponding element of the extra-data
        array made by <function>extractQuery</function>, or <symbol>NULL</symbol> if none.
        Null keys are never passed to this function.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry>
+     <term><function>void options(local_relopts *relopts)</function></term>
+     <listitem>
+      <para>
+       Defines a set of user-visible parameters that control operator class
+       behavior.
+      </para>
+
+      <para>
+       The <function>options</function> function is passed a pointer to a
+       <structname>local_relopts</structname> struct, which needs to be
+       filled with a set of operator class specific options.  The options
+       can be accessed from other support functions using the
+       <literal>PG_HAS_OPCLASS_OPTIONS()</literal> and
+       <literal>PG_GET_OPCLASS_OPTIONS()</literal> macros.
+      </para>
+
+      <para>
+       Since both key extraction of indexed values and representation of the
+       key in <acronym>GIN</acronym> are flexible, they may depend on
+       user-specified parameters.
       </para>
      </listitem>
     </varlistentry>
@@ -440,7 +473,8 @@
   page contains either a pointer to a B-tree of heap pointers (a
   <quote>posting tree</quote>), or a simple list of heap pointers (a <quote>posting
   list</quote>) when the list is small enough to fit into a single index tuple along
-  with the key value.
+  with the key value.  <xref linkend="gin-internals-figure"/> illustrates
+  these components of a GIN index.
  </para>
 
  <para>
@@ -457,6 +491,15 @@
   key values for different columns can be of different types.
  </para>
 
+ <figure id="gin-internals-figure">
+  <title>GIN Internals</title>
+  <mediaobject>
+   <imageobject>
+    <imagedata fileref="images/gin.svg" format="SVG" width="100%"/>
+   </imageobject>
+  </mediaobject>
+ </figure>
+
  <sect2 id="gin-fast-update">
   <title>GIN Fast Update Technique</title>
 
@@ -464,7 +507,7 @@
    Updating a <acronym>GIN</acronym> index tends to be slow because of the
    intrinsic nature of inverted indexes: inserting or updating one heap row
    can cause many inserts into the index (one for each key extracted
-   from the indexed item). As of <productname>PostgreSQL</productname> 8.4,
+   from the indexed item).
    <acronym>GIN</acronym> is capable of postponing much of this work by inserting
    new tuples into a temporary, unsorted list of pending entries.
    When the table is vacuumed or autoanalyzed, or when
@@ -533,10 +576,10 @@
     </para>
 
     <para>
-     As of <productname>PostgreSQL</productname> 8.4, this advice is less
-     necessary since delayed indexing is used (see <xref
-     linkend="gin-fast-update"/> for details).  But for very large updates
-     it may still be best to drop and recreate the index.
+     When <literal>fastupdate</literal> is enabled for <acronym>GIN</acronym>
+     (see <xref linkend="gin-fast-update"/> for details), the penalty is
+     less than when it is not.  But for very large updates it may still be
+     best to drop and recreate the index.
     </para>
    </listitem>
   </varlistentry>
@@ -569,7 +612,7 @@
     </para>
     <para>
      <varname>gin_pending_list_limit</varname> can be overridden for individual
-     GIN indexes by changing storage parameters, and which allows each
+     GIN indexes by changing storage parameters, which allows each
      GIN index to have its own cleanup threshold.
      For example, it's possible to increase the threshold only for the GIN
      index which can be updated heavily, and decrease it otherwise.

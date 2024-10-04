@@ -108,6 +108,16 @@ DROP GROUP IF EXISTS regress_test_g1, regress_test_g2;
 
 DROP GROUP regress_test_g1;
 
+-- collation
+DROP COLLATION IF EXISTS test_collation_exists;
+
+-- conversion
+DROP CONVERSION test_conversion_exists;
+DROP CONVERSION IF EXISTS test_conversion_exists;
+CREATE CONVERSION test_conversion_exists
+    FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+DROP CONVERSION test_conversion_exists;
+
 -- text search parser
 DROP TEXT SEARCH PARSER test_tsparser_exists;
 DROP TEXT SEARCH PARSER IF EXISTS test_tsparser_exists;
@@ -156,6 +166,10 @@ DROP OPERATOR IF EXISTS @#@ (int, int);
 CREATE OPERATOR @#@
         (leftarg = int8, rightarg = int8, procedure = int8xor);
 DROP OPERATOR @#@ (int8, int8);
+
+-- language
+DROP LANGUAGE test_language_exists;
+DROP LANGUAGE IF EXISTS test_language_exists;
 
 -- cast
 DROP CAST (text AS text);
@@ -213,6 +227,10 @@ DROP OPERATOR FAMILY IF EXISTS test_operator_family USING btree;
 DROP OPERATOR FAMILY test_operator_family USING no_such_am;
 DROP OPERATOR FAMILY IF EXISTS test_operator_family USING no_such_am;
 
+-- access method
+DROP ACCESS METHOD no_such_am;
+DROP ACCESS METHOD IF EXISTS no_such_am;
+
 -- drop the table
 
 DROP TABLE IF EXISTS test_exists;
@@ -228,12 +246,15 @@ DROP CAST IF EXISTS (INTEGER AS no_such_type2);
 DROP CAST IF EXISTS (no_such_type1 AS INTEGER);
 DROP CAST IF EXISTS (INTEGER AS no_such_schema.bar);
 DROP CAST IF EXISTS (no_such_schema.foo AS INTEGER);
+DROP COLLATION IF EXISTS no_such_schema.foo;
+DROP CONVERSION IF EXISTS no_such_schema.foo;
 DROP DOMAIN IF EXISTS no_such_schema.foo;
 DROP FOREIGN TABLE IF EXISTS no_such_schema.foo;
 DROP FUNCTION IF EXISTS no_such_schema.foo();
 DROP FUNCTION IF EXISTS foo(no_such_type);
 DROP FUNCTION IF EXISTS foo(no_such_schema.no_such_type);
 DROP INDEX IF EXISTS no_such_schema.foo;
+DROP MATERIALIZED VIEW IF EXISTS no_such_schema.foo;
 DROP OPERATOR IF EXISTS no_such_schema.+ (int, int);
 DROP OPERATOR IF EXISTS + (no_such_type, no_such_type);
 DROP OPERATOR IF EXISTS + (no_such_schema.no_such_type, no_such_schema.no_such_type);
@@ -250,6 +271,30 @@ DROP TEXT SEARCH TEMPLATE IF EXISTS no_such_schema.foo;
 DROP TRIGGER IF EXISTS foo ON no_such_schema.bar;
 DROP TYPE IF EXISTS no_such_schema.foo;
 DROP VIEW IF EXISTS no_such_schema.foo;
+
+-- Check we receive an ambiguous function error when there are
+-- multiple matching functions.
+CREATE FUNCTION test_ambiguous_funcname(int) returns int as $$ select $1; $$ language sql;
+CREATE FUNCTION test_ambiguous_funcname(text) returns text as $$ select $1; $$ language sql;
+DROP FUNCTION test_ambiguous_funcname;
+DROP FUNCTION IF EXISTS test_ambiguous_funcname;
+
+-- cleanup
+DROP FUNCTION test_ambiguous_funcname(int);
+DROP FUNCTION test_ambiguous_funcname(text);
+
+-- Likewise for procedures.
+CREATE PROCEDURE test_ambiguous_procname(int) as $$ begin end; $$ language plpgsql;
+CREATE PROCEDURE test_ambiguous_procname(text) as $$ begin end; $$ language plpgsql;
+DROP PROCEDURE test_ambiguous_procname;
+DROP PROCEDURE IF EXISTS test_ambiguous_procname;
+
+-- Check we get a similar error if we use ROUTINE instead of PROCEDURE.
+DROP ROUTINE IF EXISTS test_ambiguous_procname;
+
+-- cleanup
+DROP PROCEDURE test_ambiguous_procname(int);
+DROP PROCEDURE test_ambiguous_procname(text);
 
 -- This test checks both the functionality of 'if exists' and the syntax
 -- of the drop database command.

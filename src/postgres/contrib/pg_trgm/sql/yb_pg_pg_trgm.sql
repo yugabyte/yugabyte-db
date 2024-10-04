@@ -1,3 +1,4 @@
+set enable_bitmapscan = on; -- YB_TODO: remove this once enable_bitmapscan default becomes on.
 CREATE EXTENSION pg_trgm;
 
 -- Check whether any of our opclasses fail amvalidate
@@ -8,6 +9,9 @@ WHERE opc.oid >= 16384 AND NOT amvalidate(opc.oid);
 --backslash is used in tests below, installcheck will fail if
 --standard_conforming_string is off
 set standard_conforming_strings=on;
+
+-- reduce noise
+set extra_float_digits = 0;
 
 select show_trgm('');
 select show_trgm('(*&^$@%@');
@@ -45,11 +49,44 @@ select t,similarity(t,'gwertyu0988') as sml from test_trgm where t % 'gwertyu098
 select t,similarity(t,'gwertyu1988') as sml from test_trgm where t % 'gwertyu1988' order by sml desc, t;
 select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
 
+-- check handling of indexquals that generate no searchable conditions
+explain (costs off)
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+explain (costs off)
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+-- ensure that pending-list items are handled correctly, too
+create temp table t_test_trgm(t text COLLATE "C");
+create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
+insert into t_test_trgm values ('qwerty99'), ('qwerty01');
+explain (costs off)
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+explain (costs off)
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+
+-- run the same queries with sequential scan to check the results
+set enable_bitmapscan=off;
+set enable_seqscan=on;
+select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
+select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
+select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+reset enable_bitmapscan;
+
 create table test2(t text COLLATE "C");
 insert into test2 values ('abcdef');
 insert into test2 values ('quark');
 insert into test2 values ('  z foo bar');
 insert into test2 values ('/123/-45/');
+insert into test2 values ('line 1');
+insert into test2 values ('%line 2');
+insert into test2 values ('line 3%');
+insert into test2 values ('%line 4%');
+insert into test2 values ('%li%ne 5%');
+insert into test2 values ('li_e 6');
 create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 -- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
@@ -89,6 +126,23 @@ select * from test2 where t ~ '  z foo bar';
 select * from test2 where t ~ '  z foo';
 select * from test2 where t ~ 'qua(?!foo)';
 select * from test2 where t ~ '/\d+/-\d';
+-- test = operator
+explain (costs off)
+  select * from test2 where t = 'abcdef';
+select * from test2 where t = 'abcdef';
+explain (costs off)
+  select * from test2 where t = '%line%';
+select * from test2 where t = '%line%';
+select * from test2 where t = 'li_e 1';
+select * from test2 where t = '%line 2';
+select * from test2 where t = 'line 3%';
+select * from test2 where t = '%line 3%';
+select * from test2 where t = '%line 4%';
+select * from test2 where t = '%line 5%';
+select * from test2 where t = '%li_ne 5%';
+select * from test2 where t = '%li%ne 5%';
+select * from test2 where t = 'line 6';
+select * from test2 where t = 'li_e 6';
 drop index test2_idx_gin;
 
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);

@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
@@ -15,8 +15,6 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "lib/stringinfo.h"
@@ -29,6 +27,9 @@
 #include "access/tupmacs.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
+#include <stdlib.h>
 
 PG_FUNCTION_INFO_V1(plvsubst_string_array);
 PG_FUNCTION_INFO_V1(plvsubst_string_string);
@@ -72,7 +73,6 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 {
 	ArrayType	   *v = vals_in;
 	int				nitems,
-				   *dims,
 					ndims;
 	char		   *p;
 	int16			typlen;
@@ -95,6 +95,8 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 
 	if (v != NULL && (ndims = ARR_NDIM(v)) > 0)
 	{
+		int		   *dims;
+
 		if (ndims != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -129,15 +131,16 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	{
 		if (strncmp(&template_str[positions[i]], VARDATA(c_subst), subst_len) == 0)
 		{
-			Datum    itemvalue;
-			char     *value;
-
 			if (items++ < nitems)
 			{
+				char     *value;
+
 				if (bitmap && (*bitmap & bitmask) == 0)
 					value = pstrdup("NULL");
 				else
 				{
+					Datum    itemvalue;
+
 					itemvalue = fetch_att(p, typbyval, typlen);
 					value = DatumGetCString(FunctionCall3(&proc,
 								itemvalue,
@@ -195,8 +198,16 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	Datum		r;
 	ArrayType  *array;
 
-	FunctionCallInfoData fcinfo_data;
-	FunctionCallInfo locfcinfo = &fcinfo_data;
+#if PG_VERSION_NUM >= 120000
+
+	LOCAL_FCINFO(locfcinfo, 2);
+
+#else
+
+	FunctionCallInfoData locfcinfo_data;
+	FunctionCallInfo locfcinfo = &locfcinfo_data;
+
+#endif
 
 	Oid		collation = PG_GET_COLLATION();
 
@@ -211,10 +222,21 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 
 	InitFunctionCallInfoData(*locfcinfo, fcinfo->flinfo, 2, collation, NULL, NULL);
 
+#if PG_VERSION_NUM >= 120000
+
+	locfcinfo->args[0].value = PG_GETARG_DATUM(1);
+	locfcinfo->args[1].value = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
+	locfcinfo->args[0].isnull = false;
+	locfcinfo->args[1].isnull = false;
+
+#else
+
 	locfcinfo->arg[0] = PG_GETARG_DATUM(1);
 	locfcinfo->arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
 	locfcinfo->argnull[0] = false;
 	locfcinfo->argnull[1] = false;
+
+#endif
 
 	r = text_to_array(locfcinfo);
 

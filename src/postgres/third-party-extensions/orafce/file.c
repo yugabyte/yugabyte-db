@@ -29,8 +29,17 @@
 #include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+
+#ifdef WIN32
+
+#include "utils/pg_locale.h"
+
+#endif
+
 #include "orafce.h"
 #include "builtins.h"
+
+/* YB includes. */
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -190,10 +199,41 @@ IO_EXCEPTION(void)
 }
 
 /*
+ * On WIN32 platform multibyte chars are not supported by
+ * fopen function. Instead we can use _wfopen functin. The
+ * arguments are of wchar strings, and should to use UTF16
+ * charset. Conversion from server encoding to wide strings
+ * is provided by function char2wchar (tested only for UTF8)
+ */
+#ifdef WIN32
+
+static wchar_t *
+to_wchar(const char *str)
+{
+	size_t		nbytes;
+	wchar_t	   *buff;
+
+	nbytes = strlen(str);
+
+	if ((nbytes + 1) > INT_MAX / sizeof(wchar_t))
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
+	buff = (wchar_t *) palloc((nbytes + 1) * sizeof(wchar_t));
+	char2wchar(buff, nbytes + 1, str, nbytes, 0);
+
+	return buff;
+}
+
+#endif
+
+/*
  * FUNCTION UTL_FILE.FOPEN(location text,
  *			   filename text,
  *			   open_mode text,
- *			   max_linesize integer)
+ *			   max_linesize integer
+ *			   [, encoding text ])
  *          RETURNS UTL_FILE.FILE_TYPE;
  *
  * The FOPEN function opens specified file and returns file handle.
@@ -272,10 +312,28 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	 * closed at the end of (sub)transactions, but we want to keep them open
 	 * for oracle compatibility.
 	 */
-#if NOT_USED
-	fullname = convert_encoding_server_to_platform(fullname);
-#endif
+
+#ifndef WIN32
+
 	file = fopen(fullname, mode);
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+		wchar_t	   *_mode = to_wchar(mode);
+
+		file = _wfopen(_fullname, _mode);
+
+		pfree(_fullname);
+		pfree(_mode);
+	}
+	else
+		file = fopen(fullname, mode);
+
+#endif
+
 	if (!file)
 		IO_EXCEPTION();
 
@@ -286,7 +344,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 		     errmsg("program limit exceeded"),
-		     errdetail("Too much concurent opened files"),
+		     errdetail("Too many files opened concurrently"),
 		     errhint("You can only open a maximum of ten files for each session")));
 	}
 
@@ -395,7 +453,6 @@ get_line(FILE *f, size_t max_linesize, int encoding, bool *iseof)
 	return result;
 }
 
-
 /*
  * FUNCTION UTL_FILE.GET_LINE(file UTL_TYPE.FILE_TYPE, line int DEFAULT NULL)
  *          RETURNS text;
@@ -437,7 +494,6 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(result);
 }
-
 
 /*
  * FUNCTION UTL_FILE.GET_NEXTLINE(file UTL_TYPE.FILE_TYPE)
@@ -695,7 +751,6 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-
 /*
  * FUNCTION UTL_FILE.FFLUSH(file UTL_FILE.FILE_TYPE)
  *          RETURNS void;
@@ -719,7 +774,6 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 /*
  * FUNCTION UTL_FILE.FCLOSE(file UTL_FILE.FILE_TYPE)
@@ -762,7 +816,6 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
-
 /*
  * FUNCTION UTL_FILE.FCLOSE_ALL()
  *          RETURNS void
@@ -797,7 +850,6 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /*
  * utl_file_dir security .. is solved with aux. table.
  *
@@ -808,7 +860,6 @@ check_secure_locality(const char *path)
 {
 	static SPIPlanPtr	plan = NULL;
 
-	Oid		argtypes[] = {TEXTOID};
 	Datum	values[1];
 	char	nulls[1] = {' '};
 
@@ -830,6 +881,8 @@ check_secure_locality(const char *path)
 
 	if (!plan)
 	{
+		Oid		argtypes[] = {TEXTOID};
+
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
 		    "SELECT 1 FROM utl_file.utl_file_dir"
@@ -866,12 +919,11 @@ safe_named_location(text *location)
 	static SPIPlanPtr	plan = NULL;
 	MemoryContext		old_cxt;
 
-	Oid		argtypes[] = {TEXTOID};
 	Datum	values[1];
 	char	nulls[1] = {' '};
 	char   *result;
 
-	old_cxt = CurrentMemoryContext;
+	old_cxt = GetCurrentMemoryContext();
 
 	values[0] = PointerGetDatum(location);
 
@@ -882,6 +934,8 @@ safe_named_location(text *location)
 
 	if (!plan)
 	{
+		Oid		argtypes[] = {TEXTOID};
+
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
 		    "SELECT dir FROM utl_file.utl_file_dir WHERE dirname = $1",
@@ -916,7 +970,6 @@ safe_named_location(text *location)
 
 	return result;
 }
-
 
 /*
  * get_safe_path - make a fullpath and check security.
@@ -987,8 +1040,29 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
+#ifndef WIN32
+
 	if (unlink(fullname) != 0)
 		IO_EXCEPTION();
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+
+		if (_wunlink(_fullname) != 0)
+			IO_EXCEPTION();
+
+		pfree(_fullname);
+	}
+	else
+	{
+		if (unlink(fullname) != 0)
+			IO_EXCEPTION();
+	}
+
+#endif
 
 	PG_RETURN_VOID();
 }
@@ -1019,6 +1093,8 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
 
+#ifndef WIN32
+
 	if (!overwrite)
 	{
 		struct stat	st;
@@ -1031,6 +1107,49 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	/* rename() overwrites existing files. */
 	if (rename(srcpath, dstpath) != 0)
 		IO_EXCEPTION();
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_dstpath = to_wchar(dstpath);
+		wchar_t	   *_srcpath = to_wchar(srcpath);
+
+		if (!overwrite)
+		{
+			struct _stat  _st;
+			if (_wstat(_dstpath, &_st) == 0)
+				CUSTOM_EXCEPTION(WRITE_ERROR, "File exists");
+			else if (errno != ENOENT)
+				IO_EXCEPTION();
+		}
+
+		/*
+		 * Originaly there was rename() function, but this cannot
+		 * to replace other existing file.
+		 */
+		if (!MoveFileExW(_srcpath, _dstpath, MOVEFILE_REPLACE_EXISTING))
+			IO_EXCEPTION();
+
+		pfree(_dstpath);
+		pfree(_srcpath);
+	}
+	else
+	{
+		if (!overwrite)
+		{
+			struct stat	st;
+			if (stat(dstpath, &st) == 0)
+				CUSTOM_EXCEPTION(WRITE_ERROR, "File exists");
+			else if (errno != ENOENT)
+				IO_EXCEPTION();
+		}
+
+		if (!MoveFileEx(srcpath, dstpath, MOVEFILE_REPLACE_EXISTING))
+			IO_EXCEPTION();
+	}
+
+#endif
 
 	PG_RETURN_VOID();
 }
@@ -1076,14 +1195,54 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
 
-	srcfile = AllocateFile(srcpath, "rt");
+#ifndef WIN32
+
+	srcfile = fopen(srcpath, "rt");
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_srcpath = to_wchar(srcpath);
+		wchar_t	   *_mode = to_wchar("rt");
+
+		srcfile = _wfopen(_srcpath, _mode);
+
+		pfree(_srcpath);
+		pfree(_mode);
+	}
+	else
+		srcfile = fopen(srcpath, "rt");
+
+#endif
+
 	if (srcfile == NULL)
 	{
 		/* failed to open src file. */
 		IO_EXCEPTION();
 	}
 
-	dstfile = AllocateFile(dstpath, "wt");
+#ifndef WIN32
+
+	dstfile = fopen(dstpath, "wt");
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_dstpath = to_wchar(dstpath);
+		wchar_t	   *_mode = to_wchar("wt");
+
+		dstfile = _wfopen(_dstpath, _mode);
+
+		pfree(_dstpath);
+		pfree(_mode);
+	}
+	else
+		dstfile = fopen(dstpath, "wt");
+
+#endif
+
 	if (dstfile == NULL)
 	{
 		/* failed to open dst file. */
@@ -1094,8 +1253,8 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	if (copy_text_file(srcfile, dstfile, start_line, end_line))
 		IO_EXCEPTION();
 
-	FreeFile(srcfile);
-	FreeFile(dstfile);
+	fclose(srcfile);
+	fclose(dstfile);
 
 	PG_RETURN_VOID();
 }
@@ -1176,15 +1335,13 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
+#ifndef WIN32
+
 	if (stat(fullname, &st) == 0)
 	{
 		values[0] = BoolGetDatum(true);
 		values[1] = Int64GetDatum(st.st_size);
-#ifndef WIN32
 		values[2] = Int32GetDatum(st.st_blksize);
-#else
-		values[2] = 512;	/* NTFS block size */
-#endif
 	}
 	else
 	{
@@ -1192,6 +1349,44 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 		nulls[1] = true;
 		nulls[2] = true;
 	}
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+		struct _stat  _st;
+
+		if (_wstat(_fullname, &_st) == 0)
+		{
+			values[0] = BoolGetDatum(true);
+			values[1] = Int64GetDatum(_st.st_size);
+			values[2] = 512;	/* NTFS block size */
+
+		}
+		else
+		{
+			values[0] = BoolGetDatum(false);
+			nulls[1] = true;
+			nulls[2] = true;
+		}
+
+		pfree(_fullname);
+	}
+	else if (stat(fullname, &st) == 0)
+	{
+		values[0] = BoolGetDatum(true);
+		values[1] = Int64GetDatum(st.st_size);
+		values[2] = 512;	/* NTFS block size */
+	}
+	else
+	{
+		values[0] = BoolGetDatum(false);
+		nulls[1] = true;
+		nulls[2] = true;
+	}
+
+#endif
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);

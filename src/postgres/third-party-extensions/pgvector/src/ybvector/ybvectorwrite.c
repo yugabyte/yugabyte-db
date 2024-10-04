@@ -235,8 +235,8 @@ ybVectorTupleInsert(YbVectorBuildState *vectorstate, OffsetNumber attnum,
  * similar ybcinbuildCallback.
  */
 static void
-ybvectorBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
-				   bool *isnull, bool tupleIsAlive, void *state)
+ybvectorBuildCallback(Relation index, Datum ybctid, Datum *values, bool *isnull,
+					  bool tupleIsAlive, void *state)
 {
 	YbVectorBuildState *buildstate = (YbVectorBuildState *) state;
 	MemoryContext oldCtx;
@@ -247,7 +247,7 @@ ybvectorBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
 	 */
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 	ybVectorTupleInsert(buildstate, 1, index, values[0], isnull[0],
-		heapTuple->t_ybctid, buildstate->backfilltime);
+		ybctid, buildstate->backfilltime);
 
 	buildstate->indtuples += 1;
 
@@ -277,7 +277,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
+	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }
@@ -305,9 +305,10 @@ ybvectorBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 	 * Do the heap scan.
 	 */
 	if (!bfinfo)
-		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-									   ybvectorBuildCallback, (void *) &buildstate,
-									   NULL /* HeapScanDesc */);
+		reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+											  ybvectorBuildCallback,
+											  (void *) &buildstate,
+											  NULL /* HeapScanDesc */);
 	else
 		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
 											   ybvectorBuildCallback,

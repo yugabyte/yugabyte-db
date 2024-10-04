@@ -1,0 +1,305 @@
+CREATE SCHEMA collate_tests;
+SET search_path = collate_tests;
+CREATE TABLE collate_test1 (
+    a int,
+    b text COLLATE "en-x-icu" NOT NULL
+);
+\d collate_test1
+        Table "collate_tests.collate_test1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | text    | en-x-icu  | not null |
+
+CREATE TABLE collate_test_fail (
+    a int,
+    b text COLLATE "ja_JP.eucjp-x-icu"
+);
+ERROR:  collation "ja_JP.eucjp-x-icu" for encoding "UTF8" does not exist
+LINE 3:     b text COLLATE "ja_JP.eucjp-x-icu"
+                   ^
+CREATE TABLE collate_test_fail (
+    a int,
+    b text COLLATE "foo-x-icu"
+);
+ERROR:  collation "foo-x-icu" for encoding "UTF8" does not exist
+LINE 3:     b text COLLATE "foo-x-icu"
+                   ^
+CREATE TABLE collate_test_fail (
+    a int COLLATE "en-x-icu",
+    b text
+);
+ERROR:  collations are not supported by type integer
+LINE 2:     a int COLLATE "en-x-icu",
+                  ^
+CREATE TABLE collate_test_like (
+    LIKE collate_test1
+);
+\d collate_test_like
+      Table "collate_tests.collate_test_like"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | text    | en-x-icu  | not null |
+
+CREATE TABLE collate_test2 (
+    a int,
+    b text COLLATE "sv-x-icu"
+);
+CREATE TABLE collate_test3 (
+    a int,
+    b text COLLATE "C"
+);
+INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'äbc'), (3, 'bbc'), (4, 'ABC');
+INSERT INTO collate_test2 SELECT * FROM collate_test1;
+INSERT INTO collate_test3 SELECT * FROM collate_test1;
+-- Repeat the test with expression pushdown disabled
+set yb_enable_expression_pushdown to off;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test1
+         Filter: (b >= 'bbc'::text)
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test2
+         Filter: (b >= 'bbc'::text)
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test3
+         Filter: (b >= 'bbc'::text)
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test3
+         Filter: (b >= 'BBC'::text)
+(4 rows)
+
+SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
+ a |  b
+---+-----
+ 3 | bbc
+(1 row)
+
+SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
+ a |  b
+---+-----
+ 2 | äbc
+ 3 | bbc
+(2 rows)
+
+SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
+ a |  b
+---+-----
+ 2 | äbc
+ 3 | bbc
+(2 rows)
+
+SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
+ a |  b
+---+-----
+ 1 | abc
+ 2 | äbc
+ 3 | bbc
+(3 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
+                 QUERY PLAN
+--------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test1
+         Filter: ((b)::text >= 'bbc'::text)
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
+                   QUERY PLAN
+------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test1
+         Filter: (b >= 'bbc'::text COLLATE "C")
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on collate_test1
+         Filter: ((b)::text >= 'bbc'::text COLLATE "C")
+(4 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
+LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
+                                                             ^
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
+ a |  b
+---+-----
+ 2 | äbc
+ 3 | bbc
+(2 rows)
+
+SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
+ a |  b
+---+-----
+ 2 | äbc
+ 3 | bbc
+(2 rows)
+
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
+ a |  b
+---+-----
+ 2 | äbc
+ 3 | bbc
+(2 rows)
+
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
+LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
+                                                             ^
+set yb_enable_expression_pushdown to on;
+CREATE TABLE tab1(id varchar(10));
+INSERT INTO tab1 values ('aaaa');
+\d tab1
+                   Table "collate_tests.tab1"
+ Column |         Type          | Collation | Nullable | Default
+--------+-----------------------+-----------+----------+---------
+ id     | character varying(10) |           |          |
+
+-- test rewrites
+CREATE OR REPLACE FUNCTION trig_rewrite() RETURNS event_trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE NOTICE 'rewriting table';
+END;
+$$;
+create event trigger event_rewrite on table_rewrite
+  execute procedure trig_rewrite();
+ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) collate "en-US-x-icu"; -- rewrite
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  rewriting table
+\d tab1
+                    Table "collate_tests.tab1"
+ Column |         Type         |  Collation  | Nullable | Default
+--------+----------------------+-------------+----------+---------
+ id     | character varying(5) | en-US-x-icu |          |
+
+CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
+CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
+INSERT INTO tab2 VALUES ('aaaa');
+\d tab2
+                    Table "collate_tests.tab2"
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
+Indexes:
+    "tab2_id_idx" lsm (id COLLATE "C" DESC)
+
+ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- no rewrite
+\d tab2
+                    Table "collate_tests.tab2"
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(20) | en-US-x-icu |          |
+Indexes:
+    "tab2_id_idx" lsm (id COLLATE "C" DESC)
+
+-- test YB restrictions
+CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
+ERROR:  Value other than 'C' for lc_collate option is not yet supported
+LINE 1: CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE ...
+                                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
+CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
+ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en-US-x-icu"
+HINT:  Use the COLLATE clause to set "C" collation explicitly.
+\d tab3
+                Table "collate_tests.tab3"
+ Column |     Type      |  Collation  | Nullable | Default
+--------+---------------+-------------+----------+---------
+ id     | character(10) | en-US-x-icu |          |
+
+CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
+\d tab3
+                Table "collate_tests.tab3"
+ Column |     Type      |  Collation  | Nullable | Default
+--------+---------------+-------------+----------+---------
+ id     | character(10) | en-US-x-icu |          |
+Indexes:
+    "tab3_id_idx" lsm (id COLLATE "C" ASC)
+
+CREATE TABLE tab4(id varchar(10) collate "en-US-x-icu");
+CREATE INDEX tab4_id_idx ON tab4(id varchar_pattern_ops asc); -- fail;
+ERROR:  could not use operator class "varchar_pattern_ops" with column collation "en-US-x-icu"
+HINT:  Use the COLLATE clause to set "C" collation explicitly.
+\d tab4
+                    Table "collate_tests.tab4"
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
+
+CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
+\d tab4
+                    Table "collate_tests.tab4"
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
+Indexes:
+    "tab4_id_idx" lsm (id COLLATE "C" ASC)
+
+CREATE TABLE tab5(id text collate "en-US-x-icu");
+CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
+ERROR:  could not use operator class "text_pattern_ops" with column collation "en-US-x-icu"
+HINT:  Use the COLLATE clause to set "C" collation explicitly.
+\d tab5
+            Table "collate_tests.tab5"
+ Column | Type |  Collation  | Nullable | Default
+--------+------+-------------+----------+---------
+ id     | text | en-US-x-icu |          |
+
+CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
+\d tab5
+            Table "collate_tests.tab5"
+ Column | Type |  Collation  | Nullable | Default
+--------+------+-------------+----------+---------
+ id     | text | en-US-x-icu |          |
+Indexes:
+    "tab5_id_idx" lsm (id COLLATE "C" ASC)
+
+-- No index scan when collation does not match
+CREATE TABLE collate_filter_pushdown (k text collate "C", v text, PRIMARY KEY(k hash));
+INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "C"; -- should push down filter and result in Index scan.
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ Index Scan using collate_filter_pushdown_pkey on collate_filter_pushdown  (cost=0.00..4.11 rows=1 width=64)
+   Index Cond: (k = 'A'::text COLLATE "C")
+(2 rows)
+
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "en_US"; -- should NOT push down filter and result in Seq scan.
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Seq Scan on collate_filter_pushdown  (cost=0.00..102.50 rows=1000 width=64)
+   Filter: (k = 'A'::text COLLATE "en_US")
+(2 rows)

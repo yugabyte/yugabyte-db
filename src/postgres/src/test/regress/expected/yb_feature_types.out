@@ -150,5 +150,3 @@ CREATE TABLE feature_tab_void (feature_col VOID);
 ERROR:  column "feature_col" has pseudo-type void
 -- TODO(jason): uncomment when issue #1975 is closed.
 -- CREATE TABLE feature_tab_unknown (feature_col UNKNOWN);
-CREATE TABLE feature_tab_opaque (feature_col OPAQUE);
-ERROR:  column "feature_col" has pseudo-type opaque

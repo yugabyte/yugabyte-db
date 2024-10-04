@@ -31,7 +31,7 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
     @Override
     protected Map<String, String> getTServerFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("ysql_pg_conf", "shared_preload_libraries='passwordcheck'");
+        appendToYsqlPgConf(flagMap, "shared_preload_libraries='passwordcheck'");
         return flagMap;
     }
 

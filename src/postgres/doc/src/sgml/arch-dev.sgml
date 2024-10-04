@@ -7,7 +7,7 @@
    <title>Author</title>
    <para>
     This chapter originated as part of
-    <xref linkend="sim98"/>, Stefan Simkovics'
+    <xref linkend="sim98"/> Stefan Simkovics'
     Master's Thesis prepared at Vienna University of Technology under the direction
     of O.Univ.Prof.Dr. Georg Gottlob and Univ.Ass. Mag. Katrin Seyr.
    </para>
@@ -17,10 +17,7 @@
    This chapter gives an overview of the internal structure of the
    backend of <productname>PostgreSQL</productname>.  After having
    read the following sections you should have an idea of how a query
-   is processed. This chapter does not aim to provide a detailed
-   description of the internal operation of
-   <productname>PostgreSQL</productname>, as such a document would be
-   very extensive. Rather, this chapter is intended to help the reader
+   is processed.  This chapter is intended to help the reader
    understand the general sequence of operations that occur within the
    backend from the point at which a query is received, to the point
    at which the results are returned to the client.
@@ -30,8 +27,8 @@
    <title>The Path of a Query</title>
 
    <para>
-    Here we give a short overview of the stages a query has to pass in
-    order to obtain a result.
+    Here we give a short overview of the stages a query has to pass
+    to obtain a result.
    </para>
 
    <procedure>
@@ -114,23 +111,28 @@
   </sect1>
 
   <sect1 id="connect-estab">
-   <title>How Connections are Established</title>
+   <title>How Connections Are Established</title>
 
    <para>
-    <productname>PostgreSQL</productname> is implemented using a
-    simple <quote>process per user</quote> client/server model.  In this model
-    there is one <firstterm>client process</firstterm> connected to
-    exactly one <firstterm>server process</firstterm>.  As we do not
-    know ahead of time how many connections will be made, we have to
-    use a <firstterm>master process</firstterm> that spawns a new
-    server process every time a connection is requested. This master
-    process is called <literal>postgres</literal> and listens at a
-    specified TCP/IP port for incoming connections. Whenever a request
-    for a connection is detected the <literal>postgres</literal>
-    process spawns a new server process. The server tasks
-    communicate with each other using <firstterm>semaphores</firstterm> and
-    <firstterm>shared memory</firstterm> to ensure data integrity
-    throughout concurrent data access.
+    <productname>PostgreSQL</productname> implements a
+    <quote>process per user</quote> client/server model.
+    In this model, every
+    <glossterm linkend="glossary-client">client process</glossterm>
+    connects to exactly one
+    <glossterm linkend="glossary-backend">backend process</glossterm>.
+    As we do not know ahead of time how many connections will be made,
+    we have to use a <quote>supervisor process</quote> that spawns a new
+    backend process every time a connection is requested. This supervisor
+    process is called
+    <glossterm linkend="glossary-postmaster">postmaster</glossterm>
+    and listens at a specified TCP/IP port for incoming connections.
+    Whenever it detects a request for a connection, it spawns a new
+    backend process.  Those backend processes communicate with each
+    other and with other processes of the
+    <glossterm linkend="glossary-instance">instance</glossterm>
+    using <firstterm>semaphores</firstterm> and
+    <glossterm linkend="glossary-shared-memory">shared memory</glossterm>
+    to ensure data integrity throughout concurrent data access.
    </para>
 
    <para>
@@ -143,11 +145,11 @@
    </para>
 
    <para>
-    Once a connection is established the client process can send a query
-    to the <firstterm>backend</firstterm> (server). The query is transmitted using plain text,
-    i.e., there is no parsing done in the <firstterm>frontend</firstterm> (client). The
-    server parses the query, creates an <firstterm>execution plan</firstterm>,
-    executes the plan and returns the retrieved rows to the client
+    Once a connection is established, the client process can send a query
+    to the backend process it's connected to. The query is transmitted using
+    plain text, i.e., there is no parsing done in the client. The backend
+    process parses the query, creates an <firstterm>execution plan</firstterm>,
+    executes the plan, and returns the retrieved rows to the client
     by transmitting them over the established connection.
    </para>
   </sect1>
@@ -229,7 +231,7 @@
     <para>
      A detailed description of <application>bison</application> or
      the grammar rules given in <filename>gram.y</filename> would be
-     beyond the scope of this paper. There are many books and
+     beyond the scope of this manual. There are many books and
      documents dealing with <application>flex</application> and
      <application>bison</application>. You should be familiar with
      <application>bison</application> before you start to study the
@@ -259,7 +261,7 @@
      system catalog lookups can only be done within a transaction, and we
      do not wish to start a transaction immediately upon receiving a query
      string.  The raw parsing stage is sufficient to identify the transaction
-     control commands (<command>BEGIN</command>, <command>ROLLBACK</command>, etc), and
+     control commands (<command>BEGIN</command>, <command>ROLLBACK</command>, etc.), and
      these can then be correctly executed without any further analysis.
      Once we know that we are dealing with an actual query (such as
      <command>SELECT</command> or <command>UPDATE</command>), it is okay to
@@ -342,8 +344,8 @@
    <note>
     <para>
      In some situations, examining each possible way in which a query
-     can be executed would take an excessive amount of time and memory
-     space. In particular, this occurs when executing queries
+     can be executed would take an excessive amount of time and memory.
+     In particular, this occurs when executing queries
      involving large numbers of join operations. In order to determine
      a reasonable (not necessarily optimal) query plan in a reasonable amount
      of time, <productname>PostgreSQL</productname> uses a <firstterm>Genetic
@@ -410,7 +412,7 @@
         <firstterm>merge join</firstterm>: Each relation is sorted on the join
         attributes before the join starts. Then the two relations are
         scanned in parallel, and matching rows are combined to form
-        join rows. This kind of join is more
+        join rows. This kind of join is
         attractive because each relation has to be scanned only once.
         The required sorting might be achieved either by an explicit sort
         step, or by scanning the relation in the proper order using an
@@ -441,7 +443,7 @@
      If the query uses fewer than <xref linkend="guc-geqo-threshold"/>
      relations, a near-exhaustive search is conducted to find the best
      join sequence.  The planner preferentially considers joins between any
-     two relations for which there exist a corresponding join clause in the
+     two relations for which there exists a corresponding join clause in the
      <literal>WHERE</literal> qualification (i.e., for
      which a restriction like <literal>where rel1.attr1=rel2.attr2</literal>
      exists). Join pairs with no join clause are considered only when there
@@ -528,26 +530,36 @@
    </para>
 
    <para>
-    The executor mechanism is used to evaluate all four basic SQL query types:
-    <command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>, and
-    <command>DELETE</command>.  For <command>SELECT</command>, the top-level executor
-    code only needs to send each row returned by the query plan tree off
-    to the client.  For <command>INSERT</command>, each returned row is inserted
-    into the target table specified for the <command>INSERT</command>.  This is
-    done in a special top-level plan node called <literal>ModifyTable</literal>.
-    (A simple
-    <command>INSERT ... VALUES</command> command creates a trivial plan tree
-    consisting of a single <literal>Result</literal> node, which computes just one
-    result row, and <literal>ModifyTable</literal> above it to perform the insertion.
-    But <command>INSERT ... SELECT</command> can demand the full power
-    of the executor mechanism.)  For <command>UPDATE</command>, the planner arranges
-    that each computed row includes all the updated column values, plus
-    the <firstterm>TID</firstterm> (tuple ID, or row ID) of the original target row;
-    this data is fed into a <literal>ModifyTable</literal> node, which uses the
-    information to create a new updated row and mark the old row deleted.
-    For <command>DELETE</command>, the only column that is actually returned by the
-    plan is the TID, and the <literal>ModifyTable</literal> node simply uses the TID
-    to visit each target row and mark it deleted.
+    The executor mechanism is used to evaluate all four basic SQL query
+    types: <command>SELECT</command>, <command>INSERT</command>,
+    <command>UPDATE</command>, and <command>DELETE</command>.
+    For <command>SELECT</command>, the top-level executor code
+    only needs to send each row returned by the query plan tree
+    off to the client.  <command>INSERT ... SELECT</command>,
+    <command>UPDATE</command>, and <command>DELETE</command>
+    are effectively <command>SELECT</command>s under a special
+    top-level plan node called <literal>ModifyTable</literal>.
+   </para>
+
+   <para>
+    <command>INSERT ... SELECT</command> feeds the rows up
+    to <literal>ModifyTable</literal> for insertion.  For
+    <command>UPDATE</command>, the planner arranges that each
+    computed row includes all the updated column values, plus the
+    <firstterm>TID</firstterm> (tuple ID, or row ID) of the original
+    target row; this data is fed up to the <literal>ModifyTable</literal>
+    node, which uses the information to create a new updated row and
+    mark the old row deleted.  For <command>DELETE</command>, the only
+    column that is actually returned by the plan is the TID, and the
+    <literal>ModifyTable</literal> node simply uses the TID to visit each
+    target row and mark it deleted.
+   </para>
+
+   <para>
+    A simple <command>INSERT ... VALUES</command> command creates a
+    trivial plan tree consisting of a single <literal>Result</literal>
+    node, which computes just one result row, feeding that up
+    to <literal>ModifyTable</literal> to perform the insertion.
    </para>
 
   </sect1>

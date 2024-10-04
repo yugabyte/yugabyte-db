@@ -1,7 +1,9 @@
 /norm_test
 /norm_test_table.h
 
-# Files downloaded from the Unicode Character Database
+# Downloaded files
 /CompositionExclusions.txt
+/DerivedNormalizationProps.txt
+/EastAsianWidth.txt
 /NormalizationTest.txt
 /UnicodeData.txt

@@ -4,7 +4,7 @@
  *	  POSTGRES internal predicate locking definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/predicate_internals.h
@@ -15,6 +15,7 @@
 #define PREDICATE_INTERNALS_H
 
 #include "storage/lock.h"
+#include "storage/lwlock.h"
 
 /*
  * Commit number.
@@ -51,7 +52,7 @@ typedef uint64 SerCommitSeqNo;
  *
  * Eligibility for cleanup of committed transactions is generally determined
  * by comparing the transaction's finishedBefore field to
- * SerializableGlobalXmin.
+ * SxactGlobalXmin.
  */
 typedef struct SERIALIZABLEXACT
 {
@@ -92,6 +93,13 @@ typedef struct SERIALIZABLEXACT
 								 * FinishedSerializableTransactions */
 
 	/*
+	 * perXactPredicateListLock is only used in parallel queries: it protects
+	 * this SERIALIZABLEXACT's predicate lock list against other workers of
+	 * the same session.
+	 */
+	LWLock		perXactPredicateListLock;
+
+	/*
 	 * for r/o transactions: list of concurrent r/w transactions that we could
 	 * potentially have conflicts with, and vice versa for r/w transactions
 	 */
@@ -105,6 +113,7 @@ typedef struct SERIALIZABLEXACT
 	TransactionId xmin;			/* the transaction's snapshot xmin */
 	uint32		flags;			/* OR'd combination of values defined below */
 	int			pid;			/* pid of associated process */
+	int			pgprocno;		/* pgprocno of associated process */
 } SERIALIZABLEXACT;
 
 #define SXACT_FLAG_COMMITTED			0x00000001	/* already committed */
@@ -123,6 +132,12 @@ typedef struct SERIALIZABLEXACT
 #define SXACT_FLAG_RO_UNSAFE			0x00000100
 #define SXACT_FLAG_SUMMARY_CONFLICT_IN	0x00000200
 #define SXACT_FLAG_SUMMARY_CONFLICT_OUT 0x00000400
+/*
+ * The following flag means the transaction has been partially released
+ * already, but is being preserved because parallel workers might have a
+ * reference to it.  It'll be recycled by the leader at end-of-transaction.
+ */
+#define SXACT_FLAG_PARTIALLY_RELEASED	0x00000800
 
 /*
  * The following types are used to provide an ad hoc list for holding
@@ -473,7 +488,7 @@ typedef struct TwoPhasePredicateRecord
  * locking internals.
  */
 extern PredicateLockData *GetPredicateLockStatusData(void);
-extern int GetSafeSnapshotBlockingPids(int blocked_pid,
-							int *output, int output_size);
+extern int	GetSafeSnapshotBlockingPids(int blocked_pid,
+										int *output, int output_size);
 
 #endif							/* PREDICATE_INTERNALS_H */

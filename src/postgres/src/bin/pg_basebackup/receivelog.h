@@ -2,7 +2,7 @@
  *
  * receivelog.h
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/receivelog.h
@@ -12,10 +12,9 @@
 #ifndef RECEIVELOG_H
 #define RECEIVELOG_H
 
+#include "access/xlogdefs.h"
 #include "libpq-fe.h"
 #include "walmethods.h"
-
-#include "access/xlogdefs.h"
 
 /*
  * Called before trying to read more data or when a segment is
@@ -53,6 +52,6 @@ typedef struct StreamCtl
 
 extern bool CheckServerVersionForStreaming(PGconn *conn);
 extern bool ReceiveXlogStream(PGconn *conn,
-				  StreamCtl *stream);
+							  StreamCtl *stream);
 
 #endif							/* RECEIVELOG_H */

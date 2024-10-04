@@ -2,7 +2,7 @@
 -- expression evaluated tests that don't fit into a more specific file
 --
 --
--- Tests for SQLVAlueFunction
+-- Tests for SQLValueFunction
 --
 -- current_date  (always matches because of transactional behaviour)
 SELECT date(now())::text = current_date::text;

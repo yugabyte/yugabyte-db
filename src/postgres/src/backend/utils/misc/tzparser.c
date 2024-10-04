@@ -11,7 +11,7 @@
  * PG_TRY if necessary.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -35,11 +35,11 @@
 
 static bool validateTzEntry(tzEntry *tzentry);
 static bool splitTzLine(const char *filename, int lineno,
-			char *line, tzEntry *tzentry);
-static int addToArray(tzEntry **base, int *arraysize, int n,
-		   tzEntry *entry, bool override);
-static int ParseTzFile(const char *filename, int depth,
-			tzEntry **base, int *arraysize, int n);
+						char *line, tzEntry *tzentry);
+static int	addToArray(tzEntry **base, int *arraysize, int n,
+					   tzEntry *entry, bool override);
+static int	ParseTzFile(const char *filename, int depth,
+						tzEntry **base, int *arraysize, int n);
 
 
 /*
@@ -53,8 +53,7 @@ validateTzEntry(tzEntry *tzentry)
 	unsigned char *p;
 
 	/*
-	 * Check restrictions imposed by datetkntbl storage format (see
-	 * datetime.c)
+	 * Check restrictions imposed by datetktbl storage format (see datetime.c)
 	 */
 	if (strlen(tzentry->abbrev) > TOKMAXLEN)
 	{
@@ -365,7 +364,8 @@ ParseTzFile(const char *filename, int depth,
 			{
 				GUC_check_errmsg("could not read time zone file \"%s\": %m",
 								 filename);
-				return -1;
+				n = -1;
+				break;
 			}
 			/* else we're at EOF after all */
 			break;
@@ -375,7 +375,8 @@ ParseTzFile(const char *filename, int depth,
 			/* the line is too long for tzbuf */
 			GUC_check_errmsg("line is too long in time zone file \"%s\", line %d",
 							 filename, lineno);
-			return -1;
+			n = -1;
+			break;
 		}
 
 		/* skip over whitespace */
@@ -398,12 +399,13 @@ ParseTzFile(const char *filename, int depth,
 			{
 				GUC_check_errmsg("@INCLUDE without file name in time zone file \"%s\", line %d",
 								 filename, lineno);
-				return -1;
+				n = -1;
+				break;
 			}
 			n = ParseTzFile(includeFile, depth + 1,
 							base, arraysize, n);
 			if (n < 0)
-				return -1;
+				break;
 			continue;
 		}
 
@@ -414,12 +416,18 @@ ParseTzFile(const char *filename, int depth,
 		}
 
 		if (!splitTzLine(filename, lineno, line, &tzentry))
-			return -1;
+		{
+			n = -1;
+			break;
+		}
 		if (!validateTzEntry(&tzentry))
-			return -1;
+		{
+			n = -1;
+			break;
+		}
 		n = addToArray(base, arraysize, n, &tzentry, override);
 		if (n < 0)
-			return -1;
+			break;
 	}
 
 	FreeFile(tzFile);

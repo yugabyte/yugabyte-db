@@ -20,6 +20,12 @@
 
 namespace yb {
 
+class FsManager;
+
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
+
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).
 // It is used to invoke a child process once and is not thread-safe.
@@ -87,6 +93,8 @@ struct ProcessWrapperCommonConfig {
   std::string certs_for_client_dir;
   std::string cert_base_name;
   bool enable_tls = false;
+
+  Status SetSslConf(const server::ServerBaseOptions& options, FsManager& fs_manager);
 };
 
 }  // namespace yb

@@ -8,7 +8,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/pg_regress_main.c
@@ -73,11 +73,16 @@ ysqlsh_start_test(const char *testname,
 		}
 	}
 
+	/*
+	 * Use HIDE_TABLEAM to hide different AMs to allow to use regression tests
+	 * against different AMs without unnecessary differences.
+	 */
 	offset += snprintf(ysqlsh_cmd + offset, sizeof(ysqlsh_cmd) - offset,
-					   "\"%s%sysqlsh\" -X -a -q -d \"%s\" < \"%s\" > \"%s\" 2>&1",
+					   "\"%s%sysqlsh\" -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
 					   bindir ? bindir : "",
 					   bindir ? "/" : "",
 					   dblist->str,
+					   "-v HIDE_TABLEAM=on -v HIDE_TOAST_COMPRESSION=on",
 					   infile,
 					   outfile);
 	if (offset >= sizeof(ysqlsh_cmd))
@@ -86,8 +91,9 @@ ysqlsh_start_test(const char *testname,
 		exit(2);
 	}
 
-	appnameenv = psprintf("PGAPPNAME=pg_regress/%s", testname);
-	putenv(appnameenv);
+	appnameenv = psprintf("pg_regress/%s", testname);
+	setenv("PGAPPNAME", appnameenv, 1);
+	free(appnameenv);
 
 	pid = spawn_process(ysqlsh_cmd);
 
@@ -99,7 +105,6 @@ ysqlsh_start_test(const char *testname,
 	}
 
 	unsetenv("PGAPPNAME");
-	free(appnameenv);
 
 	return pid;
 }
@@ -114,5 +119,8 @@ ysqlsh_init(int argc, char **argv)
 int
 main(int argc, char *argv[])
 {
-	return regression_main(argc, argv, ysqlsh_init, ysqlsh_start_test);
+	return regression_main(argc, argv,
+						   ysqlsh_init,
+						   ysqlsh_start_test,
+						   NULL /* no postfunc needed */ );
 }

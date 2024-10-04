@@ -23,7 +23,8 @@ PostgreSQL documentation
 <synopsis>
 CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXISTS ] <replaceable>table_name</replaceable>
     [ (<replaceable>column_name</replaceable> [, ...] ) ]
-    [ WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) | WITH OIDS | WITHOUT OIDS ]
+    [ USING <replaceable class="parameter">method</replaceable> ]
+    [ WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) | WITHOUT OIDS ]
     [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
     [ TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> ]
     AS <replaceable>query</replaceable>
@@ -51,6 +52,11 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
    source tables of the query.  In contrast, a view re-evaluates its
    defining <command>SELECT</command> statement whenever it is
    queried.
+  </para>
+
+  <para>
+   <command>CREATE TABLE AS</command> requires <literal>CREATE</literal>
+   privilege on the schema used for the table.
   </para>
  </refsect1>
 
@@ -94,9 +100,8 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     <term><literal>IF NOT EXISTS</literal></term>
     <listitem>
      <para>
-      Do not throw an error if a relation with the same name already exists.
-      A notice is issued in this case. Refer to <xref linkend="sql-createtable"/>
-      for details.
+      Do not throw an error if a relation with the same name already
+      exists; simply issue a notice and leave the table unmodified.
      </para>
     </listitem>
    </varlistentry>
@@ -121,31 +126,41 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
    </varlistentry>
 
    <varlistentry>
-    <term><literal>WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <term><literal>USING <replaceable class="parameter">method</replaceable></literal></term>
     <listitem>
      <para>
-      This clause specifies optional storage parameters for the new table;
-      see <xref linkend="sql-createtable-storage-parameters"
-      endterm="sql-createtable-storage-parameters-title"/> for more
-      information.  The <literal>WITH</literal> clause
-      can also include <literal>OIDS=TRUE</literal> (or just <literal>OIDS</literal>)
-      to specify that rows of the new table
-      should have OIDs (object identifiers) assigned to them, or
-      <literal>OIDS=FALSE</literal> to specify that the rows should not have OIDs.
-      See <xref linkend="sql-createtable"/> for more information.
+      This optional clause specifies the table access method to use to store
+      the contents for the new table; the method needs be an access method of
+      type <literal>TABLE</literal>. See <xref linkend="tableam"/> for more
+      information.  If this option is not specified, the default table access
+      method is chosen for the new table. See <xref
+      linkend="guc-default-table-access-method"/> for more information.
      </para>
     </listitem>
    </varlistentry>
 
    <varlistentry>
-    <term><literal>WITH OIDS</literal></term>
+    <term><literal>WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause specifies optional storage parameters for the new table;
+      see <xref linkend="sql-createtable-storage-parameters"/> in the
+      <xref linkend="sql-createtable"/> documentation for more
+      information.   For backward-compatibility the <literal>WITH</literal>
+      clause for a table can also include <literal>OIDS=FALSE</literal> to
+      specify that rows of the new table should contain no OIDs (object
+      identifiers), <literal>OIDS=TRUE</literal> is not supported anymore.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><literal>WITHOUT OIDS</literal></term>
     <listitem>
      <para>
-      These are obsolescent syntaxes equivalent to <literal>WITH (OIDS)</literal>
-      and <literal>WITH (OIDS=FALSE)</literal>, respectively.  If you wish to give
-      both an <literal>OIDS</literal> setting and storage parameters, you must use
-      the <literal>WITH ( ... )</literal> syntax; see above.
+      This is backward-compatible syntax for declaring a table
+      <literal>WITHOUT OIDS</literal>, creating a table <literal>WITH
+      OIDS</literal> is not supported anymore.
      </para>
     </listitem>
    </varlistentry>
@@ -174,8 +189,8 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
         <listitem>
          <para>
           All rows in the temporary table will be deleted at the end
-          of each transaction block.  Essentially, an automatic <xref
-          linkend="sql-truncate"/> is done
+          of each transaction block.  Essentially, an automatic <link
+          linkend="sql-truncate"><command>TRUNCATE</command></link> is done
           at each commit.
          </para>
         </listitem>
@@ -211,9 +226,9 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     <term><replaceable>query</replaceable></term>
     <listitem>
      <para>
-      A <xref linkend="sql-select"/>, <link
-      linkend="sql-table">TABLE</link>, or <xref linkend="sql-values"/>
-      command, or an <xref linkend="sql-execute"/> command that runs a
+      A <link linkend="sql-select"><command>SELECT</command></link>, <link
+      linkend="sql-table"><command>TABLE</command></link>, or <link linkend="sql-values"><command>VALUES</command></link>
+      command, or an <link linkend="sql-execute"><command>EXECUTE</command></link> command that runs a
       prepared <command>SELECT</command>, <command>TABLE</command>, or
       <command>VALUES</command> query.
      </para>
@@ -245,14 +260,6 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
    TABLE AS</command> offers a superset of the functionality offered
    by <command>SELECT INTO</command>.
   </para>
-
-  <para>
-   The <command>CREATE TABLE AS</command> command allows the user to
-   explicitly specify whether OIDs should be included. If the
-   presence of OIDs is not explicitly specified,
-   the <xref linkend="guc-default-with-oids"/> configuration variable is
-   used.
-  </para>
  </refsect1>
 
  <refsect1>
@@ -281,12 +288,12 @@ CREATE TABLE films2 AS
   <para>
    Create a new temporary table <literal>films_recent</literal>, consisting of
    only recent entries from the table <literal>films</literal>, using a
-   prepared statement.  The new table has OIDs and will be dropped at commit:
+   prepared statement.  The new table will be dropped at commit:
 
 <programlisting>
 PREPARE recentfilms(date) AS
   SELECT * FROM films WHERE date_prod &gt; $1;
-CREATE TEMP TABLE films_recent WITH (OIDS) ON COMMIT DROP AS
+CREATE TEMP TABLE films_recent ON COMMIT DROP AS
   EXECUTE recentfilms('2002-01-01');
 </programlisting></para>
  </refsect1>
@@ -325,7 +332,7 @@ CREATE TEMP TABLE films_recent WITH (OIDS) ON COMMIT DROP AS
     <listitem>
      <para>
       The <literal>WITH</literal> clause is a <productname>PostgreSQL</productname>
-      extension; neither storage parameters nor OIDs are in the standard.
+      extension; storage parameters are not in the standard.
      </para>
     </listitem>
 

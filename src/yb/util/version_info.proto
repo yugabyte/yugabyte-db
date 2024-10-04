@@ -46,4 +46,5 @@ message VersionInfoPB {
   optional string build_type = 7;
   optional string version_number = 9;
   optional string build_number = 10;
+  optional uint32 ysql_major_version = 11 [ default = 11 ];
 }

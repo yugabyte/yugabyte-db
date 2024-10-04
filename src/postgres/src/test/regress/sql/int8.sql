@@ -2,15 +2,10 @@
 -- INT8
 -- Test int8 64-bit integers.
 --
-CREATE TABLE INT8_TBL(q1 int8, q2 int8);
 
-INSERT INTO INT8_TBL VALUES('  123   ','  456');
-INSERT INTO INT8_TBL VALUES('123   ','4567890123456789');
-INSERT INTO INT8_TBL VALUES('4567890123456789','123');
-INSERT INTO INT8_TBL VALUES(+4567890123456789,'4567890123456789');
-INSERT INTO INT8_TBL VALUES('+4567890123456789','-4567890123456789');
+-- int8_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
 
--- bad inputs
 INSERT INTO INT8_TBL(q1) VALUES ('      ');
 INSERT INTO INT8_TBL(q1) VALUES ('xxx');
 INSERT INTO INT8_TBL(q1) VALUES ('3908203590239580293850293850329485');
@@ -62,22 +57,22 @@ SELECT * FROM INT8_TBL WHERE '123'::int2 <= q1;
 SELECT * FROM INT8_TBL WHERE '123'::int2 >= q1;
 
 
-SELECT '' AS five, q1 AS plus, -q1 AS minus FROM INT8_TBL;
+SELECT q1 AS plus, -q1 AS minus FROM INT8_TBL;
 
-SELECT '' AS five, q1, q2, q1 + q2 AS plus FROM INT8_TBL;
-SELECT '' AS five, q1, q2, q1 - q2 AS minus FROM INT8_TBL;
-SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL;
-SELECT '' AS three, q1, q2, q1 * q2 AS multiply FROM INT8_TBL
+SELECT q1, q2, q1 + q2 AS plus FROM INT8_TBL;
+SELECT q1, q2, q1 - q2 AS minus FROM INT8_TBL;
+SELECT q1, q2, q1 * q2 AS multiply FROM INT8_TBL;
+SELECT q1, q2, q1 * q2 AS multiply FROM INT8_TBL
  WHERE q1 < 1000 or (q2 > 0 and q2 < 1000);
-SELECT '' AS five, q1, q2, q1 / q2 AS divide, q1 % q2 AS mod FROM INT8_TBL;
+SELECT q1, q2, q1 / q2 AS divide, q1 % q2 AS mod FROM INT8_TBL;
 
-SELECT '' AS five, q1, float8(q1) FROM INT8_TBL;
-SELECT '' AS five, q2, float8(q2) FROM INT8_TBL;
+SELECT q1, float8(q1) FROM INT8_TBL;
+SELECT q2, float8(q2) FROM INT8_TBL;
 
 SELECT 37 + q1 AS plus4 FROM INT8_TBL;
 SELECT 37 - q1 AS minus4 FROM INT8_TBL;
-SELECT '' AS five, 2 * q1 AS "twice int4" FROM INT8_TBL;
-SELECT '' AS five, q1 * 2 AS "twice int4" FROM INT8_TBL;
+SELECT 2 * q1 AS "twice int4" FROM INT8_TBL;
+SELECT q1 * 2 AS "twice int4" FROM INT8_TBL;
 
 -- int8 op int4
 SELECT q1 + 42::int4 AS "8plus4", q1 - 42::int4 AS "8minus4", q1 * 42::int4 AS "8mul4", q1 / 42::int4 AS "8div4" FROM INT8_TBL;
@@ -96,31 +91,31 @@ SELECT max(q1), max(q2) FROM INT8_TBL;
 
 -- TO_CHAR()
 --
-SELECT '' AS to_char_1, to_char(q1, '9G999G999G999G999G999'), to_char(q2, '9,999,999,999,999,999')
+SELECT to_char(q1, '9G999G999G999G999G999'), to_char(q2, '9,999,999,999,999,999')
 	FROM INT8_TBL;
 
-SELECT '' AS to_char_2, to_char(q1, '9G999G999G999G999G999D999G999'), to_char(q2, '9,999,999,999,999,999.999,999')
+SELECT to_char(q1, '9G999G999G999G999G999D999G999'), to_char(q2, '9,999,999,999,999,999.999,999')
 	FROM INT8_TBL;
 
-SELECT '' AS to_char_3, to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 * -1), '9999999999999999.999PR')
+SELECT to_char( (q1 * -1), '9999999999999999PR'), to_char( (q2 * -1), '9999999999999999.999PR')
 	FROM INT8_TBL;
 
-SELECT '' AS to_char_4, to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999')
+SELECT to_char( (q1 * -1), '9999999999999999S'), to_char( (q2 * -1), 'S9999999999999999')
 	FROM INT8_TBL;
 
-SELECT '' AS to_char_5,  to_char(q2, 'MI9999999999999999')     FROM INT8_TBL;
-SELECT '' AS to_char_6,  to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL;
-SELECT '' AS to_char_7,  to_char(q2, 'FM9999999999999999THPR') FROM INT8_TBL;
-SELECT '' AS to_char_8,  to_char(q2, 'SG9999999999999999th')   FROM INT8_TBL;
-SELECT '' AS to_char_9,  to_char(q2, '0999999999999999')       FROM INT8_TBL;
-SELECT '' AS to_char_10, to_char(q2, 'S0999999999999999')      FROM INT8_TBL;
-SELECT '' AS to_char_11, to_char(q2, 'FM0999999999999999')     FROM INT8_TBL;
-SELECT '' AS to_char_12, to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL;
-SELECT '' AS to_char_13, to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL;
-SELECT '' AS to_char_14, to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL;
-SELECT '' AS to_char_15, to_char(q2, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9') FROM INT8_TBL;
-SELECT '' AS to_char_16, to_char(q2, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM INT8_TBL;
-SELECT '' AS to_char_17, to_char(q2, '999999SG9999999999')     FROM INT8_TBL;
+SELECT to_char(q2, 'MI9999999999999999')     FROM INT8_TBL;
+SELECT to_char(q2, 'FMS9999999999999999')    FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999THPR') FROM INT8_TBL;
+SELECT to_char(q2, 'SG9999999999999999th')   FROM INT8_TBL;
+SELECT to_char(q2, '0999999999999999')       FROM INT8_TBL;
+SELECT to_char(q2, 'S0999999999999999')      FROM INT8_TBL;
+SELECT to_char(q2, 'FM0999999999999999')     FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999.000') FROM INT8_TBL;
+SELECT to_char(q2, 'L9999999999999999.000')  FROM INT8_TBL;
+SELECT to_char(q2, 'FM9999999999999999.999') FROM INT8_TBL;
+SELECT to_char(q2, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9') FROM INT8_TBL;
+SELECT to_char(q2, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM INT8_TBL;
+SELECT to_char(q2, '999999SG9999999999')     FROM INT8_TBL;
 
 -- check min/max values and overflow behavior
 
@@ -225,3 +220,28 @@ FROM (VALUES (-2.5::numeric),
              (0.5::numeric),
              (1.5::numeric),
              (2.5::numeric)) t(x);
+
+-- test gcd()
+SELECT a, b, gcd(a, b), gcd(a, -b), gcd(b, a), gcd(-b, a)
+FROM (VALUES (0::int8, 0::int8),
+             (0::int8, 29893644334::int8),
+             (288484263558::int8, 29893644334::int8),
+             (-288484263558::int8, 29893644334::int8),
+             ((-9223372036854775808)::int8, 1::int8),
+             ((-9223372036854775808)::int8, 9223372036854775807::int8),
+             ((-9223372036854775808)::int8, 4611686018427387904::int8)) AS v(a, b);
+
+SELECT gcd((-9223372036854775808)::int8, 0::int8); -- overflow
+SELECT gcd((-9223372036854775808)::int8, (-9223372036854775808)::int8); -- overflow
+
+-- test lcm()
+SELECT a, b, lcm(a, b), lcm(a, -b), lcm(b, a), lcm(-b, a)
+FROM (VALUES (0::int8, 0::int8),
+             (0::int8, 29893644334::int8),
+             (29893644334::int8, 29893644334::int8),
+             (288484263558::int8, 29893644334::int8),
+             (-288484263558::int8, 29893644334::int8),
+             ((-9223372036854775808)::int8, 0::int8)) AS v(a, b);
+
+SELECT lcm((-9223372036854775808)::int8, 1::int8); -- overflow
+SELECT lcm(9223372036854775807::int8, 9223372036854775806::int8); -- overflow

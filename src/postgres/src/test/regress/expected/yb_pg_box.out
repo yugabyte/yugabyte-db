@@ -15,217 +15,236 @@
 --	0 1 2 3
 --
 -- boxes are specified by two points, given by four floats x1,y1,x2,y2
-CREATE TABLE BOX_TBL (id int primary key, f1 box);
-INSERT INTO BOX_TBL (id, f1) VALUES (1, '(2.0,2.0,0.0,0.0)');
-INSERT INTO BOX_TBL (id, f1) VALUES (2, '(1.0,1.0,3.0,3.0)');
+CREATE TABLE BOX_TBL (f1 box);
+INSERT INTO BOX_TBL (f1) VALUES ('(2.0,2.0,0.0,0.0)');
+INSERT INTO BOX_TBL (f1) VALUES ('(1.0,1.0,3.0,3.0)');
+INSERT INTO BOX_TBL (f1) VALUES ('((-8, 2), (-2, -10))');
 -- degenerate cases where the box is a line or a point
 -- note that lines and points boxes all have zero area
-INSERT INTO BOX_TBL (id, f1) VALUES (3, '(2.5, 2.5, 2.5,3.5)');
-INSERT INTO BOX_TBL (id, f1) VALUES (4, '(3.0, 3.0,3.0,3.0)');
+INSERT INTO BOX_TBL (f1) VALUES ('(2.5, 2.5, 2.5,3.5)');
+INSERT INTO BOX_TBL (f1) VALUES ('(3.0, 3.0,3.0,3.0)');
 -- badly formatted box inputs
-INSERT INTO BOX_TBL (id, f1) VALUES (5, '(2.3, 4.5)');
+INSERT INTO BOX_TBL (f1) VALUES ('(2.3, 4.5)');
 ERROR:  invalid input syntax for type box: "(2.3, 4.5)"
-LINE 1: INSERT INTO BOX_TBL (id, f1) VALUES (5, '(2.3, 4.5)');
-                                                ^
-INSERT INTO BOX_TBL (id, f1) VALUES (6, 'asdfasdf(ad');
+LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('(2.3, 4.5)');
+                                         ^
+INSERT INTO BOX_TBL (f1) VALUES ('[1, 2, 3, 4)');
+ERROR:  invalid input syntax for type box: "[1, 2, 3, 4)"
+LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('[1, 2, 3, 4)');
+                                         ^
+INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4]');
+ERROR:  invalid input syntax for type box: "(1, 2, 3, 4]"
+LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4]');
+                                         ^
+INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4) x');
+ERROR:  invalid input syntax for type box: "(1, 2, 3, 4) x"
+LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4) x');
+                                         ^
+INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
 ERROR:  invalid input syntax for type box: "asdfasdf(ad"
-LINE 1: INSERT INTO BOX_TBL (id, f1) VALUES (6, 'asdfasdf(ad');
-                                                ^
-SELECT '' AS four, * FROM BOX_TBL ORDER BY id;
- four | id |         f1
-------+----+---------------------
-      |  1 | (2,2),(0,0)
-      |  2 | (3,3),(1,1)
-      |  3 | (2.5,3.5),(2.5,2.5)
-      |  4 | (3,3),(3,3)
-(4 rows)
+LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
+                                         ^
+SELECT * FROM BOX_TBL;
+         f1          
+---------------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (-2,2),(-8,-10)
+ (2.5,3.5),(2.5,2.5)
+ (3,3),(3,3)
+(5 rows)
 
-SELECT '' AS four, b.*, area(b.f1) as barea
-   FROM BOX_TBL b ORDER BY id;
- four | id |         f1          | barea
-------+----+---------------------+-------
-      |  1 | (2,2),(0,0)         |     4
-      |  2 | (3,3),(1,1)         |     4
-      |  3 | (2.5,3.5),(2.5,2.5) |     0
-      |  4 | (3,3),(3,3)         |     0
-(4 rows)
+SELECT b.*, area(b.f1) as barea
+   FROM BOX_TBL b;
+         f1          | barea 
+---------------------+-------
+ (2,2),(0,0)         |     4
+ (3,3),(1,1)         |     4
+ (-2,2),(-8,-10)     |    72
+ (2.5,3.5),(2.5,2.5) |     0
+ (3,3),(3,3)         |     0
+(5 rows)
 
 -- overlap
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 && box '(2.5,2.5,1.0,1.0)' ORDER BY id;
- three |         f1
--------+---------------------
-       | (2,2),(0,0)
-       | (3,3),(1,1)
-       | (2.5,3.5),(2.5,2.5)
+   WHERE b.f1 && box '(2.5,2.5,1.0,1.0)';
+         f1          
+---------------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (2.5,3.5),(2.5,2.5)
 (3 rows)
 
 -- left-or-overlap (x only)
-SELECT '' AS two, b1.*
+SELECT b1.*
    FROM BOX_TBL b1
-   WHERE b1.f1 &< box '(2.0,2.0,2.5,2.5)' ORDER BY id;
- two | id |         f1
------+----+---------------------
-     |  1 | (2,2),(0,0)
-     |  3 | (2.5,3.5),(2.5,2.5)
-(2 rows)
+   WHERE b1.f1 &< box '(2.0,2.0,2.5,2.5)';
+         f1          
+---------------------
+ (2,2),(0,0)
+ (-2,2),(-8,-10)
+ (2.5,3.5),(2.5,2.5)
+(3 rows)
 
 -- right-or-overlap (x only)
-SELECT '' AS two, b1.*
+SELECT b1.*
    FROM BOX_TBL b1
-   WHERE b1.f1 &> box '(2.0,2.0,2.5,2.5)' ORDER BY id;
- two | id |         f1
------+----+---------------------
-     |  3 | (2.5,3.5),(2.5,2.5)
-     |  4 | (3,3),(3,3)
+   WHERE b1.f1 &> box '(2.0,2.0,2.5,2.5)';
+         f1          
+---------------------
+ (2.5,3.5),(2.5,2.5)
+ (3,3),(3,3)
 (2 rows)
 
 -- left of
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 << box '(3.0,3.0,5.0,5.0)' ORDER BY id;
- two |         f1
------+---------------------
-     | (2,2),(0,0)
-     | (2.5,3.5),(2.5,2.5)
-(2 rows)
+   WHERE b.f1 << box '(3.0,3.0,5.0,5.0)';
+         f1          
+---------------------
+ (2,2),(0,0)
+ (-2,2),(-8,-10)
+ (2.5,3.5),(2.5,2.5)
+(3 rows)
 
 -- area <=
-SELECT '' AS four, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 <= box '(3.0,3.0,5.0,5.0)' ORDER BY id;
- four |         f1
-------+---------------------
-      | (2,2),(0,0)
-      | (3,3),(1,1)
-      | (2.5,3.5),(2.5,2.5)
-      | (3,3),(3,3)
+   WHERE b.f1 <= box '(3.0,3.0,5.0,5.0)';
+         f1          
+---------------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (2.5,3.5),(2.5,2.5)
+ (3,3),(3,3)
 (4 rows)
 
 -- area <
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 < box '(3.0,3.0,5.0,5.0)' ORDER BY id;
- two |         f1
------+---------------------
-     | (2.5,3.5),(2.5,2.5)
-     | (3,3),(3,3)
+   WHERE b.f1 < box '(3.0,3.0,5.0,5.0)';
+         f1          
+---------------------
+ (2.5,3.5),(2.5,2.5)
+ (3,3),(3,3)
 (2 rows)
 
 -- area =
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 = box '(3.0,3.0,5.0,5.0)' ORDER BY id;
- two |     f1
------+-------------
-     | (2,2),(0,0)
-     | (3,3),(1,1)
+   WHERE b.f1 = box '(3.0,3.0,5.0,5.0)';
+     f1      
+-------------
+ (2,2),(0,0)
+ (3,3),(1,1)
 (2 rows)
 
 -- area >
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b				-- zero area
-   WHERE b.f1 > box '(3.5,3.0,4.5,3.0)' ORDER BY id;
- two |     f1
------+-------------
-     | (2,2),(0,0)
-     | (3,3),(1,1)
-(2 rows)
+   WHERE b.f1 > box '(3.5,3.0,4.5,3.0)';
+       f1        
+-----------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (-2,2),(-8,-10)
+(3 rows)
 
 -- area >=
-SELECT '' AS four, b.f1
+SELECT b.f1
    FROM BOX_TBL b				-- zero area
-   WHERE b.f1 >= box '(3.5,3.0,4.5,3.0)' ORDER BY id;
- four |         f1
-------+---------------------
-      | (2,2),(0,0)
-      | (3,3),(1,1)
-      | (2.5,3.5),(2.5,2.5)
-      | (3,3),(3,3)
-(4 rows)
+   WHERE b.f1 >= box '(3.5,3.0,4.5,3.0)';
+         f1          
+---------------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (-2,2),(-8,-10)
+ (2.5,3.5),(2.5,2.5)
+ (3,3),(3,3)
+(5 rows)
 
 -- right of
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE box '(3.0,3.0,5.0,5.0)' >> b.f1 ORDER BY id;
- two |         f1
------+---------------------
-     | (2,2),(0,0)
-     | (2.5,3.5),(2.5,2.5)
-(2 rows)
+   WHERE box '(3.0,3.0,5.0,5.0)' >> b.f1;
+         f1          
+---------------------
+ (2,2),(0,0)
+ (-2,2),(-8,-10)
+ (2.5,3.5),(2.5,2.5)
+(3 rows)
 
 -- contained in
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE b.f1 <@ box '(0,0,3,3)' ORDER BY id;
- three |     f1
--------+-------------
-       | (2,2),(0,0)
-       | (3,3),(1,1)
-       | (3,3),(3,3)
+   WHERE b.f1 <@ box '(0,0,3,3)';
+     f1      
+-------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (3,3),(3,3)
 (3 rows)
 
 -- contains
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE box '(0,0,3,3)' @> b.f1 ORDER BY id;
- three |     f1
--------+-------------
-       | (2,2),(0,0)
-       | (3,3),(1,1)
-       | (3,3),(3,3)
+   WHERE box '(0,0,3,3)' @> b.f1;
+     f1      
+-------------
+ (2,2),(0,0)
+ (3,3),(1,1)
+ (3,3),(3,3)
 (3 rows)
 
 -- box equality
-SELECT '' AS one, b.f1
+SELECT b.f1
    FROM BOX_TBL b
-   WHERE box '(1,1,3,3)' ~= b.f1 ORDER BY id;
- one |     f1
------+-------------
-     | (3,3),(1,1)
+   WHERE box '(1,1,3,3)' ~= b.f1;
+     f1      
+-------------
+ (3,3),(1,1)
 (1 row)
 
 -- center of box, left unary operator
-SELECT '' AS four, @@(b1.f1) AS p
-   FROM BOX_TBL b1 ORDER BY id;
- four |    p
-------+---------
-      | (1,1)
-      | (2,2)
-      | (2.5,3)
-      | (3,3)
-(4 rows)
+SELECT @@(b1.f1) AS p
+   FROM BOX_TBL b1;
+    p    
+---------
+ (1,1)
+ (2,2)
+ (-5,-4)
+ (2.5,3)
+ (3,3)
+(5 rows)
 
 -- wholly-contained
-SELECT '' AS one, b1.*, b2.*
+SELECT b1.*, b2.*
    FROM BOX_TBL b1, BOX_TBL b2
-   WHERE b1.f1 @> b2.f1 and not b1.f1 ~= b2.f1 ORDER BY b1.id;
- one | id |     f1      | id |     f1
------+----+-------------+----+-------------
-     |  2 | (3,3),(1,1) |  4 | (3,3),(3,3)
+   WHERE b1.f1 @> b2.f1 and not b1.f1 ~= b2.f1;
+     f1      |     f1      
+-------------+-------------
+ (3,3),(1,1) | (3,3),(3,3)
 (1 row)
 
-SELECT '' AS four, height(f1), width(f1) FROM BOX_TBL ORDER BY id;
- four | height | width
-------+--------+-------
-      |      2 |     2
-      |      2 |     2
-      |      1 |     0
-      |      0 |     0
-(4 rows)
+SELECT height(f1), width(f1) FROM BOX_TBL;
+ height | width 
+--------+-------
+      2 |     2
+      2 |     2
+     12 |     6
+      1 |     0
+      0 |     0
+(5 rows)
 
 --
 -- Test the SP-GiST index
 --
--- TODO(neil) TEMPORARY table is not yet supported.
--- CREATE TEMPORARY TABLE box_temp (f1 box);
-CREATE TABLE box_temp (f1 box);
+CREATE TEMPORARY TABLE box_temp (f1 box);
 INSERT INTO box_temp
 	SELECT box(point(i, i), point(i * 2, i * 2))
 	FROM generate_series(1, 50) AS i;
--- Indexing non-empty table not yet supported
--- CREATE INDEX box_spgist ON box_temp USING spgist (f1);
+CREATE INDEX box_spgist ON box_temp USING spgist (f1);
 INSERT INTO box_temp
 	VALUES (NULL),
 		   ('(0,0)(0,100)'),
@@ -234,8 +253,8 @@ INSERT INTO box_temp
 		   ('(-infinity,0)(0,infinity)'),
 		   ('(-infinity,-infinity)(infinity,infinity)');
 SET enable_seqscan = false;
-SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)' ORDER BY height(f1), width(f1);
-             f1
+SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)';
+             f1             
 ----------------------------
  (2,2),(1,1)
  (4,4),(2,2)
@@ -247,14 +266,14 @@ SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)' ORDER BY height(f1), width(
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 << '(30,40),(10,20)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 << '(30,40),(10,20)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)' ORDER BY height(f1), width(f1);
-             f1
+SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)';
+             f1             
 ----------------------------
  (2,2),(1,1)
  (4,4),(2,2)
@@ -267,14 +286,14 @@ SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)' ORDER BY height(f1), 
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)';
-                       QUERY PLAN
---------------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 &< '(10,100),(5,4.333334)'::box)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 &< '(10,100),(5,4.333334)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)' ORDER BY height(f1), width(f1);
-                    f1
+SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)';
+                    f1                     
 -------------------------------------------
  (20,20),(10,10)
  (22,22),(11,11)
@@ -296,14 +315,14 @@ SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)' ORDER BY height(f1), width(
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 && '(25,30),(15,20)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 && '(25,30),(15,20)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)' ORDER BY height(f1), width(f1);
-        f1
+SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)';
+        f1         
 -------------------
  (80,80),(40,40)
  (82,82),(41,41)
@@ -319,14 +338,14 @@ SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)' ORDER BY height(f1), width(
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 &> '(45,50),(40,30)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 &> '(45,50),(40,30)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)' ORDER BY height(f1), width(f1);
-        f1
+SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)';
+        f1         
 -------------------
  (82,82),(41,41)
  (84,84),(42,42)
@@ -341,14 +360,14 @@ SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)' ORDER BY height(f1), width(
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 >> '(40,40),(30,30)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 >> '(40,40),(30,30)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)' ORDER BY height(f1), width(f1);
-            f1
+SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)';
+            f1            
 --------------------------
  (2,2),(1,1)
  (4,4),(2,2)
@@ -356,14 +375,14 @@ SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)' ORDER BY height(f1), 
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)';
-                       QUERY PLAN
---------------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 <<| '(10,100),(5,4.33334)'::box)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 <<| '(10,100),(5,4.33334)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)' ORDER BY height(f1), width(f1);
-            f1
+SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)';
+            f1            
 --------------------------
  (2,2),(1,1)
  (4,4),(2,2)
@@ -371,28 +390,28 @@ SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)' ORDER BY height(f1), 
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)';
-                       QUERY PLAN
---------------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 &<| '(10,4.3333334),(5,1)'::box)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 &<| '(10,4.3333334),(5,1)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49.99)' ORDER BY height(f1), width(f1);
-          f1
+SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49.99)';
+          f1          
 ----------------------
  (100,100),(50,50)
  (0,Infinity),(0,100)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49.99)';
-                          QUERY PLAN
----------------------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 |&> '(49.99,49.99),(49.99,49.99)'::box)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 |&> '(49.99,49.99),(49.99,49.99)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)' ORDER BY height(f1), width(f1);
-          f1
+SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)';
+          f1          
 ----------------------
  (82,82),(41,41)
  (84,84),(42,42)
@@ -408,14 +427,14 @@ SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)' ORDER BY height(f1), width
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)';
-                    QUERY PLAN
----------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 |>> '(39,40),(37,38)'::box)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 |>> '(39,40),(37,38)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,16)' ORDER BY height(f1), width(f1);
-                    f1
+SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,16)';
+                    f1                     
 -------------------------------------------
  (16,16),(8,8)
  (18,18),(9,9)
@@ -424,142 +443,202 @@ SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,16)' ORDER BY height(f1), width(
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,15)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 @> '(15,15),(10,11)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 @> '(15,15),(10,11)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)' ORDER BY height(f1), width(f1);
-       f1
+SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)';
+       f1        
 -----------------
  (30,30),(15,15)
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 <@ '(30,35),(10,15)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 <@ '(30,35),(10,15)'::box)
 (2 rows)
 
-SELECT * FROM box_temp WHERE f1 ~= '(20,20),(40,40)' ORDER BY height(f1), width(f1);
-       f1
+SELECT * FROM box_temp WHERE f1 ~= '(20,20),(40,40)';
+       f1        
 -----------------
  (40,40),(20,20)
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 ~= '(20,20),(40,40)';
-                    QUERY PLAN
---------------------------------------------------
- Seq Scan on box_temp
-   Storage Filter: (f1 ~= '(40,40),(20,20)'::box)
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using box_spgist on box_temp
+   Index Cond: (f1 ~= '(40,40),(20,20)'::box)
 (2 rows)
 
 RESET enable_seqscan;
 DROP INDEX box_spgist;
-ERROR:  index "box_spgist" does not exist
 --
 -- Test the SP-GiST index on the larger volume of data
 --
-CREATE TABLE quad_box_tbl (b box);
+CREATE TABLE quad_box_tbl (id int, b box);
 INSERT INTO quad_box_tbl
-	SELECT box(point(x * 10, y * 10), point(x * 10 + 5, y * 10 + 5))
-	FROM generate_series(1, 100) x,
-		 generate_series(1, 100) y;
+  SELECT (x - 1) * 100 + y, box(point(x * 10, y * 10), point(x * 10 + 5, y * 10 + 5))
+  FROM generate_series(1, 100) x,
+       generate_series(1, 100) y;
 -- insert repeating data to test allTheSame
 INSERT INTO quad_box_tbl
-	SELECT '((200, 300),(210, 310))'
-	FROM generate_series(1, 1000);
+  SELECT i, '((200, 300),(210, 310))'
+  FROM generate_series(10001, 11000) AS i;
 INSERT INTO quad_box_tbl
-	VALUES
-		(NULL),
-		(NULL),
-		('((-infinity,-infinity),(infinity,infinity))'),
-		('((-infinity,100),(-infinity,500))'),
-		('((-infinity,-infinity),(700,infinity))');
--- TODO(neil) Index support
--- CREATE INDEX quad_box_tbl_idx ON quad_box_tbl USING spgist(b);
+VALUES
+  (11001, NULL),
+  (11002, NULL),
+  (11003, '((-infinity,-infinity),(infinity,infinity))'),
+  (11004, '((-infinity,100),(-infinity,500))'),
+  (11005, '((-infinity,-infinity),(700,infinity))');
+CREATE INDEX quad_box_tbl_idx ON quad_box_tbl USING spgist(b);
+ERROR:  index method "spgist" not supported yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
+-- get reference results for ORDER BY distance from seq scan
+SET enable_seqscan = ON;
+SET enable_indexscan = OFF;
+SET enable_bitmapscan = OFF;
+CREATE TABLE quad_box_tbl_ord_seq1 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+CREATE TABLE quad_box_tbl_ord_seq2 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
 SET enable_seqscan = OFF;
 SET enable_indexscan = ON;
 SET enable_bitmapscan = ON;
 SELECT count(*) FROM quad_box_tbl WHERE b <<  box '((100,200),(300,500))';
- count
+ count 
 -------
    901
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b &<  box '((100,200),(300,500))';
- count
+ count 
 -------
   3901
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b &&  box '((100,200),(300,500))';
- count
+ count 
 -------
   1653
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b &>  box '((100,200),(300,500))';
- count
+ count 
 -------
  10100
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b >>  box '((100,200),(300,500))';
- count
+ count 
 -------
   7000
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b >>  box '((100,200),(300,500))';
- count
+ count 
 -------
   7000
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b <<| box '((100,200),(300,500))';
- count
+ count 
 -------
   1900
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b &<| box '((100,200),(300,500))';
- count
+ count 
 -------
   5901
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b |&> box '((100,200),(300,500))';
- count
+ count 
 -------
   9100
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b |>> box '((100,200),(300,500))';
- count
+ count 
 -------
   5000
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b @>  box '((201,301),(202,303))';
- count
+ count 
 -------
   1003
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b <@  box '((100,200),(300,500))';
- count
+ count 
 -------
   1600
 (1 row)
 
 SELECT count(*) FROM quad_box_tbl WHERE b ~=  box '((200,300),(205,305))';
- count
+ count 
 -------
      1
 (1 row)
+
+-- test ORDER BY distance
+SET enable_indexscan = ON;
+SET enable_bitmapscan = OFF;
+EXPLAIN (COSTS OFF)
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+                   QUERY PLAN                   
+------------------------------------------------
+ WindowAgg
+   ->  Sort
+         Sort Key: ((b <-> '(123,456)'::point))
+         ->  Seq Scan on quad_box_tbl
+(4 rows)
+
+CREATE TEMP TABLE quad_box_tbl_ord_idx1 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+SELECT *
+FROM quad_box_tbl_ord_seq1 seq FULL JOIN quad_box_tbl_ord_idx1 idx
+	ON seq.n = idx.n AND seq.id = idx.id AND
+		(seq.dist = idx.dist OR seq.dist IS NULL AND idx.dist IS NULL)
+WHERE seq.id IS NULL OR idx.id IS NULL;
+ n | dist | id | n | dist | id 
+---+------+----+---+------+----
+(0 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ WindowAgg
+   ->  Sort
+         Sort Key: ((b <-> '(123,456)'::point))
+         ->  Seq Scan on quad_box_tbl
+               Storage Filter: (b <@ '(500,600),(200,300)'::box)
+(5 rows)
+
+CREATE TEMP TABLE quad_box_tbl_ord_idx2 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
+SELECT *
+FROM quad_box_tbl_ord_seq2 seq FULL JOIN quad_box_tbl_ord_idx2 idx
+	ON seq.n = idx.n AND seq.id = idx.id AND
+		(seq.dist = idx.dist OR seq.dist IS NULL AND idx.dist IS NULL)
+WHERE seq.id IS NULL OR idx.id IS NULL;
+ n | dist | id | n | dist | id 
+---+------+----+---+------+----
+(0 rows)
 
 RESET enable_seqscan;
 RESET enable_indexscan;

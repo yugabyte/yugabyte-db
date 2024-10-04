@@ -109,7 +109,8 @@ extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
-extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
+								   AttrMap *newToOldAttmap);
 
 extern void YBCDropSequence(Oid sequence_oid);
 
