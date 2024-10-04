@@ -1483,4 +1483,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " will be evaluated and returned",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> metricScrapeIntervalStandby =
+      new ConfKeyInfo<>(
+          "yb.metrics.scrape_interval_standby",
+          ScopeType.GLOBAL,
+          "Standby Prometheus scrape interval",
+          "Need to increase it in case federation metrics request takes more time "
+              + " than main Prometheus scrape period to complete",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
