@@ -31,7 +31,9 @@ var (
 
 // TaskStatus carries information about the task progress.
 type TaskStatus struct {
-	Info       util.Buffer
+	// Info is a buffer to send any output to the client while the task is running.
+	Info util.Buffer
+	// ExitStatus is the final status of the task execution.
 	ExitStatus *ExitStatus
 }
 
@@ -43,6 +45,9 @@ type AsyncTask interface {
 	CurrentTaskStatus() *TaskStatus
 	// String returns the identifier for this task.
 	String() string
+	// ResponseConverter returns the converter to convert the Handler result to the RPC response.
+	// It can return nil if the final response is not needed.
+	ResponseConverter() util.RPCResponseConverter
 }
 
 // ExitStatus stores the Error (if any) and the exit code of a command.
@@ -67,13 +72,12 @@ type TaskManager struct {
 }
 
 type taskInfo struct {
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	mutex                *sync.Mutex
-	asyncTask            AsyncTask
-	future               *executor.Future
-	rpcResponseConverter util.RPCResponseConverter
-	updatedAt            time.Time
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mutex     *sync.Mutex
+	asyncTask AsyncTask
+	future    *executor.Future
+	updatedAt time.Time
 }
 
 // InitTaskManager initializes the task manager.
@@ -137,9 +141,7 @@ func (m *TaskManager) updateTime(taskID string) {
 func (m *TaskManager) Submit(
 	ctx context.Context,
 	taskID string,
-	asyncTask AsyncTask,
-	rpcResponseConverter util.RPCResponseConverter,
-) error {
+	asyncTask AsyncTask) error {
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
 	}
@@ -151,12 +153,11 @@ func (m *TaskManager) Submit(
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{
-			ctx:                  bgCtx,
-			cancel:               cancel,
-			mutex:                &sync.Mutex{},
-			updatedAt:            time.Now(),
-			asyncTask:            asyncTask,
-			rpcResponseConverter: rpcResponseConverter,
+			ctx:       bgCtx,
+			cancel:    cancel,
+			mutex:     &sync.Mutex{},
+			updatedAt: time.Now(),
+			asyncTask: asyncTask,
 		},
 	)
 	if ok {
@@ -219,12 +220,13 @@ func (m *TaskManager) Subscribe(
 
 			size = 0
 			if taskStatus.ExitStatus.Code == 0 {
-				if tInfo.rpcResponseConverter != nil {
+				responseConverter := tInfo.asyncTask.ResponseConverter()
+				if responseConverter != nil {
 					result, err := tInfo.future.Get()
 					if err != nil {
 						return err
 					}
-					response, err := tInfo.rpcResponseConverter(result)
+					response, err := responseConverter(result)
 					if err != nil {
 						return err
 					}

@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-Starting with v2.20.1, RBAC is available with fine-grained control over access to universes. {{<badge/ea>}}
+Starting with v2.20.1, RBAC is available with fine-grained control over access to universes. {{<tags/feature/ea>}}
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 

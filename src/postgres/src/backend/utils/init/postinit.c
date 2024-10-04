@@ -1077,6 +1077,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		MyDatabaseTableSpace = dbform->dattablespace;
 		/* take database name from the caller, just for paranoia */
 		strlcpy(dbname, in_dbname, sizeof(dbname));
+		if (IsYugaByteEnabled())
+			SetDatabaseEncoding(dbform->encoding);
 	}
 	else if (OidIsValid(dboid))
 	{
@@ -1097,6 +1099,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		/* pass the database name back to the caller */
 		if (out_dbname)
 			strcpy(out_dbname, dbname);
+		if (IsYugaByteEnabled())
+			SetDatabaseEncoding(dbform->encoding);
 	}
 	else
 	{

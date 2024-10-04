@@ -115,7 +115,7 @@ To see a full list of commands, run the following command:
 $ ./yba-ctl help
 ```
 
-yba-ctl commands need to be run in the correct context; see [Running yb-ctl commands](#running-yba-ctl-commands).
+yba-ctl commands need to be run in the correct context; see [Running yba-ctl commands](#running-yba-ctl-commands).
 
 ### Configure YBA Installer
 

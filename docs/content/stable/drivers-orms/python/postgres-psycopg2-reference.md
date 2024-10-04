@@ -3,7 +3,8 @@ title: PostgreSQL Psycopg2 Driver
 headerTitle: Python Drivers
 linkTitle: Python Drivers
 description: PostgreSQL Psycopg2 Python Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: Python Drivers

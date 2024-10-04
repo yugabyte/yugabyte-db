@@ -4,7 +4,8 @@ headerTitle: Order by time per entity
 linkTitle: Ordering by time per entity
 description: Keep entity data together using Entity-wise or Bucket-based ordering
 headcontent: Keep entity data together in a time series data model
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: timeseries-entity-ordering

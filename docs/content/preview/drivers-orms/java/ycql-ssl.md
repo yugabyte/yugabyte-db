@@ -1,19 +1,64 @@
 ---
 title: Connect a YCQL Java application
-headerTitle: Connect a YCQL Java application
-linkTitle: Connect a YCQL Java application
-description: Build a sample Java application for YugabyteDB Aeon with the Yugabyte Java Driver for YCQL v4.6.
+headerTitle: Connect an application
+linkTitle: Connect an app
+description: Connect a Java application using YCQL 4.15 driver and SSL.
+tags:
+  other: ycql
+menu:
+  preview:
+    identifier: ycql-java-driver-ssl
+    parent: java-drivers
+    weight: 500
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
-menu:
-  preview_yugabyte-cloud:
-    parent: cloud-examples
-    identifier: connect-ycql-application
-    weight: 200
+  - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
 type: docs
 ---
 
-The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL v4.6.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../yugabyte-jdbc/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 3.10
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-4.x/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 4.15
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL Driver 4.15 with SSL
+    </a>
+  </li>
+</ul>
+
+[YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Aeon" >}}
+
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
+
+{{< /note >}}
+
+The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL with SSL.
 
 ## Maven
 
@@ -23,7 +68,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
+   <version>4.15.0-yb-1</version>
  </dependency>
 ```
 
@@ -37,21 +82,9 @@ This tutorial assumes that you have the following:
 - JDK version 1.8 or later
 - Maven 3.3 or later
 
-Add your computer to the cluster IP allow list. Refer to [Assign IP allow lists](../../cloud-secure-clusters/add-connections).
+Add your computer to the cluster IP allow list. Refer to [IP allow lists](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
-You also need to download and install your YugabyteDB Aeon cluster CA certificate and obtain the cluster connection parameters as follows:
-
-1. Sign in to YugabyteDB Aeon, select your cluster, and click **Connect**.
-
-1. Click **Connect to your Application**.
-
-1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
-
-1. Click **YCQL** to display the connection parameters. These include:
-
-    - LocalDatacenter - The name of the local data center for the cluster.
-    - Host - The cluster host name.
-    - Port - The port number of the YCQL client API on the YugabyteDB database (9042).
+You also need to download and install your YugabyteDB Aeon cluster CA certificate and obtain the cluster connection parameters. Refer to [Get the cluster connection parameters](/preview/yugabyte-cloud/cloud-connect/connect-applications/#get-the-cluster-connection-parameters).
 
 ### Create the project's POM
 
@@ -78,7 +111,7 @@ Create a Project Object Model (POM) file, named `pom.xml`, and then copy the fol
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-6</version>
+      <version>4.15.0-yb-1</version>
     </dependency>
   </dependencies>
 
@@ -252,17 +285,17 @@ To use the application, run the following command.
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
     com.yugabyte.sample.apps.YBCqlHelloWorld \
-    [YUGABYTE_CLOUD_HOSTNAME] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
+    [HOST] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
 ```
 
 Replace the following command line variables with the appropriate connection parameters and database credentials:
 
 | Variable | Description |
 | :------- | :---------- |
-| YUGABYTE_CLOUD_HOSTNAME | The hostname of your YugabyteDB Aeon cluster |
+| HOST | The hostname of your YugabyteDB Aeon cluster |
 | ROOT_CERT_PATH | The path to root.crt |
-| YCQL_USER | Your Yugabyte database username |
-| YCQL_PASSWORD | Your Yugabyte database password |
+| YCQL_USER | Your database username |
+| YCQL_PASSWORD | Your database password |
 
 For example:
 

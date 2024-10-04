@@ -158,6 +158,10 @@ Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
       has_faulty_drive_ = req.faulty_drive();
     }
   }
+  if ((*lock)->pb.state() == SysTServerEntryPB::REMOVED) {
+    return STATUS_FORMAT(
+        IllegalState, "Processing ts heartbeat for ts $0 raced with removing the ts", id());
+  }
   if ((*lock)->pb.state() != SysTServerEntryPB::LIVE) {
     lock->mutable_data()->pb.set_state(SysTServerEntryPB::LIVE);
   }
@@ -445,7 +449,7 @@ bool TSDescriptor::IsLiveAndHasReported() const {
 
 bool TSDescriptor::HasYsqlCatalogLease() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
-         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsRemoved();
+         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {

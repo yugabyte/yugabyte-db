@@ -1451,7 +1451,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster in Docker
 
-Docker-based deployments are in {{<badge/ea>}}.
+Docker-based deployments are in {{<tags/feature/ea>}}.
 
 You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 

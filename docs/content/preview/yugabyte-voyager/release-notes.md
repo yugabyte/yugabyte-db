@@ -117,7 +117,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### New features
 
-- [Assess Migration](../migrate/assess-migration/) {{<badge/tp>}} (for PostgreSQL source only): Introduced the Voyager Migration Assessment feature specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a thorough analysis of the source database by capturing essential metadata and metrics, and generates a comprehensive assessment report.
+- [Assess Migration](../migrate/assess-migration/) {{<tags/feature/tp>}} (for PostgreSQL source only): Introduced the Voyager Migration Assessment feature specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a thorough analysis of the source database by capturing essential metadata and metrics, and generates a comprehensive assessment report.
   - The report is created in HTML/JSON formats.
   - When [export schema](../reference/schema-migration/export-schema/) is run, voyager automatically modifies the CREATE TABLE DDLs to incorporate the recommendations.
   - Assessment can be done via plain bash/psql scripts for cases where source database connectivity is not available to the client machine running voyager.
@@ -149,7 +149,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### New features
 
-- Support for [live migration](../migrate/live-migrate/) from PostgreSQL databases with the option of [fall-forward](../migrate/live-fall-forward/), using which you can switch to a source-replica PostgreSQL database if an issue arises during migration {{<badge/tp>}}.
+- Support for [live migration](../migrate/live-migrate/) from PostgreSQL databases with the option of [fall-forward](../migrate/live-fall-forward/), using which you can switch to a source-replica PostgreSQL database if an issue arises during migration {{<tags/feature/tp>}}.
 
 ### Enhancements
 
@@ -193,7 +193,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Live migration
 
-  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
+  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<tags/feature/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
 
   - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. YugabyteDB Voyager is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
 
@@ -239,7 +239,7 @@ Removed redundant ALTER COLUMN DDLs present in the exported schema for certain c
 
 ### New feature
 
-- Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<badge/tp>}}.
+- Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<tags/feature/tp>}}.
 
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
 

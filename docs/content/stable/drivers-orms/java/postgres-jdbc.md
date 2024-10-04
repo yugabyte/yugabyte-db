@@ -8,7 +8,8 @@ menu:
     identifier: java-driver-3-jdbc-postgres
     parent: java-drivers
     weight: 500
-badges: ysql
+tags:
+  other: ysql
 type: docs
 ---
 

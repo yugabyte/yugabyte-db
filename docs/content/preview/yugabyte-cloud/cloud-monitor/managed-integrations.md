@@ -22,8 +22,8 @@ Currently, you can export data to the following tools:
 - [Datadog](https://docs.datadoghq.com/)
 - [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
 - [Sumo Logic](https://www.sumologic.com)
-- [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}}
-- [VictoriaMetrics](https://docs.victoriametrics.com/) {{<badge/tp>}}
+- [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<tags/feature/tp>}}
+- [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}}
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -103,7 +103,7 @@ To create an export configuration, do the following:
 
   {{% tab header="Prometheus" lang="prometheus" %}}
 
-Prometheus integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+Prometheus integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
 
 The Prometheus integration requires the following:
 
@@ -141,7 +141,7 @@ To create an export configuration, do the following:
 
   {{% tab header="VictoriaMetrics" lang="victoria" %}}
 
-VictoriaMetrics integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+VictoriaMetrics integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
 
 The VictoriaMetrics integration requires the following:
 

@@ -44,8 +44,8 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/master/tablet_health_manager.h"

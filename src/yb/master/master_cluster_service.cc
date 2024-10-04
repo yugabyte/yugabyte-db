@@ -15,13 +15,13 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_cluster_handler.h"
+#include "yb/master/tablet_health_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
-#include "yb/master/tablet_health_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
@@ -64,6 +64,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     } else {
       auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
       if (!uuid_result.ok()) {
+        SetupErrorAndRespond(
+            resp->mutable_error(), uuid_result.status(), MasterErrorPB_Code_INTERNAL_ERROR, &rpc);
         return;
       }
       server_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, *uuid_result);
@@ -163,6 +165,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     }
     auto placement_uuid_result = server_->catalog_manager_impl()->placement_uuid();
     if (!placement_uuid_result.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), placement_uuid_result.status(), MasterErrorPB_Code_INTERNAL_ERROR,
+          &rpc);
       return;
     }
     string placement_uuid = *placement_uuid_result;
@@ -383,6 +388,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     MasterClusterHandler,
     (AreLeadersOnPreferredOnly)
     (SetPreferredZones)
+    (RemoveTabletServer)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

@@ -57,6 +57,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_bool(TEST_skip_applying_truncate);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -75,6 +76,11 @@ namespace pgwrapper {
 class PgSingleTServerTest : public PgMiniTestBase {
  protected:
   static constexpr const char* kDatabaseName = "testdb";
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
+    PgMiniTestBase::SetUp();
+  }
 
   size_t NumTabletServers() override {
     return 1;

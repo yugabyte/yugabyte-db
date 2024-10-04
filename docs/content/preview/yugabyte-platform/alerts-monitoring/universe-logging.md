@@ -4,7 +4,8 @@ headerTitle: Export audit logs
 linkTitle: Export logs
 description: Export universe audit logs to third-party tools.
 headcontent: Configure pgaudit logging
-badges: ea
+tags:
+  feature: early-access
 menu:
   preview_yugabyte-platform:
     identifier: universe-logging
@@ -21,7 +22,7 @@ Note that YugabyteDB is based on PostgreSQL 11 and uses PostgreSQL Audit Extensi
 
 ## Prerequisites
 
-The Audit log export feature is {{<badge/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
+The Audit log export feature is {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
 
 To export logs, you need to first create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 

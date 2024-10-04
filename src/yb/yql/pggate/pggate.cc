@@ -59,6 +59,7 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -130,6 +131,28 @@ tserver::TServerSharedObject BuildTServerSharedObject() {
   LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
   return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
 }
+
+class ExplicitRowLockErrorInfoAdapter {
+ public:
+  explicit ExplicitRowLockErrorInfoAdapter(PgExplicitRowLockErrorInfo& pg_error_info)
+    : pg_error_info_(pg_error_info) {}
+
+  ~ExplicitRowLockErrorInfoAdapter() {
+    if (error_info_) {
+      pg_error_info_.is_initialized = true;
+      pg_error_info_.pg_wait_policy = error_info_->pg_wait_policy;
+      pg_error_info_.conflicting_table_id = error_info_->conflicting_table_id;
+    }
+  }
+
+  operator std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo>&() {
+    return error_info_;
+  }
+
+ private:
+  PgExplicitRowLockErrorInfo& pg_error_info_;
+  std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo> error_info_;
+};
 
 } // namespace
 
@@ -2097,18 +2120,20 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
 }
 
 Status PgApiImpl::AddExplicitRowLockIntent(
-    const PgObjectId& table_id, const Slice& ybctid,
-    const PgExplicitRowLockParams& params, bool is_region_local) {
+    const PgObjectId& table_id, const Slice& ybctid, const PgExplicitRowLockParams& params,
+    bool is_region_local, PgExplicitRowLockErrorInfo& error_info) {
+  ExplicitRowLockErrorInfoAdapter adapter(error_info);
   return pg_session_->explicit_row_lock_buffer().Add(
       {.rowmark = params.rowmark,
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
        .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid), is_region_local);
+      LightweightTableYbctid(table_id.object_oid, ybctid), is_region_local, adapter);
 }
 
-Status PgApiImpl::FlushExplicitRowLockIntents() {
-  return pg_session_->explicit_row_lock_buffer().Flush();
+Status PgApiImpl::FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info) {
+  ExplicitRowLockErrorInfoAdapter adapter(error_info);
+  return pg_session_->explicit_row_lock_buffer().Flush(adapter);
 }
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
