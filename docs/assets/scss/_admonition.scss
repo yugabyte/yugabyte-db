@@ -211,45 +211,6 @@ main {
       }
     }
 
-    .admonition.lead {
-      background: rgba(205, 239, 225, 0.4);
-      border: 1px solid #cdefe1;
-
-      &::before {
-        opacity:0;
-      }
-
-      i[class*="fa-"] {
-        position: absolute;
-        left: 17px;
-        top: 17px;
-        font-size: 20px;
-        color: #000;
-        z-index: 0;
-      }
-
-      img{
-        &.icon {
-          position: absolute;
-          width: 23px;
-          height: 24px;
-          top: 17px;
-          left: 17px;
-        }
-      }
-
-      .clickable {
-        position: absolute;
-        z-index: 1;
-        inset: 0;
-        font-size: 0;
-        transition: all 250ms ease;
-        &:hover {
-          background:rgba(0, 0, 0, 0.02);
-        }
-      }
-    }
-
     .admonition.callout {
       border-radius: 8px;
       padding: 16px;
@@ -278,17 +239,16 @@ main {
         }
       }
 
-
       .content-area {
         margin-bottom: 0;
 
-        a:hover{
-          text-decoration: none;
-        }
         a {
           color: #2B59C3;
-        }
 
+          :hover{
+            text-decoration: none;
+          }
+        }
 
         .desc {
           color: #6D7C88;
@@ -296,7 +256,7 @@ main {
           font-style: normal;
           font-weight: 400;
           line-height: 22px;
-          a{
+          a {
             position: relative;
             z-index: 9;
           }
