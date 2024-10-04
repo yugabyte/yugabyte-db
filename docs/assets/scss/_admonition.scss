@@ -249,5 +249,109 @@ main {
         }
       }
     }
+
+    .admonition.callout {
+      border-radius: 8px;
+      padding: 16px;
+      padding-left: 56px;
+      border: 1px solid rgba(203, 219, 255, 0.80);
+      background: rgba(242, 246, 255, 0.50);
+
+      &::before {
+        display: none;
+      }
+
+      .icon {
+        content: "";
+        width: 24px;
+        height: 24px;
+        position: absolute;
+        display: flex;
+        align-items: center;
+        top: 16px;
+        left: 16px;
+
+        i,
+        svg {
+          width: 24px;
+          font-size: 19px;
+        }
+      }
+
+
+      .content-area {
+        margin-bottom: 0;
+
+        a:hover{
+          text-decoration: none;
+        }
+        a {
+          color: #2B59C3;
+        }
+
+
+        .desc {
+          color: #6D7C88;
+          font-size: 13px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 22px;
+          a{
+            position: relative;
+            z-index: 9;
+          }
+        }
+      }
+
+      &.topic {
+        display: flex;
+        max-width: max-content;
+        align-items: center;
+        border-radius: 8px;
+        border: 1px solid #CBCCFB;
+        background: #FFF;
+        position: relative;
+
+        .desc {
+          color: #25323D;
+        }
+
+        &.clickable {
+          &:hover {
+            border-radius: 8px;
+            border: 1px solid #CBCCFB;
+            background: #F2F3FE;
+          }
+
+          .callout-link {
+            position: absolute;
+            z-index: 1;
+            inset: 0;
+            font-size: 0;
+            transition: all 250ms ease;
+          }
+
+          .end-icon {
+            margin: 0 0 0 8px;
+
+            i {
+              color: #4E5F6D;
+              font-size: 13px;
+              font-style: normal;
+              font-weight: 300;
+              line-height: 22px;
+            }
+          }
+        }
+
+        .icon {
+          svg {
+            path {
+              fill: #A5A6F6;
+            }
+          }
+        }
+      }
+    }
   }
 }
