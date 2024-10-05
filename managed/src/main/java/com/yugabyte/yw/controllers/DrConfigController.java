@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
@@ -726,6 +727,7 @@ public class DrConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.verifyTablesNotInReplication(
             ybService,
             tableIds,
+            xClusterConfig.getTableType(),
             ConfigType.Txn,
             sourceUniverse.getUniverseUUID(),
             sourceTableInfoList,
@@ -2042,6 +2044,7 @@ public class DrConfigController extends AuthenticatedController {
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,
         tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
         ConfigType.Txn,
         targetUniverse.getUniverseUUID(),
         targetTableInfoList,

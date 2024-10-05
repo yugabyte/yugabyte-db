@@ -6,7 +6,11 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.junit.Assert.assertEquals;
 import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -32,6 +36,7 @@ import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
@@ -699,6 +704,117 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+  }
+
+  @Test
+  public void testDBScopedXClusterTableConfigStatus()
+      throws InterruptedException, JsonMappingException, JsonProcessingException {
+    Universe sourceUniverse =
+        createDRUniverse(
+            DB_SCOPED_STABLE_VERSION,
+            "source-universe",
+            true /* disableTls */,
+            1 /* numNodes */,
+            1 /* replicationFactor */);
+    // Add YSQL and YCQL tables to source universe which would not be part of replication.
+    initYSQL(sourceUniverse);
+    initYCQL(sourceUniverse);
+    Universe targetUniverse =
+        createDRUniverse(
+            DB_SCOPED_STABLE_VERSION,
+            "target-universe",
+            true /* disableTls */,
+            1 /* numNodes */,
+            1 /* replicationFactor */);
+    // Add YSQL and YCQL tables to source universe which would not be part of replication.
+    initYSQL(targetUniverse);
+    initYCQL(targetUniverse);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+
+    // Add database and tables to the universes.
+    Db db = Db.create("test_xcluster_db", false);
+    Table table1 = Table.create("test_table_1", DEFAULT_TABLE_COLUMNS, db);
+    Table table2 = Table.create("test_table_2", DEFAULT_TABLE_COLUMNS, db);
+    Table table3 = Table.create("test_table_3", DEFAULT_TABLE_COLUMNS, db);
+    Table table4 = Table.create("test_table_4", DEFAULT_TABLE_COLUMNS, db);
+    createTestSet(sourceUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+    createTestSet(targetUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+
+    // Get the namespace info for the source universe.
+    List<TableInfoForm.NamespaceInfoResp> namespaceInfo =
+        tableHandler.listNamespaces(customer.getUuid(), sourceUniverse.getUniverseUUID(), false);
+
+    DrConfigCreateForm formData = new DrConfigCreateForm();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "db-scoped-disaster-recovery-1";
+    formData.dbs = new HashSet<String>();
+    for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
+      if (namespace.name.equals("test_xcluster_db")) {
+        formData.dbs.add(namespace.namespaceUUID.toString());
+      }
+    }
+
+    formData.bootstrapParams = new XClusterConfigRestartFormData.RestartBootstrapParams();
+    formData.bootstrapParams.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createDrConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID drConfigUUID = UUID.fromString(json.get("resourceUUID").asText());
+
+    Result drConfigResult = getDrConfig(drConfigUUID);
+    ObjectMapper mapper = new ObjectMapper();
+    Set<XClusterTableConfig> tableDetails =
+        mapper.readValue(
+            Json.parse(contentAsString(drConfigResult)).get("tableDetails").toString(),
+            new TypeReference<Set<XClusterTableConfig>>() {});
+    assertEquals(3, tableDetails.size());
+    for (XClusterTableConfig table : tableDetails) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    // Create and drop table on database in replication.
+    deleteTable(sourceUniverse, table1);
+    deleteTable(targetUniverse, table2);
+    createTable(sourceUniverse, table4);
+
+    drConfigResult = getDrConfig(drConfigUUID);
+    assertOk(drConfigResult);
+    tableDetails =
+        mapper.readValue(
+            Json.parse(contentAsString(drConfigResult)).get("tableDetails").toString(),
+            new TypeReference<Set<XClusterTableConfig>>() {});
+    assertEquals(4, tableDetails.size());
+    Set<XClusterTableConfig> droppedTablesFromSource =
+        getTableDetailsWithStatus(tableDetails, XClusterTableConfig.Status.DroppedFromSource);
+    assertEquals(1, droppedTablesFromSource.size());
+    assertEquals(
+        "test_table_1", droppedTablesFromSource.iterator().next().getTargetTableInfo().tableName);
+    Set<XClusterTableConfig> droppedTablesOnTarget =
+        getTableDetailsWithStatus(tableDetails, XClusterTableConfig.Status.DroppedFromTarget);
+    assertEquals(1, droppedTablesOnTarget.size());
+    assertEquals(
+        "test_table_2", droppedTablesOnTarget.iterator().next().getSourceTableInfo().tableName);
+    Set<XClusterTableConfig> runningTables =
+        getTableDetailsWithStatus(tableDetails, XClusterTableConfig.Status.Running);
+    assertEquals(1, runningTables.size());
+    assertEquals("test_table_3", runningTables.iterator().next().getSourceTableInfo().tableName);
+    Set<XClusterTableConfig> extraTablesOnSource =
+        getTableDetailsWithStatus(tableDetails, XClusterTableConfig.Status.ExtraTableOnSource);
+    assertEquals(1, extraTablesOnSource.size());
+    assertEquals(
+        "test_table_4", extraTablesOnSource.iterator().next().getSourceTableInfo().tableName);
   }
 
   private void deleteDrConfig(UUID drConfigUUID, Universe sourceUniverse, Universe targetUniverse)

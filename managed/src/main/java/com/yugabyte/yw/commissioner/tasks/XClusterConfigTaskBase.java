@@ -1847,6 +1847,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param ybService The YBClientService used for communication with the YB client.
    * @param tableIds The set of table IDs to verify.
    * @param configType The configuration type.
+   * @param tableType The table type.
    * @param sourceUniverseUUID The UUID of the source universe.
    * @param sourceTableInfoList The list of table information from the source universe.
    * @param targetUniverseUUID The UUID of the target universe.
@@ -1858,6 +1859,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static void verifyTablesNotInReplication(
       YBClientService ybService,
       Set<String> tableIds,
+      XClusterConfig.TableType tableType,
       XClusterConfig.ConfigType configType,
       UUID sourceUniverseUUID,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
@@ -1887,6 +1889,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         getClusterConfig(ybService, sourceUniverse);
     CatalogEntityInfo.SysClusterConfigEntryPB targetClusterConfig =
         getClusterConfig(ybService, targetUniverse);
+
+    sourceTableInfoList =
+        tableType.equals(XClusterConfig.TableType.YSQL)
+            ? TableInfoUtil.getYsqlTables(sourceTableInfoList)
+            : TableInfoUtil.getYcqlTables(sourceTableInfoList);
+    targetTableInfoList =
+        tableType.equals(XClusterConfig.TableType.YSQL)
+            ? TableInfoUtil.getYsqlTables(targetTableInfoList)
+            : TableInfoUtil.getYcqlTables(targetTableInfoList);
 
     Map<String, String> sourceTableIdToTargetTableIdMap =
         getSourceTableIdTargetTableIdMap(sourceTableInfoList, targetTableInfoList);
@@ -2027,6 +2038,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     ReplicationClusterData replicationClusterData = null;
     try {
       replicationClusterData = collectReplicationClusterData(ybClientService, xClusterConfig);
+      XClusterConfig.TableType tableType = xClusterConfig.getTableType();
+      replicationClusterData.sourceTableInfoList =
+          tableType.equals(XClusterConfig.TableType.YSQL)
+              ? TableInfoUtil.getYsqlTables(replicationClusterData.sourceTableInfoList)
+              : TableInfoUtil.getYcqlTables(replicationClusterData.sourceTableInfoList);
+      replicationClusterData.targetTableInfoList =
+          tableType.equals(XClusterConfig.TableType.YSQL)
+              ? TableInfoUtil.getYsqlTables(replicationClusterData.targetTableInfoList)
+              : TableInfoUtil.getYcqlTables(replicationClusterData.targetTableInfoList);
     } catch (Exception e) {
       log.error(
           "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
@@ -2450,7 +2470,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             tableConfig -> {
               String targetTableId = sourceTableIdToTargetTableIdMap.get(tableConfig.getTableId());
               if (targetTableId == null) {
-                tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                if (xClusterConfig.getType().equals(ConfigType.Db)) {
+                  // For DB replication, new tables missing from the target are added to the
+                  // source outbound universe replication group and are in the INITIATED state.
+                  // Therefore, we need to set the status to ExtraTableOnSource instead of
+                  // DroppedFromTarget.
+                  tableConfig.setStatus(XClusterTableConfig.Status.ExtraTableOnSource);
+                } else {
+                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                }
               }
             });
 
@@ -2472,6 +2500,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                       .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
                       .findFirst();
               if (!existingTableConfig.isPresent()) {
+                if (xClusterConfig.getType().equals(ConfigType.Db)) {
+                  // For DB replication, extra tables on the source are in the INITIATED state and
+                  // part of the replication group. However, tables that were previously part of
+                  // replication but were dropped from the source are not in the replication group
+                  // and may appear as extra tables on the source. Therefore, we need to set the
+                  // status to DroppedFromTarget.
+                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                }
                 xClusterConfig.addTableConfig(tableConfig);
               } else {
                 log.info(
