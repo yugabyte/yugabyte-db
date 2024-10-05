@@ -11,6 +11,12 @@ import { DrConfig, DrConfigState } from '../dtos';
 
 interface DrConfigDetailsProps {
   drConfig: DrConfig;
+  // We have two GET dr config calls.
+  // The first tells YBA backend to return only what is stored in
+  // the YBA DB.
+  // The second tells YBA backend to also make rpc calls to source/target
+  // in order to fetch the table details.
+  isTableInfoIncludedInConfig: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -35,7 +41,10 @@ type DrConfigTab = typeof DrConfigTab[keyof typeof DrConfigTab];
 const DEFAULT_TAB = DrConfigTab.METRICS;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config';
 
-export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
+export const DrConfigDetails = ({
+  drConfig,
+  isTableInfoIncludedInConfig
+}: DrConfigDetailsProps) => {
   const [currentTab, setCurrentTab] = useState<DrConfigTab>(DEFAULT_TAB);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
@@ -74,6 +83,7 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           <ReplicationTables
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
+            isTableInfoIncludedInConfig={isTableInfoIncludedInConfig}
             drConfigUuid={drConfig.uuid}
           />
         </TabPanel>

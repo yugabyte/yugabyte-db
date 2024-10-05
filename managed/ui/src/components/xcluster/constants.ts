@@ -46,6 +46,8 @@ export const XClusterTableStatus = {
   // DROPPED - Client internal status. Does not exist on the backend.
   //            Used to mark tables which are dropped on both the source and target.
   DROPPED: 'Dropped',
+  // TABLE_INFO_MISSING - Client internal status. Indicates the table does not have source/target info.
+  TABLE_INFO_MISSING: 'TableInfoMissing',
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
   EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',

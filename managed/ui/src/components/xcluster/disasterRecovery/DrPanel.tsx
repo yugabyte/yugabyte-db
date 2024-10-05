@@ -133,6 +133,11 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
   );
 
   const drConfigQuery = useQuery(
+    drConfigQueryKey.detail(drConfigUuid, false /* syncWithDb */),
+    () => api.fetchDrConfig(drConfigUuid, false /* syncWithDb */),
+    { enabled: !!drConfigUuid, staleTime: PollingIntervalMs.DR_CONFIG }
+  );
+  const drConfigFullQuery = useQuery(
     drConfigQueryKey.detail(drConfigUuid),
     () => api.fetchDrConfig(drConfigUuid),
     { enabled: !!drConfigUuid, staleTime: PollingIntervalMs.DR_CONFIG }
@@ -160,7 +165,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
       sourceUniverseUuid: drConfigQuery.data?.primaryUniverseUuid,
       targetUniverseUuid: drConfigQuery.data?.drReplicaUniverseUuid,
       tableUuids: inConfigTableUuids,
-      configType: XClusterConfigType.TXN,
+      configType: drConfigQuery.data?.type,
       includeDetails: true
     }),
     () =>
@@ -168,7 +173,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
         drConfigQuery.data?.primaryUniverseUuid ?? '',
         drConfigQuery.data?.drReplicaUniverseUuid ?? '',
         inConfigTableUuids,
-        XClusterConfigType.TXN,
+        drConfigQuery.data?.type ?? XClusterConfigType.TXN,
         true
       ),
     { enabled: !!drConfigQuery.data }
@@ -304,7 +309,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
     setIsActionMenuOpen(isOpen);
   };
 
-  const drConfig = drConfigQuery.data;
+  const drConfig = drConfigFullQuery.data ?? drConfigQuery.data;
   const enabledDrConfigActions = getEnabledDrConfigActions(
     drConfig,
     sourceUniverse,
@@ -674,7 +679,10 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
           </div>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
             <DrConfigOverview drConfig={drConfig} />
-            <DrConfigDetails drConfig={drConfig} />
+            <DrConfigDetails
+              drConfig={drConfig}
+              isTableInfoIncludedInConfig={drConfigFullQuery.isSuccess}
+            />
           </Box>
           {isSwitchoverModalOpen && (
             <InitiateSwitchoverModal

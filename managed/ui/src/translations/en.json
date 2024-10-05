@@ -918,7 +918,7 @@
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
             },
-            "Error": "Error"
+            "Failed": "Failed"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",
@@ -1174,6 +1174,7 @@
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
             "Dropped": "Dropped from DB",
+            "TableInfoMissing": "Table Info Missing",
             "ExtraTableOnSource": "Extra Table On Source",
             "ExtraTableOnTarget": "Extra Table on Target",
             "DroppedFromSource": "Dropped From Source",
