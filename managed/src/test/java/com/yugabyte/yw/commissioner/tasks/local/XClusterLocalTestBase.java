@@ -3,25 +3,32 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig.TableType;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonTypes;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -32,11 +39,20 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   public static class Db {
     public String name;
     public boolean colocation;
+    public TableType tableType = TableType.YSQL;
 
     public static Db create(String name, boolean colocation) {
       Db db = new Db();
       db.name = name;
       db.colocation = colocation;
+      return db;
+    }
+
+    public static Db create(String name, boolean colocation, TableType tableType) {
+      Db db = new Db();
+      db.name = name;
+      db.colocation = colocation;
+      db.tableType = tableType;
       return db;
     }
   }
@@ -190,6 +206,14 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   }
 
   public void createDatabase(Universe universe, Db db) {
+    if (db.tableType == TableType.YSQL) {
+      createYsqlDatabase(universe, db);
+    } else {
+      createYcqlDatabase(universe, db);
+    }
+  }
+
+  public void createYsqlDatabase(Universe universe, Db db) {
     NodeDetails node = getLiveNode(universe);
     String query = String.format("create database %s with colocation = %b", db.name, db.colocation);
     log.debug("Universe: {}, Query: {}", universe.getName(), query);
@@ -198,9 +222,24 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     assertTrue(ysqlResponse.isSuccess());
   }
 
-  public void createTable(Universe universe, Table table) {
-    NodeDetails node = getLiveNode(universe);
+  public void createYcqlDatabase(Universe universe, Db db) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    queryParams.setQuery("CREATE KEYSPACE " + db.name);
+    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
+    assertFalse(response.has("error"));
+  }
 
+  public void createTable(Universe universe, Table table) {
+    if (table.db.tableType == TableType.YSQL) {
+      createYsqlTable(universe, table);
+    } else {
+      createYcqlTable(universe, table);
+    }
+  }
+
+  public void createYsqlTable(Universe universe, Table table) {
+    NodeDetails node = getLiveNode(universe);
     String columns =
         table.columns.entrySet().stream()
             .map(e -> (e.getKey() + " " + e.getValue()))
@@ -209,20 +248,56 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     if (!table.colocation && table.db.colocation) {
       query = query + " with (colocation = false)";
     }
-
     if (table.colocation) {
       query = query + " with (COLOCATION_ID = " + table.colocationId + ")";
     }
-
     log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), table.db.name, query);
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(node, universe, table.db.name, query, 10);
     assertTrue(ysqlResponse.isSuccess());
   }
 
-  public void createIndexTable(Universe universe, IndexTable index) {
-    NodeDetails node = getLiveNode(universe);
+  public void createYcqlTable(Universe universe, Table table) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    queryParams.setQuery(
+        "CREATE TABLE "
+            + table.db.name
+            + "."
+            + table.name
+            + " ("
+            + table.columns.entrySet().stream()
+                .map(
+                    e ->
+                        e.getKey()
+                            + " "
+                            + e.getValue()
+                            + (e.getKey() == "id" ? "" : " PRIMARY KEY"))
+                .collect(Collectors.joining(", "))
+            + ")"
+            + "WITH TRANSACTIONS = {'enabled':'true'}");
+    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
+    assertFalse(response.has("error"));
+  }
 
+  public void createIndexTable(Universe universe, IndexTable index) {
+    if (index.db.tableType == TableType.YSQL) {
+      createYsqlIndexTable(universe, index);
+    } else {
+      createYcqlIndexTable(universe, index);
+    }
+  }
+
+  public void deleteYcqlIndexTable(Universe universe, IndexTable index) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    queryParams.setQuery("DROP INDEX " + index.db.name + "." + index.name);
+    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
+    assertFalse(response.has("error"));
+  }
+
+  public void createYsqlIndexTable(Universe universe, IndexTable index) {
+    NodeDetails node = getLiveNode(universe);
     String query =
         String.format("create index %s on %s (%s)", index.name, index.table.name, index.columnName);
 
@@ -232,12 +307,38 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     assertTrue(ysqlResponse.isSuccess());
   }
 
+  public void createYcqlIndexTable(Universe universe, IndexTable index) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    queryParams.setQuery(
+        "CREATE INDEX IF NOT EXISTS "
+            + index.name
+            + " ON "
+            + index.db.name
+            + "."
+            + index.table.name
+            + " ("
+            + index.columnName
+            + ")");
+    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
+    assertFalse(response.has("error"));
+  }
+
   public void dropDatabase(Universe universe, Db db) {
     NodeDetails node = getLiveNode(universe);
     String query = String.format("drop database %s", db.name);
     log.debug("Universe: {}, Query: {}", universe.getName(), query);
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(node, universe, YUGABYTE_DB, query, 20);
+    assertTrue(ysqlResponse.isSuccess());
+  }
+
+  public void deleteTable(Universe universe, Table table) {
+    NodeDetails node = getLiveNode(universe);
+    String query = String.format("drop table %s", table.name);
+    log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), table.db.name, query);
+    ShellResponse ysqlResponse =
+        localNodeUniverseManager.runYsqlCommand(node, universe, table.db.name, query, 10);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -262,12 +363,27 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
         Json.toJson(formData));
   }
 
-  public Result editXClusterConfig(XClusterConfigEditFormData formData, UUID xClusterUUID) {
+  public Result getXClusterConfig(UUID xClusterUuid) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "GET",
+        "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUuid,
+        user.createAuthToken());
+  }
+
+  public Result editXClusterConfig(XClusterConfigEditFormData formData, UUID xClusterUuid) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         app,
         "PUT",
-        "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUUID,
+        "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUuid,
         user.createAuthToken(),
         Json.toJson(formData));
+  }
+
+  protected Set<XClusterTableConfig> getTableDetailsWithStatus(
+      Set<XClusterTableConfig> tableDetails, XClusterTableConfig.Status status) {
+    return tableDetails.stream()
+        .filter(table -> table.getStatus() == status)
+        .collect(Collectors.toSet());
   }
 }

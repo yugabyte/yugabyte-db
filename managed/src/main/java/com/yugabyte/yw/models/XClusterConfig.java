@@ -464,6 +464,13 @@ public class XClusterConfig extends Model {
     return getTableIds(true /* includeMainTables */, false /* includeIndexTables */);
   }
 
+  @JsonIgnore
+  public Set<XClusterTableConfig> getTableDetailsWithStatus(XClusterTableConfig.Status status) {
+    return this.getTableDetails().stream()
+        .filter(tableConfig -> tableConfig.getStatus().equals(status))
+        .collect(Collectors.toSet());
+  }
+
   public void updateTables(Set<String> tableIds) {
     updateTables(tableIds, null /* tableIdsNeedBootstrap */);
   }
