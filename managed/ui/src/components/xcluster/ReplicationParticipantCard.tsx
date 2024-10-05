@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { usePillStyles } from '../../redesign/styles/styles';
 import { XClusterConfigType } from './constants';
+import { getIsTransactionalAtomicityEnabled } from './ReplicationUtils';
 
 import styles from './ReplicationParticipantCard.module.scss';
 
@@ -32,7 +33,7 @@ export const ReplicationParticipantCard = ({
         <>
           <div className={styles.pillContainer}>
             <div className={pillClasses.pill}>{isSource ? 'Source' : 'Target'}</div>
-            {xClusterConfigType === XClusterConfigType.TXN && (
+            {getIsTransactionalAtomicityEnabled(xClusterConfigType) && (
               <div className={pillClasses.pill}>{isActive ? 'Active' : 'Standby'}</div>
             )}
           </div>
