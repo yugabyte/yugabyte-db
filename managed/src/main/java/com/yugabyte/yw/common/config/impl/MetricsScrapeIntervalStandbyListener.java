@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
 
 @Singleton
@@ -20,6 +21,7 @@ public class MetricsScrapeIntervalStandbyListener implements RuntimeConfigChange
 
   private final PlatformReplicationHelper platformReplicationHelper;
 
+  @Inject
   public MetricsScrapeIntervalStandbyListener(PlatformReplicationHelper platformReplicationHelper) {
     this.platformReplicationHelper = platformReplicationHelper;
   }
