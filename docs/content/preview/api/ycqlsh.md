@@ -25,7 +25,7 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 ### Installation
 
-ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](../../releases/yugabyte-clients/).
+ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
 
 ### Starting ycqlsh
 

@@ -716,7 +716,7 @@
 #     showSection = true
 
 [[preview_api]]
-  name = "APIs"
+  name = "API"
   weight = 2
   identifier = "api"
   url = "/preview/api/"
@@ -1143,40 +1143,66 @@
 #     classes = "separator"
 #     showSection = true
 
-# [[stable_api]]
-#   name = "YSQL"
-#   weight = 2
-#   identifier = "yugabyte-api-ysql"
-#   [stable_api.params]
-#     showSection = true
-#     hideLink = true
+[[stable_api]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/stable/api/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[stable_api]]
-#   name = "YCQL"
-#   weight = 3
-#   identifier = "yugabyte-api-ycql"
-#   [stable_api.params]
-#     showSection = true
-#     hideLink = true
+[[stable_api]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/stable/api/ysql/"
+  [stable_api.params]
+    showSection = true
 
-# [[stable_api]]
-#   name = "YugabyteDB Anywhere API"
-#   weight = 4
-#   identifier = "yugabytedb-anywhere-api"
-#   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-#   [stable_api.params]
-#     showSection = true
-#     newTab = true
+[[stable_api]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-ycql"
+  url = "/stable/api/ycql/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
 
-# [[stable_api]]
-#   name = "YugabyteDB Aeon API"
-#   weight = 5
-#   identifier = "yugabytedb-managed-api"
-#   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-#   [stable_api.params]
-#     showSection = true
-#     newTab = true
+[[stable_api]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/stable/api/ysqlsh/"
+  [stable_api.params]
+    showSection = true
 
+[[stable_api]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/stable/api/ycqlsh/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
+
+[[stable_api]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  [stable_api.params]
+    showSection = true
+    newTab = true
+
+[[stable_api]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  [stable_api.params]
+    showSection = true
+    newTab = true
 
 ########## Menus for 2.20
 

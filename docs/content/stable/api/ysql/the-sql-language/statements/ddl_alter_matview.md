@@ -4,7 +4,7 @@ headerTitle: ALTER MATERIALIZED VIEW
 linkTitle: ALTER MATERIALIZED VIEW
 description: Use the `ALTER MATERIALIZED VIEW` statement to change the definition of a materialized view.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_alter_matview
     parent: statements
 type: docs

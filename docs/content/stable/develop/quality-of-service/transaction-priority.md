@@ -46,7 +46,7 @@ Currently, transaction priorities work in the following scenarios:
 
 ## Examples
 
-Create a [YugabyteDB universe](/preview/quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB universe](/preview/quick-start/) and open two separate [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Aeon" >}}
 You can create a free cluster with [YugabyteDB Aeon](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
@@ -176,7 +176,7 @@ yugabyte=> select * from account;
 
 The `yb_get_current_transaction_priority` function shows the transaction priority of the current transaction and the priority bucket the given priority belongs in. Transaction priority buckets are explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/). The following example demonstrates the usage of `yb_get_current_transaction_priority`.
 
-1. From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
+1. From an active [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
 
     ```sql
     CREATE TABLE test_scan (i int, j int);

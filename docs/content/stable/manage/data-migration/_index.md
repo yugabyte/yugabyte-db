@@ -33,7 +33,7 @@ To learn more about how to use ysql_dump and the `COPY` command to export your d
 
 ## Import your data
 
-To import data into a YSQL database manually, you can use [ysqlsh](../../admin/ysqlsh/) tool or use the [COPY FROM](../../api/ysql/the-sql-language/statements/cmd_copy/) command to import CSV files into YugabyteDB.
+To import data into a YSQL database manually, you can use [ysqlsh](../../api/ysqlsh/) tool or use the [COPY FROM](../../api/ysql/the-sql-language/statements/cmd_copy/) command to import CSV files into YugabyteDB.
 
 {{<lead link="../../manage/data-migration/bulk-import-ysql/">}}
 To learn more about how to import your data manually and best practices, see [Import data](../../manage/data-migration/bulk-import-ysql/).
