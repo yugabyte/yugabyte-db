@@ -27,8 +27,8 @@ class PGConn;
 
 namespace stateful_service {
 
-typedef std::function<Result<pgwrapper::PGConn>(const std::string&)>
-  ConnectToPostgresFunc;
+typedef std::function<Result<pgwrapper::PGConn>(const std::string&,
+  const std::optional<CoarseTimePoint>&)> ConnectToPostgresFunc;
 
 class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceIf> {
  public:
@@ -48,18 +48,25 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   Status GetTablePGSchemaAndName(
     std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
   Status FetchUnknownReltuples(
+      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
+      std::unordered_set<NamespaceId>& deleted_databases);
+  Result<std::unordered_map<NamespaceId, std::vector<TableId>>> DetermineTablesForAnalyze(
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
-  Result<std::unordered_map<NamespaceName, std::set<TableId>>> DetermineTablesForAnalyze(
-      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
-  Result<std::tuple<std::vector<TableId>, std::vector<TableId>, std::unordered_set<NamespaceId>>>
+  Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       DoAnalyzeOnCandidateTables(
-          std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables);
+          std::unordered_map<NamespaceId, std::vector<TableId>>&
+                namespace_id_to_analyze_target_tables,
+          std::unordered_set<NamespaceId>& deleted_databases);
   Status UpdateTableMutationsAfterAnalyze(
       std::vector<TableId>& tables,
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
   Status CleanUpDeletedTablesFromServiceTable(
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
       std::vector<TableId>& deleted_tables, std::unordered_set<NamespaceId>& deleted_databases);
+  Result<pgwrapper::PGConn> EstablishDBConnection(
+      NamespaceId namespace_id, std::unordered_set<NamespaceId>& deleted_databases,
+      bool* is_deleted_or_renamed);
+  std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
   STATEFUL_SERVICE_IMPL_METHODS(
       IncreaseMutationCounters);
