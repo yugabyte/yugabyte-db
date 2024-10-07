@@ -111,14 +111,12 @@ void InsertData(DataContainer* container,
 // with respect to the following assumptions:
 // - scans from sys tables reads all of the columns from postgres table
 // - all the attributes in sys table are requested in asc order
-// - special attributes ObjectIdAttributeNumber and YBTupleIdAttributeNumber
-//   are added after the table attributes
+// - special attribute YBTupleIdAttributeNumber is added after the table attributes
 //
 // As far as in future the list of targets columns in sys table scan (including the column order)
 // produced by the ybcSetupTargets function may be changed request targets preload targets are
 // checked at runtime in the PgSysTablePrefetcher::GetData method
 std::vector<const PgColumn*> OrderColumns(const std::vector<PgColumn>& cols) {
-  const PgColumn* objCol = nullptr;
   const PgColumn* ybctidCol = nullptr;
   std::vector<const PgColumn*> result;
   result.reserve(cols.size());
@@ -127,9 +125,6 @@ std::vector<const PgColumn*> OrderColumns(const std::vector<PgColumn>& cols) {
     switch(attr) {
       case to_underlying(PgSystemAttrNum::kYBTupleId):
         ybctidCol = &c;
-        break;
-      case to_underlying(PgSystemAttrNum::kObjectId):
-        objCol = &c;
         break;
       default:
         if (attr > 0) {
@@ -140,9 +135,6 @@ std::vector<const PgColumn*> OrderColumns(const std::vector<PgColumn>& cols) {
   }
   std::sort(result.begin(), result.end(), [](auto lhs, auto rhs) {
       return lhs->attr_num() < rhs->attr_num(); });
-  if (objCol) {
-    result.push_back(objCol);
-  }
   if (ybctidCol) {
     result.push_back(ybctidCol);
   }

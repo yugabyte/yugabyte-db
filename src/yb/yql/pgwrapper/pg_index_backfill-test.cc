@@ -1999,6 +1999,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUserOne));
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUserTwo));
+  ASSERT_OK(conn_->ExecuteFormat("GRANT CREATE ON SCHEMA public TO $0", kUserOne));
 
   auto user_one_read_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserOne));
   auto user_two_read_conn = ASSERT_RESULT(ConnectToDBAsUser(kDatabaseName, kUserTwo));

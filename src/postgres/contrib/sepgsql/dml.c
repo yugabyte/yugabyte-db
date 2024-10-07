@@ -4,7 +4,7 @@
  *
  * Routines to handle DML permission checks
  *
- * Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -14,8 +14,8 @@
 #include "access/sysattr.h"
 #include "access/tupdesc.h"
 #include "catalog/catalog.h"
-#include "catalog/heap.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_inherits.h"
@@ -23,17 +23,16 @@
 #include "commands/tablecmds.h"
 #include "executor/executor.h"
 #include "nodes/bitmapset.h"
+#include "sepgsql.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
-#include "sepgsql.h"
 
 /*
  * fixup_whole_row_references
  *
- * When user reference a whole of row, it is equivalent to reference to
+ * When user references a whole-row Var, it is equivalent to referencing
  * all the user columns (not system columns). So, we need to fix up the
- * given bitmapset, if it contains a whole of the row reference.
+ * given bitmapset, if it contains a whole-row reference.
  */
 static Bitmapset *
 fixup_whole_row_references(Oid relOid, Bitmapset *columns)
@@ -44,7 +43,7 @@ fixup_whole_row_references(Oid relOid, Bitmapset *columns)
 	AttrNumber	attno;
 	int			index;
 
-	/* if no whole of row references, do not anything */
+	/* if no whole-row references, nothing to do */
 	index = InvalidAttrNumber - FirstLowInvalidHeapAttributeNumber;
 	if (!bms_is_member(index, columns))
 		return columns;
@@ -56,7 +55,7 @@ fixup_whole_row_references(Oid relOid, Bitmapset *columns)
 	natts = ((Form_pg_class) GETSTRUCT(tuple))->relnatts;
 	ReleaseSysCache(tuple);
 
-	/* fix up the given columns */
+	/* remove bit 0 from column set, add in all the non-dropped columns */
 	result = bms_copy(columns);
 	result = bms_del_member(result, index);
 
@@ -66,14 +65,13 @@ fixup_whole_row_references(Oid relOid, Bitmapset *columns)
 								ObjectIdGetDatum(relOid),
 								Int16GetDatum(attno));
 		if (!HeapTupleIsValid(tuple))
-			continue;
+			continue;			/* unexpected case, should we error? */
 
-		if (((Form_pg_attribute) GETSTRUCT(tuple))->attisdropped)
-			continue;
-
-		index = attno - FirstLowInvalidHeapAttributeNumber;
-
-		result = bms_add_member(result, index);
+		if (!((Form_pg_attribute) GETSTRUCT(tuple))->attisdropped)
+		{
+			index = attno - FirstLowInvalidHeapAttributeNumber;
+			result = bms_add_member(result, index);
+		}
 
 		ReleaseSysCache(tuple);
 	}
@@ -86,7 +84,7 @@ fixup_whole_row_references(Oid relOid, Bitmapset *columns)
  * When user is querying on a table with children, it implicitly accesses
  * child tables also. So, we also need to check security label of child
  * tables and columns, but here is no guarantee attribute numbers are
- * same between the parent ans children.
+ * same between the parent and children.
  * It returns a bitmapset which contains attribute number of the child
  * table based on the given bitmapset of the parent.
  */
@@ -161,12 +159,10 @@ check_relation_privileges(Oid relOid,
 	 */
 	if (sepgsql_getenforce() > 0)
 	{
-		Oid			relnamespace = get_rel_namespace(relOid);
-
-		if (IsSystemNamespace(relnamespace) &&
-			(required & (SEPG_DB_TABLE__UPDATE |
+		if ((required & (SEPG_DB_TABLE__UPDATE |
 						 SEPG_DB_TABLE__INSERT |
-						 SEPG_DB_TABLE__DELETE)) != 0)
+						 SEPG_DB_TABLE__DELETE)) != 0 &&
+			IsCatalogRelationOid(relOid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("SELinux: hardwired security policy violation")));
@@ -183,7 +179,7 @@ check_relation_privileges(Oid relOid,
 	object.classId = RelationRelationId;
 	object.objectId = relOid;
 	object.objectSubId = 0;
-	audit_name = getObjectIdentity(&object);
+	audit_name = getObjectIdentity(&object, false);
 	switch (relkind)
 	{
 		case RELKIND_RELATION:
@@ -260,7 +256,7 @@ check_relation_privileges(Oid relOid,
 		object.classId = RelationRelationId;
 		object.objectId = relOid;
 		object.objectSubId = attnum;
-		audit_name = getObjectDescription(&object);
+		audit_name = getObjectDescription(&object, false);
 
 		result = sepgsql_avc_check_perms(&object,
 										 SEPG_CLASS_DB_COLUMN,

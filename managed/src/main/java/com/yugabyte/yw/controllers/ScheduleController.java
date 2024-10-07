@@ -372,7 +372,7 @@ public class ScheduleController extends AuthenticatedController {
     LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
         customer,
-        schedule.getScheduleUUID(),
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Schedule,
         CustomerTask.TaskType.Update,
@@ -441,7 +441,7 @@ public class ScheduleController extends AuthenticatedController {
     LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
         customer,
-        scheduleUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Schedule,
         CustomerTask.TaskType.Delete,

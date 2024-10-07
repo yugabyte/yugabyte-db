@@ -53,7 +53,7 @@ point to the expression parse tree for the function call; this can be used
 to extract parse-time knowledge about the actual arguments.  Note that this
 field really is information about the arguments rather than information
 about the function, but it's proven to be more convenient to keep it in
-FmgrInfo than in FunctionCallInfoData where it might more logically go.
+FmgrInfo than in FunctionCallInfoBaseData where it might more logically go.
 
 
 During a call of a function, the following data structure is created
@@ -67,10 +67,9 @@ typedef struct
     Oid         fncollation;    /* collation for function to use */
     bool        isnull;         /* function must set true if result is NULL */
     short       nargs;          /* # arguments actually passed */
-    Datum       arg[FUNC_MAX_ARGS];  /* Arguments passed to function */
-    bool        argnull[FUNC_MAX_ARGS];  /* T if arg[i] is actually NULL */
-} FunctionCallInfoData;
-typedef FunctionCallInfoData* FunctionCallInfo;
+    NullableDatum args[];       /* Arguments passed to function */
+} FunctionCallInfoBaseData;
+typedef FunctionCallInfoBaseData* FunctionCallInfo;
 
 flinfo points to the lookup info used to make the call.  Ordinary functions
 will probably ignore this field, but function class handlers will need it
@@ -97,24 +96,24 @@ when there are no inputs of collatable types or they don't share a common
 collation.  This is effectively a hidden additional argument, which
 collation-sensitive functions can use to determine their behavior.
 
-nargs, arg[], and argnull[] hold the arguments being passed to the function.
+nargs and args[] hold the arguments being passed to the function.
 Notice that all the arguments passed to a function (as well as its result
 value) will now uniformly be of type Datum.  As discussed below, callers
 and callees should apply the standard Datum-to-and-from-whatever macros
 to convert to the actual argument types of a particular function.  The
-value in arg[i] is unspecified when argnull[i] is true.
+value in args[i].value is unspecified when args[i].isnull is true.
 
 It is generally the responsibility of the caller to ensure that the
 number of arguments passed matches what the callee is expecting; except
 for callees that take a variable number of arguments, the callee will
-typically ignore the nargs field and just grab values from arg[].
+typically ignore the nargs field and just grab values from args[].
 
 The isnull field will be initialized to "false" before the call.  On
 return from the function, isnull is the null flag for the function result:
 if it is true the function's result is NULL, regardless of the actual
 function return value.  Note that simple "strict" functions can ignore
-both isnull and argnull[], since they won't even get called when there
-are any TRUE values in argnull[].
+both isnull and args[i].isnull, since they won't even get called when there
+are any TRUE values in args[].isnull.
 
 FunctionCallInfo replaces FmgrValues plus a bunch of ad-hoc parameter
 conventions, global variables (fmgr_pl_finfo and CurrentTriggerData at
@@ -157,7 +156,7 @@ again, it might come in handy to have this macro in place.
 
 A nonstrict function is responsible for checking whether each individual
 argument is null or not, which it can do with PG_ARGISNULL(n) (which is
-just "fcinfo->argnull[n]").  It should avoid trying to fetch the value
+just "fcinfo->args[n].isnull").  It should avoid trying to fetch the value
 of any argument that is null.
 
 Both strict and nonstrict functions can return NULL, if needed, with
@@ -171,7 +170,7 @@ Argument values are ordinarily fetched using code like
 For float4, float8, and int8, the PG_GETARG macros will hide whether the
 types are pass-by-value or pass-by-reference.  For example, if float8 is
 pass-by-reference then PG_GETARG_FLOAT8 expands to
-	(* (float8 *) DatumGetPointer(fcinfo->arg[number]))
+	(* (float8 *) DatumGetPointer(fcinfo->args[number].value))
 and would typically be called like this:
 	float8  arg = PG_GETARG_FLOAT8(0);
 For what are now historical reasons, the float-related typedefs and macros
@@ -240,8 +239,6 @@ tuple toaster will decide whether toasting is needed.
 Functions Accepting or Returning Sets
 -------------------------------------
 
-[ this section revised 29-Aug-2002 for 7.3 ]
-
 If a function is marked in pg_proc as returning a set, then it is called
 with fcinfo->resultinfo pointing to a node of type ReturnSetInfo.  A
 function that desires to return a set should raise an error "called in
@@ -278,10 +275,16 @@ been returned, the next call should set isDone to ExprEndResult and return a
 null result.  (Note it is possible to return an empty set by doing this on
 the first call.)
 
-The ReturnSetInfo node also contains a link to the ExprContext within which
-the function is being evaluated.  This is useful for value-per-call functions
-that need to close down internal state when they are not run to completion:
-they can register a shutdown callback function in the ExprContext.
+Value-per-call functions MUST NOT assume that they will be run to completion;
+the executor might simply stop calling them, for example because of a LIMIT.
+Therefore, it's unsafe to attempt to perform any resource cleanup in the
+final call.  It's usually not necessary to clean up memory, anyway.  If it's
+necessary to clean up other types of resources, such as file descriptors,
+one can register a shutdown callback function in the ExprContext pointed to
+by the ReturnSetInfo node.  (But note that file descriptors are a limited
+resource, so it's generally unwise to hold those open across calls; SRFs
+that need file access are better written to do it in a single call using
+Materialize mode.)
 
 Materialize mode works like this: the function creates a Tuplestore holding
 the (possibly empty) result set, and returns it.  There are no multiple calls.
@@ -301,6 +304,10 @@ or not, depending on which mode they prefer.
 If available, the expected tuple descriptor is passed in ReturnSetInfo;
 in other contexts the expectedDesc field will be NULL.  The function need
 not pay attention to expectedDesc, but it may be useful in special cases.
+
+InitMaterializedSRF() is a helper function able to setup the function's
+ReturnSetInfo for a single call, filling in the Tuplestore and the
+TupleDesc with the proper configuration for Materialize mode.
 
 There is no support for functions accepting sets; instead, the function will
 be called multiple times, once for each element of the input set.

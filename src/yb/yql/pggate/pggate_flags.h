@@ -41,7 +41,6 @@ DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
-DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);

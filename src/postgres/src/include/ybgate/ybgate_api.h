@@ -188,12 +188,12 @@ typedef struct YbgReservoirStateData* YbgReservoirState;
 /*
  * Allocate and initialize a YbgReservoirState.
  */
-YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs);
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate_s0, uint64_t randstate_s1, YbgReservoirState *yb_rs);
 
 /*
  * Allocate and initialize a YbgReservoirState.
  */
-YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate);
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate_s0, uint64_t *randstate_s1);
 
 /*
  * Select a random value R uniformly distributed in (0 - 1)

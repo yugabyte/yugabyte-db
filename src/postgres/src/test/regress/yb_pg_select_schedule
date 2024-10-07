@@ -6,6 +6,7 @@
 ###############################################################################
 # Dependencies.
 test: yb_dep_int4_tbl
+test: yb_dep_int8_tbl
 test: yb_dep_onek
 test: yb_dep_tenk1
 test: yb_dep_person

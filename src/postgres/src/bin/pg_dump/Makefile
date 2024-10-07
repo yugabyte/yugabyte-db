@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_dump
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/pg_dump/Makefile
@@ -16,12 +16,24 @@ subdir = src/bin/pg_dump
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+export GZIP_PROGRAM=$(GZIP)
+export with_icu
+
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
-OBJS=	pg_backup_archiver.o pg_backup_db.o pg_backup_custom.o \
-	pg_backup_null.o pg_backup_tar.o pg_backup_directory.o \
-	pg_backup_utils.o parallel.o compress_io.o dumputils.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	compress_io.o \
+	dumputils.o \
+	parallel.o \
+	pg_backup_archiver.o \
+	pg_backup_custom.o \
+	pg_backup_db.o \
+	pg_backup_directory.o \
+	pg_backup_null.o \
+	pg_backup_tar.o \
+	pg_backup_utils.o
 
 ifndef YB_BUILD_ROOT
 $(error YB_BUILD_ROOT is not set)
@@ -37,7 +49,7 @@ ysql_dump: pg_dump.o common.o pg_dump_sort.o $(OBJS) | submake-libpq submake-lib
 pg_restore: pg_restore.o $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) pg_restore.o $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
-ysql_dumpall: pg_dumpall.o dumputils.o | submake-libpq submake-libpgport submake-libpgfeutils
+ysql_dumpall: pg_dumpall.o dumputils.o $(WIN32RES) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) pg_dumpall.o dumputils.o $(WIN32RES) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 install: all installdirs

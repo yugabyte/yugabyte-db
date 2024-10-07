@@ -23,7 +23,7 @@
 
  <para>
   <productname>PostgreSQL</productname> offers two types for storing JSON
-  data: <type>json</type> and <type>jsonb</type>. To implement effective query
+  data: <type>json</type> and <type>jsonb</type>. To implement efficient query
   mechanisms for these data types, <productname>PostgreSQL</productname>
   also provides the <type>jsonpath</type> data type described in
   <xref linkend="datatype-jsonpath"/>.
@@ -61,8 +61,8 @@
  </para>
 
  <para>
-  <productname>PostgreSQL</productname> allows only one character set
-  encoding per database.  It is therefore not possible for the JSON
+  <acronym>RFC</acronym> 7159 specifies that JSON strings should be encoded in UTF8.
+  It is therefore not possible for the JSON
   types to conform rigidly to the JSON specification unless the database
   encoding is UTF8. Attempts to directly include characters that
   cannot be represented in the database encoding will fail; conversely,
@@ -71,19 +71,19 @@
  </para>
 
  <para>
-  RFC 7159 permits JSON strings to contain Unicode escape sequences
+  <acronym>RFC</acronym> 7159 permits JSON strings to contain Unicode escape sequences
   denoted by <literal>\u<replaceable>XXXX</replaceable></literal>.  In the input
   function for the <type>json</type> type, Unicode escapes are allowed
   regardless of the database encoding, and are checked only for syntactic
   correctness (that is, that four hex digits follow <literal>\u</literal>).
   However, the input function for <type>jsonb</type> is stricter: it disallows
-  Unicode escapes for non-ASCII characters (those above <literal>U+007F</literal>)
-  unless the database encoding is UTF8.  The <type>jsonb</type> type also
+  Unicode escapes for characters that cannot be represented in the database
+  encoding.  The <type>jsonb</type> type also
   rejects <literal>\u0000</literal> (because that cannot be represented in
   <productname>PostgreSQL</productname>'s <type>text</type> type), and it insists
   that any use of Unicode surrogate pairs to designate characters outside
   the Unicode Basic Multilingual Plane be correct.  Valid Unicode escapes
-  are converted to the equivalent ASCII or UTF8 character for storage;
+  are converted to the equivalent single character for storage;
   this includes folding surrogate pairs into a single character.
  </para>
 
@@ -96,9 +96,8 @@
    not <type>jsonb</type>. The fact that the <type>json</type> input function does
    not make these checks may be considered a historical artifact, although
    it does allow for simple storage (without processing) of JSON Unicode
-   escapes in a non-UTF8 database encoding.  In general, it is best to
-   avoid mixing Unicode escapes in JSON with a non-UTF8 database encoding,
-   if possible.
+   escapes in a database encoding that does not support the represented
+   characters.
   </para>
  </note>
 
@@ -131,8 +130,11 @@
  </para>
 
   <table id="json-type-mapping-table">
-     <title>JSON primitive types and corresponding <productname>PostgreSQL</productname> types</title>
+     <title>JSON Primitive Types and Corresponding <productname>PostgreSQL</productname> Types</title>
      <tgroup cols="3">
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
       <thead>
        <row>
         <entry>JSON primitive type</entry>
@@ -144,8 +146,8 @@
        <row>
         <entry><type>string</type></entry>
         <entry><type>text</type></entry>
-        <entry><literal>\u0000</literal> is disallowed, as are non-ASCII Unicode
-         escapes if database encoding is not UTF8</entry>
+        <entry><literal>\u0000</literal> is disallowed, as are Unicode escapes
+         representing characters not available in the database encoding</entry>
        </row>
        <row>
         <entry><type>number</type></entry>
@@ -198,13 +200,13 @@ SELECT '{"foo": [true, "bar"], "tags": {"a": 1, "b": null}}'::json;
    details such as whitespace.  For example, note the differences here:
 <programlisting>
 SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::json;
-                      json                       
+                      json
 -------------------------------------------------
  {"bar": "baz", "balance": 7.77, "active":false}
 (1 row)
 
 SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::jsonb;
-                      jsonb                       
+                      jsonb
 --------------------------------------------------
  {"bar": "baz", "active": false, "balance": 7.77}
 (1 row)
@@ -216,7 +218,7 @@ SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::jsonb;
    example:
 <programlisting>
 SELECT '{"reading": 1.230e-5}'::json, '{"reading": 1.230e-5}'::jsonb;
-         json          |          jsonb          
+         json          |          jsonb
 -----------------------+-------------------------
  {"reading": 1.230e-5} | {"reading": 0.00001230}
 (1 row)
@@ -233,7 +235,7 @@ SELECT '{"reading": 1.230e-5}'::json, '{"reading": 1.230e-5}'::jsonb;
  </sect2>
 
  <sect2 id="json-doc-design">
-  <title>Designing JSON documents effectively</title>
+  <title>Designing JSON Documents</title>
   <para>
    Representing data as JSON can be considerably more flexible than
    the traditional relational data model, which is compelling in
@@ -413,9 +415,10 @@ SELECT doc-&gt;'site_name' FROM websites
   </para>
   <para>
     The default GIN operator class for <type>jsonb</type> supports queries with
-    top-level key-exists operators <literal>?</literal>, <literal>?&amp;</literal>
-    and <literal>?|</literal> operators and path/value-exists operator
-    <literal>@&gt;</literal>.
+    the key-exists operators <literal>?</literal>, <literal>?|</literal>
+    and <literal>?&amp;</literal>, the containment operator
+    <literal>@&gt;</literal>, and the <type>jsonpath</type> match
+    operators <literal>@?</literal> and <literal>@@</literal>.
     (For details of the semantics that these operators
     implement, see <xref linkend="functions-jsonb-op-table"/>.)
     An example of creating an index with this operator class is:
@@ -423,7 +426,8 @@ SELECT doc-&gt;'site_name' FROM websites
 CREATE INDEX idxgin ON api USING GIN (jdoc);
 </programlisting>
     The non-default GIN operator class <literal>jsonb_path_ops</literal>
-    supports indexing the <literal>@&gt;</literal> operator only.
+    does not support the key-exists operators, but it does support
+    <literal>@&gt;</literal>, <literal>@?</literal> and <literal>@@</literal>.
     An example of creating an index with this operator class is:
 <programlisting>
 CREATE INDEX idxginp ON api USING GIN (jdoc jsonb_path_ops);
@@ -480,22 +484,7 @@ CREATE INDEX idxgintags ON api USING GIN ((jdoc -&gt; 'tags'));
     (More information on expression indexes can be found in <xref
     linkend="indexes-expressional"/>.)
   </para>
-  <para>
-    Also, GIN index supports <literal>@@</literal> and <literal>@?</literal>
-    operators, which perform <literal>jsonpath</literal> matching.
-<programlisting>
-SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @@ '$.tags[*] == "qui"';
-</programlisting>
-<programlisting>
-SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @@ '$.tags[*] ? (@ == "qui")';
-</programlisting>
-    GIN index extracts statements of following form out of
-    <literal>jsonpath</literal>: <replaceable>accessors_chain</replaceable> = <replaceable>const</replaceable>.
-    Accessors chain may consist of <literal>.key</literal>,
-    <literal>[*]</literal>, and <literal>[<replaceable>index</replaceable>]</literal> accessors.
-    <literal>jsonb_ops</literal> additionally supports <literal>.*</literal>
-    and <literal>.**</literal> accessors.
-  </para>
+
   <para>
     Another approach to querying is to exploit containment, for example:
 <programlisting>
@@ -513,9 +502,32 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
   </para>
 
   <para>
+    GIN indexes also support the <literal>@?</literal>
+    and <literal>@@</literal> operators, which
+    perform <type>jsonpath</type> matching.  Examples are
+<programlisting>
+SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @? '$.tags[*] ? (@ == "qui")';
+</programlisting>
+<programlisting>
+SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @@ '$.tags[*] == "qui"';
+</programlisting>
+    For these operators, a GIN index extracts clauses of the form
+    <literal><replaceable>accessors_chain</replaceable>
+    = <replaceable>constant</replaceable></literal> out of
+    the <type>jsonpath</type> pattern, and does the index search based on
+    the keys and values mentioned in these clauses.  The accessors chain
+    may include <literal>.<replaceable>key</replaceable></literal>,
+    <literal>[*]</literal>,
+    and <literal>[<replaceable>index</replaceable>]</literal> accessors.
+    The <literal>jsonb_ops</literal> operator class also
+    supports <literal>.*</literal> and <literal>.**</literal> accessors,
+    but the <literal>jsonb_path_ops</literal> operator class does not.
+  </para>
+
+  <para>
     Although the <literal>jsonb_path_ops</literal> operator class supports
-    only queries with the <literal>@&gt;</literal>, <literal>@@</literal>
-    and <literal>@?</literal> operators, it has notable
+    only queries with the <literal>@&gt;</literal>, <literal>@?</literal>
+    and <literal>@@</literal> operators, it has notable
     performance advantages over the default operator
     class <literal>jsonb_ops</literal>.  A <literal>jsonb_path_ops</literal>
     index is usually much smaller than a <literal>jsonb_ops</literal>
@@ -600,6 +612,105 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
   </para>
  </sect2>
 
+ <sect2 id="jsonb-subscripting">
+  <title><type>jsonb</type> Subscripting</title>
+  <para>
+   The <type>jsonb</type> data type supports array-style subscripting expressions
+   to extract and modify elements. Nested values can be indicated by chaining
+   subscripting expressions, following the same rules as the <literal>path</literal>
+   argument in the <literal>jsonb_set</literal> function. If a <type>jsonb</type>
+   value is an array, numeric subscripts start at zero, and negative integers count
+   backwards from the last element of the array. Slice expressions are not supported.
+   The result of a subscripting expression is always of the jsonb data type.
+  </para>
+
+  <para>
+   <command>UPDATE</command> statements may use subscripting in the
+   <literal>SET</literal> clause to modify <type>jsonb</type> values. Subscript
+   paths must be traversable for all affected values insofar as they exist. For
+   instance, the path <literal>val['a']['b']['c']</literal> can be traversed all
+   the way to <literal>c</literal> if every <literal>val</literal>,
+   <literal>val['a']</literal>, and <literal>val['a']['b']</literal> is an
+   object. If any <literal>val['a']</literal> or <literal>val['a']['b']</literal>
+   is not defined, it will be created as an empty object and filled as
+   necessary. However, if any <literal>val</literal> itself or one of the
+   intermediary values is defined as a non-object such as a string, number, or
+   <literal>jsonb</literal> <literal>null</literal>, traversal cannot proceed so
+   an error is raised and the transaction aborted.
+  </para>
+
+  <para>
+   An example of subscripting syntax:
+
+<programlisting>
+
+-- Extract object value by key
+SELECT ('{"a": 1}'::jsonb)['a'];
+
+-- Extract nested object value by key path
+SELECT ('{"a": {"b": {"c": 1}}}'::jsonb)['a']['b']['c'];
+
+-- Extract array element by index
+SELECT ('[1, "2", null]'::jsonb)[1];
+
+-- Update object value by key. Note the quotes around '1': the assigned
+-- value must be of the jsonb type as well
+UPDATE table_name SET jsonb_field['key'] = '1';
+
+-- This will raise an error if any record's jsonb_field['a']['b'] is something
+-- other than an object. For example, the value {"a": 1} has a numeric value
+-- of the key 'a'.
+UPDATE table_name SET jsonb_field['a']['b']['c'] = '1';
+
+-- Filter records using a WHERE clause with subscripting. Since the result of
+-- subscripting is jsonb, the value we compare it against must also be jsonb.
+-- The double quotes make "value" also a valid jsonb string.
+SELECT * FROM table_name WHERE jsonb_field['key'] = '"value"';
+</programlisting>
+
+   <type>jsonb</type> assignment via subscripting handles a few edge cases
+   differently from <literal>jsonb_set</literal>. When a source <type>jsonb</type>
+   value is <literal>NULL</literal>, assignment via subscripting will proceed
+   as if it was an empty JSON value of the type (object or array) implied by the
+   subscript key:
+
+<programlisting>
+-- Where jsonb_field was NULL, it is now {"a": 1}
+UPDATE table_name SET jsonb_field['a'] = '1';
+
+-- Where jsonb_field was NULL, it is now [1]
+UPDATE table_name SET jsonb_field[0] = '1';
+</programlisting>
+
+   If an index is specified for an array containing too few elements,
+   <literal>NULL</literal> elements will be appended until the index is reachable
+   and the value can be set.
+
+<programlisting>
+-- Where jsonb_field was [], it is now [null, null, 2];
+-- where jsonb_field was [0], it is now [0, null, 2]
+UPDATE table_name SET jsonb_field[2] = '2';
+</programlisting>
+
+   A <type>jsonb</type> value will accept assignments to nonexistent subscript
+   paths as long as the last existing element to be traversed is an object or
+   array, as implied by the corresponding subscript (the element indicated by
+   the last subscript in the path is not traversed and may be anything). Nested
+   array and object structures will be created, and in the former case
+   <literal>null</literal>-padded, as specified by the subscript path until the
+   assigned value can be placed.
+
+<programlisting>
+-- Where jsonb_field was {}, it is now {"a": [{"b": 1}]}
+UPDATE table_name SET jsonb_field['a'][0]['b'] = '1';
+
+-- Where jsonb_field was [], it is now [null, {"a": 1}]
+UPDATE table_name SET jsonb_field[1]['a'] = '1';
+</programlisting>
+
+  </para>
+ </sect2>
+
  <sect2>
   <title>Transforms</title>
 
@@ -615,17 +726,21 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
   </para>
 
   <para>
-   The extensions for PL/Python are called <literal>jsonb_plpythonu</literal>,
-   <literal>jsonb_plpython2u</literal>, and
-   <literal>jsonb_plpython3u</literal> (see <xref
-   linkend="plpython-python23"/> for the PL/Python naming convention).  If you
-   use them, <type>jsonb</type> values are mapped to Python dictionaries,
-   lists, and scalars, as appropriate.
+   The extension for PL/Python is called <literal>jsonb_plpython3u</literal>.
+   If you use it, <type>jsonb</type> values are mapped to Python
+   dictionaries, lists, and scalars, as appropriate.
+  </para>
+
+  <para>
+   Of these extensions, <literal>jsonb_plperl</literal> is
+   considered <quote>trusted</quote>, that is, it can be installed by
+   non-superusers who have <literal>CREATE</literal> privilege on the
+   current database.  The rest require superuser privilege to install.
   </para>
  </sect2>
 
  <sect2 id="datatype-jsonpath">
-  <title>jsonpath Type</title> 
+  <title>jsonpath Type</title>
 
   <indexterm zone="datatype-jsonpath">
    <primary>jsonpath</primary>
@@ -633,7 +748,7 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
 
   <para>
    The <type>jsonpath</type> type implements support for the SQL/JSON path language
-   in <productname>PostgreSQL</productname> to effectively query JSON data.
+   in <productname>PostgreSQL</productname> to efficiently query JSON data.
    It provides a binary representation of the parsed SQL/JSON path
    expression that specifies the items to be retrieved by the path
    engine from the JSON data for further processing with the
@@ -642,8 +757,8 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
 
   <para>
    The semantics of SQL/JSON path predicates and operators generally follow SQL.
-   At the same time, to provide a most natural way of working with JSON data,
-   SQL/JSON path syntax uses some of the JavaScript conventions:
+   At the same time, to provide a natural way of working with JSON data,
+   SQL/JSON path syntax uses some JavaScript conventions:
   </para>
 
   <itemizedlist>
@@ -695,7 +810,7 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
 
   <para>
    A path expression consists of a sequence of path elements,
-   which can be the following:
+   which can be any of the following:
    <itemizedlist>
     <listitem>
      <para>
@@ -716,7 +831,7 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
     <listitem>
      <para>
       <type>jsonpath</type> operators and methods listed
-      in <xref linkend="functions-sqljson-path-operators"/>
+      in <xref linkend="functions-sqljson-path-operators"/>.
      </para>
     </listitem>
     <listitem>
@@ -736,6 +851,8 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
   <table id="type-jsonpath-variables">
    <title><type>jsonpath</type> Variables</title>
    <tgroup cols="2">
+    <colspec colname="col1" colwidth="1*"/>
+    <colspec colname="col2" colwidth="2*"/>
     <thead>
      <row>
       <entry>Variable</entry>
@@ -745,7 +862,7 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
     <tbody>
      <row>
       <entry><literal>$</literal></entry>
-      <entry>A variable representing the JSON text to be queried
+      <entry>A variable representing the JSON value being queried
       (the <firstterm>context item</firstterm>).
       </entry>
      </row>
@@ -753,9 +870,8 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
       <entry><literal>$varname</literal></entry>
       <entry>
         A named variable. Its value can be set by the parameter
-        <parameter>vars</parameter> of several JSON processing functions.
-        See <xref linkend="functions-json-processing-table"/> and
-        its notes for details.
+        <parameter>vars</parameter> of several JSON processing functions;
+        see <xref linkend="functions-json-processing-table"/> for details.
         <!-- TODO: describe PASSING clause once implemented !-->
       </entry>
      </row>
@@ -772,6 +888,8 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
   <table id="type-jsonpath-accessors">
    <title><type>jsonpath</type> Accessors</title>
    <tgroup cols="2">
+    <colspec colname="col1" colwidth="1*"/>
+    <colspec colname="col2" colwidth="2*"/>
     <thead>
      <row>
       <entry>Accessor Operator</entry>
@@ -791,10 +909,10 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
       <entry>
        <para>
         Member accessor that returns an object member with
-        the specified key. If the key name is a named variable
+        the specified key. If the key name matches some named variable
         starting with <literal>$</literal> or does not meet the
-        JavaScript rules of an identifier, it must be enclosed in
-        double quotes as a character string literal.
+        JavaScript rules for an identifier, it must be enclosed in
+        double quotes to make it a string literal.
        </para>
       </entry>
      </row>
@@ -839,9 +957,9 @@ SELECT jdoc-&gt;'guid', jdoc-&gt;'name' FROM api WHERE jdoc @&gt; '{"tags": ["qu
       </entry>
       <entry>
        <para>
-        Same as <literal>.**</literal>, but with a filter over nesting
-        levels of JSON hierarchy. Nesting levels are specified as integers.
-        Zero level corresponds to the current object. To access the lowest
+        Like <literal>.**</literal>, but selects only the specified
+        levels of the JSON hierarchy. Nesting levels are specified as integers.
+        Level zero corresponds to the current object. To access the lowest
         nesting level, you can use the <literal>last</literal> keyword.
         This is a <productname>PostgreSQL</productname> extension of
         the SQL/JSON standard.

@@ -79,7 +79,7 @@ public class TestPgTransactions extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+    appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
     return flags;
   }
 
@@ -93,6 +93,14 @@ public class TestPgTransactions extends BasePgSQLTest {
     // Some of these tests depend on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     markClusterNeedsRecreation();
+    Map<String, String> FailOnConflictTestGflags = new TreeMap<String, String>()
+      {
+        {
+            put("enable_wait_queues", "false");
+            // The retries are set to 2 to speed up the tests.
+            put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+        }
+      };
     restartClusterWithFlags(FailOnConflictTestGflags, FailOnConflictTestGflags);
   }
 
@@ -1113,5 +1121,13 @@ public class TestPgTransactions extends BasePgSQLTest {
     verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (2, 2)", 1);
     verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (3, 3)", 1);
     statement.execute("DROP TABLE test_id_non_pk");
+  }
+
+  @Test
+  public void testParititionedTableFastPath() throws Exception {
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE partitioned (a int) PARTITION BY LIST (a)");
+    statement.execute("CREATE TABLE partitioned_part PARTITION OF partitioned FOR VALUES IN (123)");
+    verifyStatementTxnMetric(statement, "INSERT INTO partitioned (a) VALUES (123)", 1);
   }
 }

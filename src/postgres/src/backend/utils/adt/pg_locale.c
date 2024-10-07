@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities
  *
- * Portions Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale.c
  *
@@ -22,8 +22,9 @@
  * settable at run-time.  However, we don't actually set those locale
  * categories permanently.  This would have bizarre effects like no
  * longer accepting standard floating-point literals in some locales.
- * Instead, we only set the locales briefly when needed, cache the
- * required information obtained from localeconv(), and set them back.
+ * Instead, we only set these locale categories briefly when needed,
+ * cache the required information obtained from localeconv() or
+ * strftime(), and then set the locale categories back to "C".
  * The cached information is only used by the formatting functions
  * (to_char, etc.) and the money type.  For the user, this should all be
  * transparent.
@@ -42,7 +43,7 @@
  * will change the memory save is pointing at.  To do this sort of thing
  * safely, you *must* pstrdup what setlocale returns the first time.
  *
- * FYI, The Open Group locale standard is defined here:
+ * The POSIX locale standard is available here:
  *
  *	http://www.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap07.html
  *----------
@@ -58,6 +59,7 @@
 #include "catalog/pg_control.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -68,17 +70,12 @@
 #include <unicode/ucnv.h>
 #endif
 
-#ifdef WIN32
-/*
- * This Windows file defines StrNCpy. We don't need it here, so we undefine
- * it to keep the compiler quiet, and undefine it again after the file is
- * included, so we don't accidentally use theirs.
- */
-#undef StrNCpy
-#include <shlwapi.h>
-#ifdef StrNCpy
-#undef STrNCpy
+#ifdef __GLIBC__
+#include <gnu/libc-version.h>
 #endif
+
+#ifdef WIN32
+#include <shlwapi.h>
 #endif
 
 #define		MAX_L10N_DATA		80
@@ -90,29 +87,21 @@ char	   *locale_monetary;
 char	   *locale_numeric;
 char	   *locale_time;
 
-/* lc_time localization cache */
-char	   *localized_abbrev_days[7];
-char	   *localized_full_days[7];
-char	   *localized_abbrev_months[12];
-char	   *localized_full_months[12];
+/*
+ * lc_time localization cache.
+ *
+ * We use only the first 7 or 12 entries of these arrays.  The last array
+ * element is left as NULL for the convenience of outside code that wants
+ * to sequentially scan these arrays.
+ */
+char	   *localized_abbrev_days[7 + 1];
+char	   *localized_full_days[7 + 1];
+char	   *localized_abbrev_months[12 + 1];
+char	   *localized_full_months[12 + 1];
 
 /* indicates whether locale information cache is valid */
 static bool CurrentLocaleConvValid = false;
 static bool CurrentLCTimeValid = false;
-
-/* Environment variable storage area */
-
-#define LC_ENV_BUFSIZE (NAMEDATALEN + 20)
-
-static char lc_collate_envbuf[LC_ENV_BUFSIZE];
-static char lc_ctype_envbuf[LC_ENV_BUFSIZE];
-
-#ifdef LC_MESSAGES
-static char lc_messages_envbuf[LC_ENV_BUFSIZE];
-#endif
-static char lc_monetary_envbuf[LC_ENV_BUFSIZE];
-static char lc_numeric_envbuf[LC_ENV_BUFSIZE];
-static char lc_time_envbuf[LC_ENV_BUFSIZE];
 
 /* Cache for collation-related knowledge */
 
@@ -132,6 +121,9 @@ static HTAB *collation_cache = NULL;
 static char *IsoLocaleName(const char *);	/* MSVC specific */
 #endif
 
+#ifdef USE_ICU
+static void icu_set_collation_attributes(UCollator *collator, const char *loc);
+#endif
 
 /*
  * pg_perm_setlocale
@@ -152,7 +144,6 @@ pg_perm_setlocale(int category, const char *locale)
 {
 	char	   *result;
 	const char *envvar;
-	char	   *envbuf;
 
 #ifndef WIN32
 	result = setlocale(category, locale);
@@ -188,7 +179,7 @@ pg_perm_setlocale(int category, const char *locale)
 	 */
 	if (category == LC_CTYPE)
 	{
-		static char save_lc_ctype[LC_ENV_BUFSIZE];
+		static char save_lc_ctype[LOCALE_NAME_BUFLEN];
 
 		/* copy setlocale() return value before callee invokes it again */
 		strlcpy(save_lc_ctype, result, sizeof(save_lc_ctype));
@@ -205,45 +196,36 @@ pg_perm_setlocale(int category, const char *locale)
 	{
 		case LC_COLLATE:
 			envvar = "LC_COLLATE";
-			envbuf = lc_collate_envbuf;
 			break;
 		case LC_CTYPE:
 			envvar = "LC_CTYPE";
-			envbuf = lc_ctype_envbuf;
 			break;
 #ifdef LC_MESSAGES
 		case LC_MESSAGES:
 			envvar = "LC_MESSAGES";
-			envbuf = lc_messages_envbuf;
 #ifdef WIN32
 			result = IsoLocaleName(locale);
 			if (result == NULL)
 				result = (char *) locale;
+			elog(DEBUG3, "IsoLocaleName() executed; locale: \"%s\"", result);
 #endif							/* WIN32 */
 			break;
 #endif							/* LC_MESSAGES */
 		case LC_MONETARY:
 			envvar = "LC_MONETARY";
-			envbuf = lc_monetary_envbuf;
 			break;
 		case LC_NUMERIC:
 			envvar = "LC_NUMERIC";
-			envbuf = lc_numeric_envbuf;
 			break;
 		case LC_TIME:
 			envvar = "LC_TIME";
-			envbuf = lc_time_envbuf;
 			break;
 		default:
 			elog(FATAL, "unrecognized LC category: %d", category);
-			envvar = NULL;		/* keep compiler quiet */
-			envbuf = NULL;
-			return NULL;
+			return NULL;		/* keep compiler quiet */
 	}
 
-	snprintf(envbuf, LC_ENV_BUFSIZE - 1, "%s=%s", envvar, result);
-
-	if (putenv(envbuf))
+	if (setenv(envvar, result, 1) != 0)
 		return NULL;
 
 	return result;
@@ -486,7 +468,6 @@ PGLC_localeconv(void)
 	static bool CurrentLocaleConvAllocated = false;
 	struct lconv *extlconv;
 	struct lconv worklconv;
-	bool		trouble = false;
 	char	   *save_lc_monetary;
 	char	   *save_lc_numeric;
 #ifdef WIN32
@@ -518,42 +499,38 @@ PGLC_localeconv(void)
 	 */
 	memset(&worklconv, 0, sizeof(worklconv));
 
-	/* Save user's values of monetary and numeric locales */
+	/* Save prevailing values of monetary and numeric locales */
 	save_lc_monetary = setlocale(LC_MONETARY, NULL);
-	if (save_lc_monetary)
-		save_lc_monetary = pstrdup(save_lc_monetary);
+	if (!save_lc_monetary)
+		elog(ERROR, "setlocale(NULL) failed");
+	save_lc_monetary = pstrdup(save_lc_monetary);
 
 	save_lc_numeric = setlocale(LC_NUMERIC, NULL);
-	if (save_lc_numeric)
-		save_lc_numeric = pstrdup(save_lc_numeric);
+	if (!save_lc_numeric)
+		elog(ERROR, "setlocale(NULL) failed");
+	save_lc_numeric = pstrdup(save_lc_numeric);
 
 #ifdef WIN32
 
 	/*
-	 * Ideally, monetary and numeric local symbols could be returned in any
-	 * server encoding.  Unfortunately, the WIN32 API does not allow
-	 * setlocale() to return values in a codepage/CTYPE that uses more than
-	 * two bytes per character, such as UTF-8:
+	 * The POSIX standard explicitly says that it is undefined what happens if
+	 * LC_MONETARY or LC_NUMERIC imply an encoding (codeset) different from
+	 * that implied by LC_CTYPE.  In practice, all Unix-ish platforms seem to
+	 * believe that localeconv() should return strings that are encoded in the
+	 * codeset implied by the LC_MONETARY or LC_NUMERIC locale name.  Hence,
+	 * once we have successfully collected the localeconv() results, we will
+	 * convert them from that codeset to the desired server encoding.
 	 *
-	 * http://msdn.microsoft.com/en-us/library/x99tb11d.aspx
-	 *
-	 * Evidently, LC_CTYPE allows us to control the encoding used for strings
-	 * returned by localeconv().  The Open Group standard, mentioned at the
-	 * top of this C file, doesn't explicitly state this.
-	 *
-	 * Therefore, we set LC_CTYPE to match LC_NUMERIC or LC_MONETARY (which
-	 * cannot be UTF8), call localeconv(), and then convert from the
-	 * numeric/monetary LC_CTYPE to the server encoding.  One example use of
-	 * this is for the Euro symbol.
-	 *
-	 * Perhaps someday we will use GetLocaleInfoW() which returns values in
-	 * UTF16 and convert from that.
+	 * Windows, of course, resolutely does things its own way; on that
+	 * platform LC_CTYPE has to match LC_MONETARY/LC_NUMERIC to get sane
+	 * results.  Hence, we must temporarily set that category as well.
 	 */
 
-	/* save user's value of ctype locale */
+	/* Save prevailing value of ctype locale */
 	save_lc_ctype = setlocale(LC_CTYPE, NULL);
-	if (save_lc_ctype)
-		save_lc_ctype = pstrdup(save_lc_ctype);
+	if (!save_lc_ctype)
+		elog(ERROR, "setlocale(NULL) failed");
+	save_lc_ctype = pstrdup(save_lc_ctype);
 
 	/* Here begins the critical section where we must not throw error */
 
@@ -597,27 +574,22 @@ PGLC_localeconv(void)
 	worklconv.p_sign_posn = extlconv->p_sign_posn;
 	worklconv.n_sign_posn = extlconv->n_sign_posn;
 
-	/* Try to restore internal settings */
-	if (save_lc_monetary)
-	{
-		if (!setlocale(LC_MONETARY, save_lc_monetary))
-			trouble = true;
-	}
-
-	if (save_lc_numeric)
-	{
-		if (!setlocale(LC_NUMERIC, save_lc_numeric))
-			trouble = true;
-	}
-
+	/*
+	 * Restore the prevailing locale settings; failure to do so is fatal.
+	 * Possibly we could limp along with nondefault LC_MONETARY or LC_NUMERIC,
+	 * but proceeding with the wrong value of LC_CTYPE would certainly be bad
+	 * news; and considering that the prevailing LC_MONETARY and LC_NUMERIC
+	 * are almost certainly "C", there's really no reason that restoring those
+	 * should fail.
+	 */
 #ifdef WIN32
-	/* Try to restore internal ctype settings */
-	if (save_lc_ctype)
-	{
-		if (!setlocale(LC_CTYPE, save_lc_ctype))
-			trouble = true;
-	}
+	if (!setlocale(LC_CTYPE, save_lc_ctype))
+		elog(FATAL, "failed to restore LC_CTYPE to \"%s\"", save_lc_ctype);
 #endif
+	if (!setlocale(LC_MONETARY, save_lc_monetary))
+		elog(FATAL, "failed to restore LC_MONETARY to \"%s\"", save_lc_monetary);
+	if (!setlocale(LC_NUMERIC, save_lc_numeric))
+		elog(FATAL, "failed to restore LC_NUMERIC to \"%s\"", save_lc_numeric);
 
 	/*
 	 * At this point we've done our best to clean up, and can call functions
@@ -628,21 +600,11 @@ PGLC_localeconv(void)
 	{
 		int			encoding;
 
-		/*
-		 * Report it if we failed to restore anything.  Perhaps this should be
-		 * FATAL, rather than continuing with bad locale settings?
-		 */
-		if (trouble)
-			elog(WARNING, "failed to restore old locale");
-
 		/* Release the pstrdup'd locale names */
-		if (save_lc_monetary)
-			pfree(save_lc_monetary);
-		if (save_lc_numeric)
-			pfree(save_lc_numeric);
+		pfree(save_lc_monetary);
+		pfree(save_lc_numeric);
 #ifdef WIN32
-		if (save_lc_ctype)
-			pfree(save_lc_ctype);
+		pfree(save_lc_ctype);
 #endif
 
 		/* If any of the preceding strdup calls failed, complain now. */
@@ -653,15 +615,22 @@ PGLC_localeconv(void)
 
 		/*
 		 * Now we must perform encoding conversion from whatever's associated
-		 * with the locale into the database encoding.
+		 * with the locales into the database encoding.  If we can't identify
+		 * the encoding implied by LC_NUMERIC or LC_MONETARY (ie we get -1),
+		 * use PG_SQL_ASCII, which will result in just validating that the
+		 * strings are OK in the database encoding.
 		 */
 		encoding = pg_get_encoding_from_locale(locale_numeric, true);
+		if (encoding < 0)
+			encoding = PG_SQL_ASCII;
 
 		db_encoding_convert(encoding, &worklconv.decimal_point);
 		db_encoding_convert(encoding, &worklconv.thousands_sep);
 		/* grouping is not text and does not require conversion */
 
 		encoding = pg_get_encoding_from_locale(locale_monetary, true);
+		if (encoding < 0)
+			encoding = PG_SQL_ASCII;
 
 		db_encoding_convert(encoding, &worklconv.int_curr_symbol);
 		db_encoding_convert(encoding, &worklconv.currency_symbol);
@@ -689,15 +658,15 @@ PGLC_localeconv(void)
 
 #ifdef WIN32
 /*
- * On WIN32, strftime() returns the encoding in CP_ACP (the default
- * operating system codpage for that computer), which is likely different
+ * On Windows, strftime() returns its output in encoding CP_ACP (the default
+ * operating system codepage for the computer), which is likely different
  * from SERVER_ENCODING.  This is especially important in Japanese versions
  * of Windows which will use SJIS encoding, which we don't support as a
  * server encoding.
  *
  * So, instead of using strftime(), use wcsftime() to return the value in
- * wide characters (internally UTF16) and then convert it to the appropriate
- * database encoding.
+ * wide characters (internally UTF16) and then convert to UTF8, which we
+ * know how to handle directly.
  *
  * Note that this only affects the calls to strftime() in this file, which are
  * used to get the locale-aware strings. Other parts of the backend use
@@ -708,10 +677,13 @@ strftime_win32(char *dst, size_t dstlen,
 			   const char *format, const struct tm *tm)
 {
 	size_t		len;
-	wchar_t		wformat[8];		/* formats used below need 3 bytes */
+	wchar_t		wformat[8];		/* formats used below need 3 chars */
 	wchar_t		wbuf[MAX_L10N_DATA];
 
-	/* get a wchar_t version of the format string */
+	/*
+	 * Get a wchar_t version of the format string.  We only actually use
+	 * plain-ASCII formats in this file, so we can say that they're UTF8.
+	 */
 	len = MultiByteToWideChar(CP_UTF8, 0, format, -1,
 							  wformat, lengthof(wformat));
 	if (len == 0)
@@ -722,7 +694,7 @@ strftime_win32(char *dst, size_t dstlen,
 	if (len == 0)
 	{
 		/*
-		 * strftime failed, possibly because the result would not fit in
+		 * wcsftime failed, possibly because the result would not fit in
 		 * MAX_L10N_DATA.  Return 0 with the contents of dst unspecified.
 		 */
 		return 0;
@@ -735,17 +707,6 @@ strftime_win32(char *dst, size_t dstlen,
 			 GetLastError());
 
 	dst[len] = '\0';
-	if (GetDatabaseEncoding() != PG_UTF8)
-	{
-		char	   *convstr = pg_any_to_server(dst, len, PG_UTF8);
-
-		if (convstr != dst)
-		{
-			strlcpy(dst, convstr, dstlen);
-			len = strlen(dst);
-			pfree(convstr);
-		}
-	}
 
 	return len;
 }
@@ -754,29 +715,29 @@ strftime_win32(char *dst, size_t dstlen,
 #define strftime(a,b,c,d) strftime_win32(a,b,c,d)
 #endif							/* WIN32 */
 
-/* Subroutine for cache_locale_time(). */
+/*
+ * Subroutine for cache_locale_time().
+ * Convert the given string from encoding "encoding" to the database
+ * encoding, and store the result at *dst, replacing any previous value.
+ */
 static void
-cache_single_time(char **dst, const char *format, const struct tm *tm)
+cache_single_string(char **dst, const char *src, int encoding)
 {
-	char		buf[MAX_L10N_DATA];
 	char	   *ptr;
+	char	   *olddst;
 
-	/*
-	 * MAX_L10N_DATA is sufficient buffer space for every known locale, and
-	 * POSIX defines no strftime() errors.  (Buffer space exhaustion is not an
-	 * error.)	An implementation might report errors (e.g. ENOMEM) by
-	 * returning 0 (or, less plausibly, a negative value) and setting errno.
-	 * Report errno just in case the implementation did that, but clear it in
-	 * advance of the call so we don't emit a stale, unrelated errno.
-	 */
-	errno = 0;
-	if (strftime(buf, MAX_L10N_DATA, format, tm) <= 0)
-		elog(ERROR, "strftime(%s) failed: %m", format);
+	/* Convert the string to the database encoding, or validate it's OK */
+	ptr = pg_any_to_server(src, strlen(src), encoding);
 
-	ptr = MemoryContextStrdup(TopMemoryContext, buf);
-	if (*dst)
-		pfree(*dst);
-	*dst = ptr;
+	/* Store the string in long-lived storage, replacing any previous value */
+	olddst = *dst;
+	*dst = MemoryContextStrdup(TopMemoryContext, ptr);
+	if (olddst)
+		pfree(olddst);
+
+	/* Might as well clean up any palloc'd conversion result, too */
+	if (ptr != src)
+		pfree(ptr);
 }
 
 /*
@@ -785,11 +746,14 @@ cache_single_time(char **dst, const char *format, const struct tm *tm)
 void
 cache_locale_time(void)
 {
-	char	   *save_lc_time;
+	char		buf[(2 * 7 + 2 * 12) * MAX_L10N_DATA];
+	char	   *bufptr;
 	time_t		timenow;
 	struct tm  *timeinfo;
+	bool		strftimefail = false;
+	int			encoding;
 	int			i;
-
+	char	   *save_lc_time;
 #ifdef WIN32
 	char	   *save_lc_ctype;
 #endif
@@ -800,26 +764,33 @@ cache_locale_time(void)
 
 	elog(DEBUG3, "cache_locale_time() executed; locale: \"%s\"", locale_time);
 
-	/* save user's value of time locale */
+	/*
+	 * As in PGLC_localeconv(), it's critical that we not throw error while
+	 * libc's locale settings have nondefault values.  Hence, we just call
+	 * strftime() within the critical section, and then convert and save its
+	 * results afterwards.
+	 */
+
+	/* Save prevailing value of time locale */
 	save_lc_time = setlocale(LC_TIME, NULL);
-	if (save_lc_time)
-		save_lc_time = pstrdup(save_lc_time);
+	if (!save_lc_time)
+		elog(ERROR, "setlocale(NULL) failed");
+	save_lc_time = pstrdup(save_lc_time);
 
 #ifdef WIN32
 
 	/*
-	 * On WIN32, there is no way to get locale-specific time values in a
-	 * specified locale, like we do for monetary/numeric.  We can only get
-	 * CP_ACP (see strftime_win32) or UTF16.  Therefore, we get UTF16 and
-	 * convert it to the database locale.  However, wcsftime() internally uses
-	 * LC_CTYPE, so we set it here.  See the WIN32 comment near the top of
-	 * PGLC_localeconv().
+	 * On Windows, it appears that wcsftime() internally uses LC_CTYPE, so we
+	 * must set it here.  This code looks the same as what PGLC_localeconv()
+	 * does, but the underlying reason is different: this does NOT determine
+	 * the encoding we'll get back from strftime_win32().
 	 */
 
-	/* save user's value of ctype locale */
+	/* Save prevailing value of ctype locale */
 	save_lc_ctype = setlocale(LC_CTYPE, NULL);
-	if (save_lc_ctype)
-		save_lc_ctype = pstrdup(save_lc_ctype);
+	if (!save_lc_ctype)
+		elog(ERROR, "setlocale(NULL) failed");
+	save_lc_ctype = pstrdup(save_lc_ctype);
 
 	/* use lc_time to set the ctype */
 	setlocale(LC_CTYPE, locale_time);
@@ -827,15 +798,33 @@ cache_locale_time(void)
 
 	setlocale(LC_TIME, locale_time);
 
+	/* We use times close to current time as data for strftime(). */
 	timenow = time(NULL);
 	timeinfo = localtime(&timenow);
+
+	/* Store the strftime results in MAX_L10N_DATA-sized portions of buf[] */
+	bufptr = buf;
+
+	/*
+	 * MAX_L10N_DATA is sufficient buffer space for every known locale, and
+	 * POSIX defines no strftime() errors.  (Buffer space exhaustion is not an
+	 * error.)  An implementation might report errors (e.g. ENOMEM) by
+	 * returning 0 (or, less plausibly, a negative value) and setting errno.
+	 * Report errno just in case the implementation did that, but clear it in
+	 * advance of the calls so we don't emit a stale, unrelated errno.
+	 */
+	errno = 0;
 
 	/* localized days */
 	for (i = 0; i < 7; i++)
 	{
 		timeinfo->tm_wday = i;
-		cache_single_time(&localized_abbrev_days[i], "%a", timeinfo);
-		cache_single_time(&localized_full_days[i], "%A", timeinfo);
+		if (strftime(bufptr, MAX_L10N_DATA, "%a", timeinfo) <= 0)
+			strftimefail = true;
+		bufptr += MAX_L10N_DATA;
+		if (strftime(bufptr, MAX_L10N_DATA, "%A", timeinfo) <= 0)
+			strftimefail = true;
+		bufptr += MAX_L10N_DATA;
 	}
 
 	/* localized months */
@@ -843,27 +832,82 @@ cache_locale_time(void)
 	{
 		timeinfo->tm_mon = i;
 		timeinfo->tm_mday = 1;	/* make sure we don't have invalid date */
-		cache_single_time(&localized_abbrev_months[i], "%b", timeinfo);
-		cache_single_time(&localized_full_months[i], "%B", timeinfo);
+		if (strftime(bufptr, MAX_L10N_DATA, "%b", timeinfo) <= 0)
+			strftimefail = true;
+		bufptr += MAX_L10N_DATA;
+		if (strftime(bufptr, MAX_L10N_DATA, "%B", timeinfo) <= 0)
+			strftimefail = true;
+		bufptr += MAX_L10N_DATA;
 	}
 
-	/* try to restore internal settings */
-	if (save_lc_time)
-	{
-		if (!setlocale(LC_TIME, save_lc_time))
-			elog(WARNING, "failed to restore old locale");
-		pfree(save_lc_time);
-	}
-
+	/*
+	 * Restore the prevailing locale settings; as in PGLC_localeconv(),
+	 * failure to do so is fatal.
+	 */
 #ifdef WIN32
-	/* try to restore internal ctype settings */
-	if (save_lc_ctype)
-	{
-		if (!setlocale(LC_CTYPE, save_lc_ctype))
-			elog(WARNING, "failed to restore old locale");
-		pfree(save_lc_ctype);
-	}
+	if (!setlocale(LC_CTYPE, save_lc_ctype))
+		elog(FATAL, "failed to restore LC_CTYPE to \"%s\"", save_lc_ctype);
 #endif
+	if (!setlocale(LC_TIME, save_lc_time))
+		elog(FATAL, "failed to restore LC_TIME to \"%s\"", save_lc_time);
+
+	/*
+	 * At this point we've done our best to clean up, and can throw errors, or
+	 * call functions that might throw errors, with a clean conscience.
+	 */
+	if (strftimefail)
+		elog(ERROR, "strftime() failed: %m");
+
+	/* Release the pstrdup'd locale names */
+	pfree(save_lc_time);
+#ifdef WIN32
+	pfree(save_lc_ctype);
+#endif
+
+#ifndef WIN32
+
+	/*
+	 * As in PGLC_localeconv(), we must convert strftime()'s output from the
+	 * encoding implied by LC_TIME to the database encoding.  If we can't
+	 * identify the LC_TIME encoding, just perform encoding validation.
+	 */
+	encoding = pg_get_encoding_from_locale(locale_time, true);
+	if (encoding < 0)
+		encoding = PG_SQL_ASCII;
+
+#else
+
+	/*
+	 * On Windows, strftime_win32() always returns UTF8 data, so convert from
+	 * that if necessary.
+	 */
+	encoding = PG_UTF8;
+
+#endif							/* WIN32 */
+
+	bufptr = buf;
+
+	/* localized days */
+	for (i = 0; i < 7; i++)
+	{
+		cache_single_string(&localized_abbrev_days[i], bufptr, encoding);
+		bufptr += MAX_L10N_DATA;
+		cache_single_string(&localized_full_days[i], bufptr, encoding);
+		bufptr += MAX_L10N_DATA;
+	}
+	localized_abbrev_days[7] = NULL;
+	localized_full_days[7] = NULL;
+
+	/* localized months */
+	for (i = 0; i < 12; i++)
+	{
+		cache_single_string(&localized_abbrev_months[i], bufptr, encoding);
+		bufptr += MAX_L10N_DATA;
+		cache_single_string(&localized_full_months[i], bufptr, encoding);
+		bufptr += MAX_L10N_DATA;
+	}
+	localized_abbrev_months[12] = NULL;
+	localized_full_months[12] = NULL;
 
 	CurrentLCTimeValid = true;
 }
@@ -894,25 +938,185 @@ cache_locale_time(void)
  * string.  Furthermore, msvcr110.dll changed the undocumented _locale_t
  * content to carry locale names instead of locale identifiers.
  *
- * MinGW headers declare _create_locale(), but msvcrt.dll lacks that symbol.
- * IsoLocaleName() always fails in a MinGW-built postgres.exe, so only
- * Unix-style values of the lc_messages GUC can elicit localized messages.  In
- * particular, every lc_messages setting that initdb can select automatically
- * will yield only C-locale messages.  XXX This could be fixed by running the
- * fully-qualified locale name through a lookup table.
+ * Visual Studio 2015 should still be able to do the same as Visual Studio
+ * 2012, but the declaration of locale_name is missing in _locale_t, causing
+ * this code compilation to fail, hence this falls back instead on to
+ * enumerating all system locales by using EnumSystemLocalesEx to find the
+ * required locale name.  If the input argument is in Unix-style then we can
+ * get ISO Locale name directly by using GetLocaleInfoEx() with LCType as
+ * LOCALE_SNAME.
+ *
+ * MinGW headers declare _create_locale(), but msvcrt.dll lacks that symbol in
+ * releases before Windows 8. IsoLocaleName() always fails in a MinGW-built
+ * postgres.exe, so only Unix-style values of the lc_messages GUC can elicit
+ * localized messages. In particular, every lc_messages setting that initdb
+ * can select automatically will yield only C-locale messages. XXX This could
+ * be fixed by running the fully-qualified locale name through a lookup table.
  *
  * This function returns a pointer to a static buffer bearing the converted
  * name or NULL if conversion fails.
  *
- * [1] http://msdn.microsoft.com/en-us/library/windows/desktop/dd373763.aspx
- * [2] http://msdn.microsoft.com/en-us/library/windows/desktop/dd373814.aspx
+ * [1] https://docs.microsoft.com/en-us/windows/win32/intl/locale-identifiers
+ * [2] https://docs.microsoft.com/en-us/windows/win32/intl/locale-names
  */
+
+#if _MSC_VER >= 1900
+/*
+ * Callback function for EnumSystemLocalesEx() in get_iso_localename().
+ *
+ * This function enumerates all system locales, searching for one that matches
+ * an input with the format: <Language>[_<Country>], e.g.
+ * English[_United States]
+ *
+ * The input is a three wchar_t array as an LPARAM. The first element is the
+ * locale_name we want to match, the second element is an allocated buffer
+ * where the Unix-style locale is copied if a match is found, and the third
+ * element is the search status, 1 if a match was found, 0 otherwise.
+ */
+static BOOL CALLBACK
+search_locale_enum(LPWSTR pStr, DWORD dwFlags, LPARAM lparam)
+{
+	wchar_t		test_locale[LOCALE_NAME_MAX_LENGTH];
+	wchar_t   **argv;
+
+	(void) (dwFlags);
+
+	argv = (wchar_t **) lparam;
+	*argv[2] = (wchar_t) 0;
+
+	memset(test_locale, 0, sizeof(test_locale));
+
+	/* Get the name of the <Language> in English */
+	if (GetLocaleInfoEx(pStr, LOCALE_SENGLISHLANGUAGENAME,
+						test_locale, LOCALE_NAME_MAX_LENGTH))
+	{
+		/*
+		 * If the enumerated locale does not have a hyphen ("en") OR the
+		 * lc_message input does not have an underscore ("English"), we only
+		 * need to compare the <Language> tags.
+		 */
+		if (wcsrchr(pStr, '-') == NULL || wcsrchr(argv[0], '_') == NULL)
+		{
+			if (_wcsicmp(argv[0], test_locale) == 0)
+			{
+				wcscpy(argv[1], pStr);
+				*argv[2] = (wchar_t) 1;
+				return FALSE;
+			}
+		}
+
+		/*
+		 * We have to compare a full <Language>_<Country> tag, so we append
+		 * the underscore and name of the country/region in English, e.g.
+		 * "English_United States".
+		 */
+		else
+		{
+			size_t		len;
+
+			wcscat(test_locale, L"_");
+			len = wcslen(test_locale);
+			if (GetLocaleInfoEx(pStr, LOCALE_SENGLISHCOUNTRYNAME,
+								test_locale + len,
+								LOCALE_NAME_MAX_LENGTH - len))
+			{
+				if (_wcsicmp(argv[0], test_locale) == 0)
+				{
+					wcscpy(argv[1], pStr);
+					*argv[2] = (wchar_t) 1;
+					return FALSE;
+				}
+			}
+		}
+	}
+
+	return TRUE;
+}
+
+/*
+ * This function converts a Windows locale name to an ISO formatted version
+ * for Visual Studio 2015 or greater.
+ *
+ * Returns NULL, if no valid conversion was found.
+ */
+static char *
+get_iso_localename(const char *winlocname)
+{
+	wchar_t		wc_locale_name[LOCALE_NAME_MAX_LENGTH];
+	wchar_t		buffer[LOCALE_NAME_MAX_LENGTH];
+	static char iso_lc_messages[LOCALE_NAME_MAX_LENGTH];
+	char	   *period;
+	int			len;
+	int			ret_val;
+
+	/*
+	 * Valid locales have the following syntax:
+	 * <Language>[_<Country>[.<CodePage>]]
+	 *
+	 * GetLocaleInfoEx can only take locale name without code-page and for the
+	 * purpose of this API the code-page doesn't matter.
+	 */
+	period = strchr(winlocname, '.');
+	if (period != NULL)
+		len = period - winlocname;
+	else
+		len = pg_mbstrlen(winlocname);
+
+	memset(wc_locale_name, 0, sizeof(wc_locale_name));
+	memset(buffer, 0, sizeof(buffer));
+	MultiByteToWideChar(CP_ACP, 0, winlocname, len, wc_locale_name,
+						LOCALE_NAME_MAX_LENGTH);
+
+	/*
+	 * If the lc_messages is already a Unix-style string, we have a direct
+	 * match with LOCALE_SNAME, e.g. en-US, en_US.
+	 */
+	ret_val = GetLocaleInfoEx(wc_locale_name, LOCALE_SNAME, (LPWSTR) &buffer,
+							  LOCALE_NAME_MAX_LENGTH);
+	if (!ret_val)
+	{
+		/*
+		 * Search for a locale in the system that matches language and country
+		 * name.
+		 */
+		wchar_t    *argv[3];
+
+		argv[0] = wc_locale_name;
+		argv[1] = buffer;
+		argv[2] = (wchar_t *) &ret_val;
+		EnumSystemLocalesEx(search_locale_enum, LOCALE_WINDOWS, (LPARAM) argv,
+							NULL);
+	}
+
+	if (ret_val)
+	{
+		size_t		rc;
+		char	   *hyphen;
+
+		/* Locale names use only ASCII, any conversion locale suffices. */
+		rc = wchar2char(iso_lc_messages, buffer, sizeof(iso_lc_messages), NULL);
+		if (rc == -1 || rc == sizeof(iso_lc_messages))
+			return NULL;
+
+		/*
+		 * Simply replace the hyphen with an underscore.  See comments in
+		 * IsoLocaleName.
+		 */
+		hyphen = strchr(iso_lc_messages, '-');
+		if (hyphen)
+			*hyphen = '_';
+		return iso_lc_messages;
+	}
+
+	return NULL;
+}
+#endif							/* _MSC_VER >= 1900 */
+
 static char *
 IsoLocaleName(const char *winlocname)
 {
-#if (_MSC_VER >= 1400)			/* VC8.0 or later */
-	static char iso_lc_messages[32];
-	_locale_t	loct = NULL;
+#if defined(_MSC_VER)
+	static char iso_lc_messages[LOCALE_NAME_MAX_LENGTH];
 
 	if (pg_strcasecmp("c", winlocname) == 0 ||
 		pg_strcasecmp("posix", winlocname) == 0)
@@ -920,59 +1124,49 @@ IsoLocaleName(const char *winlocname)
 		strcpy(iso_lc_messages, "C");
 		return iso_lc_messages;
 	}
-
-	loct = _create_locale(LC_CTYPE, winlocname);
-	if (loct != NULL)
+	else
 	{
-#if (_MSC_VER >= 1700)			/* Visual Studio 2012 or later */
-		size_t		rc;
-		char	   *hyphen;
-
-		/* Locale names use only ASCII, any conversion locale suffices. */
-		rc = wchar2char(iso_lc_messages, loct->locinfo->locale_name[LC_CTYPE],
-						sizeof(iso_lc_messages), NULL);
-		_free_locale(loct);
-		if (rc == -1 || rc == sizeof(iso_lc_messages))
-			return NULL;
-
-		/*
-		 * Since the message catalogs sit on a case-insensitive filesystem, we
-		 * need not standardize letter case here.  So long as we do not ship
-		 * message catalogs for which it would matter, we also need not
-		 * translate the script/variant portion, e.g. uz-Cyrl-UZ to
-		 * uz_UZ@cyrillic.  Simply replace the hyphen with an underscore.
-		 *
-		 * Note that the locale name can be less-specific than the value we
-		 * would derive under earlier Visual Studio releases.  For example,
-		 * French_France.1252 yields just "fr".  This does not affect any of
-		 * the country-specific message catalogs available as of this writing
-		 * (pt_BR, zh_CN, zh_TW).
-		 */
-		hyphen = strchr(iso_lc_messages, '-');
-		if (hyphen)
-			*hyphen = '_';
+#if (_MSC_VER >= 1900)			/* Visual Studio 2015 or later */
+		return get_iso_localename(winlocname);
 #else
-		char		isolang[32],
-					isocrty[32];
-		LCID		lcid;
+		_locale_t	loct;
 
-		lcid = loct->locinfo->lc_handle[LC_CTYPE];
-		if (lcid == 0)
-			lcid = MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT);
-		_free_locale(loct);
+		loct = _create_locale(LC_CTYPE, winlocname);
+		if (loct != NULL)
+		{
+			size_t		rc;
+			char	   *hyphen;
 
-		if (!GetLocaleInfoA(lcid, LOCALE_SISO639LANGNAME, isolang, sizeof(isolang)))
-			return NULL;
-		if (!GetLocaleInfoA(lcid, LOCALE_SISO3166CTRYNAME, isocrty, sizeof(isocrty)))
-			return NULL;
-		snprintf(iso_lc_messages, sizeof(iso_lc_messages) - 1, "%s_%s", isolang, isocrty);
-#endif
-		return iso_lc_messages;
+			/* Locale names use only ASCII, any conversion locale suffices. */
+			rc = wchar2char(iso_lc_messages, loct->locinfo->locale_name[LC_CTYPE],
+							sizeof(iso_lc_messages), NULL);
+			_free_locale(loct);
+			if (rc == -1 || rc == sizeof(iso_lc_messages))
+				return NULL;
+
+			/*
+			 * Since the message catalogs sit on a case-insensitive
+			 * filesystem, we need not standardize letter case here.  So long
+			 * as we do not ship message catalogs for which it would matter,
+			 * we also need not translate the script/variant portion, e.g.
+			 * uz-Cyrl-UZ to uz_UZ@cyrillic.  Simply replace the hyphen with
+			 * an underscore.
+			 *
+			 * Note that the locale name can be less-specific than the value
+			 * we would derive under earlier Visual Studio releases.  For
+			 * example, French_France.1252 yields just "fr".  This does not
+			 * affect any of the country-specific message catalogs available
+			 * as of this writing (pt_BR, zh_CN, zh_TW).
+			 */
+			hyphen = strchr(iso_lc_messages, '-');
+			if (hyphen)
+				*hyphen = '_';
+			return iso_lc_messages;
+		}
+#endif							/* Visual Studio 2015 or later */
 	}
-	return NULL;
-#else
+#endif							/* defined(_MSC_VER) */
 	return NULL;				/* Not supported on this version of msvc/mingw */
-#endif							/* _MSC_VER >= 1400 */
 }
 #endif							/* WIN32 && LC_MESSAGES */
 
@@ -1073,7 +1267,6 @@ lookup_collation_cache(Oid collation, bool set_flags)
 		/* First time through, initialize the hash table */
 		HASHCTL		ctl;
 
-		memset(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(collation_cache_entry);
 		collation_cache = hash_create("Collation cache", 100, &ctl,
@@ -1096,21 +1289,36 @@ lookup_collation_cache(Oid collation, bool set_flags)
 		/* Attempt to set the flags */
 		HeapTuple	tp;
 		Form_pg_collation collform;
-		const char *collcollate;
-		const char *collctype;
 
 		tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(collation));
 		if (!HeapTupleIsValid(tp))
 			elog(ERROR, "cache lookup failed for collation %u", collation);
 		collform = (Form_pg_collation) GETSTRUCT(tp);
 
-		collcollate = NameStr(collform->collcollate);
-		collctype = NameStr(collform->collctype);
+		if (collform->collprovider == COLLPROVIDER_LIBC)
+		{
+			Datum		datum;
+			bool		isnull;
+			const char *collcollate;
+			const char *collctype;
 
-		cache_entry->collate_is_c = ((strcmp(collcollate, "C") == 0) ||
-									 (strcmp(collcollate, "POSIX") == 0));
-		cache_entry->ctype_is_c = ((strcmp(collctype, "C") == 0) ||
-								   (strcmp(collctype, "POSIX") == 0));
+			datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collcollate, &isnull);
+			Assert(!isnull);
+			collcollate = TextDatumGetCString(datum);
+			datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collctype, &isnull);
+			Assert(!isnull);
+			collctype = TextDatumGetCString(datum);
+
+			cache_entry->collate_is_c = ((strcmp(collcollate, "C") == 0) ||
+										 (strcmp(collcollate, "POSIX") == 0));
+			cache_entry->ctype_is_c = ((strcmp(collctype, "C") == 0) ||
+									   (strcmp(collctype, "POSIX") == 0));
+		}
+		else
+		{
+			cache_entry->collate_is_c = false;
+			cache_entry->ctype_is_c = false;
+		}
 
 		cache_entry->flags_valid = true;
 
@@ -1142,6 +1350,9 @@ lc_collate_is_c(Oid collation)
 	{
 		static int	result = -1;
 		char	   *localeptr;
+
+		if (default_locale.provider == COLLPROVIDER_ICU)
+			return false;
 
 		if (result >= 0)
 			return (bool) result;
@@ -1193,6 +1404,9 @@ lc_ctype_is_c(Oid collation)
 		static int	result = -1;
 		char	   *localeptr;
 
+		if (default_locale.provider == COLLPROVIDER_ICU)
+			return false;
+
 		if (result >= 0)
 			return (bool) result;
 		localeptr = setlocale(LC_CTYPE, NULL);
@@ -1219,6 +1433,37 @@ lc_ctype_is_c(Oid collation)
 	 * Otherwise, we have to consult pg_collation, but we cache that.
 	 */
 	return (lookup_collation_cache(collation, true))->ctype_is_c;
+}
+
+struct pg_locale_struct default_locale;
+
+void
+make_icu_collator(const char *iculocstr,
+				  struct pg_locale_struct *resultp)
+{
+#ifdef USE_ICU
+	UCollator  *collator;
+	UErrorCode	status;
+
+	status = U_ZERO_ERROR;
+	collator = ucol_open(iculocstr, &status);
+	if (U_FAILURE(status))
+		ereport(ERROR,
+				(errmsg("could not open collator for locale \"%s\": %s",
+						iculocstr, u_errorName(status))));
+
+	if (U_ICU_VERSION_MAJOR_NUM < 54)
+		icu_set_collation_attributes(collator, iculocstr);
+
+	/* We will leak this string if the caller errors later :-( */
+	resultp->info.icu.locale = MemoryContextStrdup(TopMemoryContext, iculocstr);
+	resultp->info.icu.ucol = collator;
+#else							/* not USE_ICU */
+	/* could get here if a collation was created by a build with ICU */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("ICU is not supported in this build")));
+#endif							/* not USE_ICU */
 }
 
 
@@ -1261,8 +1506,6 @@ report_newlocale_failure(const char *localename)
  *
  * As a special optimization, the default/database collation returns 0.
  * Callers should then revert to the non-locale_t-enabled code path.
- * In fact, they shouldn't call this function at all when they are dealing
- * with the default locale.  That can save quite a bit in hotspots.
  * Also, callers should avoid calling this before going down a C/POSIX
  * fastpath, because such a fastpath should work even on platforms without
  * locale_t support in the C library.
@@ -1279,9 +1522,13 @@ pg_newlocale_from_collation(Oid collid)
 	/* Callers must pass a valid OID */
 	Assert(OidIsValid(collid));
 
-	/* Return 0 for "default" collation, just in case caller forgets */
 	if (collid == DEFAULT_COLLATION_OID)
-		return (pg_locale_t) 0;
+	{
+		if (default_locale.provider == COLLPROVIDER_ICU)
+			return &default_locale;
+		else
+			return (pg_locale_t) 0;
+	}
 
 	cache_entry = lookup_collation_cache(collid, false);
 
@@ -1290,11 +1537,9 @@ pg_newlocale_from_collation(Oid collid)
 		/* We haven't computed this yet in this session, so do it */
 		HeapTuple	tp;
 		Form_pg_collation collform;
-		const char *collcollate;
-		const char *collctype pg_attribute_unused();
 		struct pg_locale_struct result;
 		pg_locale_t resultp;
-		Datum		collversion;
+		Datum		datum;
 		bool		isnull;
 
 		tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(collid));
@@ -1302,17 +1547,24 @@ pg_newlocale_from_collation(Oid collid)
 			elog(ERROR, "cache lookup failed for collation %u", collid);
 		collform = (Form_pg_collation) GETSTRUCT(tp);
 
-		collcollate = NameStr(collform->collcollate);
-		collctype = NameStr(collform->collctype);
-
 		/* We'll fill in the result struct locally before allocating memory */
 		memset(&result, 0, sizeof(result));
 		result.provider = collform->collprovider;
+		result.deterministic = collform->collisdeterministic;
 
 		if (collform->collprovider == COLLPROVIDER_LIBC)
 		{
 #ifdef HAVE_LOCALE_T
+			const char *collcollate;
+			const char *collctype pg_attribute_unused();
 			locale_t	loc;
+
+			datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collcollate, &isnull);
+			Assert(!isnull);
+			collcollate = TextDatumGetCString(datum);
+			datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collctype, &isnull);
+			Assert(!isnull);
+			collctype = TextDatumGetCString(datum);
 
 			if (strcmp(collcollate, collctype) == 0)
 			{
@@ -1364,55 +1616,39 @@ pg_newlocale_from_collation(Oid collid)
 		}
 		else if (collform->collprovider == COLLPROVIDER_ICU)
 		{
-#ifdef USE_ICU
-			UCollator  *collator;
-			UErrorCode	status;
+			const char *iculocstr;
 
-			if (strcmp(collcollate, collctype) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("collations with different collate and ctype values are not supported by ICU")));
-
-			status = U_ZERO_ERROR;
-			collator = ucol_open(collcollate, &status);
-			if (U_FAILURE(status))
-				ereport(ERROR,
-						(errmsg("could not open collator for locale \"%s\": %s",
-								collcollate, u_errorName(status))));
-
-			/* We will leak this string if we get an error below :-( */
-			result.info.icu.locale = MemoryContextStrdup(TopMemoryContext,
-														 collcollate);
-			result.info.icu.ucol = collator;
-#else							/* not USE_ICU */
-			/* could get here if a collation was created by a build with ICU */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("ICU is not supported in this build"), \
-					 errhint("You need to rebuild PostgreSQL using --with-icu.")));
-#endif							/* not USE_ICU */
+			datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_colliculocale, &isnull);
+			Assert(!isnull);
+			iculocstr = TextDatumGetCString(datum);
+			make_icu_collator(iculocstr, &result);
 		}
 
-		collversion = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collversion,
-									  &isnull);
+		datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collversion,
+								&isnull);
 		if (!isnull)
 		{
 			char	   *actual_versionstr;
 			char	   *collversionstr;
 
-			actual_versionstr = get_collation_actual_version(collform->collprovider, collcollate);
+			collversionstr = TextDatumGetCString(datum);
+
+			datum = SysCacheGetAttr(COLLOID, tp, collform->collprovider == COLLPROVIDER_ICU ? Anum_pg_collation_colliculocale : Anum_pg_collation_collcollate, &isnull);
+			Assert(!isnull);
+
+			actual_versionstr = get_collation_actual_version(collform->collprovider,
+															 TextDatumGetCString(datum));
 			if (!actual_versionstr)
 			{
 				/*
 				 * This could happen when specifying a version in CREATE
-				 * COLLATION for a libc locale, or manually creating a mess in
-				 * the catalogs.
+				 * COLLATION but the provider does not support versioning, or
+				 * manually creating a mess in the catalogs.
 				 */
 				ereport(ERROR,
-						(errmsg("collation \"%s\" has no actual version, but a version was specified",
+						(errmsg("collation \"%s\" has no actual version, but a version was recorded",
 								NameStr(collform->collname))));
 			}
-			collversionstr = TextDatumGetCString(collversion);
 
 			if (strcmp(actual_versionstr, collversionstr) != 0)
 				ereport(WARNING,
@@ -1443,15 +1679,11 @@ pg_newlocale_from_collation(Oid collid)
 /*
  * Get provider-specific collation version string for the given collation from
  * the operating system/library.
- *
- * A particular provider must always either return a non-NULL string or return
- * NULL (if it doesn't support versions).  It must not return NULL for some
- * collcollate and not NULL for others.
  */
 char *
 get_collation_actual_version(char collprovider, const char *collcollate)
 {
-	char	   *collversion;
+	char	   *collversion = NULL;
 
 #ifdef USE_ICU
 	if (collprovider == COLLPROVIDER_ICU)
@@ -1475,7 +1707,63 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 	}
 	else
 #endif
-		collversion = NULL;
+		if (collprovider == COLLPROVIDER_LIBC &&
+			pg_strcasecmp("C", collcollate) != 0 &&
+			pg_strncasecmp("C.", collcollate, 2) != 0 &&
+			pg_strcasecmp("POSIX", collcollate) != 0)
+	{
+#if defined(__GLIBC__)
+		/* Use the glibc version because we don't have anything better. */
+		collversion = pstrdup(gnu_get_libc_version());
+#elif defined(LC_VERSION_MASK)
+		locale_t	loc;
+
+		/* Look up FreeBSD collation version. */
+		loc = newlocale(LC_COLLATE, collcollate, NULL);
+		if (loc)
+		{
+			collversion =
+				pstrdup(querylocale(LC_COLLATE_MASK | LC_VERSION_MASK, loc));
+			freelocale(loc);
+		}
+		else
+			ereport(ERROR,
+					(errmsg("could not load locale \"%s\"", collcollate)));
+#elif defined(WIN32) && _WIN32_WINNT >= 0x0600
+		/*
+		 * If we are targeting Windows Vista and above, we can ask for a name
+		 * given a collation name (earlier versions required a location code
+		 * that we don't have).
+		 */
+		NLSVERSIONINFOEX version = {sizeof(NLSVERSIONINFOEX)};
+		WCHAR		wide_collcollate[LOCALE_NAME_MAX_LENGTH];
+
+		MultiByteToWideChar(CP_ACP, 0, collcollate, -1, wide_collcollate,
+							LOCALE_NAME_MAX_LENGTH);
+		if (!GetNLSVersionEx(COMPARE_STRING, wide_collcollate, &version))
+		{
+			/*
+			 * GetNLSVersionEx() wants a language tag such as "en-US", not a
+			 * locale name like "English_United States.1252".  Until those
+			 * values can be prevented from entering the system, or 100%
+			 * reliably converted to the more useful tag format, tolerate the
+			 * resulting error and report that we have no version data.
+			 */
+			if (GetLastError() == ERROR_INVALID_PARAMETER)
+				return NULL;
+
+			ereport(ERROR,
+					(errmsg("could not get collation version for locale \"%s\": error code %lu",
+							collcollate,
+							GetLastError())));
+		}
+		collversion = psprintf("%d.%d,%d.%d",
+							   (version.dwNLSVersion >> 8) & 0xFFFF,
+							   version.dwNLSVersion & 0xFF,
+							   (version.dwDefinedVersion >> 8) & 0xFFFF,
+							   version.dwDefinedVersion & 0xFF);
+#endif
+	}
 
 	return collversion;
 }
@@ -1497,9 +1785,14 @@ init_icu_converter(void)
 	UConverter *conv;
 
 	if (icu_converter)
-		return;
+		return;					/* already done */
 
 	icu_encoding_name = get_encoding_name_for_icu(GetDatabaseEncoding());
+	if (!icu_encoding_name)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("encoding \"%s\" not supported by ICU",
+						pg_encoding_to_char(GetDatabaseEncoding()))));
 
 	status = U_ZERO_ERROR;
 	conv = ucnv_open(icu_encoding_name, &status);
@@ -1536,7 +1829,7 @@ icu_to_uchar(UChar **buff_uchar, const char *buff, size_t nbytes)
 							  buff, nbytes, &status);
 	if (U_FAILURE(status) && status != U_BUFFER_OVERFLOW_ERROR)
 		ereport(ERROR,
-				(errmsg("ucnv_toUChars failed: %s", u_errorName(status))));
+				(errmsg("%s failed: %s", "ucnv_toUChars", u_errorName(status))));
 
 	*buff_uchar = palloc((len_uchar + 1) * sizeof(**buff_uchar));
 
@@ -1545,7 +1838,7 @@ icu_to_uchar(UChar **buff_uchar, const char *buff, size_t nbytes)
 							  buff, nbytes, &status);
 	if (U_FAILURE(status))
 		ereport(ERROR,
-				(errmsg("ucnv_toUChars failed: %s", u_errorName(status))));
+				(errmsg("%s failed: %s", "ucnv_toUChars", u_errorName(status))));
 
 	return len_uchar;
 }
@@ -1574,7 +1867,8 @@ icu_from_uchar(char **result, const UChar *buff_uchar, int32_t len_uchar)
 								 buff_uchar, len_uchar, &status);
 	if (U_FAILURE(status) && status != U_BUFFER_OVERFLOW_ERROR)
 		ereport(ERROR,
-				(errmsg("ucnv_fromUChars failed: %s", u_errorName(status))));
+				(errmsg("%s failed: %s", "ucnv_fromUChars",
+						u_errorName(status))));
 
 	*result = palloc(len_result + 1);
 
@@ -1583,12 +1877,139 @@ icu_from_uchar(char **result, const UChar *buff_uchar, int32_t len_uchar)
 								 buff_uchar, len_uchar, &status);
 	if (U_FAILURE(status))
 		ereport(ERROR,
-				(errmsg("ucnv_fromUChars failed: %s", u_errorName(status))));
+				(errmsg("%s failed: %s", "ucnv_fromUChars",
+						u_errorName(status))));
 
 	return len_result;
 }
 
+/*
+ * Parse collation attributes and apply them to the open collator.  This takes
+ * a string like "und@colStrength=primary;colCaseLevel=yes" and parses and
+ * applies the key-value arguments.
+ *
+ * Starting with ICU version 54, the attributes are processed automatically by
+ * ucol_open(), so this is only necessary for emulating this behavior on older
+ * versions.
+ */
+pg_attribute_unused()
+static void
+icu_set_collation_attributes(UCollator *collator, const char *loc)
+{
+	char	   *str = asc_tolower(loc, strlen(loc));
+
+	str = strchr(str, '@');
+	if (!str)
+		return;
+	str++;
+
+	for (char *token = strtok(str, ";"); token; token = strtok(NULL, ";"))
+	{
+		char	   *e = strchr(token, '=');
+
+		if (e)
+		{
+			char	   *name;
+			char	   *value;
+			UColAttribute uattr;
+			UColAttributeValue uvalue;
+			UErrorCode	status;
+
+			status = U_ZERO_ERROR;
+
+			*e = '\0';
+			name = token;
+			value = e + 1;
+
+			/*
+			 * See attribute name and value lists in ICU i18n/coll.cpp
+			 */
+			if (strcmp(name, "colstrength") == 0)
+				uattr = UCOL_STRENGTH;
+			else if (strcmp(name, "colbackwards") == 0)
+				uattr = UCOL_FRENCH_COLLATION;
+			else if (strcmp(name, "colcaselevel") == 0)
+				uattr = UCOL_CASE_LEVEL;
+			else if (strcmp(name, "colcasefirst") == 0)
+				uattr = UCOL_CASE_FIRST;
+			else if (strcmp(name, "colalternate") == 0)
+				uattr = UCOL_ALTERNATE_HANDLING;
+			else if (strcmp(name, "colnormalization") == 0)
+				uattr = UCOL_NORMALIZATION_MODE;
+			else if (strcmp(name, "colnumeric") == 0)
+				uattr = UCOL_NUMERIC_COLLATION;
+			else
+				/* ignore if unknown */
+				continue;
+
+			if (strcmp(value, "primary") == 0)
+				uvalue = UCOL_PRIMARY;
+			else if (strcmp(value, "secondary") == 0)
+				uvalue = UCOL_SECONDARY;
+			else if (strcmp(value, "tertiary") == 0)
+				uvalue = UCOL_TERTIARY;
+			else if (strcmp(value, "quaternary") == 0)
+				uvalue = UCOL_QUATERNARY;
+			else if (strcmp(value, "identical") == 0)
+				uvalue = UCOL_IDENTICAL;
+			else if (strcmp(value, "no") == 0)
+				uvalue = UCOL_OFF;
+			else if (strcmp(value, "yes") == 0)
+				uvalue = UCOL_ON;
+			else if (strcmp(value, "shifted") == 0)
+				uvalue = UCOL_SHIFTED;
+			else if (strcmp(value, "non-ignorable") == 0)
+				uvalue = UCOL_NON_IGNORABLE;
+			else if (strcmp(value, "lower") == 0)
+				uvalue = UCOL_LOWER_FIRST;
+			else if (strcmp(value, "upper") == 0)
+				uvalue = UCOL_UPPER_FIRST;
+			else
+				status = U_ILLEGAL_ARGUMENT_ERROR;
+
+			if (status == U_ZERO_ERROR)
+				ucol_setAttribute(collator, uattr, uvalue, &status);
+
+			/*
+			 * Pretend the error came from ucol_open(), for consistent error
+			 * message across ICU versions.
+			 */
+			if (U_FAILURE(status))
+				ereport(ERROR,
+						(errmsg("could not open collator for locale \"%s\": %s",
+								loc, u_errorName(status))));
+		}
+	}
+}
+
 #endif							/* USE_ICU */
+
+/*
+ * Check if the given locale ID is valid, and ereport(ERROR) if it isn't.
+ */
+void
+check_icu_locale(const char *icu_locale)
+{
+#ifdef USE_ICU
+	UCollator  *collator;
+	UErrorCode	status;
+
+	status = U_ZERO_ERROR;
+	collator = ucol_open(icu_locale, &status);
+	if (U_FAILURE(status))
+		ereport(ERROR,
+				(errmsg("could not open collator for locale \"%s\": %s",
+						icu_locale, u_errorName(status))));
+
+	if (U_ICU_VERSION_MAJOR_NUM < 54)
+		icu_set_collation_attributes(collator, icu_locale);
+	ucol_close(collator);
+#else
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("ICU is not supported in this build")));
+#endif
+}
 
 /*
  * These functions convert from/to libc's wchar_t, *not* pg_wchar_t.
@@ -1748,7 +2169,7 @@ char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen,
 		 * error message by letting pg_verifymbstr check the string.  But it's
 		 * possible that the string is OK to us, and not OK to mbstowcs ---
 		 * this suggests that the LC_CTYPE locale is different from the
-		 * database encoding.  Give a generic error message if verifymbstr
+		 * database encoding.  Give a generic error message if pg_verifymbstr
 		 * can't find anything wrong.
 		 */
 		pg_verifymbstr(from, fromlen, false);	/* might not return */

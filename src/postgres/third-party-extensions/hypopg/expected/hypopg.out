@@ -12,7 +12,7 @@ END;
 $_$
 LANGUAGE plpgsql;
 CREATE EXTENSION hypopg;
-CREATE TABLE hypo (id integer, val text);
+CREATE TABLE hypo (id integer, val text, "Id2" bigint);
 INSERT INTO hypo SELECT i, 'line ' || i
 FROM generate_series(1,100000) f(i);
 ANALYZE hypo;
@@ -105,6 +105,9 @@ ORDER BY indexrelid;
  f
 (3 rows)
 
+-- Should detect invalid argument
+SELECT hypopg_relation_size(1);
+ERROR:  oid 1 is not a hypothetical index
 -- locally disable hypoopg
 SET hypopg.enabled to false;
 -- no hypothetical index should be used
@@ -156,10 +159,10 @@ WHERE e ~ 'Index.*<\d+>btree_hypo.*';
 (1 row)
 
 -- Deparse an index DDL, with almost every possible pathcode
-SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, id desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');
-                                                                                     hypopg_get_indexdef                                                                                     
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX ON public.hypo USING btree (id DESC, id DESC, id DESC NULLS LAST, ((md5(val))::bpchar) bpchar_pattern_ops) WITH (fillfactor = 10) WHERE ((id < 1000) AND ((id + (1 % 2)) = 3))
+SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, "Id2" desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');
+                                                                                      hypopg_get_indexdef                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX ON public.hypo USING btree (id DESC, "Id2" DESC, id DESC NULLS LAST, ((md5(val))::bpchar) bpchar_pattern_ops) WITH (fillfactor = 10) WHERE ((id < 1000) AND ((id + (1 % 2)) = 3))
 (1 row)
 
 -- Make sure the old Oid generator still works.  Test it while keeping existing

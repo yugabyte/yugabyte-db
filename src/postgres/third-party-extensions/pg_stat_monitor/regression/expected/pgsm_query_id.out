@@ -1,0 +1,117 @@
+CREATE EXTENSION pg_stat_monitor;
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+\c db1
+CREATE TABLE t1 (a int);
+CREATE TABLE t2 (b int);
+CREATE FUNCTION add(integer, integer) RETURNS integer
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+\c db2
+CREATE TABLE t1 (a int);
+CREATE TABLE t3 (c int);
+CREATE FUNCTION add(integer, integer) RETURNS integer
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+\c contrib_regression
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+\c db1
+SELECT * FROM t1;
+ a 
+---
+(0 rows)
+
+SELECT *, ADD(1, 2) FROM t1;
+ a | add 
+---+-----
+(0 rows)
+
+SELECT * FROM t2;
+ b 
+---
+(0 rows)
+
+-- Check that spaces and comments do not generate a different pgsm_query_id
+SELECT     *     FROM t2 --WHATEVER;
+;
+ b 
+---
+(0 rows)
+
+SELECT     *     FROM t2 /* ...
+...
+More comments to check for spaces.
+*/
+     ;
+ b 
+---
+(0 rows)
+
+\c db2
+SELECT * FROM t1;
+ a 
+---
+(0 rows)
+
+SELECT *, ADD(1, 2) FROM t1;
+ a | add 
+---+-----
+(0 rows)
+
+set pg_stat_monitor.pgsm_enable_pgsm_query_id = off;
+SELECT * FROM t3;
+ c 
+---
+(0 rows)
+
+set pg_stat_monitor.pgsm_enable_pgsm_query_id = on;
+SELECT * FROM t3 where c = 20;
+ c 
+---
+(0 rows)
+
+\c contrib_regression
+SELECT datname, pgsm_query_id, query, calls FROM pg_stat_monitor ORDER BY pgsm_query_id, query, datname;
+      datname       |    pgsm_query_id    |                        query                        | calls 
+--------------------+---------------------+-----------------------------------------------------+-------
+ contrib_regression |  689150021118383254 | SELECT pg_stat_monitor_reset()                      |     1
+ db1                | 1897482803466821995 | SELECT * FROM t2                                    |     3
+ db1                | 1988437669671417938 | SELECT * FROM t1                                    |     1
+ db2                | 1988437669671417938 | SELECT * FROM t1                                    |     1
+ db1                | 2864453209316739369 | select $1 + $2                                      |     1
+ db2                | 2864453209316739369 | select $1 + $2                                      |     1
+ db2                | 6220142855706866455 | set pg_stat_monitor.pgsm_enable_pgsm_query_id = on  |     1
+ db2                | 6633979598391393345 | SELECT * FROM t3 where c = 20                       |     1
+ db1                | 8140395000078788481 | SELECT *, ADD(1, 2) FROM t1                         |     1
+ db2                | 8140395000078788481 | SELECT *, ADD(1, 2) FROM t1                         |     1
+ db2                |                     | SELECT * FROM t3                                    |     1
+ db2                |                     | set pg_stat_monitor.pgsm_enable_pgsm_query_id = off |     1
+(12 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+\c db1
+DROP TABLE t1;
+DROP TABLE t2;
+DROP FUNCTION ADD;
+\c db2
+DROP TABLE t1;
+DROP TABLE t3;
+DROP FUNCTION ADD;
+\c contrib_regression
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP EXTENSION pg_stat_monitor;

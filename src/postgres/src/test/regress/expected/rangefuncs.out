@@ -1391,6 +1391,31 @@ SELECT * FROM (VALUES (1),(2),(3)) v1(r1),
   3 |  3 | 30 | 8
 (45 rows)
 
+-- check handling of FULL JOIN with multiple lateral references (bug #15741)
+SELECT *
+FROM (VALUES (1),(2)) v1(r1)
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM generate_series(1, v1.r1) AS gs1
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM generate_series(1, gs1) AS gs2
+            LEFT JOIN generate_series(1, gs2) AS gs3 ON TRUE
+        ) AS ss1 ON TRUE
+        FULL JOIN generate_series(1, v1.r1) AS gs4 ON FALSE
+    ) AS ss0 ON TRUE;
+ r1 | gs1 | gs2 | gs3 | gs4 
+----+-----+-----+-----+-----
+  1 |     |     |     |   1
+  1 |   1 |   1 |   1 |    
+  2 |     |     |     |   1
+  2 |     |     |     |   2
+  2 |   1 |   1 |   1 |    
+  2 |   2 |   1 |   1 |    
+  2 |   2 |   2 |   1 |    
+  2 |   2 |   2 |   2 |    
+(8 rows)
+
 DROP FUNCTION rngfunc_sql(int,int);
 DROP FUNCTION rngfunc_mat(int,int);
 DROP SEQUENCE rngfunc_rescan_seq1;
@@ -1531,7 +1556,60 @@ DROP FUNCTION dup(anyelement);
 CREATE FUNCTION bad (f1 int, out f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
 ERROR:  cannot determine result data type
-DETAIL:  A function returning a polymorphic type must have at least one polymorphic argument.
+DETAIL:  A result of type anyelement requires at least one input of type anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.
+CREATE FUNCTION dup (f1 anycompatible, f2 anycompatiblearray, f3 out anycompatible, f4 out anycompatiblearray)
+AS 'select $1, $2' LANGUAGE sql;
+SELECT dup(22, array[44]);
+    dup    
+-----------
+ (22,{44})
+(1 row)
+
+SELECT dup(4.5, array[44]);
+    dup     
+------------
+ (4.5,{44})
+(1 row)
+
+SELECT dup(22, array[44::bigint]);
+    dup    
+-----------
+ (22,{44})
+(1 row)
+
+SELECT *, pg_typeof(f3), pg_typeof(f4) FROM dup(22, array[44::bigint]);
+ f3 |  f4  | pg_typeof | pg_typeof 
+----+------+-----------+-----------
+ 22 | {44} | bigint    | bigint[]
+(1 row)
+
+DROP FUNCTION dup(f1 anycompatible, f2 anycompatiblearray);
+CREATE FUNCTION dup (f1 anycompatiblerange, f2 out anycompatible, f3 out anycompatiblearray, f4 out anycompatiblerange)
+AS 'select lower($1), array[lower($1), upper($1)], $1' LANGUAGE sql;
+SELECT dup(int4range(4,7));
+         dup         
+---------------------
+ (4,"{4,7}","[4,7)")
+(1 row)
+
+SELECT dup(numrange(4,7));
+         dup         
+---------------------
+ (4,"{4,7}","[4,7)")
+(1 row)
+
+SELECT dup(textrange('aaa', 'bbb'));
+              dup              
+-------------------------------
+ (aaa,"{aaa,bbb}","[aaa,bbb)")
+(1 row)
+
+DROP FUNCTION dup(f1 anycompatiblerange);
+-- fails, no way to deduce outputs
+CREATE FUNCTION bad (f1 anyarray, out f2 anycompatible, out f3 anycompatiblearray)
+AS 'select $1, array[$1,$1]' LANGUAGE sql;
+ERROR:  cannot determine result data type
+DETAIL:  A result of type anycompatible requires at least one input of type anycompatible, anycompatiblearray, anycompatiblenonarray, anycompatiblerange, or anycompatiblemultirange.
 --
 -- table functions
 --
@@ -1795,6 +1873,67 @@ select * from array_to_set(array['one', 'two']); -- fail
 ERROR:  a column definition list is required for functions returning "record"
 LINE 1: select * from array_to_set(array['one', 'two']);
                       ^
+-- after-the-fact coercion of the columns is now possible, too
+select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+  f1  | f2  
+------+-----
+ 1.00 | one
+ 2.00 | two
+(2 rows)
+
+-- and if it doesn't work, you get a compile-time not run-time error
+select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
+ERROR:  return type mismatch in function declared to return record
+DETAIL:  Final statement returns integer instead of point at column 1.
+CONTEXT:  SQL function "array_to_set" during startup
+-- with "strict", this function can't be inlined in FROM
+explain (verbose, costs off)
+  select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+                     QUERY PLAN                     
+----------------------------------------------------
+ Function Scan on public.array_to_set t
+   Output: f1, f2
+   Function Call: array_to_set('{one,two}'::text[])
+(3 rows)
+
+-- but without, it can be:
+create or replace function array_to_set(anyarray) returns setof record as $$
+  select i AS "index", $1[i] AS "value" from generate_subscripts($1, 1) i
+$$ language sql immutable;
+select array_to_set(array['one', 'two']);
+ array_to_set 
+--------------
+ (1,one)
+ (2,two)
+(2 rows)
+
+select * from array_to_set(array['one', 'two']) as t(f1 int,f2 text);
+ f1 | f2  
+----+-----
+  1 | one
+  2 | two
+(2 rows)
+
+select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+  f1  | f2  
+------+-----
+ 1.00 | one
+ 2.00 | two
+(2 rows)
+
+select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
+ERROR:  return type mismatch in function declared to return record
+DETAIL:  Final statement returns integer instead of point at column 1.
+CONTEXT:  SQL function "array_to_set" during inlining
+explain (verbose, costs off)
+  select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Function Scan on pg_catalog.generate_subscripts i
+   Output: i.i, ('{one,two}'::text[])[i.i]
+   Function Call: generate_subscripts('{one,two}'::text[], 1)
+(3 rows)
+
 create temp table rngfunc(f1 int8, f2 int8);
 create function testrngfunc() returns record as $$
   insert into rngfunc values (1,2) returning *;
@@ -1838,6 +1977,197 @@ ERROR:  a column definition list is required for functions returning "record"
 LINE 1: select * from testrngfunc();
                       ^
 drop function testrngfunc();
+-- Check that typmod imposed by a composite type is honored
+create type rngfunc_type as (f1 numeric(35,6), f2 numeric(35,2));
+create function testrngfunc() returns rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql immutable;
+explain (verbose, costs off)
+select testrngfunc();
+                QUERY PLAN                 
+-------------------------------------------
+ Result
+   Output: '(7.136178,7.14)'::rngfunc_type
+(2 rows)
+
+select testrngfunc();
+   testrngfunc   
+-----------------
+ (7.136178,7.14)
+(1 row)
+
+explain (verbose, costs off)
+select * from testrngfunc();
+                    QUERY PLAN                    
+--------------------------------------------------
+ Function Scan on testrngfunc
+   Output: f1, f2
+   Function Call: '(7.136178,7.14)'::rngfunc_type
+(3 rows)
+
+select * from testrngfunc();
+    f1    |  f2  
+----------+------
+ 7.136178 | 7.14
+(1 row)
+
+create or replace function testrngfunc() returns rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql volatile;
+explain (verbose, costs off)
+select testrngfunc();
+       QUERY PLAN        
+-------------------------
+ Result
+   Output: testrngfunc()
+(2 rows)
+
+select testrngfunc();
+   testrngfunc   
+-----------------
+ (7.136178,7.14)
+(1 row)
+
+explain (verbose, costs off)
+select * from testrngfunc();
+             QUERY PLAN              
+-------------------------------------
+ Function Scan on public.testrngfunc
+   Output: f1, f2
+   Function Call: testrngfunc()
+(3 rows)
+
+select * from testrngfunc();
+    f1    |  f2  
+----------+------
+ 7.136178 | 7.14
+(1 row)
+
+drop function testrngfunc();
+create function testrngfunc() returns setof rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql immutable;
+explain (verbose, costs off)
+select testrngfunc();
+       QUERY PLAN        
+-------------------------
+ ProjectSet
+   Output: testrngfunc()
+   ->  Result
+(3 rows)
+
+select testrngfunc();
+   testrngfunc   
+-----------------
+ (7.136178,7.14)
+(1 row)
+
+explain (verbose, costs off)
+select * from testrngfunc();
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Result
+   Output: 7.136178::numeric(35,6), 7.14::numeric(35,2)
+(2 rows)
+
+select * from testrngfunc();
+    f1    |  f2  
+----------+------
+ 7.136178 | 7.14
+(1 row)
+
+create or replace function testrngfunc() returns setof rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql volatile;
+explain (verbose, costs off)
+select testrngfunc();
+       QUERY PLAN        
+-------------------------
+ ProjectSet
+   Output: testrngfunc()
+   ->  Result
+(3 rows)
+
+select testrngfunc();
+   testrngfunc   
+-----------------
+ (7.136178,7.14)
+(1 row)
+
+explain (verbose, costs off)
+select * from testrngfunc();
+             QUERY PLAN              
+-------------------------------------
+ Function Scan on public.testrngfunc
+   Output: f1, f2
+   Function Call: testrngfunc()
+(3 rows)
+
+select * from testrngfunc();
+    f1    |  f2  
+----------+------
+ 7.136178 | 7.14
+(1 row)
+
+create or replace function testrngfunc() returns setof rngfunc_type as $$
+  select 1, 2 union select 3, 4 order by 1;
+$$ language sql immutable;
+explain (verbose, costs off)
+select testrngfunc();
+       QUERY PLAN        
+-------------------------
+ ProjectSet
+   Output: testrngfunc()
+   ->  Result
+(3 rows)
+
+select testrngfunc();
+   testrngfunc   
+-----------------
+ (1.000000,2.00)
+ (3.000000,4.00)
+(2 rows)
+
+explain (verbose, costs off)
+select * from testrngfunc();
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Subquery Scan on "*SELECT*"
+   Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1"
+   ->  Unique
+         Output: (1), (2)
+         ->  Sort
+               Output: (1), (2)
+               Sort Key: (1), (2)
+               ->  Append
+                     ->  Result
+                           Output: 1, 2
+                     ->  Result
+                           Output: 3, 4
+(12 rows)
+
+select * from testrngfunc();
+    f1    |  f2  
+----------+------
+ 1.000000 | 2.00
+ 3.000000 | 4.00
+(2 rows)
+
+-- Check a couple of error cases while we're here
+select * from testrngfunc() as t(f1 int8,f2 int8);  -- fail, composite result
+ERROR:  a column definition list is redundant for a function returning a named composite type
+LINE 1: select * from testrngfunc() as t(f1 int8,f2 int8);
+                                         ^
+select * from pg_get_keywords() as t(f1 int8,f2 int8);  -- fail, OUT params
+ERROR:  a column definition list is redundant for a function with OUT parameters
+LINE 1: select * from pg_get_keywords() as t(f1 int8,f2 int8);
+                                             ^
+select * from sin(3) as t(f1 int8,f2 int8);  -- fail, scalar result type
+ERROR:  a column definition list is only allowed for functions returning "record"
+LINE 1: select * from sin(3) as t(f1 int8,f2 int8);
+                                  ^
+drop type rngfunc_type cascade;
+NOTICE:  drop cascades to function testrngfunc()
 --
 -- Check some cases involving added/dropped columns in a rowtype result
 --
@@ -1917,20 +2247,60 @@ select * from usersview;
  id2    |   2 | email2 |       12 | t       |              11 |          2
 (2 rows)
 
+alter table users drop column moredrop;  -- fail, view has reference
+ERROR:  cannot drop column moredrop of table users because other objects depend on it
+DETAIL:  view usersview depends on column moredrop of table users
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+-- We used to have a bug that would allow the above to succeed, posing
+-- hazards for later execution of the view.  Check that the internal
+-- defenses for those hazards haven't bit-rotted, in case some other
+-- bug with similar symptoms emerges.
 begin;
+-- destroy the dependency entry that prevents the DROP:
+delete from pg_depend where
+  objid = (select oid from pg_rewrite
+           where ev_class = 'usersview'::regclass and rulename = '_RETURN')
+  and refobjsubid = 5
+returning pg_describe_object(classid, objid, objsubid) as obj,
+          pg_describe_object(refclassid, refobjid, refobjsubid) as ref,
+          deptype;
+              obj               |              ref               | deptype 
+--------------------------------+--------------------------------+---------
+ rule _RETURN on view usersview | column moredrop of table users | n
+(1 row)
+
 alter table users drop column moredrop;
 select * from usersview;  -- expect clean failure
 ERROR:  attribute 5 of type record has been dropped
 rollback;
+alter table users alter column seq type numeric;  -- fail, view has reference
+ERROR:  cannot alter type of a column used by a view or rule
+DETAIL:  rule _RETURN on view usersview depends on column "seq"
+-- likewise, check we don't crash if the dependency goes wrong
+begin;
+-- destroy the dependency entry that prevents the ALTER:
+delete from pg_depend where
+  objid = (select oid from pg_rewrite
+           where ev_class = 'usersview'::regclass and rulename = '_RETURN')
+  and refobjsubid = 2
+returning pg_describe_object(classid, objid, objsubid) as obj,
+          pg_describe_object(refclassid, refobjid, refobjsubid) as ref,
+          deptype;
+              obj               |            ref            | deptype 
+--------------------------------+---------------------------+---------
+ rule _RETURN on view usersview | column seq of table users | n
+(1 row)
+
 alter table users alter column seq type numeric;
 select * from usersview;  -- expect clean failure
 ERROR:  attribute 2 of type record has wrong type
 DETAIL:  Table has type numeric, but query expects integer.
+rollback;
 drop view usersview;
 drop function get_first_user();
 drop function get_users();
 drop table users;
--- this won't get inlined because of type coercion, but it shouldn't fail
+-- check behavior with type coercion required for a set-op
 create or replace function rngfuncbar() returns setof text as
 $$ select 'foo'::varchar union all select 'bar'::varchar ; $$
 language sql stable;
@@ -1947,6 +2317,19 @@ select * from rngfuncbar();
  foo
  bar
 (2 rows)
+
+-- this function is now inlinable, too:
+explain (verbose, costs off) select * from rngfuncbar();
+                   QUERY PLAN                   
+------------------------------------------------
+ Result
+   Output: ('foo'::character varying)
+   ->  Append
+         ->  Result
+               Output: 'foo'::character varying
+         ->  Result
+               Output: 'bar'::character varying
+(7 rows)
 
 drop function rngfuncbar();
 -- check handling of a SQL function with multiple OUT params (bug #5777)
@@ -2073,3 +2456,32 @@ select *, row_to_json(u) from unnest(array[]::rngfunc2[]) u;
 (0 rows)
 
 drop type rngfunc2;
+-- check handling of functions pulled up into function RTEs (bug #17227)
+explain (verbose, costs off)
+select * from
+  (select jsonb_path_query_array(module->'lectures', '$[*]') as lecture
+   from unnest(array['{"lectures": [{"id": "1"}]}'::jsonb])
+        as unnested_modules(module)) as ss,
+  jsonb_to_recordset(ss.lecture) as j (id text);
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Output: jsonb_path_query_array((unnested_modules.module -> 'lectures'::text), '$[*]'::jsonpath, '{}'::jsonb, false), j.id
+   ->  Function Scan on pg_catalog.unnest unnested_modules
+         Output: unnested_modules.module
+         Function Call: unnest('{"{\"lectures\": [{\"id\": \"1\"}]}"}'::jsonb[])
+   ->  Function Scan on pg_catalog.jsonb_to_recordset j
+         Output: j.id
+         Function Call: jsonb_to_recordset(jsonb_path_query_array((unnested_modules.module -> 'lectures'::text), '$[*]'::jsonpath, '{}'::jsonb, false))
+(8 rows)
+
+select * from
+  (select jsonb_path_query_array(module->'lectures', '$[*]') as lecture
+   from unnest(array['{"lectures": [{"id": "1"}]}'::jsonb])
+        as unnested_modules(module)) as ss,
+  jsonb_to_recordset(ss.lecture) as j (id text);
+    lecture    | id 
+---------------+----
+ [{"id": "1"}] | 1
+(1 row)
+

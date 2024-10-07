@@ -308,7 +308,7 @@ Result<ChecksumData> ComputeChecksum(
           .actual = crc32c::Value(src_data.data(), src_data.size())
       };
     case kxxHash:
-      if (yb::std_util::cmp_greater(src_data.size(), std::numeric_limits<int>::max())) {
+      if (std::cmp_greater(src_data.size(), std::numeric_limits<int>::max())) {
         return STATUS_FORMAT(
             Corruption, "Block too large for xxHash ($0 bytes, but must be $1 or smaller)",
             src_data.size(), std::numeric_limits<int>::max());

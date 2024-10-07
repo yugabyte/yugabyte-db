@@ -2,7 +2,7 @@
  * ginxlog.h
  *	  header file for postgres inverted index xlog implementation.
  *
- *	Copyright (c) 2006-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2006-2022, PostgreSQL Global Development Group
  *
  *	src/include/access/ginxlog.h
  *--------------------------------------------------------------------------
@@ -15,8 +15,6 @@
 #include "access/xlogreader.h"
 #include "lib/stringinfo.h"
 #include "storage/off.h"
-
-#define XLOG_GIN_CREATE_INDEX  0x00
 
 #define XLOG_GIN_CREATE_PTREE  0x10
 

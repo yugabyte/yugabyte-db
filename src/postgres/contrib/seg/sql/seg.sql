@@ -60,6 +60,9 @@ SELECT '3.400e5'::seg AS seg;
 -- Digits truncated
 SELECT '12.34567890123456'::seg AS seg;
 
+-- Same, with a very long input
+SELECT '12.3456789012345600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'::seg AS seg;
+
 -- Numbers with certainty indicators
 SELECT '~6.5'::seg AS seg;
 SELECT '<6.5'::seg AS seg;
@@ -217,9 +220,11 @@ CREATE TABLE test_seg (s seg);
 
 CREATE INDEX test_seg_ix ON test_seg USING gist (s);
 
+SET enable_indexscan = false;
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM test_seg WHERE s @> '11..11.3';
 SELECT count(*) FROM test_seg WHERE s @> '11..11.3';
+RESET enable_indexscan;
 
 SET enable_bitmapscan = false;
 EXPLAIN (COSTS OFF)

@@ -3,7 +3,7 @@
  * pg_namespace.c
  *	  routines to support manipulation of the pg_namespace relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,8 +14,9 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -68,12 +69,19 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 	else
 		nspacl = NULL;
 
+	nspdesc = table_open(NamespaceRelationId, RowExclusiveLock);
+	tupDesc = nspdesc->rd_att;
+
 	/* initialize nulls and values */
 	for (i = 0; i < Natts_pg_namespace; i++)
 	{
 		nulls[i] = false;
 		values[i] = (Datum) NULL;
 	}
+
+	nspoid = GetNewOidWithIndex(nspdesc, NamespaceOidIndexId,
+								Anum_pg_namespace_oid);
+	values[Anum_pg_namespace_oid - 1] = ObjectIdGetDatum(nspoid);
 	namestrcpy(&nname, nspName);
 	values[Anum_pg_namespace_nspname - 1] = NameGetDatum(&nname);
 	values[Anum_pg_namespace_nspowner - 1] = ObjectIdGetDatum(ownerId);
@@ -82,15 +90,13 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 	else
 		nulls[Anum_pg_namespace_nspacl - 1] = true;
 
-	nspdesc = heap_open(NamespaceRelationId, RowExclusiveLock);
-	tupDesc = nspdesc->rd_att;
 
 	tup = heap_form_tuple(tupDesc, values, nulls);
 
-	nspoid = CatalogTupleInsert(nspdesc, tup);
+	CatalogTupleInsert(nspdesc, tup);
 	Assert(OidIsValid(nspoid));
 
-	heap_close(nspdesc, RowExclusiveLock);
+	table_close(nspdesc, RowExclusiveLock);
 
 	/* Record dependencies */
 	myself.classId = NamespaceRelationId;
@@ -100,7 +106,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 	/* dependency on owner */
 	recordDependencyOnOwner(NamespaceRelationId, nspoid, ownerId);
 
-	/* dependences on roles mentioned in default ACL */
+	/* dependencies on roles mentioned in default ACL */
 	recordDependencyOnNewAcl(NamespaceRelationId, nspoid, 0, ownerId, nspacl);
 
 	/* dependency on extension ... but not for magic temp schemas */

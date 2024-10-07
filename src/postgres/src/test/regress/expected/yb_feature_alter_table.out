@@ -194,7 +194,8 @@ select * from myview;
 (0 rows)
 
 alter table myview drop d;
-ERROR:  "myview" is not a table, composite type, or foreign table
+ERROR:  ALTER action DROP COLUMN cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 drop view myview;
 -- test some commands to make sure they fail on the dropped column
 create index "testing_idx" on atacc1(a);
@@ -227,9 +228,9 @@ select * from test2;
 drop table test2;
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
-ERROR:  check constraint "checkb" is violated by some row
+ERROR:  check constraint "checkb" of relation "atacc1" is violated by some row
 alter table if exists atacc1 add constraint checkb check (b < 0); -- should fail
-ERROR:  check constraint "checkb" is violated by some row
+ERROR:  check constraint "checkb" of relation "atacc1" is violated by some row
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
 alter table atacc1 add constraint checkb3 check (b > 10);
@@ -359,7 +360,7 @@ create table atacc1 (test int not null);
 alter table atacc1 alter column test drop not null;
 insert into atacc1 values (null);
 alter table atacc1 alter test set not null;
-ERROR:  column "test" contains null values
+ERROR:  column "test" of relation "atacc1" contains null values
 delete from atacc1;
 alter table atacc1 alter test set not null;
 -- try altering a non-existent column, should fail
@@ -373,9 +374,11 @@ ERROR:  column "bar" of relation "atacc1" does not exist
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
 alter table myview alter column test drop not null;
-ERROR:  "myview" is not a table or foreign table
+ERROR:  ALTER action ALTER COLUMN ... DROP NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 alter table myview alter column test set not null;
-ERROR:  "myview" is not a table or foreign table
+ERROR:  ALTER action ALTER COLUMN ... SET NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
 drop view myview;
 drop table atacc1;
 -- test setting and removing default values
@@ -402,7 +405,7 @@ select * from def_test order by c1, c2;
 
 -- set defaults to an incorrect type: this should fail
 alter table def_test alter column c1 set default 'wrong_datatype';
-ERROR:  invalid input syntax for integer: "wrong_datatype"
+ERROR:  invalid input syntax for type integer: "wrong_datatype"
 alter table def_test alter column c2 set default 20;
 -- set defaults on a non-existent column: this should fail
 alter table def_test alter column c3 set default 30;
@@ -568,7 +571,7 @@ ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED ALWAYS AS IDENTITY;
  c2     | integer |           | not null |
 
 INSERT INTO test_identity (c1, c2) VALUES (0, 0);
-ERROR:  cannot insert into column "c1"
+ERROR:  cannot insert a non-DEFAULT value into column "c1"
 DETAIL:  Column "c1" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO test_identity (c2) VALUES (1);
@@ -879,7 +882,7 @@ DROP TABLE test_alter_column_type_with_index;
 CREATE TABLE foobar (key text, value text);
 INSERT INTO foobar VALUES ('key', 'value');
 ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
-ERROR:  column "v2" contains null values
+ERROR:  column "v2" of relation "foobar" contains null values
 ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
 DROP TABLE foobar;
 --

@@ -3,7 +3,7 @@
  * session.h
  *	  Encapsulation of user session.
  *
- * Copyright (c) 2017-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * src/include/access/session.h
  *
@@ -19,7 +19,7 @@ struct SharedRecordTypmodRegistry;
 
 /*
  * A struct encapsulating some elements of a user's session.  For now this
- * manages state that applies to parallel query, but it principle it could
+ * manages state that applies to parallel query, but in principle it could
  * include other things that are currently global variables.
  */
 typedef struct Session
@@ -39,6 +39,6 @@ extern void AttachSession(dsm_handle handle);
 extern void DetachSession(void);
 
 /* The current session, or NULL for none. */
-extern Session *CurrentSession;
+extern PGDLLIMPORT Session *CurrentSession;
 
 #endif							/* SESSION_H */

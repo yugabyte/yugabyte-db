@@ -3,7 +3,7 @@
  * test_predtest.c
  *		Test correctness of optimizer's predicate proof logic.
  *
- * Copyright (c) 2018, PostgreSQL Global Development Group
+ * Copyright (c) 2018-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_predtest/test_predtest.c
@@ -17,8 +17,8 @@
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "funcapi.h"
-#include "optimizer/clauses.h"
-#include "optimizer/predtest.h"
+#include "nodes/makefuncs.h"
+#include "optimizer/optimizer.h"
 #include "utils/builtins.h"
 
 PG_MODULE_MAGIC;
@@ -131,8 +131,8 @@ test_predtest(PG_FUNCTION_ARGS)
 		elog(ERROR, "failed to decipher query plan");
 	plan = stmt->planTree;
 	Assert(list_length(plan->targetlist) >= 2);
-	clause1 = castNode(TargetEntry, linitial(plan->targetlist))->expr;
-	clause2 = castNode(TargetEntry, lsecond(plan->targetlist))->expr;
+	clause1 = linitial_node(TargetEntry, plan->targetlist)->expr;
+	clause2 = lsecond_node(TargetEntry, plan->targetlist)->expr;
 
 	/*
 	 * Because the clauses are in the SELECT list, preprocess_expression did
@@ -185,7 +185,7 @@ test_predtest(PG_FUNCTION_ARGS)
 	if (SPI_finish() != SPI_OK_FINISH)
 		elog(ERROR, "SPI_finish failed");
 
-	tupdesc = CreateTemplateTupleDesc(8, false);
+	tupdesc = CreateTemplateTupleDesc(8);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 					   "strong_implied_by", BOOLOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2,

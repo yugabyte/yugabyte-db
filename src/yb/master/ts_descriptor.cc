@@ -283,6 +283,11 @@ bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
   return yb::master::IsRunningOn(LockForRead()->pb.registration(), hp);
 }
 
+Result<HostPort> TSDescriptor::GetHostPort() const {
+  std::lock_guard l(mutex_);
+  return GetHostPortUnlocked();
+}
+
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   auto l = LockForRead();
   const auto& addr = DesiredHostPort(l->pb.registration(), local_cloud_info_);

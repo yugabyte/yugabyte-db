@@ -4,7 +4,7 @@
  *	  Support routines for scanning Values lists
  *	  ("VALUES (...), (...), ..." in rangetable).
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -248,7 +248,7 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	 * Get info about values list, initialize scan slot with it.
 	 */
 	tupdesc = ExecTypeFromExprList((List *) linitial(node->values_lists));
-	ExecInitScanTupleSlot(estate, &scanstate->ss, tupdesc);
+	ExecInitScanTupleSlot(estate, &scanstate->ss, tupdesc, &TTSOpsVirtual);
 
 	/*
 	 * Initialize result type and projection.
@@ -285,7 +285,7 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	i = 0;
 	foreach(vtl, node->values_lists)
 	{
-		List	   *exprs = castNode(List, lfirst(vtl));
+		List	   *exprs = lfirst_node(List, vtl);
 
 		scanstate->exprlists[i] = exprs;
 

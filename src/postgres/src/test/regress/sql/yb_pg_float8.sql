@@ -2,6 +2,17 @@
 -- FLOAT8
 --
 
+--
+-- Build a table for testing
+-- (This temporarily hides the table created in test_setup.sql)
+-- YB note: but we also want to test YB tables instead of temporary tables, so
+-- create a new table in a new namespace instead.
+--
+CREATE SCHEMA yb_tmp;
+SET search_path TO yb_tmp;
+
+-- TODO(jason): see if "PRIMARY KEY" could be removed, which is not present in
+-- the upstream test.
 CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
@@ -97,6 +108,9 @@ select floor(f1) as floor_f1 from float8_tbl f ORDER BY f1;
 -- sign
 select sign(f1) as sign_f1 from float8_tbl f ORDER BY f1;
 
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 -- square root
 SELECT sqrt(float8 '64') AS eight;
 
@@ -147,6 +161,8 @@ SELECT '' AS bad, f.f1 / '0.0' from FLOAT8_TBL f ORDER BY f1;
 
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 
+RESET extra_float_digits;
+
 -- test for over- and underflow
 INSERT INTO FLOAT8_TBL(f1) VALUES ('10e400');
 
@@ -156,27 +172,17 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('10e-400');
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e-400');
 
--- maintain external table consistency across platforms
--- delete all values and reinsert well-behaved ones
--- TODO (YugaByte): this was DELETE FROM FLOAT8_TBL in float8.sql.
--- We can do that when DELETE is supported.
 DROP TABLE FLOAT8_TBL;
-CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);
 
-INSERT INTO FLOAT8_TBL(f1) VALUES ('0.0');
+-- YB note: reset the changes from above.
+DROP SCHEMA yb_tmp;
+RESET search_path;
 
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-34.84');
-
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1004.30');
-
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e+200');
-
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
+-- Check the float8 values exported for use by other tests
 
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 
 -- test exact cases for trigonometric functions in degrees
-SET extra_float_digits = 3;
 
 SELECT x,
        sind(x),
@@ -218,5 +224,3 @@ SELECT x, y,
        atan2d(y, x) IN (-90,0,90,180) AS atan2d_exact
 FROM (SELECT 10*cosd(a), 10*sind(a)
       FROM generate_series(0, 360, 90) AS t(a)) AS t(x,y);
-
-RESET extra_float_digits;

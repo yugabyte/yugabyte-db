@@ -25,7 +25,7 @@ export const transformData = (values: LDAPFormProps): Record<string, any> => {
     ldap_basedn: ldap_basedn ?? '',
     enable_ldaps: `${security === 'enable_ldaps'}`,
     enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`
-  };
+  } as Record<keyof LDAPFormProps, any>;
 
   if (String(use_search_and_bind) === 'false') {
     transformedData.ldap_search_attribute = '';
@@ -39,6 +39,8 @@ export const transformData = (values: LDAPFormProps): Record<string, any> => {
     transformedData.ldap_service_account_distinguished_name = '';
     transformedData.ldap_service_account_password = '';
   }
+
+  transformedData['ldap_group_use_role_mapping'] = String(String(values.ldap_group_use_query) === 'false');
 
   return omit(transformedData, 'ldap_security', 'use_service_account');
 };

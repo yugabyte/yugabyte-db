@@ -8,11 +8,12 @@
                          Table "pg_catalog.pg_yb_role_profile"
           Column           |           Type           | Collation | Nullable | Default
 ---------------------------+--------------------------+-----------+----------+---------
+ oid                       | oid                      |           | not null |
  rolprfrole                | oid                      |           | not null |
  rolprfprofile             | oid                      |           | not null |
  rolprfstatus              | "char"                   |           | not null |
  rolprffailedloginattempts | integer                  |           | not null |
- rolprflockeduntil         | timestamp with time zone |           | not null |
+ rolprflockeduntil         | timestamp with time zone |           |          |
 Indexes:
     "pg_yb_role_profile_oid_index" PRIMARY KEY, lsm (oid ASC), tablespace "pg_global"
 Tablespace: "pg_global"
@@ -20,7 +21,7 @@ Tablespace: "pg_global"
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_role_profile', 'pg_yb_role_profile_oid_index');
  oid  |           relname            | reltype | relnatts
 ------+------------------------------+---------+----------
- 8054 | pg_yb_role_profile           |    8056 |        5
+ 8054 | pg_yb_role_profile           |    8056 |        6
  8055 | pg_yb_role_profile_oid_index |       0 |        1
 (2 rows)
 

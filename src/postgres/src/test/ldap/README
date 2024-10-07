@@ -31,6 +31,8 @@ sources and then tested.
 Either way, this test initializes, starts, and stops a test Postgres
 cluster, as well as a test LDAP server.
 
+See src/test/perl/README for more info about running these tests.
+
 Requirements
 ============
 
@@ -49,4 +51,4 @@ and net/openldap24-server.)
 macOS: We do not recommend trying to use the Apple-provided version of
 OpenLDAP; it's very old, plus Apple seem to have changed the launching
 conventions for slapd.  The paths in the test file are set on the
-assumption that you installed OpenLDAP using Homebrew.
+assumption that you installed OpenLDAP using Homebrew or MacPorts.

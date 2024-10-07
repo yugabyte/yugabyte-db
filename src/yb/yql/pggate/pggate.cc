@@ -384,7 +384,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
+Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
   CHECK(!pg_session_);
 
   auto session = make_scoped_refptr<PgSession>(
@@ -393,7 +393,7 @@ Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
           PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
           const ExecParametersMutator& mutator) {
         return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
-      });
+      }, is_binary_upgrade);
 
   pg_session_.swap(session);
   return Status::OK();
@@ -1189,10 +1189,6 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
-Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
-  return down_cast<PgDml*>(handle)->has_system_targets();
-}
-
 Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
   return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
@@ -1441,12 +1437,14 @@ Status PgApiImpl::NewSample(const PgObjectId& table_id,
   return Status::OK();
 }
 
-Status PgApiImpl::InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state) {
+Status PgApiImpl::InitRandomState(
+    PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->InitRandomState(rstate_w, rand_state));
+  RETURN_NOT_OK(
+      down_cast<PgSample *>(handle)->InitRandomState(rstate_w, rand_state_s0, rand_state_s1));
   return Status::OK();
 }
 

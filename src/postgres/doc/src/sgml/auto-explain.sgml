@@ -54,10 +54,11 @@ LOAD 'auto_explain';
      <para>
       <varname>auto_explain.log_min_duration</varname> is the minimum statement
       execution time, in milliseconds, that will cause the statement's plan to
-      be logged. Setting this to zero logs all plans. Minus-one (the default)
-      disables logging of plans.  For example, if you set it to
-      <literal>250ms</literal> then all statements that run 250ms or longer
-      will be logged. Only superusers can change this setting.
+      be logged. Setting this to <literal>0</literal> logs all plans.
+      <literal>-1</literal> (the default) disables logging of plans. For
+      example, if you set it to <literal>250ms</literal> then all statements
+      that run 250ms or longer will be logged. Only superusers can change this
+      setting.
      </para>
     </listitem>
    </varlistentry>
@@ -100,6 +101,26 @@ LOAD 'auto_explain';
       <varname>auto_explain.log_buffers</varname> controls whether buffer
       usage statistics are printed when an execution plan is logged; it's
       equivalent to the <literal>BUFFERS</literal> option of <command>EXPLAIN</command>.
+      This parameter has no effect
+      unless <varname>auto_explain.log_analyze</varname> is enabled.
+      This parameter is off by default.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <varname>auto_explain.log_wal</varname> (<type>boolean</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_wal</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_wal</varname> controls whether WAL
+      usage statistics are printed when an execution plan is logged; it's
+      equivalent to the <literal>WAL</literal> option of <command>EXPLAIN</command>.
       This parameter has no effect
       unless <varname>auto_explain.log_analyze</varname> is enabled.
       This parameter is off by default.
@@ -171,6 +192,24 @@ LOAD 'auto_explain';
 
    <varlistentry>
     <term>
+     <varname>auto_explain.log_settings</varname> (<type>boolean</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_settings</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_settings</varname> controls whether information
+      about modified configuration options is printed when an execution plan is logged.
+      Only options affecting query planning with value different from the built-in
+      default value are included in the output.  This parameter is off by default.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
      <varname>auto_explain.log_format</varname> (<type>enum</type>)
      <indexterm>
       <primary><varname>auto_explain.log_format</varname> configuration parameter</primary>
@@ -182,6 +221,27 @@ LOAD 'auto_explain';
       <command>EXPLAIN</command> output format to be used.
       The allowed values are <literal>text</literal>, <literal>xml</literal>,
       <literal>json</literal>, and <literal>yaml</literal>.  The default is text.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <varname>auto_explain.log_level</varname> (<type>enum</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_level</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_level</varname> selects the log level at which
+      auto_explain will log the query plan.
+      Valid values are <literal>DEBUG5</literal>, <literal>DEBUG4</literal>,
+      <literal>DEBUG3</literal>, <literal>DEBUG2</literal>,
+      <literal>DEBUG1</literal>, <literal>INFO</literal>,
+      <literal>NOTICE</literal>, <literal>WARNING</literal>,
+      and <literal>LOG</literal>. The default is <literal>LOG</literal>.
       Only superusers can change this setting.
      </para>
     </listitem>

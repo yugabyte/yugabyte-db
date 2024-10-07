@@ -136,26 +136,6 @@ SELECT * FROM timetz_table;
 DROP TABLE timetz_table;
 DROP TYPE timetz_type CASCADE;
 
--- typlen:12, typbyval:f, typalign:i
-CREATE TYPE tinterval_type;
-CREATE FUNCTION tinterval_type_in(cstring) RETURNS tinterval_type
-    LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'tintervalin';
-CREATE FUNCTION tinterval_type_out(tinterval_type) RETURNS cstring
-    LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'tintervalout';
-CREATE TYPE tinterval_type (
-    INPUT = tinterval_type_in,
-    OUTPUT = tinterval_type_out,
-    LIKE = tinterval
-);
-CREATE TABLE tinterval_table (t tinterval_type);
-SET timezone = 'America/Los_Angeles';
-INSERT INTO tinterval_table (t)
-    VALUES ('["2019-09-20 09:00:00" "2019-09-20 19:30:00"]');
-SELECT * FROM tinterval_table;
-SET timezone = default;
-DROP TABLE tinterval_table;
-DROP TYPE tinterval_type CASCADE;
-
 -- typlen:8, typbyval:f, typalign:i
 CREATE TYPE macaddr8_type;
 CREATE FUNCTION macaddr8_type_in(cstring) RETURNS macaddr8_type

@@ -65,6 +65,11 @@ PostgreSQL documentation
         <option>--plugin</option>, for the database specified
         by <option>--dbname</option>.
        </para>
+
+       <para>
+        The <option>--two-phase</option> can be specified with
+        <option>--create-slot</option> to enable decoding of prepared transactions.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -257,6 +262,17 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+       <term><option>-t</option></term>
+       <term><option>--two-phase</option></term>
+       <listitem>
+       <para>
+        Enables decoding of prepared transactions. This option may only be specified with
+        <option>--create-slot</option>
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
        <term><option>-v</option></term>
        <term><option>--verbose</option></term>
        <listitem>
@@ -273,14 +289,16 @@ PostgreSQL documentation
 
     <variablelist>
       <varlistentry>
-       <term><option>-d <replaceable>database</replaceable></option></term>
-       <term><option>--dbname=<replaceable>database</replaceable></option></term>
+       <term><option>-d <replaceable>dbname</replaceable></option></term>
+       <term><option>--dbname=<replaceable>dbname</replaceable></option></term>
        <listitem>
         <para>
-         The database to connect to.  See the description of the actions for
-         what this means in detail.  This can be a <application>libpq</application> connection string;
-         see <xref linkend="libpq-connstring"/> for more information.  Defaults
-         to user name.
+         The database to connect to.  See the description
+         of the actions for what this means in detail.
+         The <replaceable>dbname</replaceable> can be a <link
+         linkend="libpq-connstring">connection string</link>.  If so,
+         connection string parameters will override any conflicting
+         command line options.  Defaults to the user name.
         </para>
        </listitem>
       </varlistentry>
@@ -396,6 +414,13 @@ PostgreSQL documentation
    This utility, like most other <productname>PostgreSQL</productname> utilities,
    uses the environment variables supported by <application>libpq</application>
    (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
   </para>
  </refsect1>
 

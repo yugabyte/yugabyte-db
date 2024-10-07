@@ -4,7 +4,7 @@
  * bootscanner.l
  *	  a lexical scanner for the bootstrap parser
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,25 +15,8 @@
  */
 #include "postgres.h"
 
-#include "access/attnum.h"
-#include "access/htup.h"
-#include "access/itup.h"
-#include "access/tupdesc.h"
 #include "bootstrap/bootstrap.h"
-#include "catalog/pg_am.h"
-#include "catalog/pg_attribute.h"
-#include "catalog/pg_class.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
-#include "parser/scansup.h"
-#include "rewrite/prs2lock.h"
-#include "storage/block.h"
-#include "storage/fd.h"
-#include "storage/itemptr.h"
-#include "storage/off.h"
-#include "utils/rel.h"
+#include "utils/guc.h"
 
 /* Not needed now that this file is compiled as part of bootparse. */
 /* #include "bootparse.h" */
@@ -66,7 +49,7 @@ static int	yyline = 1;			/* line number for error reporting */
 
 
 id		[-A-Za-z0-9_]+
-sid		\"([^\"])*\"
+sid		\'([^']|\'\')*\'
 
 /*
  * Keyword tokens return the keyword text (as a constant string) in yylval.kw,
@@ -91,7 +74,6 @@ create			{ yylval.kw = "create"; return XCREATE; }
 OID				{ yylval.kw = "OID"; return OBJ_ID; }
 bootstrap		{ yylval.kw = "bootstrap"; return XBOOTSTRAP; }
 shared_relation	{ yylval.kw = "shared_relation"; return XSHARED_RELATION; }
-without_oids	{ yylval.kw = "without_oids"; return XWITHOUT_OIDS; }
 rowtype_oid		{ yylval.kw = "rowtype_oid"; return XROWTYPE_OID; }
 
 insert			{ yylval.kw = "insert"; return INSERT_TUPLE; }
@@ -106,7 +88,7 @@ _null_			{ return NULLVAL; }
 [\n]			{ yyline++; }
 [\r\t ]			;
 
-^\#[^\n]* 		;		/* drop everything after "#" for comments */
+^\#[^\n]*		;		/* drop everything after "#" for comments */
 
 declare			{ yylval.kw = "declare"; return XDECLARE; }
 yb_declare		{ yylval.kw = "yb_declare"; return YBDECLARE; } /* For YugaByte pkeys */
@@ -121,16 +103,16 @@ toast			{ yylval.kw = "toast"; return XTOAST; }
 FORCE			{ yylval.kw = "FORCE"; return XFORCE; }
 NOT				{ yylval.kw = "NOT"; return XNOT; }
 NULL			{ yylval.kw = "NULL"; return XNULL; }
+
 yb_check_if_initdb_is_already_done { yylval.kw = "yb_check_if_initdb_is_already_done"; return YBCHECKINITDBDONE; }
+
 {id}			{
-					yylval.str = scanstr(yytext);
+					yylval.str = pstrdup(yytext);
 					return ID;
 				}
 {sid}			{
-					/* leading and trailing quotes are not passed to scanstr */
-					yytext[strlen(yytext) - 1] = '\0';
-					yylval.str = scanstr(yytext+1);
-					yytext[strlen(yytext)] = '"';	/* restore yytext */
+					/* strip quotes and escapes */
+					yylval.str = DeescapeQuotedString(yytext);
 					return ID;
 				}
 

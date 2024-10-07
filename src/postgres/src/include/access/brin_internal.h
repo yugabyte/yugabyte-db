@@ -2,7 +2,7 @@
  * brin_internal.h
  *		internal declarations for BRIN indexes
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,6 +26,9 @@ typedef struct BrinOpcInfo
 {
 	/* Number of columns stored in an index column of this opclass */
 	uint16		oi_nstored;
+
+	/* Regular processing of NULLs in BrinValues? */
+	bool		oi_regular_nulls;
 
 	/* Opaque pointer for the opclass' private use */
 	void	   *oi_opaque;
@@ -69,6 +72,7 @@ typedef struct BrinDesc
 #define BRIN_PROCNUM_CONSISTENT		3
 #define BRIN_PROCNUM_UNION			4
 #define BRIN_MANDATORY_NPROCS		4
+#define BRIN_PROCNUM_OPTIONS 		5	/* optional */
 /* procedure numbers up to 10 are reserved for BRIN future expansion */
 #define BRIN_FIRST_OPTIONAL_PROCNUM 11
 #define BRIN_LAST_OPTIONAL_PROCNUM	15
@@ -85,23 +89,24 @@ typedef struct BrinDesc
 extern BrinDesc *brin_build_desc(Relation rel);
 extern void brin_free_desc(BrinDesc *bdesc);
 extern IndexBuildResult *brinbuild(Relation heap, Relation index,
-		  struct IndexInfo *indexInfo);
+								   struct IndexInfo *indexInfo);
 extern void brinbuildempty(Relation index);
 extern bool brininsert(Relation idxRel, Datum *values, bool *nulls,
-		   ItemPointer heaptid, Relation heapRel,
-		   IndexUniqueCheck checkUnique,
-		   struct IndexInfo *indexInfo);
+					   ItemPointer heaptid, Relation heapRel,
+					   IndexUniqueCheck checkUnique,
+					   bool indexUnchanged,
+					   struct IndexInfo *indexInfo);
 extern IndexScanDesc brinbeginscan(Relation r, int nkeys, int norderbys);
 extern int64 bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 extern void brinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
-		   ScanKey orderbys, int norderbys);
+					   ScanKey orderbys, int norderbys);
 extern void brinendscan(IndexScanDesc scan);
 extern IndexBulkDeleteResult *brinbulkdelete(IndexVacuumInfo *info,
-			   IndexBulkDeleteResult *stats,
-			   IndexBulkDeleteCallback callback,
-			   void *callback_state);
+											 IndexBulkDeleteResult *stats,
+											 IndexBulkDeleteCallback callback,
+											 void *callback_state);
 extern IndexBulkDeleteResult *brinvacuumcleanup(IndexVacuumInfo *info,
-				  IndexBulkDeleteResult *stats);
+												IndexBulkDeleteResult *stats);
 extern bytea *brinoptions(Datum reloptions, bool validate);
 
 /* brin_validate.c */

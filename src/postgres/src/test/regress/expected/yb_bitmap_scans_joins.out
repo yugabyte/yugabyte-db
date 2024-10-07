@@ -636,7 +636,7 @@ SELECT joina.a,
            ->  YB Bitmap Table Scan on joinb (never executed)
                  ->  BitmapOr (never executed)
                        ->  Bitmap Index Scan on joinb_pkey (never executed)
-                             Index Cond: (joina.k = k)
+                             Index Cond: (k = joina.k)
                        ->  Bitmap Index Scan on joinb_d_idx (never executed)
                              Index Cond: (d = 1)
 (10 rows)
@@ -663,6 +663,11 @@ SELECT joina.a,
 --
 -- test joins with a function scan
 --
+-- insert entries into pg_yb_tablegroup and analyze so the planner does not
+-- think the table is empty.
+CREATE TABLEGROUP tg1;
+CREATE TABLEGROUP tg2;
+ANALYZE pg_yb_tablegroup;
 /*+ BitmapScan(gr) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
    SELECT grpname, is_colocated
      FROM pg_catalog.yb_table_properties(16384) p
@@ -687,6 +692,8 @@ LEFT JOIN pg_catalog.pg_yb_tablegroup gr
          | f
 (1 row)
 
+DROP TABLEGROUP tg1;
+DROP TABLEGROUP tg2;
 --
 -- test where a join filter should be required
 --
@@ -716,7 +723,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
                Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
                Rows Removed by Filter: 9
                ->  Bitmap Index Scan on test_join_filter_a_idx (actual rows=10 loops=20)
-                     Index Cond: (table3.a >= a)
+                     Index Cond: (a <= table3.a)
    ->  Materialize (actual rows=20 loops=33)
          ->  Seq Scan on test_join_filter table1 (actual rows=20 loops=1)
 (12 rows)
@@ -734,7 +741,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
    ->  Nested Loop (actual rows=33 loops=1)
          ->  Seq Scan on test_join_filter table3 (actual rows=20 loops=1)
          ->  Index Scan using test_join_filter_a_idx on test_join_filter table2 (actual rows=2 loops=20)
-               Index Cond: (table3.a >= a)
+               Index Cond: (a <= table3.a)
                Filter: ((table3.a <> b) AND (((table3.v)::text = (v)::text) OR (table3.b = a)))
                Rows Removed by Filter: 9
    ->  YB Bitmap Table Scan on test_join_filter table1 (actual rows=5 loops=33)
@@ -1003,15 +1010,19 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 --
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
-                                   QUERY PLAN
----------------------------------------------------------------------------------
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
    ->  Seq Scan on pg_class c (actual rows=1 loops=1)
          Storage Filter: (relname = 'pg_class'::name)
-   ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
-               Index Cond: (oid = c.relnamespace)
-(6 rows)
+   ->  Memoize (actual rows=1 loops=1)
+         Cache Key: c.relnamespace
+         Cache Mode: logical
+         Hits: 0  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+         ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
+               ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
+                     Index Cond: (oid = c.relnamespace)
+(10 rows)
 
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';

@@ -43,7 +43,7 @@ bool LaunchActiveJobs = true;
 void
 InitializeTaskStateHash(void)
 {
-	CronTaskContext = AllocSetContextCreate(CurrentMemoryContext,
+	CronTaskContext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "pg_cron task context",
 											  ALLOCSET_DEFAULT_MINSIZE,
 											  ALLOCSET_DEFAULT_INITSIZE,

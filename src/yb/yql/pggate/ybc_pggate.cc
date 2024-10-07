@@ -231,8 +231,10 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
-  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
+  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
+    return pgapi->InitSession(session_stats, is_binary_upgrade);
+  });
 }
 
 // ql_value is modified in-place.
@@ -578,8 +580,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
+  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -1269,10 +1271,6 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols) {
-  return ExtractValueFromResult(pgapi->DmlHasSystemTargets(handle), has_system_cols);
-}
-
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
   return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
@@ -1417,8 +1415,9 @@ YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
-YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
-  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state));
+YBCStatus YBCPgInitRandomState(
+    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
+  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state_s0, rand_state_s1));
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {

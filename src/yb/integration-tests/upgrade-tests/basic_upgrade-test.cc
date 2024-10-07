@@ -24,6 +24,12 @@ class BasicUpgradeTest : public UpgradeTestBase, public ::testing::WithParamInte
   BasicUpgradeTest() : UpgradeTestBase(GetParam()) {}
   virtual ~BasicUpgradeTest() = default;
 
+  void TearDown() override {
+    keep_running_ = false;
+    test_thread_holder_.JoinAll();
+    UpgradeTestBase::TearDown();
+  }
+
   Status VerifyVersionFromDB(const std::string& expected_version) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
     auto version = VERIFY_RESULT(conn.FetchRowAsString("SELECT version()"));

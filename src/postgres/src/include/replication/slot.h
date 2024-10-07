@@ -2,20 +2,20 @@
  * slot.h
  *	   Replication slot management.
  *
- * Copyright (c) 2012-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
 #ifndef SLOT_H
 #define SLOT_H
 
-#include "fmgr.h"
 #include "access/xlog.h"
 #include "access/xlogreader.h"
 #include "storage/condition_variable.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "storage/spin.h"
+#include "replication/walreceiver.h"
 
 /* YB includes. */
 #include "replication/walsender.h"
@@ -76,6 +76,9 @@ typedef struct ReplicationSlotPersistentData
 	/* oldest LSN that might be required by this replication slot */
 	XLogRecPtr	restart_lsn;
 
+	/* restart_lsn is copied here when the slot is invalidated */
+	XLogRecPtr	invalidated_at;
+
 	/*
 	 * Oldest LSN that the client has acked receipt for.  This is used as the
 	 * start_lsn point in case the client doesn't specify one, and also as a
@@ -83,6 +86,17 @@ typedef struct ReplicationSlotPersistentData
 	 * start_lsn that's further in the past than this value.
 	 */
 	XLogRecPtr	confirmed_flush;
+
+	/*
+	 * LSN at which we enabled two_phase commit for this slot or LSN at which
+	 * we found a consistent point at the time of slot creation.
+	 */
+	XLogRecPtr	two_phase_at;
+
+	/*
+	 * Allow decoding of prepared transactions?
+	 */
+	bool		two_phase;
 
 	/* plugin name */
 	NameData	plugin;
@@ -159,7 +173,7 @@ typedef struct ReplicationSlot
 	/* is somebody performing io on this slot? */
 	LWLock		io_in_progress_lock;
 
-	/* Condition variable signalled when active_pid changes */
+	/* Condition variable signaled when active_pid changes */
 	ConditionVariable active_cv;
 
 	/* all the remaining data is only used for logical slots */
@@ -175,8 +189,8 @@ typedef struct ReplicationSlot
 	XLogRecPtr	candidate_restart_lsn;
 } ReplicationSlot;
 
-#define SlotIsPhysical(slot) (slot->data.database == InvalidOid)
-#define SlotIsLogical(slot) (slot->data.database != InvalidOid)
+#define SlotIsPhysical(slot) ((slot)->data.database == InvalidOid)
+#define SlotIsLogical(slot) ((slot)->data.database != InvalidOid)
 
 /*
  * Shared memory control area for all of replication slots.
@@ -193,7 +207,7 @@ typedef struct ReplicationSlotCtlData
 /*
  * Pointers to shared memory
  */
-extern ReplicationSlotCtlData *ReplicationSlotCtl;
+extern PGDLLIMPORT ReplicationSlotCtlData *ReplicationSlotCtl;
 extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 
 /* GUCs */
@@ -210,10 +224,10 @@ extern void ReplicationSlotsShmemInit(void);
 
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
-					  ReplicationSlotPersistency p,
-					  char *yb_plugin_name,
-					  CRSSnapshotAction yb_snapshot_action,
-					  uint64_t *yb_consistent_snapshot_time);
+								  ReplicationSlotPersistency p, bool two_phase,
+								  char *yb_plugin_name,
+								  CRSSnapshotAction yb_snapshot_action,
+								  uint64_t *yb_consistent_snapshot_time);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 
@@ -225,6 +239,7 @@ extern void ReplicationSlotSave(void);
 extern void ReplicationSlotMarkDirty(void);
 
 /* misc stuff */
+extern void ReplicationSlotInitialize(void);
 extern bool ReplicationSlotValidateName(const char *name, int elevel);
 extern void ReplicationSlotReserveWal(void);
 extern void ReplicationSlotsComputeRequiredXmin(bool already_locked);
@@ -232,11 +247,18 @@ extern void ReplicationSlotsComputeRequiredLSN(void);
 extern XLogRecPtr ReplicationSlotsComputeLogicalRestartLSN(void);
 extern bool ReplicationSlotsCountDBSlots(Oid dboid, int *nslots, int *nactive);
 extern void ReplicationSlotsDropDBSlots(Oid dboid);
+extern bool InvalidateObsoleteReplicationSlots(XLogSegNo oldestSegno);
+extern ReplicationSlot *SearchNamedReplicationSlot(const char *name, bool need_lock);
+extern int	ReplicationSlotIndex(ReplicationSlot *slot);
+extern bool ReplicationSlotName(int index, Name name);
+extern void ReplicationSlotNameForTablesync(Oid suboid, Oid relid, char *syncslotname, int szslot);
+extern void ReplicationSlotDropAtPubNode(WalReceiverConn *wrconn, char *slotname, bool missing_ok);
 
 extern void StartupReplicationSlots(void);
 extern void CheckPointReplicationSlots(void);
 
 extern void CheckSlotRequirements(void);
+extern void CheckSlotPermissions(void);
 
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
 

@@ -1,0 +1,62 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_max_len';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_max_len | 10240   |      | postmaster | integer | configuration file | 1024    | 2147483647 |          | 2048     | 10240     | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_max_len';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_max_len | 1024    |      | postmaster | integer | configuration file | 1024    | 2147483647 |          | 2048     | 1024      | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_max_len';
+                name                | setting | unit |  context   | vartype | source  | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+---------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_max_len | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |          | 2048     | 2048      | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_max_len';
+                name                | setting | unit |  context   | vartype | source  | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+---------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_max_len | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |          | 2048     | 2048      | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_max_len';
+                name                | setting | unit |  context   | vartype | source  | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+---------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_max_len | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |          | 2048     | 2048      | f
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

@@ -28,7 +28,7 @@
  * For an introduction to using memory barriers within the PostgreSQL backend,
  * see src/backend/storage/lmgr/README.barrier
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/atomics.h
@@ -87,14 +87,11 @@
  * using compiler intrinsics are a good idea.
  */
 /*
- * Given a gcc-compatible xlc compiler, prefer the xlc implementation.  The
- * ppc64le "IBM XL C/C++ for Linux, V13.1.2" implements both interfaces, but
- * __sync_lock_test_and_set() of one-byte types elicits SIGSEGV.
+ * gcc or compatible, including clang and icc.  Exclude xlc.  The ppc64le "IBM
+ * XL C/C++ for Linux, V13.1.2" emulates gcc, but __sync_lock_test_and_set()
+ * of one-byte types elicits SIGSEGV.  That bug was gone by V13.1.5 (2016-12).
  */
-#if defined(__IBMC__) || defined(__IBMCPP__)
-#include "port/atomics/generic-xlc.h"
-/* gcc or compatible, including clang and icc */
-#elif defined(__GNUC__) || defined(__INTEL_COMPILER)
+#if (defined(__GNUC__) || defined(__INTEL_COMPILER)) && !(defined(__IBMC__) || defined(__IBMCPP__))
 #include "port/atomics/generic-gcc.h"
 #elif defined(_MSC_VER)
 #include "port/atomics/generic-msvc.h"
@@ -178,7 +175,7 @@ pg_atomic_init_flag(volatile pg_atomic_flag *ptr)
 }
 
 /*
- * pg_atomic_test_and_set_flag - TAS()
+ * pg_atomic_test_set_flag - TAS()
  *
  * Returns true if the flag has successfully been set, false otherwise.
  *

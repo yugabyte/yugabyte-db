@@ -90,10 +90,12 @@ attach_shmem(int shmem_id, char **shmem_ptr)
 	*shmem_ptr = shmat(shmem_id, NULL, 0);
 	if (*shmem_ptr == (void *) -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmat for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -104,10 +106,12 @@ detach_shmem(int shmem_id, void *shmem_ptr)
 {
 	if (shmdt(shmem_ptr) == -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmdt for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -240,9 +244,11 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	int result = shmctl(shmem_id, IPC_STAT, &buf);
 	if (result < 0)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -250,9 +256,11 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	result = shmctl(shmem_id, IPC_SET, &buf);
 	if (result < 0)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -320,9 +328,11 @@ resize_shmem_if_needed(const key_t shmem_id)
 
 	if (resize_needed > 0 && (yb_shmem_resize(shmem_id, resize_needed) == -1))
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error while resizing the shared memory segment "
 							   "with key %d (%s).",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -594,9 +604,11 @@ DeleteSharedMemory(int client_shmem_key)
 	/* Shared memory related to the client id will be removed */
 	if (shmctl(client_shmem_key, IPC_RMID, NULL) == -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl while trying to delete the "
 							   "shared memory segment, %s",
-							   strerror(errno))));
+							   strerror(save_errno))));
 	}
 
 	yb_logical_client_shmem_key = -1;
@@ -665,7 +677,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 
 	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
 	rform = (Form_pg_authid) GETSTRUCT(roleTup);
-	*roleid = HeapTupleGetOid(roleTup);
+	*roleid = rform->oid;
 	rname = NameStr(rform->rolname);
 	*is_superuser = rform->rolsuper;
 
@@ -808,7 +820,7 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 		return true;
 
 	/* Client needs to be connected on unix domain socket */
-	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+	if (MyProcPort->raddr.addr.ss_family != AF_UNIX)
 		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 						errmsg("yb_is_client_ysqlconnmgr can only be set "
 							   "if the connection is made over unix domain socket")));
@@ -862,9 +874,11 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
 	if (shmid == -1)
 	{
+		int			save_errno = errno;
+
 		elog(WARNING,
 			 "Unable to attach to the shared memory segment %d, errno: %d",
-			 shmid, errno);
+			 shmid, save_errno);
 		return false;
 	}
 
@@ -872,9 +886,11 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	shmp = (struct ConnectionStats *) shmat(shmid, NULL, 0);
 	if (shmp == NULL)
 	{
+		int			save_errno = errno;
+
 		elog(WARNING,
 			 "Unable to read the shared memory segment %d, errno: %d",
-			 shmid, errno);
+			 shmid, save_errno);
 		return false;
 	}
 

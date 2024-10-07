@@ -26,7 +26,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> { BEFORE | AFTER | INSTEAD OF } { <replaceable class="parameter">event</replaceable> [ OR ... ] }
+CREATE [ OR REPLACE ] [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> { BEFORE | AFTER | INSTEAD OF } { <replaceable class="parameter">event</replaceable> [ OR ... ] }
     ON <replaceable class="parameter">table_name</replaceable>
     [ FROM <replaceable class="parameter">referenced_table_name</replaceable> ]
     [ NOT DEFERRABLE | [ DEFERRABLE ] [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ] ]
@@ -48,11 +48,19 @@ CREATE [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> 
   <title>Description</title>
 
   <para>
-   <command>CREATE TRIGGER</command> creates a new trigger.  The
+   <command>CREATE TRIGGER</command> creates a new trigger.
+   <command>CREATE OR REPLACE TRIGGER</command> will either create a
+   new trigger, or replace an existing trigger.  The
    trigger will be associated with the specified table, view, or foreign table
    and will execute the specified
    function <replaceable class="parameter">function_name</replaceable> when
    certain operations are performed on that table.
+  </para>
+
+  <para>
+   To replace the current definition of an existing trigger, use
+   <command>CREATE OR REPLACE TRIGGER</command>, specifying the existing
+   trigger's name and parent table.  All other properties are replaced.
   </para>
 
   <para>
@@ -168,9 +176,11 @@ CREATE [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> 
 
   <para>
    When the <literal>CONSTRAINT</literal> option is specified, this command creates a
-   <firstterm>constraint trigger</firstterm>.  This is the same as a regular trigger
+   <firstterm>constraint trigger</firstterm>.<indexterm><primary>trigger</primary>
+   <secondary>constraint trigger</secondary></indexterm>
+   This is the same as a regular trigger
    except that the timing of the trigger firing can be adjusted using
-   <xref linkend="sql-set-constraints"/>.
+   <link linkend="sql-set-constraints"><command>SET CONSTRAINTS</command></link>.
    Constraint triggers must be <literal>AFTER ROW</literal> triggers on plain
    tables (not foreign tables).  They
    can be fired either at the end of the statement causing the triggering
@@ -261,7 +271,9 @@ CREATE [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> 
 UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</replaceable> ... ]
 </synopsis>
       The trigger will only fire if at least one of the listed columns
-      is mentioned as a target of the <command>UPDATE</command> command.
+      is mentioned as a target of the <command>UPDATE</command> command
+      or if one of the listed columns is a generated column that depends on a
+      column that is the target of the <command>UPDATE</command>.
      </para>
 
      <para>
@@ -434,13 +446,24 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
   <title>Notes</title>
 
   <para>
-   To create a trigger on a table, the user must have the
+   To create or replace a trigger on a table, the user must have the
    <literal>TRIGGER</literal> privilege on the table.  The user must
    also have <literal>EXECUTE</literal> privilege on the trigger function.
   </para>
 
   <para>
-   Use <xref linkend="sql-droptrigger"/> to remove a trigger.
+   Use <link linkend="sql-droptrigger"><command>DROP TRIGGER</command></link> to remove a trigger.
+  </para>
+
+  <para>
+   Creating a row-level trigger on a partitioned table will cause an
+   identical <quote>clone</quote> trigger to be created on each of its
+   existing partitions; and any partitions created or attached later will have
+   an identical trigger, too.  If there is a conflictingly-named trigger on a
+   child partition already, an error occurs unless <command>CREATE OR REPLACE
+   TRIGGER</command> is used, in which case that trigger is replaced with a
+   clone trigger.  When a partition is detached from its parent, its clone
+   triggers are removed.
   </para>
 
   <para>
@@ -463,7 +486,7 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
    that the <literal>NEW</literal> row seen by the condition is the current value,
    as possibly modified by earlier triggers.  Also, a <literal>BEFORE</literal>
    trigger's <literal>WHEN</literal> condition is not allowed to examine the
-   system columns of the <literal>NEW</literal> row (such as <literal>oid</literal>),
+   system columns of the <literal>NEW</literal> row (such as <literal>ctid</literal>),
    because those won't have been set yet.
   </para>
 
@@ -494,7 +517,7 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
    as <literal>ON UPDATE CASCADE</literal> or <literal>ON DELETE SET NULL</literal>, are
    treated as part of the SQL command that caused them (note that such
    actions are never deferred).  Relevant triggers on the affected table will
-   be fired, so that this provides another way in which a SQL command might
+   be fired, so that this provides another way in which an SQL command might
    fire triggers not directly matching its type.  In simple cases, triggers
    that request transition relations will see all changes caused in their
    table by a single original SQL command as a single transition relation.
@@ -521,14 +544,6 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
   </para>
 
   <para>
-   Creating a row-level trigger on a partitioned table will cause identical
-   triggers to be created in all its existing partitions; and any partitions
-   created or attached later will contain an identical trigger, too.
-   If the partition is detached from its parent, the trigger is removed.
-   Triggers on partitioned tables may only be <literal>AFTER</literal>.
-  </para>
-
-  <para>
    Modifying a partitioned table or a table with inheritance children fires
    statement-level triggers attached to the explicitly named table, but not
    statement-level triggers for its partitions or child tables.  In contrast,
@@ -538,18 +553,32 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
    named by a <literal>REFERENCING</literal> clause, then before and after
    images of rows are visible from all affected partitions or child tables.
    In the case of inheritance children, the row images include only columns
-   that are present in the table that the trigger is attached to.  Currently,
-   row-level triggers with transition relations cannot be defined on
-   partitions or inheritance child tables.
+   that are present in the table that the trigger is attached to.
   </para>
 
   <para>
-   In <productname>PostgreSQL</productname> versions before 7.3, it was
-   necessary to declare trigger functions as returning the placeholder
-   type <type>opaque</type>, rather than <type>trigger</type>.  To support loading
-   of old dump files, <command>CREATE TRIGGER</command> will accept a function
-   declared as returning <type>opaque</type>, but it will issue a notice and
-   change the function's declared return type to <type>trigger</type>.
+   Currently, row-level triggers with transition relations cannot be defined
+   on partitions or inheritance child tables.  Also, triggers on partitioned
+   tables may not be <literal>INSTEAD OF</literal>.
+  </para>
+
+  <para>
+   Currently, the <literal>OR REPLACE</literal> option is not supported for
+   constraint triggers.
+  </para>
+
+  <para>
+   Replacing an existing trigger within a transaction that has already
+   performed updating actions on the trigger's table is not recommended.
+   Trigger firing decisions, or portions of firing decisions, that have
+   already been made will not be reconsidered, so the effects could be
+   surprising.
+  </para>
+
+  <para>
+   There are a few built-in trigger functions that can be used to
+   solve common problems without having to write your own trigger code;
+   see <xref linkend="functions-trigger"/>.
   </para>
  </refsect1>
 
@@ -567,11 +596,12 @@ CREATE TRIGGER check_update
     EXECUTE FUNCTION check_account_update();
 </programlisting>
 
-   The same, but only execute the function if column <literal>balance</literal>
-   is specified as a target in the <command>UPDATE</command> command:
+   Modify that trigger definition to only execute the function if
+   column <literal>balance</literal> is specified as a target in
+   the <command>UPDATE</command> command:
 
 <programlisting>
-CREATE TRIGGER check_update
+CREATE OR REPLACE TRIGGER check_update
     BEFORE UPDATE OF balance ON accounts
     FOR EACH ROW
     EXECUTE FUNCTION check_account_update();
@@ -729,6 +759,7 @@ CREATE TRIGGER paired_items_update
    <command>CREATE CONSTRAINT TRIGGER</command> is a
    <productname>PostgreSQL</productname> extension of the <acronym>SQL</acronym>
    standard.
+   So is the <literal>OR REPLACE</literal> option.
   </para>
 
  </refsect1>

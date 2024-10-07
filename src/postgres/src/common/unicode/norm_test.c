@@ -2,10 +2,10 @@
  * norm_test.c
  *		Program to test Unicode normalization functions.
  *
- * Portions Copyright (c) 2017-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  src/common/unicode_norm.c
+ *	  src/common/unicode/norm_test.c
  *
  *-------------------------------------------------------------------------
  */
@@ -23,17 +23,20 @@ static char *
 print_wchar_str(const pg_wchar *s)
 {
 #define BUF_DIGITS 50
-	static char buf[BUF_DIGITS * 2 + 1];
+	static char buf[BUF_DIGITS * 11 + 1];
 	int			i;
+	char	   *p;
 
 	i = 0;
+	p = buf;
 	while (*s && i < BUF_DIGITS)
 	{
-		snprintf(&buf[i * 2], 3, "%04X", *s);
+		p += sprintf(p, "U+%04X ", *s);
 		i++;
 		s++;
 	}
-	buf[i * 2] = '\0';
+	*p = '\0';
+
 	return buf;
 }
 
@@ -60,18 +63,21 @@ main(int argc, char **argv)
 
 	for (test = UnicodeNormalizationTests; test->input[0] != 0; test++)
 	{
-		pg_wchar   *result;
-
-		result = unicode_normalize_kc(test->input);
-
-		if (pg_wcscmp(test->output, result) != 0)
+		for (int form = 0; form < 4; form++)
 		{
-			printf("FAILURE (Normalizationdata.txt line %d):\n", test->linenum);
-			printf("input:\t%s\n", print_wchar_str(test->input));
-			printf("expected:\t%s\n", print_wchar_str(test->output));
-			printf("got\t%s\n", print_wchar_str(result));
-			printf("\n");
-			exit(1);
+			pg_wchar   *result;
+
+			result = unicode_normalize(form, test->input);
+
+			if (pg_wcscmp(test->output[form], result) != 0)
+			{
+				printf("FAILURE (NormalizationTest.txt line %d form %d):\n", test->linenum, form);
+				printf("input:    %s\n", print_wchar_str(test->input));
+				printf("expected: %s\n", print_wchar_str(test->output[form]));
+				printf("got:      %s\n", print_wchar_str(result));
+				printf("\n");
+				exit(1);
+			}
 		}
 	}
 

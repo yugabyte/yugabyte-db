@@ -3,7 +3,7 @@
 --
 
 --
--- Tests for SQLVAlueFunction
+-- Tests for SQLValueFunction
 --
 
 

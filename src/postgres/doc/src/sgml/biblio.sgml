@@ -12,7 +12,7 @@
    Some white papers and technical reports from the original
    <productname>POSTGRES</productname> development team
    are available at the University of California, Berkeley, Computer Science
-   Department <ulink url="http://db.cs.berkeley.edu/papers/">web site</ulink>.
+   Department <ulink url="https://dsf.berkeley.edu/papers/">web site</ulink>.
   </para>
 
   <bibliodiv>
@@ -121,8 +121,8 @@
    </biblioentry>
 
    <biblioentry id="ull88">
-    <title>Principles of Database and Knowledge</title>
-    <subtitle>Base Systems</subtitle>
+    <title>Principles of Database and Knowledge-Base Systems</title>
+    <subtitle>Classical Database Systems</subtitle>
     <authorgroup>
      <author>
       <firstname>Jeffrey D.</firstname>
@@ -140,11 +140,8 @@
     <title>SQL Technical Report</title>
     <subtitle>Part 6: SQL support for JavaScript Object
       Notation (JSON)</subtitle>
-    <edition>First Edition.</edition>
-    <biblioid>
-    <ulink url="http://standards.iso.org/ittf/PubliclyAvailableStandards/c067367_ISO_IEC_TR_19075-6_2017.zip"></ulink>.
-    </biblioid>
-    <pubdate>2017.</pubdate>
+    <edition>First Edition</edition>
+    <pubdate>2017</pubdate>
    </biblioentry>
 
   </bibliodiv>
@@ -216,7 +213,7 @@ ssimkovi@ag.or.at
    </biblioentry>
 
   <biblioentry id="fong">
-   <title><ulink url="http://db.cs.berkeley.edu/papers/UCB-MS-zfong.pdf">The
+   <title><ulink url="https://dsf.berkeley.edu/papers/UCB-MS-zfong.pdf">The
    design and implementation of the <productname>POSTGRES</productname> query
    optimizer</ulink></title>
    <author>
@@ -232,6 +229,64 @@ ssimkovi@ag.or.at
 
   <bibliodiv>
    <title>Proceedings and Articles</title>
+
+   <biblioentry id="ports12">
+    <biblioset relation="article">
+     <title><ulink url="https://arxiv.org/pdf/1208.4179">Serializable Snapshot Isolation in PostgreSQL</ulink></title>
+     <authorgroup>
+      <author>
+       <firstname>D.</firstname>
+       <surname>Ports</surname>
+      </author>
+      <author>
+       <firstname>K.</firstname>
+       <surname>Grittner</surname>
+      </author>
+     </authorgroup>
+    </biblioset>
+    <confgroup>
+     <conftitle>VLDB Conference</conftitle>
+     <confdates>August 2012</confdates>
+     <address>Istanbul, Turkey</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="berenson95">
+    <biblioset relation="article">
+     <title><ulink url="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">A Critique of ANSI SQL Isolation Levels</ulink></title>
+     <authorgroup>
+      <author>
+       <firstname>H.</firstname>
+       <surname>Berenson</surname>
+      </author>
+      <author>
+       <firstname>P.</firstname>
+       <surname>Bernstein</surname>
+      </author>
+      <author>
+       <firstname>J.</firstname>
+       <surname>Gray</surname>
+      </author>
+      <author>
+       <firstname>J.</firstname>
+       <surname>Melton</surname>
+      </author>
+      <author>
+       <firstname>E.</firstname>
+       <surname>O'Neil</surname>
+      </author>
+      <author>
+       <firstname>P.</firstname>
+       <surname>O'Neil</surname>
+      </author>
+     </authorgroup>
+    </biblioset>
+    <confgroup>
+     <conftitle>ACM-SIGMOD Conference on Management of Data</conftitle>
+     <confdates>June 1995</confdates>
+     <address>San Jose, California</address>
+    </confgroup>
+   </biblioentry>
 
    <biblioentry id="olson93">
     <title>Partial indexing in POSTGRES: research project</title>
@@ -275,7 +330,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="rowe87">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M87-13.pdf">The <productname>POSTGRES</productname>
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M87-13.pdf">The <productname>POSTGRES</productname>
     data model</ulink></title>
     <authorgroup>
      <author>
@@ -297,7 +352,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="seshadri95">
    <biblioset relation="article">
-    <title><ulink url="http://citeseer.ist.psu.edu/seshadri95generalized.html">Generalized
+    <title><ulink url="https://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.40.5740">Generalized
     Partial Indexes</ulink></title>
     <authorgroup>
      <author>
@@ -312,7 +367,7 @@ ssimkovi@ag.or.at
    </biblioset>
     <confgroup>
      <conftitle>Eleventh International Conference on Data Engineering</conftitle>
-     <confdates>6-10 March 1995</confdates>
+     <confdates>6&ndash;10 March 1995</confdates>
      <address>Taipeh, Taiwan</address>
     </confgroup>
     <pubsnumber>Cat. No.95CH35724</pubsnumber>
@@ -321,12 +376,12 @@ ssimkovi@ag.or.at
      <address>Los Alamitos, California</address>
     </publisher>
     <pubdate>1995</pubdate>
-    <pagenums>420-7</pagenums>
+    <pagenums>420&ndash;7</pagenums>
    </biblioentry>
 
    <biblioentry id="ston86">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M85-95.pdf">The
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M85-95.pdf">The
     design of <productname>POSTGRES</productname></ulink></title>
     <authorgroup>
      <author>
@@ -373,7 +428,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="ston87b">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M87-06.pdf">The
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M87-06.pdf">The
     design of the <productname>POSTGRES</productname> storage
     system</ulink></title>
     <authorgroup>
@@ -392,7 +447,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="ston89">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M89-82.pdf">A
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M89-82.pdf">A
     commentary on the <productname>POSTGRES</productname> rules
     system</ulink></title>
     <authorgroup>
@@ -418,7 +473,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="ston89b">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M89-17.pdf">The
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M89-17.pdf">The
     case for partial indexes</ulink></title>
     <authorgroup>
      <author>
@@ -430,13 +485,13 @@ ssimkovi@ag.or.at
    <biblioset relation="journal">
     <title>SIGMOD Record 18(4)</title>
     <date>Dec. 1989</date>
-    <pagenums>4-11</pagenums>
+    <pagenums>4&ndash;11</pagenums>
    </biblioset>
    </biblioentry>
 
    <biblioentry id="ston90a">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M90-34.pdf">The
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M90-34.pdf">The
     implementation of <productname>POSTGRES</productname></ulink></title>
     <authorgroup>
      <author>
@@ -464,7 +519,7 @@ ssimkovi@ag.or.at
 
    <biblioentry id="ston90b">
    <biblioset relation="article">
-    <title><ulink url="http://db.cs.berkeley.edu/papers/ERL-M90-36.pdf">On
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M90-36.pdf">On
     Rules, Procedures, Caching and Views in Database Systems</ulink></title>
     <authorgroup>
      <author>

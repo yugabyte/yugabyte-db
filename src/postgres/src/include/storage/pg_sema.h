@@ -10,7 +10,7 @@
  * be provided by each port.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/pg_sema.h
@@ -41,7 +41,7 @@ typedef HANDLE PGSemaphore;
 extern Size PGSemaphoreShmemSize(int maxSemas);
 
 /* Module initialization (called during postmaster start or shmem reinit) */
-extern void PGReserveSemaphores(int maxSemas, int port);
+extern void PGReserveSemaphores(int maxSemas);
 
 /* Allocate a PGSemaphore structure with initial count 1 */
 extern PGSemaphore PGSemaphoreCreate(void);

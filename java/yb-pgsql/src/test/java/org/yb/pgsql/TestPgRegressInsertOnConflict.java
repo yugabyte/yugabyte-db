@@ -12,7 +12,6 @@
 //
 package org.yb.pgsql;
 
-import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -30,15 +29,5 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
   @Test
   public void schedule() throws Exception {
     runPgRegressTest("yb_insert_on_conflict_schedule");
-  }
-
-  /* YB: copied from pg15 */
-  protected static void appendToYsqlPgConf(Map<String, String> flagMap, String value) {
-    final String flagName = "ysql_pg_conf_csv";
-    if (flagMap.containsKey(flagName)) {
-      flagMap.put(flagName, flagMap.get(flagName) + "," + value);
-    } else {
-      flagMap.put(flagName, value);
-    }
   }
 }

@@ -20,6 +20,15 @@ public class TestPgLocale extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgLocale.class);
 
   // Translations included with Postgres (src/postgres/src/backend/po/*.po)
+  /*
+   * pg15 note: Postgres' Polish and Turkish translations
+   * - src/backend/po/pl.po
+   * - src/backend/po/tr.po
+   * are not tagged REL_15_2 in the Postgres source code repository, so they were removed during
+   * pg11 -> pg15 update. Because of that respective language tests were failing.
+   * Commenting out those tests for now, if those translation are added back in future we will
+   * uncomment them.
+   */
   private static final Map<String,String> LC_LOCAL_MSGS = ImmutableMap.<String,String>builder()
     .put("de_DE.UTF-8", "FEHLER: Relation \u00bbnon_existing_relation\u00ab existiert nicht")
     .put("en_US.UTF-8", "ERROR: relation \"non_existing_relation\" does not exist")
@@ -32,13 +41,13 @@ public class TestPgLocale extends BasePgSQLTest {
     .put("ko_KR.UTF-8",
          "\uc624\ub958: \"non_existing_relation\" " +
          "\uc774\ub984\uc758 \ub9b4\ub808\uc774\uc158(relation)\uc774 \uc5c6\uc2b5\ub2c8\ub2e4")
-    .put("pl_PL.UTF-8", "B\u0141\u0104D: relacja \"non_existing_relation\" nie istnieje")
+    // .put("pl_PL.UTF-8", "B\u0141\u0104D: relacja \"non_existing_relation\" nie istnieje")
     .put("ru_RU.UTF-8",
          "\u041e\u0428\u0418\u0411\u041a\u0410: " +
          "\u043e\u0442\u043d\u043e\u0448\u0435\u043d\u0438\u0435 \"non_existing_relation\" " +
          "\u043d\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442")
     .put("sv_SE.UTF-8", "FEL: relationen \"non_existing_relation\" existerar inte")
-    .put("tr_TR.UTF-8", "HATA: \"non_existing_relation\" nesnesi mevcut de\u011fil")
+    // .put("tr_TR.UTF-8", "HATA: \"non_existing_relation\" nesnesi mevcut de\u011fil")
     .put("zh_CN.UTF-8", "\u9519\u8bef: \u5173\u7cfb \"non_existing_relation\" \u4e0d\u5b58\u5728")
     .build();
   private static final Map<String,String> LC_REMOTE_MSGS = ImmutableMap.<String,String>builder()
@@ -51,12 +60,12 @@ public class TestPgLocale extends BasePgSQLTest {
          "ERROR: 0 \u306b\u3088\u308b\u9664\u7b97\u304c\u884c\u308f\u308c\u307e\u3057\u305f")
     .put("ko_KR.UTF-8",
          "\uc624\ub958: 0\uc73c\ub85c\ub294 \ub098\ub20c\uc218 \uc5c6\uc2b5\ub2c8\ub2e4.")
-    .put("pl_PL.UTF-8", "B\u0141\u0104D: dzielenie przez zero")
+    // .put("pl_PL.UTF-8", "B\u0141\u0104D: dzielenie przez zero")
     .put("ru_RU.UTF-8",
          "\u041e\u0428\u0418\u0411\u041a\u0410: " +
          "\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u043d\u0430 \u043d\u043e\u043b\u044c")
     .put("sv_SE.UTF-8", "FEL: division med noll")
-    .put("tr_TR.UTF-8", "HATA: s\u0131f\u0131rla b\u00f6l\u00fcm")
+    // .put("tr_TR.UTF-8", "HATA: s\u0131f\u0131rla b\u00f6l\u00fcm")
     .put("zh_CN.UTF-8", "\u9519\u8bef: \u9664\u4ee5\u96f6")
     .build();
   private static final String NO_LOCALES_MSG =

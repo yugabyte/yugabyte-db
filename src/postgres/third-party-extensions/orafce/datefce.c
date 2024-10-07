@@ -1,6 +1,16 @@
 #include "postgres.h"
 #include "access/xact.h"
+
+#if PG_VERSION_NUM >=  160000
+
+#include "utils/guc_hooks.h"
+
+#else
+
 #include "commands/variable.h"
+
+#endif
+
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
@@ -273,17 +283,17 @@ static const int month_days[] = {
 static int
 days_of_month(int y, int m)
 {
-	int	days;
+	int	ndays;
 
 	if (m < 0 || 12 < m)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date out of range")));
 
-	days = month_days[m - 1];
+	ndays = month_days[m - 1];
 	if (m == 2 && (y % 400 == 0 || (y % 4 == 0 && y % 100 != 0)))
-		days += 1;	/* February 29 in leap year */
-	return days;
+		ndays += 1;	/* February 29 in leap year */
+	return ndays;
 }
 
 /********************************************************************
@@ -322,8 +332,7 @@ months_between(PG_FUNCTION_ARGS)
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
 
-	PG_RETURN_NUMERIC(
-		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
+	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
 }
 
 /********************************************************************
@@ -347,13 +356,13 @@ add_months(PG_FUNCTION_ARGS)
 	DateADT day = PG_GETARG_DATEADT(0);
 	int n = PG_GETARG_INT32(1);
 	int y, m, d;
-	int	days;
+	int	ndays;
 	DateADT result;
 	div_t	v;
-	bool	last_day;
+	bool	is_last_day;
 
 	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-	last_day = (d == days_of_month(y, m));
+	is_last_day = (d == days_of_month(y, m));
 
 	v = div(y * 12 + m - 1 + n, 12);
 	y = v.quot;
@@ -361,9 +370,9 @@ add_months(PG_FUNCTION_ARGS)
 		y += 1;	/* offset because of year 0 */
 	m = v.rem + 1;
 
-	days = days_of_month(y, m);
-	if (last_day || d > days)
-		d = days;
+	ndays = days_of_month(y, m);
+	if (is_last_day || d > ndays)
+		d = ndays;
 
 	result = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
 
@@ -382,8 +391,8 @@ add_months(PG_FUNCTION_ARGS)
 static DateADT
 iso_year (int y, int m, int d)
 {
-	DateADT result, result2, day;
-	int off;
+	DateADT		result, day;
+	int			off;
 
 	result = DATE2J(y,1,1);
 	day = DATE2J(y,m,d);
@@ -399,12 +408,14 @@ iso_year (int y, int m, int d)
 
 	if (((day - result) / 7 + 1) > 52)
 	{
-	result2 = DATE2J(y+1,1,1);
-	off = 4 - J2DAY(result2);
-	result2 += off + ((off >= 0) ? - 3: + 4);  /* to monday */
+		DateADT		result2;
 
-	if (day >= result2)
-		return result2;
+		result2 = DATE2J(y+1,1,1);
+		off = 4 - J2DAY(result2);
+		result2 += off + ((off >= 0) ? - 3: + 4);  /* to monday */
+
+		if (day >= result2)
+			return result2;
 	}
 
 	return result;
@@ -503,13 +514,13 @@ _ora_date_round(DateADT day, int f)
 				else if (iy1 <= (day1) && day >= iy1 - 3)
 				{
 					DateADT cmp = iy1 - (iy1 < day1?0:1);
-					int d = J2DAY(day1);
+					int d2 = J2DAY(day1);
 					/* some exceptions */
-					if ((day >= cmp - 2) && (!(d == 3 && overl)))
+					if ((day >= cmp - 2) && (!(d2 == 3 && overl)))
 					{
 						/* if year don't starts in thursday */
-						if ((d < 4 && J2DAY(day) != 5 && !isSaturday)
-							||(d == 2 && isSaturday && overl))
+						if ((d2 < 4 && J2DAY(day) != 5 && !isSaturday)
+							||(d2 == 2 && isSaturday && overl))
 						{
 							result = iy2;
 						}
@@ -537,8 +548,8 @@ _ora_date_round(DateADT day, int f)
 			if (isoyear > (DATE2J(y+1,1,1)-1))
 				if (day > isoyear - 7)
 				{
-					int d = J2DAY(day);
-					result -= (d == 0 || d > 4?7:0);
+					int _d = J2DAY(day);
+					result -= (_d == 0 || _d > 4?7:0);
 				}
 		}
 		break;
@@ -582,6 +593,9 @@ ora_to_date(PG_FUNCTION_ARGS)
 {
 	text *date_txt = PG_GETARG_TEXT_PP(0);
 	Timestamp result;
+
+	if (VARSIZE_ANY_EXHDR(date_txt) == 0)
+		PG_RETURN_NULL();
 
 	if(nls_date_format && strlen(nls_date_format))
 	{

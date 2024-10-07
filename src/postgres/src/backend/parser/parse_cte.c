@@ -3,7 +3,7 @@
  * parse_cte.c
  *	  handle CTEs (common table expressions) in parser
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,9 +18,13 @@
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/analyze.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_collate.h"
 #include "parser/parse_cte.h"
+#include "parser/parse_expr.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/typcache.h"
 
 
 /* Enumeration of contexts in which a self-reference is disallowed */
@@ -122,7 +126,14 @@ transformWithClause(ParseState *pstate, WithClause *withClause)
 		CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
 		ListCell   *rest;
 
-		for_each_cell(rest, lnext(lc))
+		/* MERGE is allowed by parser, but unimplemented. Reject for now */
+		if (IsA(cte->ctequery, MergeStmt))
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("MERGE not supported in WITH query"),
+					parser_errposition(pstate, cte->location));
+
+		for_each_cell(rest, withClause->ctes, lnext(withClause->ctes, lc))
 		{
 			CommonTableExpr *cte2 = (CommonTableExpr *) lfirst(rest);
 
@@ -237,10 +248,76 @@ static void
 analyzeCTE(ParseState *pstate, CommonTableExpr *cte)
 {
 	Query	   *query;
+	CTESearchClause *search_clause = cte->search_clause;
+	CTECycleClause *cycle_clause = cte->cycle_clause;
 
 	/* Analysis not done already */
 	Assert(!IsA(cte->ctequery, Query));
 
+	/*
+	 * Before analyzing the CTE's query, we'd better identify the data type of
+	 * the cycle mark column if any, since the query could refer to that.
+	 * Other validity checks on the cycle clause will be done afterwards.
+	 */
+	if (cycle_clause)
+	{
+		TypeCacheEntry *typentry;
+		Oid			op;
+
+		cycle_clause->cycle_mark_value =
+			transformExpr(pstate, cycle_clause->cycle_mark_value,
+						  EXPR_KIND_CYCLE_MARK);
+		cycle_clause->cycle_mark_default =
+			transformExpr(pstate, cycle_clause->cycle_mark_default,
+						  EXPR_KIND_CYCLE_MARK);
+
+		cycle_clause->cycle_mark_type =
+			select_common_type(pstate,
+							   list_make2(cycle_clause->cycle_mark_value,
+										  cycle_clause->cycle_mark_default),
+							   "CYCLE", NULL);
+		cycle_clause->cycle_mark_value =
+			coerce_to_common_type(pstate,
+								  cycle_clause->cycle_mark_value,
+								  cycle_clause->cycle_mark_type,
+								  "CYCLE/SET/TO");
+		cycle_clause->cycle_mark_default =
+			coerce_to_common_type(pstate,
+								  cycle_clause->cycle_mark_default,
+								  cycle_clause->cycle_mark_type,
+								  "CYCLE/SET/DEFAULT");
+
+		cycle_clause->cycle_mark_typmod =
+			select_common_typmod(pstate,
+								 list_make2(cycle_clause->cycle_mark_value,
+											cycle_clause->cycle_mark_default),
+								 cycle_clause->cycle_mark_type);
+
+		cycle_clause->cycle_mark_collation =
+			select_common_collation(pstate,
+									list_make2(cycle_clause->cycle_mark_value,
+											   cycle_clause->cycle_mark_default),
+									true);
+
+		/* Might as well look up the relevant <> operator while we are at it */
+		typentry = lookup_type_cache(cycle_clause->cycle_mark_type,
+									 TYPECACHE_EQ_OPR);
+		if (!OidIsValid(typentry->eq_opr))
+			ereport(ERROR,
+					errcode(ERRCODE_UNDEFINED_FUNCTION),
+					errmsg("could not identify an equality operator for type %s",
+						   format_type_be(cycle_clause->cycle_mark_type)));
+		op = get_negator(typentry->eq_opr);
+		if (!OidIsValid(op))
+			ereport(ERROR,
+					errcode(ERRCODE_UNDEFINED_FUNCTION),
+					errmsg("could not identify an inequality operator for type %s",
+						   format_type_be(cycle_clause->cycle_mark_type)));
+
+		cycle_clause->cycle_mark_neop = op;
+	}
+
+	/* Now we can get on with analyzing the CTE's query */
 	query = parse_sub_analyze(cte->ctequery, pstate, cte, false, true);
 	cte->ctequery = (Node *) query;
 
@@ -327,12 +404,159 @@ analyzeCTE(ParseState *pstate, CommonTableExpr *cte)
 								get_collation_name(exprCollation(texpr))),
 						 errhint("Use the COLLATE clause to set the collation of the non-recursive term."),
 						 parser_errposition(pstate, exprLocation(texpr))));
-			lctyp = lnext(lctyp);
-			lctypmod = lnext(lctypmod);
-			lccoll = lnext(lccoll);
+			lctyp = lnext(cte->ctecoltypes, lctyp);
+			lctypmod = lnext(cte->ctecoltypmods, lctypmod);
+			lccoll = lnext(cte->ctecolcollations, lccoll);
 		}
 		if (lctyp != NULL || lctypmod != NULL || lccoll != NULL)	/* shouldn't happen */
 			elog(ERROR, "wrong number of output columns in WITH");
+	}
+
+	/*
+	 * Now make validity checks on the SEARCH and CYCLE clauses, if present.
+	 */
+	if (search_clause || cycle_clause)
+	{
+		Query	   *ctequery;
+		SetOperationStmt *sos;
+
+		if (!cte->cterecursive)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("WITH query is not recursive"),
+					 parser_errposition(pstate, cte->location)));
+
+		/*
+		 * SQL requires a WITH list element (CTE) to be "expandable" in order
+		 * to allow a search or cycle clause.  That is a stronger requirement
+		 * than just being recursive.  It basically means the query expression
+		 * looks like
+		 *
+		 * non-recursive query UNION [ALL] recursive query
+		 *
+		 * and that the recursive query is not itself a set operation.
+		 *
+		 * As of this writing, most of these criteria are already satisfied by
+		 * all recursive CTEs allowed by PostgreSQL.  In the future, if
+		 * further variants recursive CTEs are accepted, there might be
+		 * further checks required here to determine what is "expandable".
+		 */
+
+		ctequery = castNode(Query, cte->ctequery);
+		Assert(ctequery->setOperations);
+		sos = castNode(SetOperationStmt, ctequery->setOperations);
+
+		/*
+		 * This left side check is not required for expandability, but
+		 * rewriteSearchAndCycle() doesn't currently have support for it, so
+		 * we catch it here.
+		 */
+		if (!IsA(sos->larg, RangeTblRef))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("with a SEARCH or CYCLE clause, the left side of the UNION must be a SELECT")));
+
+		if (!IsA(sos->rarg, RangeTblRef))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("with a SEARCH or CYCLE clause, the right side of the UNION must be a SELECT")));
+	}
+
+	if (search_clause)
+	{
+		ListCell   *lc;
+		List	   *seen = NIL;
+
+		foreach(lc, search_clause->search_col_list)
+		{
+			String	   *colname = lfirst_node(String, lc);
+
+			if (!list_member(cte->ctecolnames, colname))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("search column \"%s\" not in WITH query column list",
+								strVal(colname)),
+						 parser_errposition(pstate, search_clause->location)));
+
+			if (list_member(seen, colname))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("search column \"%s\" specified more than once",
+								strVal(colname)),
+						 parser_errposition(pstate, search_clause->location)));
+			seen = lappend(seen, colname);
+		}
+
+		if (list_member(cte->ctecolnames, makeString(search_clause->search_seq_column)))
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("search sequence column name \"%s\" already used in WITH query column list",
+						   search_clause->search_seq_column),
+					parser_errposition(pstate, search_clause->location));
+	}
+
+	if (cycle_clause)
+	{
+		ListCell   *lc;
+		List	   *seen = NIL;
+
+		foreach(lc, cycle_clause->cycle_col_list)
+		{
+			String	   *colname = lfirst_node(String, lc);
+
+			if (!list_member(cte->ctecolnames, colname))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cycle column \"%s\" not in WITH query column list",
+								strVal(colname)),
+						 parser_errposition(pstate, cycle_clause->location)));
+
+			if (list_member(seen, colname))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("cycle column \"%s\" specified more than once",
+								strVal(colname)),
+						 parser_errposition(pstate, cycle_clause->location)));
+			seen = lappend(seen, colname);
+		}
+
+		if (list_member(cte->ctecolnames, makeString(cycle_clause->cycle_mark_column)))
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("cycle mark column name \"%s\" already used in WITH query column list",
+						   cycle_clause->cycle_mark_column),
+					parser_errposition(pstate, cycle_clause->location));
+
+		if (list_member(cte->ctecolnames, makeString(cycle_clause->cycle_path_column)))
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("cycle path column name \"%s\" already used in WITH query column list",
+						   cycle_clause->cycle_path_column),
+					parser_errposition(pstate, cycle_clause->location));
+
+		if (strcmp(cycle_clause->cycle_mark_column,
+				   cycle_clause->cycle_path_column) == 0)
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("cycle mark column name and cycle path column name are the same"),
+					parser_errposition(pstate, cycle_clause->location));
+	}
+
+	if (search_clause && cycle_clause)
+	{
+		if (strcmp(search_clause->search_seq_column,
+				   cycle_clause->cycle_mark_column) == 0)
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("search sequence column name and cycle mark column name are the same"),
+					parser_errposition(pstate, search_clause->location));
+
+		if (strcmp(search_clause->search_seq_column,
+				   cycle_clause->cycle_path_column) == 0)
+			ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("search sequence column name and cycle path column name are the same"),
+					parser_errposition(pstate, search_clause->location));
 	}
 }
 
@@ -537,15 +761,15 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 				 * In the non-RECURSIVE case, query names are visible to the
 				 * WITH items after them and to the main query.
 				 */
-				ListCell   *cell1;
-
 				cstate->innerwiths = lcons(NIL, cstate->innerwiths);
-				cell1 = list_head(cstate->innerwiths);
 				foreach(lc, stmt->withClause->ctes)
 				{
 					CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+					ListCell   *cell1;
 
 					(void) makeDependencyGraphWalker(cte->ctequery, cstate);
+					/* note that recursion could mutate innerwiths list */
+					cell1 = list_head(cstate->innerwiths);
 					lfirst(cell1) = lappend((List *) lfirst(cell1), cte);
 				}
 				(void) raw_expression_tree_walker(node,
@@ -813,15 +1037,15 @@ checkWellFormedRecursionWalker(Node *node, CteState *cstate)
 				 * In the non-RECURSIVE case, query names are visible to the
 				 * WITH items after them and to the main query.
 				 */
-				ListCell   *cell1;
-
 				cstate->innerwiths = lcons(NIL, cstate->innerwiths);
-				cell1 = list_head(cstate->innerwiths);
 				foreach(lc, stmt->withClause->ctes)
 				{
 					CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+					ListCell   *cell1;
 
 					(void) checkWellFormedRecursionWalker(cte->ctequery, cstate);
+					/* note that recursion could mutate innerwiths list */
+					cell1 = list_head(cstate->innerwiths);
 					lfirst(cell1) = lappend((List *) lfirst(cell1), cte);
 				}
 				checkWellFormedSelectStmt(stmt, cstate);

@@ -33,7 +33,7 @@ SELECT * FROM root_list_parent;
 
 -- Retry adding a column after error.
 ALTER TABLE root_list_parent ADD COLUMN foo text not null; -- fails due to not null constraint
-ERROR:  column "foo" contains null values
+ERROR:  column "foo" of relation "child_partition" contains null values
 ALTER TABLE root_list_parent ADD COLUMN foo text not null DEFAULT 'abc'; -- passes
 -- Rename a column belonging to the parent table.
 ALTER TABLE root_list_parent RENAME COLUMN list_part_key TO list_part_key_renamed;
