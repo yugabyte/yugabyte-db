@@ -18,6 +18,7 @@
 
 #include "io/helio_bson_core.h"
 #include "commands/commands_common.h"
+#include "utils/error_utils.h"
 #include "utils/helio_errors.h"
 #include "aggregation/bson_query.h"
 #include "metadata/metadata_cache.h"
@@ -209,6 +210,22 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 	if (errorData->sqlerrcode == ERRCODE_READ_ONLY_SQL_TRANSACTION)
 	{
 		ThrowErrorData(errorData);
+	}
+
+	if (errorData->sqlerrcode == ERRCODE_INTERNAL_ERROR)
+	{
+		if (errorData->message != NULL && strcmp(errorData->message, "Lost Path") == 0)
+		{
+			/*
+			 * We need to throw this updated error and retry at the gateway
+			 */
+			errorData->sqlerrcode = ERRCODE_INDEX_LOSTPATH;
+			errorData->message =
+				"An invalid/lost index path for the write operation was detected."
+				" Please retry the operation.";
+			ereport(LOG, (errmsg("%s", errorData->message)));
+			ThrowErrorData(errorData);
+		}
 	}
 
 	WriteError *writeError = palloc0(sizeof(WriteError));

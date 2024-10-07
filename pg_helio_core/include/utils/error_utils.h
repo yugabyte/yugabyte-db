@@ -18,6 +18,13 @@
 #define EreportCodeIsHelioError(helioErrorEreportCode) \
 	(PGUNSIXBIT(helioErrorEreportCode) == 'M')
 
+/*
+ * This is an PG aligned error code for Internal errors category to represent
+ * that write operation was detected with a lost path in the index.
+ * For more info see rum/src/rumbtree.c
+ */
+#define ERRCODE_INDEX_LOSTPATH MAKE_SQLSTATE('X', 'X', '0', '0', '3')
+
 /* Helper method that gets the error data from the current
  * memory context and flushes the error state. */
 static inline ErrorData *
