@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.SwamperHelper.getScrapeIntervalSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
@@ -294,12 +295,15 @@ public class UniverseInfoHandler {
   private JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {
     List<MetricQueryResponse.Entry> values = new ArrayList<>();
     boolean queryError = false;
+    long scrapeInterval = getScrapeIntervalSeconds(runtimeConfigFactory.staticApplicationConf());
     try {
       values =
           metricQueryHelper.queryDirect(
               "max_over_time(up{node_prefix=\""
                   + universe.getUniverseDetails().nodePrefix
-                  + "\"}[30s])");
+                  + "\"}["
+                  + (scrapeInterval * 2)
+                  + "s])");
     } catch (RuntimeException re) {
       queryError = true;
       log.debug(
