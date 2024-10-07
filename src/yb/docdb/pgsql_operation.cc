@@ -57,6 +57,7 @@
 #include "yb/rpc/sidecars.h"
 
 #include "yb/util/algorithm_util.h"
+#include "yb/util/debug.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -101,16 +102,14 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
-#ifndef NDEBUG
 // Disable packed row by default in debug builds.
-DEFINE_RUNTIME_bool(ysql_enable_packed_row, false,
-#else
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly, false, true,
-#endif
-                    "Whether packed row is enabled for YSQL.");
+// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
+constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly,
+                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+                         "Whether packed row is enabled for YSQL.");
 
-DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, false,
+DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(
@@ -1850,7 +1849,9 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   // Variables for the random numbers generator
   YbgPrepareMemoryContext();
   YbgReservoirState rstate = NULL;
-  YbgSamplerCreate(sampling_state.rstate_w(), sampling_state.rand_state(), &rstate);
+  YbgSamplerCreate(
+      sampling_state.rstate_w(), sampling_state.rand_state().s0(), sampling_state.rand_state().s1(),
+      &rstate);
   // Buffer to hold selected row ids from the current page
   std::unique_ptr<QLValuePB[]> reservoir = std::make_unique<QLValuePB[]>(targrows);
   // Number of rows to scan for the current page.
@@ -1930,11 +1931,14 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   new_sampling_state->set_targrows(targrows);
   new_sampling_state->set_samplerows(samplerows);
   new_sampling_state->set_rowstoskip(rowstoskip);
-  uint64_t randstate = 0;
+  uint64_t randstate_s0 = 0;
+  uint64_t randstate_s1 = 0;
   double rstate_w = 0;
-  YbgSamplerGetState(rstate, &rstate_w, &randstate);
+  YbgSamplerGetState(rstate, &rstate_w, &randstate_s0, &randstate_s1);
   new_sampling_state->set_rstate_w(rstate_w);
-  new_sampling_state->set_rand_state(randstate);
+  auto* pg_prng_state = new_sampling_state->mutable_rand_state();
+  pg_prng_state->set_s0(randstate_s0);
+  pg_prng_state->set_s1(randstate_s1);
   YbgDeleteMemoryContext();
 
   // Return paging state if scan has not been completed
@@ -1956,7 +1960,6 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
     HybridTime* restart_read_ht, bool* has_paging_state) {
   // Build the vectorann and then make an index_doc_read_context on the vectorann
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  auto dims = doc_read_context.vector_idx_options().dimensions();
 
   if (!request_.vector_idx_options().has_vector()) {
     return STATUS(InvalidArgument, "Query vector not provided");
@@ -1966,16 +1969,11 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
 
   auto ysql_query_vec = pointer_cast<const vectorindex::YSQLVector*>(query_vec.data());
 
-  SCHECK_EQ(ysql_query_vec->dim, dims, InvalidArgument, "Vector dimensions mismatch");
-
   auto query_vec_ref = VERIFY_RESULT(
       VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
 
-  if (dims != ysql_query_vec->dim) {
-    return STATUS(InvalidArgument, "Vector dimensions mismatch");
-  }
   DummyANNFactory<FloatVector> ann_factory;
-  auto ann_store = ann_factory.Create(dims);
+  auto ann_store = ann_factory.Create(ysql_query_vec->dim);
 
   auto index_extraction_schema = Schema();
   std::vector<ColumnSchema> indexed_column_ids;
@@ -1987,6 +1985,11 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
   // Vector should be the first value after the key.
   auto vector_col_id =
       doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
+
+  if (request_.vector_idx_options().has_vector_column_id()) {
+    vector_col_id = request_.vector_idx_options().vector_column_id();
+  }
+
   index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
 
   FilteringIterator table_iter(&table_iter_);
@@ -2013,7 +2016,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
           *pointer_cast<const vectorindex::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vec, doc_iter->GetRowKey());
+      ann_store->Add(vec, doc_iter->GetTupleId());
     }
   }
 

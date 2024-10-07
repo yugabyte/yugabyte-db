@@ -125,9 +125,10 @@ static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
 static void yb_ash_ExecutorFinish(QueryDesc *queryDesc);
 static void yb_ash_ExecutorEnd(QueryDesc *queryDesc);
 static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+								  bool readOnlyTree,
 								  ProcessUtilityContext context, ParamListInfo params,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
-								  char *completionTag);
+								  QueryCompletion *qc);
 
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
@@ -195,7 +196,9 @@ void
 YbAshInit(void)
 {
 	YbAshInstallHooks();
-	query_id_stack.top_index = -1;
+	/* Keep the default query id in the stack */
+	query_id_stack.top_index = 0;
+	query_id_stack.query_ids[0] = YBCGetQueryIdForCatalogRequests();
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 
@@ -242,7 +245,7 @@ yb_ash_cb_max_entries(void)
 static bool
 YbAshNestedQueryIdStackPush(uint64 query_id)
 {
-	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL)
+	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL - 1)
 	{
 		query_id_stack.query_ids[++query_id_stack.top_index] = query_id;
 		return true;
@@ -255,7 +258,7 @@ YbAshNestedQueryIdStackPush(uint64 query_id)
 }
 
 /*
- * Pop a query id from the stack
+ * Pop and return the top query id from the stack
  */
 static uint64
 YbAshNestedQueryIdStackPop(uint64 query_id)
@@ -270,9 +273,9 @@ YbAshNestedQueryIdStackPop(uint64 query_id)
 	 * When an extra ExecutorEnd is called during PortalCleanup,
 	 * we shouldn't pop the incorrect query_id from the stack.
 	 */
-	if (query_id_stack.top_index >= 0 &&
+	if (query_id_stack.top_index > 0 &&
 		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
-		return query_id_stack.query_ids[query_id_stack.top_index--];
+		return query_id_stack.query_ids[--query_id_stack.top_index];
 
 	return 0;
 }
@@ -305,8 +308,6 @@ YbAshShmemInit(void)
 	yb_ash = ShmemInitStruct("yb_ash_circular_buffer",
 							 YbAshShmemSize(),
 							 &found);
-
-	LWLockRegisterTranche(LWTRANCHE_YB_ASH_CIRCULAR_BUFFER, "yb_ash_circular_buffer");
 
 	if (!found)
 	{
@@ -424,9 +425,10 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 
 static void
 yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					  bool readOnlyTree,
 					  ProcessUtilityContext context, ParamListInfo params,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
-					  char *completionTag)
+					  QueryCompletion *qc)
 {
 	uint64		query_id;
 	bool		skip_nested_level;
@@ -458,12 +460,14 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
+								readOnlyTree,
 								context, params, queryEnv,
-								dest, completionTag);
+								dest, qc);
 		else
 			standard_ProcessUtility(pstmt, queryString,
+									readOnlyTree,
 									context, params, queryEnv,
-									dest, completionTag);
+									dest, qc);
 		if (!skip_nested_level)
 		{
 			--nested_level;
@@ -489,7 +493,7 @@ YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		if (YbAshNestedQueryIdStackPush(MyProc->yb_ash_metadata.query_id))
+		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 			MyProc->yb_ash_metadata.query_id = query_id;
@@ -516,8 +520,8 @@ YbAshResetQueryId(uint64 query_id)
 void
 YbAshSetMetadata(void)
 {
-	/* The stack must be empty at the start of a request */
-	Assert(query_id_stack.top_index == -1);
+	/* The stack should have the default query id at the start of a request */
+	Assert(query_id_stack.top_index == 0);
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
@@ -532,7 +536,7 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
-	query_id_stack.top_index = -1;
+	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -657,24 +661,6 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 
 	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
 											redacted_query_len, 0));
-}
-
-/*
- * Events such as ClientRead can take up a lot of space in the circular buffer
- * if there is an idle session. We don't want to include such wait events.
- * This list may increase in the future.
- */
-bool
-YbAshShouldIgnoreWaitEvent(uint32 wait_event_info)
-{
-	switch (wait_event_info)
-	{
-		case WAIT_EVENT_CLIENT_READ:
-			return true;
-		default:
-			return false;
-	}
-	return false;
 }
 
 static void
@@ -1244,11 +1230,9 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 	/* Time range is not there in the buffer */
 	if (start_time > buffer_max_time || end_time < buffer_min_time)
 	{
-		const char *message = (end_time < buffer_min_time) ?
-							   "ASH circular buffer has wrapped around, " \
-							   "Unable to fetch ASH data" :
-							   "No data available in ASH for the given time range";
-		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s; ", message);
+		AppendToDescription(description, (end_time < buffer_min_time) ?
+							"ASH circular buffer has wrapped around, unable to fetch ASH data;" :
+							"No data available in ASH for the given time range;");
 		return;
 	}
 

@@ -277,9 +277,9 @@ DROP TABLE table3;
 
 -- Explicitly specifying pg_default tablespace must not create a new tablegroup
 CREATE TABLE table1(a int);
-SELECT * FROM pg_yb_tablegroup;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
 CREATE TABLE table2(a int) TABLESPACE pg_default;
-SELECT * FROM pg_yb_tablegroup;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
 DROP TABLE table1;
 DROP TABLE table2;
 

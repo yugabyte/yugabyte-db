@@ -1320,5 +1320,7 @@ class ScopedReadOperation {
 bool IsSchemaVersionCompatible(
     uint32_t current_version, uint32_t request_version, bool compatible_with_previous_version);
 
+Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::string& dir);
+
 }  // namespace tablet
 }  // namespace yb

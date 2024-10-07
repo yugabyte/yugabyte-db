@@ -5,7 +5,7 @@
 #
 # NormalizationTest.txt is part of the Unicode Character Database.
 #
-# Copyright (c) 2000-2018, PostgreSQL Global Development Group
+# Copyright (c) 2000-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -30,7 +30,7 @@ print $OUTPUT <<HEADER;
  * norm_test_table.h
  *	  Test strings for Unicode normalization.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/common/unicode/norm_test_table.h
@@ -48,7 +48,7 @@ typedef struct
 {
 	int			linenum;
 	pg_wchar	input[50];
-	pg_wchar	output[50];
+	pg_wchar	output[4][50];
 } pg_unicode_test;
 
 /* test table */
@@ -56,7 +56,7 @@ HEADER
 print $OUTPUT
   "static const pg_unicode_test UnicodeNormalizationTests[] =\n{\n";
 
-# Helper routine to conver a space-separated list of Unicode characters to
+# Helper routine to convert a space-separated list of Unicode characters to
 # hexadecimal list format, suitable for outputting in a C array.
 sub codepoint_string_to_hex
 {
@@ -89,13 +89,17 @@ while (my $line = <$INPUT>)
 	my ($source, $nfc, $nfd, $nfkc, $nfkd) = split(';', $line);
 
 	my $source_utf8 = codepoint_string_to_hex($source);
+	my $nfc_utf8    = codepoint_string_to_hex($nfc);
+	my $nfd_utf8    = codepoint_string_to_hex($nfd);
 	my $nfkc_utf8   = codepoint_string_to_hex($nfkc);
+	my $nfkd_utf8   = codepoint_string_to_hex($nfkd);
 
-	print $OUTPUT "\t{ $linenum, { $source_utf8 }, { $nfkc_utf8 } },\n";
+	print $OUTPUT
+	  "\t{ $linenum, { $source_utf8 }, { { $nfc_utf8 }, { $nfd_utf8 }, { $nfkc_utf8 }, { $nfkd_utf8 } } },\n";
 }
 
 # Output terminator entry
-print $OUTPUT "\t{ 0, { 0 }, { 0 } }";
+print $OUTPUT "\t{ 0, { 0 }, { { 0 }, { 0 }, { 0 }, { 0 } } }";
 print $OUTPUT "\n};\n";
 
 close $OUTPUT;

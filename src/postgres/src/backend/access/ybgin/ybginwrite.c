@@ -113,9 +113,9 @@ doBindsForIdxWrite(YBCPgStatement stmt,
  */
 static int32
 ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
-				 Relation index, Datum value, bool isNull,
-				 Datum ybctid, uint64_t *backfilltime,
-				 bool isinsert)
+				Relation index, Datum value, bool isNull,
+				Datum ybctid, uint64_t *backfilltime,
+				bool isinsert)
 {
 	Datum	   *entries;
 	GinNullCategory *categories;
@@ -186,7 +186,7 @@ ybginTupleDelete(GinState *ginstate, OffsetNumber attnum,
  * similar ybcinbuildCallback.
  */
 static void
-ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
+ybginBuildCallback(Relation index, Datum ybctid, Datum *values,
 				   bool *isnull, bool tupleIsAlive, void *state)
 {
 	YbginBuildState *buildstate = (YbginBuildState *) state;
@@ -199,7 +199,7 @@ ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
 	for (i = 0; i < ginstate->origTupdesc->natts; i++)
 		nentries += ybginTupleInsert(ginstate, (OffsetNumber) (i + 1),
 									 index, values[i], isnull[i],
-									 heapTuple->t_ybctid,
+									 ybctid,
 									 buildstate->backfilltime);
 
 	buildstate->indtuples += nentries;
@@ -215,6 +215,7 @@ ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
  * - don't deal with postgres storage (e.g. buffers, pages, tmpCtx)
  * - additionally pass through backfill parameters
  * - name memory context Ybgin
+ * - use yb_table_index_build_scan, not table_index_build_scan
  */
 static IndexBuildResult *
 ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
@@ -244,9 +245,10 @@ ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 	 * Do the heap scan.
 	 */
 	if (!bfinfo)
-		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-									   ybginBuildCallback, (void *) &buildstate,
-									   NULL /* HeapScanDesc */);
+		reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+											  ybginBuildCallback,
+											  (void *) &buildstate,
+											  NULL /* HeapScanDesc */);
 	else
 		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
 											   ybginBuildCallback,
@@ -352,8 +354,7 @@ ybgininsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			Relation heap, IndexUniqueCheck checkUnique,
 			struct IndexInfo *indexInfo, bool shared_insert)
 {
-	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
-			   true /* isinsert */);
+	ybginWrite(index, values, isnull, ybctid, heap, indexInfo, true /* isinsert */);
 
 	/* index cannot be unique */
 	return false;

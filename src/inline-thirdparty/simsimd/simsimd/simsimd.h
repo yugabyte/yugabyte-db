@@ -87,8 +87,8 @@
 #define SIMSIMD_H
 
 #define SIMSIMD_VERSION_MAJOR 5
-#define SIMSIMD_VERSION_MINOR 1
-#define SIMSIMD_VERSION_PATCH 0
+#define SIMSIMD_VERSION_MINOR 4
+#define SIMSIMD_VERSION_PATCH 3
 
 /**
  *  @brief  Removes compile-time dispatching, and replaces it with runtime dispatching.
@@ -100,14 +100,6 @@
 #define SIMSIMD_DYNAMIC_DISPATCH (0) // true or false
 #endif
 
-/*  When building on Arm, we need to undefine the `__ARM_ARCH` macro, as every push-options
- *  section will be trying to redefine those, resulting in compilation warnings.
- */
-#if defined(__ARM_ARCH)
-#define SIMSIMD_DEFAULT_TARGET_ARM __ARM_ARCH
-#undef __ARM_ARCH
-#endif
-
 #include "binary.h"      // Hamming, Jaccard
 #include "curved.h"      // Mahalanobis, Bilinear Forms
 #include "dot.h"         // Inner (dot) product, and its conjugate
@@ -115,11 +107,6 @@
 #include "probability.h" // Kullback-Leibler, Jensen–Shannon
 #include "sparse.h"      // Intersect
 #include "spatial.h"     // L2, Cosine
-
-#if defined(SIMSIMD_DEFAULT_TARGET_ARM)
-#define __ARM_ARCH SIMSIMD_DEFAULT_TARGET_ARM
-#undef SIMSIMD_DEFAULT_TARGET_ARM
-#endif
 
 // On Apple Silicon, `mrs` is not allowed in user-space, so we need to use the `sysctl` API.
 #if defined(SIMSIMD_DEFINED_APPLE)
@@ -194,6 +181,8 @@ typedef enum {
     simsimd_cap_sve_f16_k = 1 << 25,   ///< ARM SVE `f16` capability
     simsimd_cap_sve_bf16_k = 1 << 26,  ///< ARM SVE `bf16` capability
     simsimd_cap_sve_i8_k = 1 << 27,    ///< ARM SVE `i8` capability
+    simsimd_cap_sve2_k = 1 << 28,      ///< ARM SVE2 capability
+    simsimd_cap_sve2p1_k = 1 << 29,    ///< ARM SVE2p1 capability
 
 } simsimd_capability_t;
 
@@ -360,18 +349,16 @@ SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities_x86(void) {
 
 #if SIMSIMD_TARGET_ARM
 
-#if defined(__ARM_ARCH)
-#define SIMSIMD_DEFAULT_TARGET_ARM __ARM_ARCH
-#undef __ARM_ARCH
-#endif
-
 /*  Compiling the next section one may get: selected processor does not support system register name 'id_aa64zfr0_el1'.
  *  Suppressing assembler errors is very complicated, so when dealing with older ARM CPUs it's simpler to compile this
  *  function targeting newer ones.
  */
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.5-a+sve")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.5-a+sve"))), apply_to = function)
+
+#endif
 
 /**
  *  @brief  Function to determine the SIMD capabilities of the current 64-bit Arm machine at @b runtime.
@@ -455,8 +442,8 @@ SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities_arm(void) {
     //  - 0b0001: SVE2 is implemented
     //  - 0b0010: SVE2.1 is implemented
     // This value must match the existing indicator obtained from ID_AA64PFR0_EL1:
-    //    unsigned supports_sve = ((id_aa64zfr0_el1) & 0xF) >= 1;
-    //    unsigned supports_sve2 = ((id_aa64zfr0_el1) & 0xF) >= 2;
+    unsigned supports_sve2 = ((id_aa64zfr0_el1) & 0xF) >= 1;
+    unsigned supports_sve2p1 = ((id_aa64zfr0_el1) & 0xF) >= 2;
     unsigned supports_neon = 1; // NEON is always supported
 
     return (simsimd_capability_t)(                                                                    //
@@ -468,19 +455,18 @@ SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities_arm(void) {
         (simsimd_cap_sve_f16_k * (supports_sve && supports_fp16)) |                                   //
         (simsimd_cap_sve_bf16_k * (supports_sve && supports_sve_bf16)) |                              //
         (simsimd_cap_sve_i8_k * (supports_sve && supports_sve_i8mm)) |                                //
+        (simsimd_cap_sve2_k * (supports_sve2)) |                                                      //
+        (simsimd_cap_sve2p1_k * (supports_sve2p1)) |                                                  //
         (simsimd_cap_serial_k));
 #else // SIMSIMD_DEFINED_LINUX
     return simsimd_cap_serial_k;
 #endif
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
-#pragma GCC pop_options
-
-#if defined(SIMSIMD_DEFAULT_TARGET_ARM)
-#define __ARM_ARCH SIMSIMD_DEFAULT_TARGET_ARM
-#undef SIMSIMD_DEFAULT_TARGET_ARM
 #endif
+#pragma GCC pop_options
 
 #endif
 
@@ -500,8 +486,11 @@ SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities_implementation(void) {
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wcast-function-type"
+
+#endif
 
 /**
  *  @brief  Determines the best suited metric implementation based on the given datatype,
@@ -728,6 +717,14 @@ SIMSIMD_PUBLIC void simsimd_find_metric_punned( //
     }
     // Brain floating-point vectors
     case simsimd_datatype_bf16_k: {
+#if SIMSIMD_TARGET_SVE_BF16
+        if (viable & simsimd_cap_sve_bf16_k)
+            switch (kind) {
+            case simsimd_metric_cos_k: *m = (m_t)&simsimd_cos_bf16_sve, *c = simsimd_cap_sve_bf16_k; return;
+            case simsimd_metric_l2sq_k: *m = (m_t)&simsimd_l2sq_bf16_sve, *c = simsimd_cap_sve_bf16_k; return;
+            default: break;
+            }
+#endif
 #if SIMSIMD_TARGET_NEON_BF16
         if (viable & simsimd_cap_neon_bf16_k)
             switch (kind) {
@@ -1018,10 +1015,17 @@ SIMSIMD_PUBLIC void simsimd_find_metric_punned( //
     // Unsigned 16-bit integer vectors
     case simsimd_datatype_u16_k: {
 
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE2
         if (viable & simsimd_cap_sve_k)
             switch (kind) {
-            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u16_sve, *c = simsimd_cap_sve_k; return;
+            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u16_sve2, *c = simsimd_cap_sve_k; return;
+            default: break;
+            }
+#endif
+#if SIMSIMD_TARGET_NEON
+        if (viable & simsimd_cap_neon_k)
+            switch (kind) {
+            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u16_neon, *c = simsimd_cap_neon_k; return;
             default: break;
             }
 #endif
@@ -1043,10 +1047,17 @@ SIMSIMD_PUBLIC void simsimd_find_metric_punned( //
     // Unsigned 32-bit integer vectors
     case simsimd_datatype_u32_k: {
 
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE2
         if (viable & simsimd_cap_sve_k)
             switch (kind) {
-            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u32_sve, *c = simsimd_cap_sve_k; return;
+            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u32_sve2, *c = simsimd_cap_sve_k; return;
+            default: break;
+            }
+#endif
+#if SIMSIMD_TARGET_NEON
+        if (viable & simsimd_cap_neon_k)
+            switch (kind) {
+            case simsimd_metric_intersect_k: *m = (m_t)&simsimd_intersect_u32_neon, *c = simsimd_cap_neon_k; return;
             default: break;
             }
 #endif
@@ -1078,7 +1089,10 @@ SIMSIMD_PUBLIC void simsimd_find_metric_punned( //
 }
 
 #pragma GCC diagnostic pop
+#ifdef __clang__
 #pragma clang diagnostic pop
+
+#endif
 
 /**
  *  @brief  Selects the most suitable metric implementation based on the given metric kind, datatype,
@@ -1121,12 +1135,15 @@ SIMSIMD_DYNAMIC int simsimd_uses_sve(void);
 SIMSIMD_DYNAMIC int simsimd_uses_sve_f16(void);
 SIMSIMD_DYNAMIC int simsimd_uses_sve_bf16(void);
 SIMSIMD_DYNAMIC int simsimd_uses_sve_i8(void);
+SIMSIMD_DYNAMIC int simsimd_uses_sve2(void);
 SIMSIMD_DYNAMIC int simsimd_uses_haswell(void);
 SIMSIMD_DYNAMIC int simsimd_uses_skylake(void);
 SIMSIMD_DYNAMIC int simsimd_uses_ice(void);
 SIMSIMD_DYNAMIC int simsimd_uses_sapphire(void);
 SIMSIMD_DYNAMIC int simsimd_uses_genoa(void);
 SIMSIMD_DYNAMIC simsimd_capability_t simsimd_capabilities(void);
+
+SIMSIMD_DYNAMIC int simsimd_uses_dynamic_dispatch(void);
 
 /*  Inner products
  *  - Dot product: the sum of the products of the corresponding elements of two vectors.
@@ -1273,11 +1290,13 @@ SIMSIMD_PUBLIC int simsimd_uses_sve(void) { return SIMSIMD_TARGET_ARM && SIMSIMD
 SIMSIMD_PUBLIC int simsimd_uses_sve_f16(void) { return SIMSIMD_TARGET_ARM && SIMSIMD_TARGET_SVE && SIMSIMD_NATIVE_F16; }
 SIMSIMD_PUBLIC int simsimd_uses_sve_bf16(void) { return SIMSIMD_TARGET_ARM && SIMSIMD_TARGET_SVE && SIMSIMD_NATIVE_BF16; }
 SIMSIMD_PUBLIC int simsimd_uses_sve_i8(void) { return SIMSIMD_TARGET_ARM && SIMSIMD_TARGET_SVE; }
+SIMSIMD_PUBLIC int simsimd_uses_sve2(void) { return SIMSIMD_TARGET_ARM && SIMSIMD_TARGET_SVE2; }
 SIMSIMD_PUBLIC int simsimd_uses_haswell(void) { return SIMSIMD_TARGET_X86 && SIMSIMD_TARGET_HASWELL; }
 SIMSIMD_PUBLIC int simsimd_uses_skylake(void) { return SIMSIMD_TARGET_X86 && SIMSIMD_TARGET_SKYLAKE; }
 SIMSIMD_PUBLIC int simsimd_uses_ice(void) { return SIMSIMD_TARGET_X86 && SIMSIMD_TARGET_ICE; }
 SIMSIMD_PUBLIC int simsimd_uses_sapphire(void) { return SIMSIMD_TARGET_X86 && SIMSIMD_TARGET_SAPPHIRE; }
 SIMSIMD_PUBLIC int simsimd_uses_genoa(void) { return SIMSIMD_TARGET_X86 && SIMSIMD_TARGET_GENOA; }
+SIMSIMD_PUBLIC int simsimd_uses_dynamic_dispatch(void) { return 0; }
 SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities(void) { return simsimd_capabilities_implementation(); }
 // clang-format on
 
@@ -1297,9 +1316,9 @@ SIMSIMD_PUBLIC simsimd_capability_t simsimd_capabilities(void) { return simsimd_
  */
 SIMSIMD_PUBLIC void simsimd_dot_f16(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                     simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE_F16
     simsimd_dot_f16_sve(a, b, n, d);
-#elif SIMSIMD_TARGET_NEON
+#elif SIMSIMD_TARGET_NEON_F16
     simsimd_dot_f16_neon(a, b, n, d);
 #elif SIMSIMD_TARGET_SAPPHIRE
     simsimd_dot_f16_sapphire(a, b, n, d);
@@ -1316,6 +1335,8 @@ SIMSIMD_PUBLIC void simsimd_dot_bf16(simsimd_bf16_t const* a, simsimd_bf16_t con
     simsimd_dot_bf16_genoa(a, b, n, d);
 #elif SIMSIMD_TARGET_HASWELL
     simsimd_dot_bf16_haswell(a, b, n, d);
+#elif SIMSIMD_TARGET_NEON_BF16
+    simsimd_dot_bf16_neon(a, b, n, d);
 #else
     simsimd_dot_bf16_serial(a, b, n, d);
 #endif
@@ -1347,9 +1368,9 @@ SIMSIMD_PUBLIC void simsimd_dot_f64(simsimd_f64_t const* a, simsimd_f64_t const*
 }
 SIMSIMD_PUBLIC void simsimd_dot_f16c(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                      simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE_F16
     simsimd_dot_f16c_sve(a, b, n, d);
-#elif SIMSIMD_TARGET_NEON
+#elif SIMSIMD_TARGET_NEON_F16
     simsimd_dot_f16c_neon(a, b, n, d);
 #elif SIMSIMD_TARGET_SAPPHIRE
     simsimd_dot_f16c_sapphire(a, b, n, d);
@@ -1363,6 +1384,8 @@ SIMSIMD_PUBLIC void simsimd_dot_bf16c(simsimd_bf16_t const* a, simsimd_bf16_t co
                                       simsimd_distance_t* d) {
 #if SIMSIMD_TARGET_GENOA
     simsimd_dot_bf16c_genoa(a, b, n, d);
+#elif SIMSIMD_TARGET_NEON_BF16
+    simsimd_dot_bf16c_neon(a, b, n, d);
 #else
     simsimd_dot_bf16c_serial(a, b, n, d);
 #endif
@@ -1407,7 +1430,13 @@ SIMSIMD_PUBLIC void simsimd_vdot_f16c(simsimd_f16_t const* a, simsimd_f16_t cons
 }
 SIMSIMD_PUBLIC void simsimd_vdot_bf16c(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                        simsimd_distance_t* d) {
+#if SIMSIMD_TARGET_GENOA
+    simsimd_vdot_bf16c_genoa(a, b, n, d);
+#elif SIMSIMD_TARGET_NEON_BF16
+    simsimd_dot_bf16c_neon(a, b, n, d);
+#else
     simsimd_vdot_bf16c_serial(a, b, n, d);
+#endif
 }
 SIMSIMD_PUBLIC void simsimd_vdot_f32c(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                       simsimd_distance_t* d) {
@@ -1473,9 +1502,9 @@ SIMSIMD_PUBLIC void simsimd_l2sq_i8(simsimd_i8_t const* a, simsimd_i8_t const* b
 }
 SIMSIMD_PUBLIC void simsimd_cos_f16(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                     simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE_F16
     simsimd_cos_f16_sve(a, b, n, d);
-#elif SIMSIMD_TARGET_NEON
+#elif SIMSIMD_TARGET_NEON_F16
     simsimd_cos_f16_neon(a, b, n, d);
 #elif SIMSIMD_TARGET_SAPPHIRE
     simsimd_cos_f16_sapphire(a, b, n, d);
@@ -1491,6 +1520,10 @@ SIMSIMD_PUBLIC void simsimd_cos_bf16(simsimd_bf16_t const* a, simsimd_bf16_t con
     simsimd_cos_bf16_genoa(a, b, n, d);
 #elif SIMSIMD_TARGET_HASWELL
     simsimd_cos_bf16_haswell(a, b, n, d);
+#elif SIMSIMD_TARGET_SVE_BF16
+    simsimd_cos_bf16_sve(a, b, n, d);
+#elif SIMSIMD_TARGET_NEON_BF16
+    simsimd_cos_bf16_neon(a, b, n, d);
 #else
     simsimd_cos_bf16_serial(a, b, n, d);
 #endif
@@ -1521,9 +1554,9 @@ SIMSIMD_PUBLIC void simsimd_cos_f64(simsimd_f64_t const* a, simsimd_f64_t const*
 }
 SIMSIMD_PUBLIC void simsimd_l2sq_f16(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                      simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
+#if SIMSIMD_TARGET_SVE_F16
     simsimd_l2sq_f16_sve(a, b, n, d);
-#elif SIMSIMD_TARGET_NEON
+#elif SIMSIMD_TARGET_NEON_F16
     simsimd_l2sq_f16_neon(a, b, n, d);
 #elif SIMSIMD_TARGET_SAPPHIRE
     simsimd_l2sq_f16_sapphire(a, b, n, d);
@@ -1539,6 +1572,10 @@ SIMSIMD_PUBLIC void simsimd_l2sq_bf16(simsimd_bf16_t const* a, simsimd_bf16_t co
     simsimd_l2sq_bf16_genoa(a, b, n, d);
 #elif SIMSIMD_TARGET_HASWELL
     simsimd_l2sq_bf16_haswell(a, b, n, d);
+#elif SIMSIMD_TARGET_SVE_BF16
+    simsimd_l2sq_bf16_sve(a, b, n, d);
+#elif SIMSIMD_TARGET_NEON_BF16
+    simsimd_l2sq_bf16_neon(a, b, n, d);
 #else
     simsimd_l2sq_bf16_serial(a, b, n, d);
 #endif
@@ -1691,8 +1728,10 @@ SIMSIMD_PUBLIC void simsimd_js_f64(simsimd_f64_t const* a, simsimd_f64_t const* 
  */
 SIMSIMD_PUBLIC void simsimd_intersect_u16(simsimd_u16_t const* a, simsimd_u16_t const* b, simsimd_size_t a_length,
                                           simsimd_size_t b_length, simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
-    simsimd_intersect_u16_sve(a, b, a_length, b_length, d);
+#if SIMSIMD_TARGET_SVE2
+    simsimd_intersect_u16_sve2(a, b, a_length, b_length, d);
+#elif SIMSIMD_TARGET_NEON
+    simsimd_intersect_u16_neon(a, b, a_length, b_length, d);
 #elif SIMSIMD_TARGET_SKYLAKE
     simsimd_intersect_u16_ice(a, b, a_length, b_length, d);
 #else
@@ -1702,8 +1741,10 @@ SIMSIMD_PUBLIC void simsimd_intersect_u16(simsimd_u16_t const* a, simsimd_u16_t 
 
 SIMSIMD_PUBLIC void simsimd_intersect_u32(simsimd_u32_t const* a, simsimd_u32_t const* b, simsimd_size_t a_length,
                                           simsimd_size_t b_length, simsimd_distance_t* d) {
-#if SIMSIMD_TARGET_SVE
-    simsimd_intersect_u32_sve(a, b, a_length, b_length, d);
+#if SIMSIMD_TARGET_SVE2
+    simsimd_intersect_u32_sve2(a, b, a_length, b_length, d);
+#elif SIMSIMD_TARGET_NEON
+    simsimd_intersect_u32_neon(a, b, a_length, b_length, d);
 #elif SIMSIMD_TARGET_SKYLAKE
     simsimd_intersect_u32_ice(a, b, a_length, b_length, d);
 #else
@@ -1806,7 +1847,7 @@ SIMSIMD_PUBLIC void simsimd_mahalanobis_bf16(simsimd_bf16_t const* a, simsimd_bf
 #endif // SIMSIMD_H
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

@@ -166,10 +166,10 @@ using PgWrapperTestAuthSecure = PgWrapperTestHelper<ConnectionStrategy<true, tru
 
 TEST_F(PgWrapperTestAuth, TestConnectionAuth) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-         clientdn
-        ----------
+         client_dn
+        -----------
         (0 rows)
       )#"
   ));
@@ -177,9 +177,9 @@ TEST_F(PgWrapperTestAuth, TestConnectionAuth) {
 
 TEST_F(PgWrapperTestSecure, TestConnectionTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-                clientdn
+                client_dn
         -------------------------
          /O=YugaByte/CN=yugabyte
         (1 row)
@@ -190,9 +190,9 @@ TEST_F(PgWrapperTestSecure, TestConnectionTLS) {
 
 TEST_F(PgWrapperTestAuthSecure, TestConnectionAuthTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      "SELECT client_dn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
-                clientdn
+                client_dn
         -------------------------
          /O=YugaByte/CN=yugabyte
         (1 row)

@@ -23,7 +23,9 @@
 
 #include "postgres.h"
 
+#include "optimizer/ybcplan.h"
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/ybcExpr.h"
@@ -31,7 +33,6 @@
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
-#include "nodes/relation.h"
 #include "utils/datum.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -42,7 +43,6 @@
 #include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/yb_catalog_version.h"
-#include "optimizer/ybcplan.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -122,11 +122,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-	/* Check the data source is a single plan */
-	if (list_length(modifyTable->plans) != 1)
-		return false;
-
-	Plan *plan = (Plan *) linitial(modifyTable->plans);
+	Plan *plan = outerPlan(&modifyTable->plan);
 
 	/*
 	 * Only Result plan without a subplan produces single tuple without making
@@ -174,15 +170,12 @@ bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
 		modifyTable->operation != CMD_DELETE)
 		return false;
 
-	/* Should only have one data source. */
-	if (list_length(modifyTable->plans) != 1)
-		return false;
-
 	/*
 	 * Verify the single data source is a Result node and does not have outer plan.
 	 * Note that Result node never has inner plan.
 	 */
-	if (!IsA(linitial(modifyTable->plans), Result) || outerPlan(linitial(modifyTable->plans)))
+	if (!IsA(outerPlan(&modifyTable->plan), Result) ||
+		outerPlan(outerPlan(&modifyTable->plan)))
 		return false;
 
 	return true;
@@ -264,7 +257,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 				{
 					Relation index;
 					index = RelationIdGetRelation(indexinfo->indexoid);
-					bool is_primary = index->rd_index->indisprimary;
+					bool is_primary = YBIsCoveredByMainTable(index);
 					RelationClose(index);
 
 					if (is_primary)

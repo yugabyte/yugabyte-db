@@ -110,12 +110,11 @@ DEFINE_UNKNOWN_bool(require_durable_wal_write, false, "Whether durable WAL write
     "the system will soft downgrade the durable_wal_write flag.");
 TAG_FLAG(require_durable_wal_write, stable);
 
-#ifdef NDEBUG
-DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted, false, true,
-#else
+// The target value in the release build is true.
 // We set it to false in debug builds to keep testing the old approach in auto tests.
-DEFINE_RUNTIME_bool(save_index_into_wal_segments, false,
-#endif
+constexpr bool kSaveIndexIntoWalSegmentTargetVal = !yb::kIsDebug;
+DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted,
+    !kSaveIndexIntoWalSegmentTargetVal, kSaveIndexIntoWalSegmentTargetVal,
     "Whether to save log index into WAL segments.");
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);

@@ -56,6 +56,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -749,9 +750,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement placement, ServerType serverType) {
     Map<UUID, ServerType> serversToUpdate = new HashMap<>();
     if (serverType.equals(ServerType.EITHER)) {
-      placement.masters.keySet().parallelStream()
+      placement.masters.keySet().stream()
           .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
-      placement.tservers.keySet().parallelStream()
+      placement.tservers.keySet().stream()
           .forEach(
               azUUID -> {
                 if (serversToUpdate.containsKey(azUUID)) {
@@ -760,14 +761,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                   serversToUpdate.put(azUUID, ServerType.TSERVER);
                 }
               });
+    } else if (serverType.equals(ServerType.MASTER)) {
+      placement.masters.keySet().stream()
+          .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
     } else {
-      if (serverType.equals(ServerType.MASTER)) {
-        placement.masters.keySet().parallelStream()
-            .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
-      } else {
-        placement.tservers.keySet().parallelStream()
-            .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.TSERVER));
-      }
+      placement.tservers.keySet().stream()
+          .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.TSERVER));
     }
     return serversToUpdate;
   }
@@ -1647,6 +1646,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+    }
+    // Case when new Universe is being created, we set the gflag "master_join_existing_cluster"
+    // to 'false'.
+    if ((commandType == CommandType.HELM_INSTALL) && StringUtils.isNotEmpty(masterAddresses)) {
+      params.masterJoinExistingCluster = false;
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;

@@ -36,7 +36,6 @@ const (
 	cToNCertHeader           = "Client-to-Node Encryption Certificate"
 	cToNTLSHeader            = "Client-to-Node Encryption Enabled"
 	kmsEnabledHeader         = "Encryption At Rest Enabled"
-	kmsConfigNameHeader      = "KMS configuration"
 	encryptionRestTypeHeader = "Encryption Type"
 	universeOverridesHeader  = "Universe Overrides"
 	azOverridesHeader        = "AZ Overrides"
@@ -127,7 +126,7 @@ func NewUniverseContext() *Context {
 		"CtoNTLS":            cToNTLSHeader,
 		"CtoNCert":           cToNCertHeader,
 		"KMSEnabled":         kmsEnabledHeader,
-		"KMSConfigName":      kmsConfigNameHeader,
+		"KMSConfig":          formatter.KMSConfigHeader,
 		"EncryptionRestType": encryptionRestTypeHeader,
 		"UniverseOverrides":  universeOverridesHeader,
 		"AZOverrides":        azOverridesHeader,
@@ -330,23 +329,14 @@ func (c *Context) KMSEnabled() string {
 	return fmt.Sprintf("%t", kms.GetEncryptionAtRestEnabled())
 }
 
-// KMSConfigName fetches KMS config name
-func (c *Context) KMSConfigName() string {
+// KMSConfig fetches KMS config name
+func (c *Context) KMSConfig() string {
 	details := c.u.GetUniverseDetails()
 	kms := details.GetEncryptionAtRestConfig()
 	for _, k := range KMSConfigs {
-		metadataInterface := k["metadata"]
-		if metadataInterface != nil {
-			metadata := metadataInterface.(map[string]interface{})
-			kmsConfigUUID := metadata["configUUID"]
-			if kmsConfigUUID != nil && strings.Compare(
-				kmsConfigUUID.(string), kms.GetKmsConfigUUID(),
-			) == 0 {
-				name := metadata["name"]
-				if name != nil {
-					return name.(string)
-				}
-			}
+		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+			strings.Compare(k.ConfigUUID, kms.GetKmsConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", k.Name, kms.GetKmsConfigUUID())
 		}
 	}
 	return kms.GetKmsConfigUUID()

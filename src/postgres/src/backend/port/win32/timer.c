@@ -8,7 +8,7 @@
  *	  - Does not support interval timer (value->it_interval)
  *	  - Only supports ITIMER_REAL
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32/timer.c
@@ -48,7 +48,7 @@ pg_timer_thread(LPVOID param)
 		r = WaitForSingleObjectEx(timerCommArea.event, waittime, FALSE);
 		if (r == WAIT_OBJECT_0)
 		{
-			/* Event signalled from main thread, change the timer */
+			/* Event signaled from main thread, change the timer */
 			EnterCriticalSection(&timerCommArea.crit_sec);
 			if (timerCommArea.value.it_value.tv_sec == 0 &&
 				timerCommArea.value.it_value.tv_usec == 0)

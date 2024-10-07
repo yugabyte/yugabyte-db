@@ -206,13 +206,16 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
 (10 rows)
 
 /*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
-                      QUERY PLAN
--------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Nested Loop
    ->  Seq Scan on p2
-   ->  Index Scan using p1_pkey on p1
-         Index Cond: ((a = p2.b) AND (b < (p2.b + 1)))
-(4 rows)
+   ->  Memoize
+         Cache Key: (p2.b + 1), p2.b
+         Cache Mode: binary
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((a = p2.b) AND (b < (p2.b + 1)))
+(7 rows)
 
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                           QUERY PLAN
@@ -445,13 +448,13 @@ select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
 (1 row)
 
 explain (costs off) select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
-                                                                                                    QUERY PLAN
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                     QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((q1.a = (q2.a)::double precision) AND (q1.b = (q2.b)::double precision))
+   Join Filter: ((q1.a = ((q2.a)::numeric)::double precision) AND (q1.b = ((q2.b)::numeric)::double precision))
    ->  Seq Scan on q2
    ->  Index Scan using q1_pkey on q1
-         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((q2.a)::double precision, (q2.b)::double precision), ROW(($1)::double precision, ($4)::double precision), ROW(($2)::double precision, ($5)::double precision)]))
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(((q2.a)::numeric)::double precision, ((q2.b)::numeric)::double precision), ROW((($1)::numeric)::double precision, (($4)::numeric)::double precision), ROW((($2)::numeric)::double precision, (($5)::numeric)::double precision)]))
 (5 rows)
 
 select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
@@ -621,19 +624,22 @@ SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                                QUERY PLAN
----------------------------------------------------------------------------
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b <= 15)
-         ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
+         ->  Memoize
+               Cache Key: t2.b
+               Cache Mode: logical
+               ->  Index Scan using p1_pkey on p1 t1
+                     Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
    ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (a = ANY (ARRAY[t1.a, $4, $5]))
-(10 rows)
+(13 rows)
 
 SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
  a  | b  |  c   | a
@@ -850,12 +856,12 @@ explain (costs off) /*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from float
 (5 rows)
 
 /*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-        a         |    b    |    a    |        b
-------------------+---------+---------+-----------------
- 1.12311995029449 | 2941.21 | 1.12312 |  2941.212931231
- 1.12311995029449 | 2941.21 | 1.12312 | 29401.212931231
- 1.12311995029449 | 29401.2 | 1.12312 |  2941.212931231
- 1.12311995029449 | 29401.2 | 1.12312 | 29401.212931231
+         a          |     b     |    a    |        b
+--------------------+-----------+---------+-----------------
+ 1.1231199502944946 |  2941.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 |  2941.213 | 1.12312 | 29401.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 | 29401.212931231
 (4 rows)
 
 -- We don't support float4 IN <float8 values> yet
@@ -869,12 +875,12 @@ explain (costs off) /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from float
 (4 rows)
 
 /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-        a         |    b    |    a    |        b
-------------------+---------+---------+-----------------
- 1.12311995029449 | 2941.21 | 1.12312 |  2941.212931231
- 1.12311995029449 | 2941.21 | 1.12312 | 29401.212931231
- 1.12311995029449 | 29401.2 | 1.12312 |  2941.212931231
- 1.12311995029449 | 29401.2 | 1.12312 | 29401.212931231
+         a          |     b     |    a    |        b
+--------------------+-----------+---------+-----------------
+ 1.1231199502944946 |  2941.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 |  2941.213 | 1.12312 | 29401.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 | 29401.212931231
 (4 rows)
 
 drop table floattable1;
@@ -1145,7 +1151,7 @@ explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a
    ->  Nested Loop Left Join
          ->  Seq Scan on outtable t1
          ->  Index Scan using intable_pkey on intable t2
-               Index Cond: (t1.a = a)
+               Index Cond: (a = t1.a)
                Filter: (((t1.a + 1) > a) OR (t1.a = 1))
 (7 rows)
 
@@ -1425,16 +1431,19 @@ analyze q2;
 SET yb_bnl_batch_size = 3;
 -- Make sure a sort node is inserted above a batched NL join when appropriate
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                         QUERY PLAN
--------------------------------------------------------------
+                            QUERY PLAN
+-------------------------------------------------------------------
  Limit
    ->  YB Batched Nested Loop Join
          Join Filter: (q1.c2 = q2.c2)
          Sort Keys: q1.c1
          ->  Index Scan using q1_pkey on q1
-         ->  Index Scan using q2_pkey on q2
-               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
-(7 rows)
+         ->  Memoize
+               Cache Key: q1.c2
+               Cache Mode: logical
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(10 rows)
 
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
  c1
@@ -1452,16 +1461,19 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 (10 rows)
 
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
-                         QUERY PLAN
--------------------------------------------------------------
+                            QUERY PLAN
+-------------------------------------------------------------------
  Limit
    ->  YB Batched Nested Loop Join
          Join Filter: (q1.c2 = q2.c2)
          Sort Keys: q1.c1 DESC
          ->  Index Scan Backward using q1_pkey on q1
-         ->  Index Scan using q2_pkey on q2
-               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
-(7 rows)
+         ->  Memoize
+               Cache Key: q1.c2
+               Cache Mode: logical
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(10 rows)
 
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
  c1
@@ -1479,17 +1491,20 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
 (10 rows)
 
 explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                            QUERY PLAN
--------------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Limit
    ->  Result
          ->  YB Batched Nested Loop Join
                Join Filter: (q1.c2 = q2.c2)
                Sort Keys: q1.c1
                ->  Index Scan using q1_pkey on q1
-               ->  Index Scan using q2_pkey on q2
-                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
-(8 rows)
+               ->  Memoize
+                     Cache Key: q1.c2
+                     Cache Mode: logical
+                     ->  Index Scan using q2_pkey on q2
+                           Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(11 rows)
 
 select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
  c1 | c1
@@ -1602,14 +1617,16 @@ EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b
                               QUERY PLAN
 -----------------------------------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: q1nulls.a NULLS FIRST, q1nulls.b DESC
+         Presorted Key: q1nulls.a
          ->  YB Batched Nested Loop Join
                Join Filter: (q1nulls.b = q2.c2)
+               Sort Keys: q1nulls.a NULLS FIRST
                ->  Index Only Scan using q1nulls_a_b_idx on q1nulls
                ->  Index Scan using q2_pkey on q2
                      Index Cond: (c2 = ANY (ARRAY[q1nulls.b, $1, $2]))
-(8 rows)
+(10 rows)
 
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
  a | b

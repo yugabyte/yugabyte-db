@@ -98,6 +98,12 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Override
+  public Result sendCreateRequestWithNodeDetailsSet(ObjectNode bodyJson) {
+    return doRequestWithAuthTokenAndBody(
+        "POST", "/api/customers/" + customer.getUuid() + "/universes", authToken, bodyJson);
+  }
+
+  @Override
   public Result sendPrimaryCreateConfigureRequest(ObjectNode bodyJson) {
     bodyJson.put("currentClusterType", "PRIMARY");
     bodyJson.put("clusterOperation", "CREATE");
@@ -304,7 +310,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     // HERE
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(topJson));
-    assertBadRequest(result, "Couldn't find 12 nodes of type type.small in PlacementAZ 1");
+    assertBadRequest(
+        result,
+        "Couldn't find 12 node(s) of type type.small in PlacementAZ 1 zone (1 free and 5 currently"
+            + " occupied)");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -346,7 +355,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primaryCluster = editTestUTD.getPrimaryCluster();
     primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
-    primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
+    primaryCluster.placementInfo = ModelFactory.constructPlacementInfoObject(azUuidToNumNodes);
 
     ObjectNode editJson = (ObjectNode) Json.toJson(editTestUTD);
     Result result = sendPrimaryEditConfigureRequest(editJson);

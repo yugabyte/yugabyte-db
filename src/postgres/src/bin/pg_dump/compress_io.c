@@ -4,7 +4,7 @@
  *	 Routines for archivers to write an uncompressed or compressed data
  *	 stream.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * This file includes two APIs for dealing with compressed data. The first
@@ -74,27 +74,24 @@ struct CompressorState
 #endif
 };
 
-/* translator: this is a module name */
-static const char *modulename = gettext_noop("compress_io");
-
 static void ParseCompressionOption(int compression, CompressionAlgorithm *alg,
-					   int *level);
+								   int *level);
 
 /* Routines that support zlib compressed data I/O */
 #ifdef HAVE_LIBZ
 static void InitCompressorZlib(CompressorState *cs, int level);
 static void DeflateCompressorZlib(ArchiveHandle *AH, CompressorState *cs,
-					  bool flush);
+								  bool flush);
 static void ReadDataFromArchiveZlib(ArchiveHandle *AH, ReadFunc readF);
 static void WriteDataToArchiveZlib(ArchiveHandle *AH, CompressorState *cs,
-					   const char *data, size_t dLen);
+								   const char *data, size_t dLen);
 static void EndCompressorZlib(ArchiveHandle *AH, CompressorState *cs);
 #endif
 
 /* Routines that support uncompressed data I/O */
 static void ReadDataFromArchiveNone(ArchiveHandle *AH, ReadFunc readF);
 static void WriteDataToArchiveNone(ArchiveHandle *AH, CompressorState *cs,
-					   const char *data, size_t dLen);
+								   const char *data, size_t dLen);
 
 /*
  * Interprets a numeric 'compression' value. The algorithm implied by the
@@ -111,8 +108,7 @@ ParseCompressionOption(int compression, CompressionAlgorithm *alg, int *level)
 		*alg = COMPR_ALG_NONE;
 	else
 	{
-		exit_horribly(modulename, "invalid compression code: %d\n",
-					  compression);
+		pg_fatal("invalid compression code: %d", compression);
 		*alg = COMPR_ALG_NONE;	/* keep compiler quiet */
 	}
 
@@ -135,7 +131,7 @@ AllocateCompressor(int compression, WriteFunc writeF)
 
 #ifndef HAVE_LIBZ
 	if (alg == COMPR_ALG_LIBZ)
-		exit_horribly(modulename, "not built with zlib support\n");
+		pg_fatal("not built with zlib support");
 #endif
 
 	cs = (CompressorState *) pg_malloc0(sizeof(CompressorState));
@@ -171,7 +167,7 @@ ReadDataFromArchive(ArchiveHandle *AH, int compression, ReadFunc readF)
 #ifdef HAVE_LIBZ
 		ReadDataFromArchiveZlib(AH, readF);
 #else
-		exit_horribly(modulename, "not built with zlib support\n");
+		pg_fatal("not built with zlib support");
 #endif
 	}
 }
@@ -189,14 +185,13 @@ WriteDataToArchive(ArchiveHandle *AH, CompressorState *cs,
 #ifdef HAVE_LIBZ
 			WriteDataToArchiveZlib(AH, cs, data, dLen);
 #else
-			exit_horribly(modulename, "not built with zlib support\n");
+			pg_fatal("not built with zlib support");
 #endif
 			break;
 		case COMPR_ALG_NONE:
 			WriteDataToArchiveNone(AH, cs, data, dLen);
 			break;
 	}
-	return;
 }
 
 /*
@@ -238,9 +233,8 @@ InitCompressorZlib(CompressorState *cs, int level)
 	cs->zlibOutSize = ZLIB_OUT_SIZE;
 
 	if (deflateInit(zp, level) != Z_OK)
-		exit_horribly(modulename,
-					  "could not initialize compression library: %s\n",
-					  zp->msg);
+		pg_fatal("could not initialize compression library: %s",
+				 zp->msg);
 
 	/* Just be paranoid - maybe End is called after Start, with no Write */
 	zp->next_out = (void *) cs->zlibOut;
@@ -259,8 +253,7 @@ EndCompressorZlib(ArchiveHandle *AH, CompressorState *cs)
 	DeflateCompressorZlib(AH, cs, true);
 
 	if (deflateEnd(zp) != Z_OK)
-		exit_horribly(modulename,
-					  "could not close compression stream: %s\n", zp->msg);
+		pg_fatal("could not close compression stream: %s", zp->msg);
 
 	free(cs->zlibOut);
 	free(cs->zp);
@@ -277,8 +270,7 @@ DeflateCompressorZlib(ArchiveHandle *AH, CompressorState *cs, bool flush)
 	{
 		res = deflate(zp, flush ? Z_FINISH : Z_NO_FLUSH);
 		if (res == Z_STREAM_ERROR)
-			exit_horribly(modulename,
-						  "could not compress data: %s\n", zp->msg);
+			pg_fatal("could not compress data: %s", zp->msg);
 		if ((flush && (zp->avail_out < cs->zlibOutSize))
 			|| (zp->avail_out == 0)
 			|| (zp->avail_in != 0)
@@ -312,11 +304,9 @@ static void
 WriteDataToArchiveZlib(ArchiveHandle *AH, CompressorState *cs,
 					   const char *data, size_t dLen)
 {
-	cs->zp->next_in = (void *) data;
+	cs->zp->next_in = (void *) unconstify(char *, data);
 	cs->zp->avail_in = dLen;
 	DeflateCompressorZlib(AH, cs, false);
-
-	return;
 }
 
 static void
@@ -340,9 +330,8 @@ ReadDataFromArchiveZlib(ArchiveHandle *AH, ReadFunc readF)
 	out = pg_malloc(ZLIB_OUT_SIZE + 1);
 
 	if (inflateInit(zp) != Z_OK)
-		exit_horribly(modulename,
-					  "could not initialize compression library: %s\n",
-					  zp->msg);
+		pg_fatal("could not initialize compression library: %s",
+				 zp->msg);
 
 	/* no minimal chunk size for zlib */
 	while ((cnt = readF(AH, &buf, &buflen)))
@@ -357,8 +346,7 @@ ReadDataFromArchiveZlib(ArchiveHandle *AH, ReadFunc readF)
 
 			res = inflate(zp, 0);
 			if (res != Z_OK && res != Z_STREAM_END)
-				exit_horribly(modulename,
-							  "could not uncompress data: %s\n", zp->msg);
+				pg_fatal("could not uncompress data: %s", zp->msg);
 
 			out[ZLIB_OUT_SIZE - zp->avail_out] = '\0';
 			ahwrite(out, 1, ZLIB_OUT_SIZE - zp->avail_out, AH);
@@ -373,16 +361,14 @@ ReadDataFromArchiveZlib(ArchiveHandle *AH, ReadFunc readF)
 		zp->avail_out = ZLIB_OUT_SIZE;
 		res = inflate(zp, 0);
 		if (res != Z_OK && res != Z_STREAM_END)
-			exit_horribly(modulename,
-						  "could not uncompress data: %s\n", zp->msg);
+			pg_fatal("could not uncompress data: %s", zp->msg);
 
 		out[ZLIB_OUT_SIZE - zp->avail_out] = '\0';
 		ahwrite(out, 1, ZLIB_OUT_SIZE - zp->avail_out, AH);
 	}
 
 	if (inflateEnd(zp) != Z_OK)
-		exit_horribly(modulename,
-					  "could not close compression library: %s\n", zp->msg);
+		pg_fatal("could not close compression library: %s", zp->msg);
 
 	free(buf);
 	free(out);
@@ -418,7 +404,6 @@ WriteDataToArchiveNone(ArchiveHandle *AH, CompressorState *cs,
 					   const char *data, size_t dLen)
 {
 	cs->writeF(AH, data, dLen);
-	return;
 }
 
 
@@ -516,7 +501,7 @@ cfopen_write(const char *path, const char *mode, int compression)
 		fp = cfopen(fname, mode, compression);
 		free_keep_errno(fname);
 #else
-		exit_horribly(modulename, "not built with zlib support\n");
+		pg_fatal("not built with zlib support");
 		fp = NULL;				/* keep compiler quiet */
 #endif
 	}
@@ -559,7 +544,7 @@ cfopen(const char *path, const char *mode, int compression)
 			fp = NULL;
 		}
 #else
-		exit_horribly(modulename, "not built with zlib support\n");
+		pg_fatal("not built with zlib support");
 #endif
 	}
 	else
@@ -596,9 +581,8 @@ cfread(void *ptr, int size, cfp *fp)
 			int			errnum;
 			const char *errmsg = gzerror(fp->compressedfp, &errnum);
 
-			exit_horribly(modulename,
-						  "could not read from input file: %s\n",
-						  errnum == Z_ERRNO ? strerror(errno) : errmsg);
+			pg_fatal("could not read from input file: %s",
+					 errnum == Z_ERRNO ? strerror(errno) : errmsg);
 		}
 	}
 	else
@@ -634,11 +618,9 @@ cfgetc(cfp *fp)
 		if (ret == EOF)
 		{
 			if (!gzeof(fp->compressedfp))
-				exit_horribly(modulename,
-							  "could not read from input file: %s\n", strerror(errno));
+				pg_fatal("could not read from input file: %s", strerror(errno));
 			else
-				exit_horribly(modulename,
-							  "could not read from input file: end of file\n");
+				pg_fatal("could not read from input file: end of file");
 		}
 	}
 	else

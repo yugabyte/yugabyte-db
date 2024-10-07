@@ -2,7 +2,8 @@
 title: Designing secondary indexes in YugabyteDB
 headertitle: Designing secondary indexes
 linkTitle: Secondary indexes
-badges: ycql
+tags:
+  other: ycql
 menu:
   stable:
     identifier: data-modeling-indexes-ycql

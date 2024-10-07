@@ -75,8 +75,8 @@ typedef struct PGLZ_Strategy
  *									output would be larger than input.
  * ----------
  */
-extern const PGLZ_Strategy *const PGLZ_strategy_default;
-extern const PGLZ_Strategy *const PGLZ_strategy_always;
+extern PGDLLIMPORT const PGLZ_Strategy *const PGLZ_strategy_default;
+extern PGDLLIMPORT const PGLZ_Strategy *const PGLZ_strategy_always;
 
 
 /* ----------
@@ -84,8 +84,10 @@ extern const PGLZ_Strategy *const PGLZ_strategy_always;
  * ----------
  */
 extern int32 pglz_compress(const char *source, int32 slen, char *dest,
-			  const PGLZ_Strategy *strategy);
+						   const PGLZ_Strategy *strategy);
 extern int32 pglz_decompress(const char *source, int32 slen, char *dest,
-				int32 rawsize);
+							 int32 rawsize, bool check_complete);
+extern int32 pglz_maximum_compressed_size(int32 rawsize,
+										  int32 total_compressed_size);
 
 #endif							/* _PG_LZCOMPRESS_H_ */

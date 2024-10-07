@@ -20,6 +20,12 @@ namespace yb::vectorindex {
 // An adapter that allows us to view an index reader with one vector type as an index reader with a
 // different vector type. Casts the queries to the vector type supported by the index, and then
 // casts the distance type in the results to the distance type expected by the caller.
+//
+// Terminology:
+//   - SourceVector: The vector type supported by the underlying index reader.
+//   - SourceDistanceResult: The distance type supported by the underlying index reader.
+//   - DestinationVector: The vector type expected by the caller.
+//   - DestinationDistanceResult: The distance type expected by the caller.
 template<
   IndexableVectorType SourceVector,
   ValidDistanceResultType SourceDistanceResult,
@@ -54,6 +60,13 @@ class VectorIndexReaderAdapter
     }
 
     return destination_results;
+  }
+
+  DestinationDistanceResult Distance(
+      const DestinationVector& lhs, const DestinationVector& rhs) const override {
+    return static_cast<DestinationDistanceResult>(source_reader_.Distance(
+        vector_cast<SourceVector>(lhs),
+        vector_cast<SourceVector>(rhs)));
   }
 
  private:

@@ -68,6 +68,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
     TaskInfo parentTask = TaskInfo.getOrBadRequest(parentUUID);
+    // TODO Move this to TaskInfo.
     ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
@@ -94,7 +95,7 @@ public class CustomerTaskController extends AuthenticatedController {
     List<SubTaskFormData> subTasks = new ArrayList<>(result.size());
     for (TaskInfo taskInfo : result) {
       SubTaskFormData subTaskData = new SubTaskFormData();
-      subTaskData.subTaskUUID = taskInfo.getTaskUUID();
+      subTaskData.subTaskUUID = taskInfo.getUuid();
       subTaskData.subTaskType = taskInfo.getTaskType().name();
       subTaskData.subTaskState = taskInfo.getTaskState().name();
       subTaskData.creationTime = taskInfo.getCreateTime();
@@ -187,7 +188,7 @@ public class CustomerTaskController extends AuthenticatedController {
         customerTaskList.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet());
     Map<UUID, TaskInfo> taskInfoMap =
         TaskInfo.find(taskUuids).stream()
-            .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
+            .collect(Collectors.toMap(TaskInfo::getUuid, Function.identity()));
     Map<UUID, CustomerTask> lastTaskByTargetMap =
         customerTaskList.stream()
             .filter(c -> c.getCompletionTime() != null)

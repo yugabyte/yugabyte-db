@@ -356,6 +356,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAttributes() throws Exception {
+    // (DB-10760) Role OID-based pool design is needed in addition to waiting
+    // for connection count-related statistics for this test to pass when
+    // Connection Manager is enabled. Skipping this test temporarily.
+    assumeFalse(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -443,7 +448,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "ALTER ROLE su LOGIN",
-            "must be superuser to alter superusers"
+            "must be superuser to alter superuser roles or change superuser attribute"
         );
       });
 
@@ -3225,6 +3230,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
+    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
+    // causes I/O errors during test execution. Skip this test temporarily
+    // until support for the same can be provided with Connection Manager.
+    // This test will further need the support of role OID-based pooling
+    // to help support recreate role operations (DROP ROLE followed by
+    // CREATE ROLE).
+    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 
@@ -3243,6 +3256,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       // Create role with password.
       statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute("SET password_encryption = 'md5'");
       statement.execute(
           String.format("CREATE ROLE pass_role LOGIN PASSWORD '%s'", passwordWithLen5000));
 

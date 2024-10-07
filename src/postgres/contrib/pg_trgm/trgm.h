@@ -37,6 +37,7 @@
 #define WordDistanceStrategyNumber			8
 #define StrictWordSimilarityStrategyNumber	9
 #define StrictWordDistanceStrategyNumber	10
+#define EqualStrategyNumber					11
 
 typedef char trgm[3];
 
@@ -48,7 +49,7 @@ typedef char trgm[3];
 	*(((char*)(a))+0) = *(((char*)(b))+0);	\
 	*(((char*)(a))+1) = *(((char*)(b))+1);	\
 	*(((char*)(a))+2) = *(((char*)(b))+2);	\
-} while(0);
+} while(0)
 
 #ifdef KEEPONLYALNUM
 #define ISWORDCHR(c)	(t_isalpha(c) || t_isdigit(c))
@@ -73,17 +74,16 @@ typedef struct
 #define TRGMHDRSIZE		  (VARHDRSZ + sizeof(uint8))
 
 /* gist */
+#define SIGLEN_DEFAULT	(sizeof(int) * 3)
+#define SIGLEN_MAX		GISTMaxIndexKeySize
 #define BITBYTE 8
-#define SIGLENINT  3			/* >122 => key will toast, so very slow!!! */
-#define SIGLEN	( sizeof(int)*SIGLENINT )
 
-#define SIGLENBIT (SIGLEN*BITBYTE - 1)	/* see makesign */
+#define SIGLENBIT(siglen) ((siglen) * BITBYTE - 1)	/* see makesign */
 
-typedef char BITVEC[SIGLEN];
 typedef char *BITVECP;
 
-#define LOOPBYTE \
-			for(i=0;i<SIGLEN;i++)
+#define LOOPBYTE(siglen) \
+			for (i = 0; i < (siglen); i++)
 
 #define GETBYTE(x,i) ( *( (BITVECP)(x) + (int)( (i) / BITBYTE ) ) )
 #define GETBITBYTE(x,i) ( (((char)(x)) >> (i)) & 0x01 )
@@ -91,8 +91,8 @@ typedef char *BITVECP;
 #define SETBIT(x,i)   GETBYTE(x,i) |=  ( 0x01 << ( (i) % BITBYTE ) )
 #define GETBIT(x,i) ( (GETBYTE(x,i) >> ( (i) % BITBYTE )) & 0x01 )
 
-#define HASHVAL(val) (((unsigned int)(val)) % SIGLENBIT)
-#define HASH(sign, val) SETBIT((sign), HASHVAL(val))
+#define HASHVAL(val, siglen) (((unsigned int)(val)) % SIGLENBIT(siglen))
+#define HASH(sign, val, siglen) SETBIT((sign), HASHVAL(val, siglen))
 
 #define ARRKEY			0x01
 #define SIGNKEY			0x02
@@ -102,7 +102,7 @@ typedef char *BITVECP;
 #define ISSIGNKEY(x)	( ((TRGM*)x)->flag & SIGNKEY )
 #define ISALLTRUE(x)	( ((TRGM*)x)->flag & ALLISTRUE )
 
-#define CALCGTSIZE(flag, len) ( TRGMHDRSIZE + ( ( (flag) & ARRKEY ) ? ((len)*sizeof(trgm)) : (((flag) & ALLISTRUE) ? 0 : SIGLEN) ) )
+#define CALCGTSIZE(flag, len) ( TRGMHDRSIZE + ( ( (flag) & ARRKEY ) ? ((len)*sizeof(trgm)) : (((flag) & ALLISTRUE) ? 0 : (len)) ) )
 #define GETSIGN(x)		( (BITVECP)( (char*)x+TRGMHDRSIZE ) )
 #define GETARR(x)		( (trgm*)( (char*)x+TRGMHDRSIZE ) )
 #define ARRNELEM(x) ( ( VARSIZE(x) - TRGMHDRSIZE )/sizeof(trgm) )
@@ -134,7 +134,7 @@ extern float4 cnt_sml(TRGM *trg1, TRGM *trg2, bool inexact);
 extern bool trgm_contained_by(TRGM *trg1, TRGM *trg2);
 extern bool *trgm_presence_map(TRGM *query, TRGM *key);
 extern TRGM *createTrgmNFA(text *text_re, Oid collation,
-			  TrgmPackedGraph **graph, MemoryContext rcontext);
+						   TrgmPackedGraph **graph, MemoryContext rcontext);
 extern bool trigramsMatchGraph(TrgmPackedGraph *graph, bool *check);
 
 #endif							/* __TRGM_H__ */

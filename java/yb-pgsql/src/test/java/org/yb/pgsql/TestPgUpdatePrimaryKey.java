@@ -288,41 +288,51 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
     String indexName = tableName + "_idx";
     String updatePgIndexOidFmt = "UPDATE pg_index SET indexrelid = %d WHERE indexrelid = %d";
     String countPgIndexByOidFmt = "SELECT COUNT(*) FROM pg_index WHERE indexrelid = %d";
+    String updatePgClassOidFmt = "UPDATE pg_class SET oid = %d WHERE oid = %d";
+    String countPgClassByOidFmt = "SELECT COUNT(*) FROM pg_class WHERE oid = %d";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE " + tableName + " (id int PRIMARY KEY, i int)");
       stmt.execute("CREATE INDEX " + indexName + " ON " + tableName + " (i)");
 
+      long tableoid = getSingleOid(stmt,
+          "SELECT oid FROM pg_class WHERE relname = '" + tableName + "'");
       long indexrelid = getSingleOid(stmt,
           "SELECT oid FROM pg_class WHERE relname = '" + indexName + "'");
       long newrelid = getSingleOid(stmt,
           "SELECT MAX(oid)::bigint + 1 FROM pg_class");
 
-      // indexrelid is a primary key for pg_index, let's update it
-      {
-        assertOneRow(stmt, String.format(countPgIndexByOidFmt, indexrelid), 1);
-        assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 0);
+      List<List<Object>> statements = Arrays.asList(
+        Arrays.asList(tableoid, updatePgClassOidFmt, countPgClassByOidFmt),
+        Arrays.asList(indexrelid, updatePgIndexOidFmt, countPgIndexByOidFmt)
+      );
 
-        try {
-          executeSystemTableDml(stmt, String.format(updatePgIndexOidFmt, newrelid, indexrelid));
+      // Test updating primary key columns in system tables
+      // (indexrelid in pg_index and oid in pg_class).
+      for (List<Object> obj : statements) {
+        long oid = (long) obj.get(0);
+        String updateStmt = (String) obj.get(1);
+        String countStmt = (String) obj.get(2);
+        {
+          assertOneRow(stmt, String.format(countStmt, oid), 1);
+          assertOneRow(stmt, String.format(countStmt, newrelid), 0);
 
-          assertOneRow(stmt, String.format(countPgIndexByOidFmt, indexrelid), 0);
-          assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 1);
-        } finally {
-          // Restore indexrelid, otherwise our cleanup code will explode
           try {
-            executeSystemTableDml(stmt, String.format(updatePgIndexOidFmt, indexrelid, newrelid));
-          } catch (Exception ex) {
-            LOG.error("Could not restore indexrelid!", ex);
+            executeSystemTableDml(stmt, String.format(updateStmt, newrelid, oid));
+
+            assertOneRow(stmt, String.format(countStmt, oid), 0);
+            assertOneRow(stmt, String.format(countStmt, newrelid), 1);
+          } finally {
+            // Revert the change, otherwise our cleanup code will explode
+            try {
+              executeSystemTableDml(stmt, String.format(updateStmt, oid, newrelid));
+            } catch (Exception ex) {
+              LOG.error("Could not restore indexrelid!", ex);
+            }
           }
         }
       }
-
-      // We still cannot update oid column though
-      runInvalidQuery(stmt, "UPDATE pg_class SET oid = " + newrelid,
-          "cannot assign to system column \"oid\"");
     }
   }
-
   //
   // Complex tests
   //

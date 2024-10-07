@@ -26,6 +26,7 @@ SET yb_fetch_size_limit = '500kB';
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
 
+-- YB_TODO: tests here onwards fail because proper join is not successfully chosen
 SET yb_bnl_batch_size = 1; -- disable BNLJ
 
 -- #### merge joins ####

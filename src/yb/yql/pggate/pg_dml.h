@@ -69,7 +69,7 @@ class PgDml : public PgStatement {
   Status BindColumn(int attnum, PgExpr* attr_value);
 
   // Bind query vector to the current vector index search.
-  Status ANNBindVector(PgExpr* query_vec);
+  Status ANNBindVector(int vec_att_no, PgExpr* query_vec);
 
   // Bind prefetch size to the current vector index search.
   Status ANNSetPrefetchSize(int32_t prefetch_size);
@@ -100,8 +100,6 @@ class PgDml : public PgStatement {
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
   [[nodiscard]] bool has_aggregate_targets() const { return has_aggregate_targets_; }
-
-  [[nodiscard]] bool has_system_targets() const { return has_system_targets_; }
 
   [[nodiscard]] bool has_secondary_index_with_doc_op() const;
 
@@ -199,7 +197,6 @@ class PgDml : public PgStatement {
   PgTable target_;
   std::vector<PgFetchedTarget*> targets_;
   bool has_aggregate_targets_ = false;
-  bool has_system_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.

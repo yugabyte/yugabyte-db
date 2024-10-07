@@ -3,7 +3,7 @@
  * spi_priv.h
  *				Server Programming Interface private declarations
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/spi_priv.h
@@ -23,7 +23,6 @@ typedef struct
 {
 	/* current results */
 	uint64		processed;		/* by Executor */
-	Oid			lastoid;
 	SPITupleTable *tuptable;	/* tuptable currently being built */
 
 	/* subtransaction in which current Executor call was started */
@@ -45,7 +44,6 @@ typedef struct
 
 	/* saved values of API global variables for previous nesting level */
 	uint64		outer_processed;
-	Oid			outer_lastoid;
 	SPITupleTable *outer_tuptable;
 	int			outer_result;
 } _SPI_connection;
@@ -94,9 +92,9 @@ typedef struct _SPI_plan
 	int			magic;			/* should equal _SPI_PLAN_MAGIC */
 	bool		saved;			/* saved or unsaved plan? */
 	bool		oneshot;		/* one-shot plan? */
-	bool		no_snapshots;	/* let the caller handle the snapshots */
 	List	   *plancache_list; /* one CachedPlanSource per parsetree */
 	MemoryContext plancxt;		/* Context containing _SPI_plan and data */
+	RawParseMode parse_mode;	/* raw_parser() mode */
 	int			cursor_options; /* Cursor options used for planning */
 	int			nargs;			/* number of plan arguments */
 	Oid		   *argtypes;		/* Argument types (NULL if nargs is 0) */

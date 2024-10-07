@@ -85,6 +85,8 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
+Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
+
 Install the added dependency using `mvn install`.
 
 #### Gradle dependency
@@ -113,9 +115,9 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300
-| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 

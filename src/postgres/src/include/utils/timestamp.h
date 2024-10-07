@@ -3,7 +3,7 @@
  * timestamp.h
  *	  Definitions for the SQL "timestamp" and "interval" types.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/timestamp.h
@@ -57,10 +57,10 @@
 
 
 /* Set at postmaster start */
-extern TimestampTz PgStartTime;
+extern PGDLLIMPORT TimestampTz PgStartTime;
 
 /* Set at configuration reload */
-extern TimestampTz PgReloadTime;
+extern PGDLLIMPORT TimestampTz PgReloadTime;
 
 
 /* Internal routines (not fmgr-callable) */
@@ -71,10 +71,12 @@ extern TimestampTz GetCurrentTimestamp(void);
 extern TimestampTz GetSQLCurrentTimestamp(int32 typmod);
 extern Timestamp GetSQLLocalTimestamp(int32 typmod);
 extern void TimestampDifference(TimestampTz start_time, TimestampTz stop_time,
-					long *secs, int *microsecs);
+								long *secs, int *microsecs);
+extern long TimestampDifferenceMilliseconds(TimestampTz start_time,
+											TimestampTz stop_time);
 extern bool TimestampDifferenceExceeds(TimestampTz start_time,
-						   TimestampTz stop_time,
-						   int msec);
+									   TimestampTz stop_time,
+									   int msec);
 
 extern TimestampTz time_t_to_timestamptz(pg_time_t tm);
 extern pg_time_t timestamptz_to_time_t(TimestampTz t);
@@ -82,12 +84,13 @@ extern pg_time_t timestamptz_to_time_t(TimestampTz t);
 extern const char *timestamptz_to_str(TimestampTz t);
 
 extern int	tm2timestamp(struct pg_tm *tm, fsec_t fsec, int *tzp, Timestamp *dt);
-extern int timestamp2tm(Timestamp dt, int *tzp, struct pg_tm *tm,
-			 fsec_t *fsec, const char **tzn, pg_tz *attimezone);
+extern int	timestamp2tm(Timestamp dt, int *tzp, struct pg_tm *tm,
+						 fsec_t *fsec, const char **tzn, pg_tz *attimezone);
 extern void dt2time(Timestamp dt, int *hour, int *min, int *sec, fsec_t *fsec);
 
-extern int	interval2tm(Interval span, struct pg_tm *tm, fsec_t *fsec);
-extern int	tm2interval(struct pg_tm *tm, fsec_t fsec, Interval *span);
+extern void interval2itm(Interval span, struct pg_itm *itm);
+extern int	itm2interval(struct pg_itm *itm, Interval *span);
+extern int	itmin2interval(struct pg_itm_in *itm_in, Interval *span);
 
 extern Timestamp SetEpochTimestamp(void);
 extern void GetEpochTime(struct pg_tm *tm);
@@ -99,6 +102,8 @@ extern int	timestamp_cmp_internal(Timestamp dt1, Timestamp dt2);
 
 extern TimestampTz timestamp2timestamptz_opt_overflow(Timestamp timestamp,
 													  int *overflow);
+extern int32 timestamp_cmp_timestamptz_internal(Timestamp timestampVal,
+												TimestampTz dt2);
 
 extern int	isoweek2j(int year, int week);
 extern void isoweek2date(int woy, int *year, int *mon, int *mday);

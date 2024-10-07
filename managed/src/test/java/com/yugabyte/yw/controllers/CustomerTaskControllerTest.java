@@ -158,7 +158,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     // Set http context
     TestUtils.setFakeHttpContext(user);
     TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
-    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
@@ -225,7 +225,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       responseJson.set("details", Json.toJson(details));
     }
 
-    return subTask.getTaskUUID();
+    return subTask.getUuid();
   }
 
   @Test

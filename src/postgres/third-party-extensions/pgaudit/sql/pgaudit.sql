@@ -3,6 +3,9 @@
 -- Create pgaudit extension
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 
+-- Grant all on public schema to public
+GRANT ALL ON SCHEMA public TO public;
+
 -- Make sure events don't get logged twice when session logging
 SET pgaudit.log = 'all';
 SET pgaudit.log_client = ON;
@@ -32,6 +35,7 @@ RESET pgaudit.log_level;
 --     STATEMENT - The statement being logged
 --     PARAMETER - If parameter logging is requested, they will follow the
 --                 statement
+--     ROWS - If rows logging is requested, they will follow the parameter
 
 SELECT current_user \gset
 
@@ -416,6 +420,15 @@ UPDATE account
 
 --
 -- Object logged because of:
+--     select (password) on account (in the where clause)
+-- Session logged on all tables because log = read and log_relation = on
+SELECT *
+  FROM account
+ WHERE password = 'HASH2'
+   FOR UPDATE;
+
+--
+-- Object logged because of:
 -- select (password) on account (in the where clause)
 -- Session logged on all tables because log = read and log_relation = on
 UPDATE account
@@ -428,6 +441,18 @@ UPDATE account
 -- Session logged on all tables because log = read and log_relation = on
 UPDATE account
    SET password = 'HASH2';
+
+--
+-- Change configuration of user 1 so that full statements are not logged
+\connect - :current_user
+ALTER ROLE user1 RESET pgaudit.log_relation;
+ALTER ROLE user1 RESET pgaudit.log;
+ALTER ROLE user1 SET pgaudit.log_statement = OFF;
+\connect - user1
+
+--
+-- Logged but without full statement
+SELECT * FROM account;
 
 --
 -- Change back to superuser to do exhaustive tests
@@ -765,7 +790,7 @@ CREATE TRIGGER bbb_insert_trg
 	AFTER INSERT ON bbb
 	FOR EACH ROW EXECUTE PROCEDURE bbb_insert();
 
-GRANT SELECT
+GRANT SELECT, UPDATE
    ON aaa
    TO auditor;
 
@@ -792,6 +817,51 @@ DROP TABLE tmp;
 DROP TABLE tmp2;
 
 --
+-- Test MISC
+SET pgaudit.log = 'MISC';
+SET pgaudit.log_level = 'notice';
+SET pgaudit.log_client = ON;
+SET pgaudit.log_relation = ON;
+SET pgaudit.log_parameter = ON;
+
+CREATE ROLE alice;
+
+SET ROLE alice;
+CREATE TABLE t (a int, b text);
+SET search_path TO test, public;
+
+INSERT INTO t VALUES (1, 'misc');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test MISC_SET
+SET pgaudit.log = 'MISC_SET';
+
+SET ROLE alice;
+SET search_path TO public;
+
+INSERT INTO t VALUES (2, 'misc_set');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test ALL, -MISC, MISC_SET
+SET pgaudit.log = 'ALL, -MISC, MISC_SET';
+
+SET search_path TO public;
+
+INSERT INTO t VALUES (3, 'all, -misc, misc_set');
+
+VACUUM t;
+
+RESET ROLE;
+DROP TABLE public.t;
+DROP ROLE alice;
+
+--
 -- Test PARTITIONED table
 CREATE TABLE h(x int ,y int) PARTITION BY HASH(x);
 CREATE TABLE h_0 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 0);
@@ -803,6 +873,724 @@ CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
 
+--
+-- Test rows retrived or affected by statements
+\connect - :current_user
+
+SET pgaudit.log = 'all';
+SET pgaudit.log_client = on;
+SET pgaudit.log_relation = on;
+SET pgaudit.log_statement_once = off;
+SET pgaudit.log_parameter = on;
+SET pgaudit.log_rows = on;
+
+--
+-- Test DDL
+CREATE TABLE test2
+(
+	id int,
+	name text
+);
+
+CREATE TABLE test3
+(
+	id int,
+	name text
+);
+
+CREATE FUNCTION test2_insert() RETURNS TRIGGER AS $$
+BEGIN
+	UPDATE test2
+	   SET id = id + 90
+	 WHERE id = new.id;
+
+	RETURN new;
+END $$ LANGUAGE plpgsql security definer;
+
+CREATE TRIGGER test2_insert_trg
+	AFTER INSERT ON test2
+	FOR EACH ROW EXECUTE PROCEDURE test2_insert();
+
+CREATE FUNCTION test2_change(change_id int) RETURNS void AS $$
+BEGIN
+	UPDATE test2
+	   SET id = id + 1
+	 WHERE id = change_id;
+END $$ LANGUAGE plpgsql security definer;
+
+CREATE VIEW vw_test3 AS
+SELECT *
+  FROM test3;
+
+--
+-- Test DML
+INSERT INTO test2 (id, name)
+		  VALUES (1, 'a');
+INSERT INTO test2 (id, name)
+		  VALUES (2, 'b');
+INSERT INTO test2 (id, name)
+		  VALUES (3, 'c');
+
+INSERT INTO test3 (id, name)
+		  VALUES (1, 'a');
+INSERT INTO test3 (id, name)
+		  VALUES (2, 'b');
+INSERT INTO test3 (id, name)
+		  VALUES (3, 'c');
+
+SELECT *
+  FROM test3, test2;
+
+SELECT *
+  FROM vw_test3, test2;
+
+SELECT *
+  FROM test2
+ ORDER BY ID;
+
+UPDATE test2
+   SET name = 'd';
+
+UPDATE test3
+   SET name = 'd'
+ WHERE id > 0;
+
+SELECT 1
+  FROM
+(
+	SELECT relname
+	  FROM pg_class
+	  LIMIT 3
+) SUBQUERY;
+
+WITH CTE AS
+(
+	SELECT id
+	  FROM test2
+)
+INSERT INTO test3
+SELECT id
+  FROM cte;
+
+WITH CTE AS
+(
+	INSERT INTO test3 VALUES (1)
+				   RETURNING id
+)
+INSERT INTO test2
+SELECT id
+  FROM cte;
+
+DO $$ BEGIN PERFORM test2_change(91); END $$;
+
+WITH CTE AS
+(
+	UPDATE test2
+	   SET id = 45
+	 WHERE id = 92
+	RETURNING id
+)
+INSERT INTO test3
+SELECT id
+  FROM cte;
+
+WITH CTE AS
+(
+	INSERT INTO test2 VALUES (37)
+				   RETURNING id
+)
+UPDATE test3
+   SET id = cte.id
+  FROM cte
+ WHERE test3.id <> cte.id;
+
+DELETE
+  FROM test2;
+
+DELETE
+  FROM test3
+ WHERE id > 0;
+
+--
+-- Drop test tables
+DROP TABLE test2;
+DROP VIEW vw_test3;
+DROP TABLE test3;
+DROP FUNCTION test2_insert();
+DROP FUNCTION test2_change(int);
+
+--
+-- Only object logging will be done
+SET pgaudit.log = 'none';
+SET pgaudit.role = 'auditor';
+
+--
+-- Select is session logged
+SELECT *
+  FROM account;
+
+--
+-- Insert is not logged
+INSERT INTO account (id, name, password, description)
+			 VALUES (1, 'user2', 'HASH3', 'blah, blah2');
+INSERT INTO account (id, name, password, description)
+			 VALUES (1, 'user3', 'HASH4', 'blah, blah3');
+
+--
+-- Not object logged
+SELECT id,
+	   name
+  FROM account;
+
+--
+-- Object logged because of:
+-- select (password) on account
+SELECT password
+  FROM account;
+
+--
+-- Not object logged
+UPDATE account
+   SET description = 'yada, yada1';
+
+--
+-- Object logged because of:
+-- update (password) on account
+UPDATE account
+   SET password = 'HASH4';
+
+--
+-- Session relation logging will be done
+SET pgaudit.log_relation = on;
+SET pgaudit.log = 'read, write';
+
+--
+-- Object logged because of:
+-- select (password) on account
+-- select on account_role_map
+-- Session logged on all tables because log = read and log_relation = on
+SELECT account.password,
+	   account_role_map.role_id
+  FROM account
+	   INNER JOIN account_role_map
+			on account.id = account_role_map.account_id;
+
+--
+-- Object logged because of:
+-- select (password) on account
+-- Session logged on all tables because log = read and log_relation = on
+SELECT password
+  FROM account;
+
+--
+-- Not object logged
+-- Session logged on all tables because log = read and log_relation = on
+UPDATE account
+   SET description = 'yada, yada2';
+
+--
+-- Object logged because of:
+-- select (password) on account (in the where clause)
+-- Session logged on all tables because log = read and log_relation = on
+UPDATE account
+   SET description = 'yada, yada3'
+ where password = 'HASH4';
+
+--
+-- Object logged because of:
+-- update (password) on account
+-- Session logged on all tables because log = read and log_relation = on
+UPDATE account
+   SET password = 'HASH4';
+
+--
+-- Exhaustive tests
+SET pgaudit.log = 'all';
+SET pgaudit.log_client = on;
+SET pgaudit.log_relation = on;
+SET pgaudit.log_parameter = on;
+SET pgaudit.log_rows = on;
+
+--
+-- Simple DO block
+DO $$
+BEGIN
+	raise notice 'test';
+END $$;
+
+--
+-- Copy account to stdout
+COPY account TO stdout;
+
+--
+-- Drop a table from a query
+DROP TABLE test.account_copy;
+
+--
+-- Create a table from a query
+CREATE TABLE test.account_copy AS
+SELECT *
+  FROM account;
+
+--
+-- Copy from stdin to account copy
+COPY test.account_copy from stdin;
+1	user1	HASH4	yada, yada4
+\.
+
+--
+-- Test prepared statement
+PREPARE pgclassstmt1 (oid) AS
+SELECT 1
+  FROM account
+ WHERE id = $1;
+
+PREPARE pgclassstmt2 (oid) AS
+SELECT 2
+  FROM account
+ WHERE id = $1;
+
+EXECUTE pgclassstmt2 (1);
+EXECUTE pgclassstmt1 (1);
+
+DEALLOCATE pgclassstmt2;
+DEALLOCATE pgclassstmt1;
+
+--
+-- Test cursor
+BEGIN;
+
+DECLARE ctest1 SCROLL CURSOR FOR
+SELECT 1
+  FROM
+(
+	SELECT relname
+	  FROM pg_class
+	 LIMIT 3
+ ) subquery;
+
+DECLARE ctest2 SCROLL CURSOR FOR
+SELECT 2
+  FROM
+(
+	SELECT relname
+	  FROM pg_class
+	 LIMIT 3
+ ) subquery;
+
+FETCH NEXT FROM ctest1;
+FETCH NEXT FROM ctest2;
+FETCH NEXT FROM ctest1;
+FETCH NEXT FROM ctest2;
+FETCH NEXT FROM ctest1;
+FETCH NEXT FROM ctest2;
+
+CLOSE ctest2;
+CLOSE ctest1;
+COMMIT;
+
+--
+-- Turn off log_catalog and pg_class will not be logged
+SET pgaudit.log_catalog = off;
+
+SELECT count(*)
+  FROM
+(
+	SELECT relname
+	  FROM pg_class
+	 LIMIT 1
+ ) subquery;
+
+--
+-- Test prepared insert
+DROP TABLE test.test_insert;
+
+--
+-- Test prepared insert
+CREATE TABLE test.test_insert
+(
+	id INT
+);
+
+PREPARE pgclassstmt (oid) AS
+INSERT INTO test.test_insert (id)
+					  VALUES ($1);
+EXECUTE pgclassstmt (1);
+
+--
+-- Check that primary key creation is logged
+CREATE TABLE public.test
+(
+	id INT,
+	name TEXT,
+	description TEXT,
+	CONSTRAINT test_pkey PRIMARY KEY (id)
+);
+
+--
+-- Check that analyze is logged
+ANALYZE test;
+
+--
+-- Grants to public should not cause object logging (session logging will
+-- still happen)
+GRANT SELECT
+  ON TABLE public.test
+  TO PUBLIC;
+
+SELECT *
+  FROM test;
+
+-- Check that statements without columns log
+SELECT
+  FROM test;
+
+SELECT 1,
+	   substring('Thomas' from 2 for 3);
+
+DO $$
+DECLARE
+	test INT;
+BEGIN
+	SELECT 1
+	  INTO test;
+END $$;
+
+explain select 1;
+
+--
+-- Test that looks inside of do blocks log
+INSERT INTO TEST (id)
+		  VALUES (1);
+INSERT INTO TEST (id)
+		  VALUES (2);
+INSERT INTO TEST (id)
+		  VALUES (3);
+
+DO $$
+DECLARE
+	result RECORD;
+BEGIN
+	FOR result IN
+		SELECT id
+		  FROM test
+	LOOP
+		INSERT INTO test (id)
+			 VALUES (result.id + 100);
+	END LOOP;
+END $$;
+
+--
+-- Test obfuscated dynamic sql for clean logging
+DO $$
+DECLARE
+	table_name TEXT = 'do_table';
+BEGIN
+	EXECUTE 'CREATE TABLE ' || table_name || ' ("weird name" INT)';
+	EXECUTE 'DROP table ' || table_name;
+END $$;
+
+--
+-- Generate an error and make sure the stack gets cleared
+DO $$
+BEGIN
+	CREATE TABLE bogus.test_block
+	(
+		id INT
+	);
+END $$;
+
+--
+-- Test alter table statements
+ALTER TABLE public.test
+	DROP COLUMN description ;
+
+ALTER TABLE public.test
+	RENAME TO test2;
+
+ALTER TABLE public.test2
+	SET SCHEMA test;
+
+ALTER TABLE test.test2
+	ADD COLUMN description TEXT;
+
+ALTER TABLE test.test2
+	DROP COLUMN description;
+
+DROP TABLE test.test2;
+
+--
+-- Test multiple statements with one semi-colon
+CREATE SCHEMA foo1
+	CREATE TABLE foo1.bar1 (id int)
+	CREATE TABLE foo1.baz1 (id int);
+
+DROP TABLE foo1.bar1;
+DROP TABLE foo1.baz1;
+DROP SCHEMA foo1;
+
+--
+-- Test aggregate
+CREATE FUNCTION public.int_add1
+(
+	a INT,
+	b INT
+)
+	RETURNS INT LANGUAGE plpgsql AS $$
+BEGIN
+	return a + b;
+END $$;
+
+SELECT int_add1(1, 1);
+
+CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add1, STYPE=INT, INITCOND='0');
+ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test3;
+
+--
+-- Test conversion
+CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;
+ALTER CONVERSION public.conversion_test RENAME TO conversion_test3;
+
+--
+-- Test create/alter/drop database
+CREATE DATABASE contrib_regression_pgaudit;
+ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;
+DROP DATABASE contrib_regression_pgaudit2;
+
+-- Test role as a substmt
+SET pgaudit.log = 'role';
+
+CREATE TABLE t ();
+CREATE ROLE alice;
+
+CREATE SCHEMA foo3
+	GRANT SELECT
+	   ON public.t
+	   TO alice;
+
+drop table public.t;
+drop role alice;
+
+--
+-- Test for non-empty stack error
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT 200;
+    RETURN _ret;
+END $$;
+
+BEGIN;
+    SELECT get_test_id('_ret');
+    SELECT get_test_id('_ret2');
+    FETCH ALL FROM _ret;
+    FETCH ALL FROM _ret2;
+    CLOSE _ret;
+    CLOSE _ret2;
+END;
+
+--
+-- Test that frees a memory context earlier than expected
+SET pgaudit.log = 'all';
+
+CREATE FUNCTION test1()
+	RETURNS INT AS $$
+DECLARE
+	cur1 cursor for select * from hoge;
+	tmp int;
+BEGIN
+	OPEN cur1;
+	FETCH cur1 into tmp;
+	RETURN tmp;
+END $$
+LANGUAGE plpgsql ;
+
+SELECT test1();
+
+--
+-- Delete all rows then delete 1 row
+SET pgaudit.log = 'write';
+SET pgaudit.role = 'auditor';
+
+create table bar
+(
+	col int
+);
+
+grant delete
+   on bar
+   to auditor;
+
+insert into bar (col)
+		 values (1);
+delete from bar;
+
+insert into bar (col)
+		 values (1);
+delete from bar
+ where col = 1;
+
+drop table bar;
+
+--
+-- Test that FK references do not log but triggers still do
+SET pgaudit.log = 'read, write';
+SET pgaudit.role TO 'auditor';
+
+CREATE TABLE aaa
+(
+	ID int primary key
+);
+
+CREATE TABLE bbb
+(
+	id int
+		references aaa(id)
+);
+
+CREATE FUNCTION bbb_insert1() RETURNS TRIGGER AS $$
+BEGIN
+	UPDATE bbb set id = new.id + 1;
+
+	RETURN new;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bbb_insert_trg1
+	AFTER INSERT ON bbb
+	FOR EACH ROW EXECUTE PROCEDURE bbb_insert1();
+
+GRANT SELECT, UPDATE
+   ON aaa
+   TO auditor;
+
+GRANT UPDATE
+   ON bbb
+   TO auditor;
+
+INSERT INTO aaa VALUES (generate_series(1,100));
+
+SET pgaudit.log_parameter TO OFF;
+INSERT INTO bbb VALUES (1);
+SET pgaudit.log_parameter TO ON;
+
+DROP TABLE bbb;
+DROP TABLE aaa;
+
+--
+-- Test MISC
+SET pgaudit.log = 'misc';
+SET pgaudit.log_client = on;
+SET pgaudit.log_relation = on;
+SET pgaudit.log_parameter = on;
+
+CREATE ROLE alice;
+
+SET ROLE alice;
+CREATE TABLE t (a int, b text);
+SET search_path TO test, public;
+
+INSERT INTO t VALUES (1, 'misc');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test MISC_SET
+SET pgaudit.log = 'MISC_SET';
+
+SET ROLE alice;
+SET search_path TO public;
+
+INSERT INTO t VALUES (2, 'misc_set');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test ALL, -MISC, MISC_SET
+SET pgaudit.log = 'ALL, -MISC, MISC_SET';
+SET search_path TO public;
+
+INSERT INTO t VALUES (3, 'all, -misc, misc_set');
+
+VACUUM t;
+
+RESET ROLE;
+DROP TABLE public.t;
+DROP ROLE alice;
+
+--
+-- Test PARTITIONED table
+CREATE TABLE h(x int ,y int) PARTITION BY HASH(x);
+CREATE TABLE h_0 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 0);
+CREATE TABLE h_1 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 1);
+INSERT INTO h VALUES(1,1);
+SELECT * FROM h;
+SELECT * FROM h_0;
+CREATE INDEX h_idx ON h (x);
+DROP INDEX h_idx;
+DROP TABLE h;
+
+--
+-- Change configuration of user 1 so that full statements are not logged
+\connect - :current_user
+ALTER ROLE user1 RESET pgaudit.log_relation;
+ALTER ROLE user1 RESET pgaudit.log;
+ALTER ROLE user1 SET pgaudit.log_statement = OFF;
+ALTER ROLE user1 SET pgaudit.log_rows = on;
+\connect - user1
+
+--
+-- Logged but without full statement
+SELECT * FROM account;
+
+--
+-- Change back to superuser to do exhaustive tests
+\connect - :current_user
+
+--
+-- Test that pgaudit event triggers are immune to search-path-based attacks
+
+-- Attempt to capture unqualified references to standard functions
+CREATE FUNCTION upper(text) RETURNS text
+LANGUAGE SQL AS 'SELECT (1/0)::text';
+
+CREATE FUNCTION lower(text) RETURNS text
+LANGUAGE SQL AS 'SELECT (1/0)::text';
+
+CREATE FUNCTION my_ne(text, text) RETURNS bool
+LANGUAGE SQL AS 'SELECT (1/0)::bool';
+
+CREATE OPERATOR <> (FUNCTION = my_ne, LEFTARG = text, RIGHTARG = text);
+
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+SET pgaudit.log = 'DDL';
+-- Put public schema before pg_catalog to capture unqualified references
+SET search_path = public, pg_catalog;
+
+-- If there was a vulnerability, these would fail with division by zero error
+CREATE TABLE wombat ();
+DROP TABLE wombat;
+
+SET pgaudit.log = 'NONE';
+DROP EXTENSION pgaudit;
+
+DROP OPERATOR <> (text, text);
+DROP FUNCTION my_ne(text, text);
+DROP FUNCTION lower(text);
+DROP FUNCTION upper(text);
+
+-- Create/drop extension. Note that the log level here must be warning because the create extension code will reset any higher log
+-- levels like notice
+SET pgaudit.log = 'all,-misc_set';
+SET pgaudit.log_level = 'warning';
+
+CREATE EXTENSION pg_stat_statements;
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.10';
+DROP EXTENSION pg_stat_statements;
+
+SET pgaudit.log_level = 'notice';
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
@@ -813,6 +1601,7 @@ ALTER ROLE :current_user RESET pgaudit.log_client;
 ALTER ROLE :current_user RESET pgaudit.log_level;
 ALTER ROLE :current_user RESET pgaudit.log_parameter;
 ALTER ROLE :current_user RESET pgaudit.log_relation;
+ALTER ROLE :current_user RESET pgaudit.log_statement;
 ALTER ROLE :current_user RESET pgaudit.log_statement_once;
 ALTER ROLE :current_user RESET pgaudit.role;
 
@@ -821,6 +1610,7 @@ RESET pgaudit.log_catalog;
 RESET pgaudit.log_level;
 RESET pgaudit.log_parameter;
 RESET pgaudit.log_relation;
+RESET pgaudit.log_statement;
 RESET pgaudit.log_statement_once;
 RESET pgaudit.role;
 

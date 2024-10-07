@@ -1,8 +1,8 @@
 --
 -- CHAR
 --
--- fixed-length by value
--- internally passed by value if <= 4 bytes in storage
+-- Per SQL standard, CHAR means character(1), that is a varlena type
+-- with a constraint restricting it to one character (not byte)
 SELECT char 'c' = char 'c' AS true;
  true 
 ------
@@ -11,8 +11,9 @@ SELECT char 'c' = char 'c' AS true;
 
 --
 -- Build a table for testing
+-- (This temporarily hides the table created in test_setup.sql)
 --
-CREATE TABLE CHAR_TBL(f1 char);
+CREATE TEMP TABLE CHAR_TBL(f1 char);
 INSERT INTO CHAR_TBL (f1) VALUES ('a');
 INSERT INTO CHAR_TBL (f1) VALUES ('A');
 -- any of the following three input formats are acceptable
@@ -25,98 +26,155 @@ INSERT INTO CHAR_TBL (f1) VALUES ('');
 INSERT INTO CHAR_TBL (f1) VALUES ('cd');
 ERROR:  value too long for type character(1)
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
-SELECT '' AS seven, * FROM CHAR_TBL;
- seven | f1 
--------+----
-       | a
-       | A
-       | 1
-       | 2
-       | 3
-       |  
-       | c
+SELECT * FROM CHAR_TBL;
+ f1 
+----
+ a
+ A
+ 1
+ 2
+ 3
+  
+ c
 (7 rows)
 
-SELECT '' AS six, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 <> 'a';
- six | f1 
------+----
-     | A
-     | 1
-     | 2
-     | 3
-     |  
-     | c
+ f1 
+----
+ A
+ 1
+ 2
+ 3
+  
+ c
 (6 rows)
 
-SELECT '' AS one, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 = 'a';
- one | f1 
------+----
-     | a
+ f1 
+----
+ a
 (1 row)
 
-SELECT '' AS five, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 < 'a';
- five | f1 
-------+----
-      |  
+ f1 
+----
+  
 (1 row)
 
-SELECT '' AS six, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 <= 'a';
- six | f1 
------+----
-     | a
-     |  
+ f1 
+----
+ a
+  
 (2 rows)
 
-SELECT '' AS one, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 > 'a';
- one | f1 
------+----
-     | A
-     | 1
-     | 2
-     | 3
-     | c
+ f1 
+----
+ A
+ 1
+ 2
+ 3
+ c
 (5 rows)
 
-SELECT '' AS two, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 >= 'a';
- two | f1 
------+----
-     | a
-     | A
-     | 1
-     | 2
-     | 3
-     | c
+ f1 
+----
+ a
+ A
+ 1
+ 2
+ 3
+ c
 (6 rows)
 
 DROP TABLE CHAR_TBL;
 --
 -- Now test longer arrays of char
 --
-CREATE TABLE CHAR_TBL(f1 char(4));
-INSERT INTO CHAR_TBL (f1) VALUES ('a');
-INSERT INTO CHAR_TBL (f1) VALUES ('ab');
-INSERT INTO CHAR_TBL (f1) VALUES ('abcd');
+-- This char_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
+--
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
 ERROR:  value too long for type character(4)
-INSERT INTO CHAR_TBL (f1) VALUES ('abcd    ');
-SELECT '' AS four, * FROM CHAR_TBL;
- four |  f1  
-------+------
-      | a   
-      | ab  
-      | abcd
-      | abcd
+SELECT * FROM CHAR_TBL;
+  f1  
+------
+ a   
+ ab  
+ abcd
+ abcd
 (4 rows)
+
+--
+-- Also test "char", which is an ad-hoc one-byte type.  It can only
+-- really store ASCII characters, but we allow high-bit-set characters
+-- to be accessed via bytea-like escapes.
+--
+SELECT 'a'::"char";
+ char 
+------
+ a
+(1 row)
+
+SELECT '\101'::"char";
+ char 
+------
+ A
+(1 row)
+
+SELECT '\377'::"char";
+ char 
+------
+ \377
+(1 row)
+
+SELECT 'a'::"char"::text;
+ text 
+------
+ a
+(1 row)
+
+SELECT '\377'::"char"::text;
+ text 
+------
+ \377
+(1 row)
+
+SELECT '\000'::"char"::text;
+ text 
+------
+ 
+(1 row)
+
+SELECT 'a'::text::"char";
+ char 
+------
+ a
+(1 row)
+
+SELECT '\377'::text::"char";
+ char 
+------
+ \377
+(1 row)
+
+SELECT ''::text::"char";
+ char 
+------
+ 
+(1 row)
 

@@ -200,7 +200,7 @@ ivfflatinsert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 	 * Use memory context since detoast, IvfflatNormValue, and
 	 * index_form_tuple can allocate
 	 */
-	insertCtx = AllocSetContextCreate(CurrentMemoryContext,
+	insertCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 									  "Ivfflat insert temporary context",
 									  ALLOCSET_DEFAULT_SIZES);
 	oldCtx = MemoryContextSwitchTo(insertCtx);

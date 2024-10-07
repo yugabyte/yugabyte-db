@@ -12,7 +12,7 @@
 
 #include "yb/tserver/tserver_call_home.h"
 #include <boost/system/error_code.hpp>
-#include "yb/gutil/walltime.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 using std::string;
@@ -28,17 +28,8 @@ class BasicCollector : public TserverCollector {
   using TserverCollector::TserverCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    AppendPairToJson("cluster_uuid", tserver()->cluster_uuid(), &json_);
-    AppendPairToJson("node_uuid", tserver()->permanent_uuid(), &json_);
     AppendPairToJson("server_type", "tserver", &json_);
-
-    // Only collect hostname and username if collection level is medium or high.
-    if (collection_level != CollectionLevel::LOW) {
-      AppendPairToJson("hostname", tserver()->get_hostname(), &json_);
-      AppendPairToJson("current_user", GetCurrentUser(), &json_);
-    }
-
-    AppendPairToJson("timestamp", std::to_string(WallTime_Now()), &json_);
+    AppendPairToJson("cluster_uuid", tserver()->cluster_uuid(), &json_);
   }
 
   string collector_name() override { return "BasicCollector"; }

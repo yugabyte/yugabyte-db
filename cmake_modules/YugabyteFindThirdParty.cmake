@@ -320,7 +320,8 @@ macro(yb_find_third_party_dependencies)
     # TODO: display this only if using a devtoolset compiler on CentOS, and ideally only if the error
     # actually happens.
     message("Note: if Boost fails to find Threads, you might need to install the "
-            "devtoolset-N-libatomic-devel package for the devtoolset you are using.")
+            "gcc-toolset-N-libatomic-devel package, or devtoolset-N-libatomic-devel package for "
+            "older RedHat/CentOS versions, where N is the toolset version number.")
   endif()
 
   # Find Boost static libraries.

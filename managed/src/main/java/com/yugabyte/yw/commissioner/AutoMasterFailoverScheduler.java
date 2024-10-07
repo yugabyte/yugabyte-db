@@ -149,9 +149,7 @@ public class AutoMasterFailoverScheduler {
                               String errMsg =
                                   String.format(
                                       "Auto master failover task %s (%s) failed for universe %s",
-                                      tf.getTaskType(),
-                                      tf.getTaskUUID(),
-                                      universe.getUniverseUUID());
+                                      tf.getTaskType(), tf.getUuid(), universe.getUniverseUUID());
                               throw new RuntimeException(errMsg);
                             }
                           });
@@ -435,8 +433,8 @@ public class AutoMasterFailoverScheduler {
         }
         // Verify that the replacement node exists before creating the failover schedule.
         NodeDetails node = universe.getNode(action.getNodeName());
-        NodeDetails possibleReplacementCandidate =
-            autoMasterFailover.findReplacementMaster(universe, node);
+        String possibleReplacementCandidate =
+            autoMasterFailover.findReplacementMaster(universe, node, true /* pickNewNode */);
         if (possibleReplacementCandidate == null) {
           disableSchedule(customer, failoverScheduleName, true);
           log.info(

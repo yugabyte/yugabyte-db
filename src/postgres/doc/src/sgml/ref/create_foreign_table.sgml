@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/create_foreign_table.sgml -->
+<!--
+doc/src/sgml/ref/create_foreign_table.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="sql-createforeigntable">
  <indexterm zone="sql-createforeigntable">
@@ -32,7 +35,8 @@ CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="parameter">table_name
   { <replaceable class="parameter">column_name</replaceable> [ WITH OPTIONS ] [ <replaceable class="parameter">column_constraint</replaceable> [ ... ] ]
     | <replaceable>table_constraint</replaceable> }
     [, ... ]
-) ] <replaceable class="parameter">partition_bound_spec</replaceable>
+) ]
+{ FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }
   SERVER <replaceable class="parameter">server_name</replaceable>
 [ OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] ) ]
 
@@ -42,12 +46,20 @@ CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="parameter">table_name
 { NOT NULL |
   NULL |
   CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] |
-  DEFAULT <replaceable>default_expr</replaceable> }
+  DEFAULT <replaceable>default_expr</replaceable> |
+  GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED }
 
 <phrase>and <replaceable class="parameter">table_constraint</replaceable> is:</phrase>
 
 [ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
 CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
+
+<phrase>and <replaceable class="parameter">partition_bound_spec</replaceable> is:</phrase>
+
+IN ( <replaceable class="parameter">partition_bound_expr</replaceable> [, ...] ) |
+FROM ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] )
+  TO ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] ) |
+WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REMAINDER <replaceable class="parameter">numeric_literal</replaceable> )
 </synopsis>
  </refsynopsisdiv>
 
@@ -65,8 +77,8 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
    myschema.mytable ...</literal>) then the table is created in the specified
    schema.  Otherwise it is created in the current schema.
    The name of the foreign table must be
-   distinct from the name of any other foreign table, table, sequence, index,
-   view, or materialized view in the same schema.
+   distinct from the name of any other relation (table, sequence, index, view,
+   materialized view, or foreign table) in the same schema.
   </para>
 
   <para>
@@ -155,7 +167,23 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
       tables from which the new foreign table automatically inherits
       all columns.  Parent tables can be plain tables or foreign tables.
       See the similar form of
-      <xref linkend="sql-createtable"/> for more details.
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link> for more details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PARTITION OF <replaceable>parent_table</replaceable> { FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }</literal></term>
+    <listitem>
+     <para>
+      This form can be used to create the foreign table as partition of
+      the given parent table with specified partition bound values.
+      See the similar form of
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link> for more details.
+      Note that it is currently not allowed to create the foreign table as a
+      partition of the parent table if there are <literal>UNIQUE</literal>
+      indexes on the parent table.  (See also
+      <link linkend="sql-altertable"><command>ALTER TABLE ATTACH PARTITION</command></link>.)
      </para>
     </listitem>
    </varlistentry>
@@ -247,6 +275,30 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
    </varlistentry>
 
    <varlistentry>
+    <term><literal>GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED</literal><indexterm><primary>generated column</primary></indexterm></term>
+    <listitem>
+     <para>
+      This clause creates the column as a <firstterm>generated
+      column</firstterm>.  The column cannot be written to, and when read the
+      result of the specified expression will be returned.
+     </para>
+
+     <para>
+      The keyword <literal>STORED</literal> is required to signify that the
+      column will be computed on write.  (The computed value will be presented
+      to the foreign-data wrapper for storage and must be returned on
+      reading.)
+     </para>
+
+     <para>
+      The generation expression can refer to other columns in the table, but
+      not other generated columns.  Any functions and operators used must be
+      immutable.  References to other tables are not allowed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><replaceable class="parameter">server_name</replaceable></term>
     <listitem>
      <para>
@@ -304,9 +356,41 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
     constraints on foreign tables, it does assume that they are correct
     for purposes of query optimization.  If there are rows visible in the
     foreign table that do not satisfy a declared constraint, queries on
-    the table might produce incorrect answers.  It is the user's
+    the table might produce errors or incorrect answers.  It is the user's
     responsibility to ensure that the constraint definition matches
     reality.
+   </para>
+
+   <caution>
+    <para>
+     When a foreign table is used as a partition of a partitioned table,
+     there is an implicit constraint that its contents must satisfy the
+     partitioning rule.  Again, it is the user's responsibility to ensure
+     that that is true, which is best done by installing a matching
+     constraint on the remote server.
+    </para>
+   </caution>
+
+   <para>
+    Within a partitioned table containing foreign-table partitions,
+    an <command>UPDATE</command> that changes the partition key value can
+    cause a row to be moved from a local partition to a foreign-table
+    partition, provided the foreign data wrapper supports tuple routing.
+    However it is not currently possible to move a row from a
+    foreign-table partition to another partition.
+    An <command>UPDATE</command> that would require doing that will fail
+    due to the partitioning constraint, assuming that that is properly
+    enforced by the remote server.
+   </para>
+
+   <para>
+    Similar considerations apply to generated columns.  Stored generated
+    columns are computed on insert or update on the local
+    <productname>PostgreSQL</productname> server and handed to the
+    foreign-data wrapper for writing out to the foreign data store, but it is
+    not enforced that a query of the foreign table returns values for stored
+    generated columns that are consistent with the generation expression.
+    Again, this might result in incorrect query results.
    </para>
  </refsect1>
 
@@ -343,7 +427,7 @@ CREATE FOREIGN TABLE measurement_y2016m07
  </refsect1>
 
  <refsect1 id="sql-createforeigntable-compatibility">
-  <title id="sql-createforeigntable-compatibility-title">Compatibility</title>
+  <title>Compatibility</title>
 
   <para>
    The <command>CREATE FOREIGN TABLE</command> command largely conforms to the

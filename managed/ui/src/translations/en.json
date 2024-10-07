@@ -140,7 +140,7 @@
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
         "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times.",
-        "overridePortsLabel": "Override YCQL Default Ports"
+        "overridePortsLabel": "Override YCQL Ports"
       },
       "encryptionInTransit": {
         "title": "Manage encryption in-Transit",
@@ -263,7 +263,7 @@
         "modalTitle": "Edit Connection Pooling",
         "toggleLabel": "Built-in Connection Pooling",
         "subText": "Enable built-in YSQL connection pooling to maximize the number of simultaneous connections to your database.",
-        "portsOverride": "Default Ports Override",
+        "portsOverride": "Override Ports",
         "enableWarningRF3": "<strong>Note!</strong> Enabling built-in connection pooling requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "enableWarningRF1": "<strong>Note!</strong>  Enabling built-in connection pooling requires a <strong>restart</strong> of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart.",
         "disableWarning1RF3": "<strong>Note!</strong> Disabling built-in connection pooling:",
@@ -330,9 +330,9 @@
         "tserverRpcPort": "T-Server RPC Port",
         "ybcPackagePath": "YBC Package Path",
         "yqlServerHttpPort": "YCQL HTTP Port",
-        "yqlServerRpcPort": "YCQL RPC Port",
+        "yqlServerRpcPort": "YCQL Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
-        "ysqlServerRpcPort": "YSQL RPC Port",
+        "ysqlServerRpcPort": "YSQL Port",
         "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
@@ -343,8 +343,8 @@
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
-        "dbRPCPortTooltip": "Port for connecting to your application clients.",
-        "ysqlConPortTooltip": "Port for connecting to the databases when connection pooling is enabled."
+        "dbRPCPortTooltip": "Port for connecting to your application clients. <br/> DEFAULT PORT : {{port}}",
+        "ysqlConPortTooltip": "Port for connecting to the databases when connection pooling is enabled. <br/> DEFAULT PORT : {{port}}"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -1839,7 +1839,8 @@
           "title": "Edit Role",
           "viewUsers": {
             "assignedUser": "Assigned users",
-            "noUsersAssgined": "No users is assigned to this role"
+            "noUsersAssgined": "No users are assigned to this role",
+            "assignedGroups": "Assigned groups"
           },
           "confirmModal": {
             "title": "Are you sure?",
@@ -1964,14 +1965,16 @@
           "editGroup": "Edit Group",
           "authProvider": "Group Authentication Provider",
           "groupName": "Group DN (Name)",
-          "groupNamePlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
+          "groupNameLDAPPlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
+          "groupNamePlaceholder":"Group Name",
           "groupRolesTitle": "Group Roles",
           "authProviderDisabled": "You need to first configure {{auth_provider}} before you can add its user groups.",
           "configureLDAPRoleSettings": "<b>Note!</b> You need to <a>configure LDAP role settings for membership lookup</a> before adding its user groups.",
           "groupInactive": "<b>Note!</b> This group is currently inactive.  Any change to the group will take effect once {{auth_provider}} is enabled.",
           "createSuccess": "Group added successfully",
           "updateSuccess": "Group updated successfully",
-          "groupNameRequired": "Group name is required"
+          "groupNameRequired": "Group name is required",
+          "duplicateGroupError": "Group with same name already exists"
         },
         "delete": {
           "groupName": "Group Name",
@@ -2550,7 +2553,7 @@
         "messages": {
           "ldapEnabled": "LDAP authentication is enabled",
           "ldapDisabled": "LDAP authentication is disabled",
-          "ldapSaveFailed": "Failed to update LDAP configuration: {{key}}`",
+          "ldapSaveFailed": "Failed to {{operation}} LDAP configuration: {{key}}`",
           "ldapSaveSuccess": "LDAP configuration updated successfully",
           "ldapURL": "LDAP URL is required",
           "ldapURLPortNo": "LDAP URL must be a valid URL with port number",

@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
-		"\t{{.StorageConfig}}\t{{.StorageConfigType}}\t{{.BackupType}}" +
+		"\t{{.StorageConfig}}\t{{.StorageConfigType}}\t{{.KMSConfig}}\t{{.BackupType}}" +
 		"\t{{.State}}\t{{.CompletionTime}}"
 
 	// BackupUUIDHeader to display backup UUID
@@ -40,6 +40,7 @@ const (
 	CreateTimeHeader = "Create Time"
 	// CompletionTimeHeader to display completion time
 	CompletionTimeHeader = "Completion Time"
+	categoryHeader       = "Category"
 )
 
 // Context for BackupResp outputs
@@ -113,6 +114,8 @@ func NewBackupContext() *Context {
 		"ExpiryTime":            expiryTimeHeader,
 		"CreateTime":            CreateTimeHeader,
 		"CompletionTime":        CompletionTimeHeader,
+		"KMSConfig":             formatter.KMSConfigHeader,
+		"Category":              categoryHeader,
 	}
 	return &backupCtx
 }
@@ -141,6 +144,18 @@ func (c *Context) StorageConfig() string {
 	return commonBackupInfo.GetStorageConfigUUID()
 }
 
+// KMSConfig fetches KMS Config
+func (c *Context) KMSConfig() string {
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	for _, k := range KMSConfigs {
+		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+			strings.Compare(k.ConfigUUID, commonBackupInfo.GetKmsConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", k.Name, commonBackupInfo.GetKmsConfigUUID())
+		}
+	}
+	return commonBackupInfo.GetKmsConfigUUID()
+}
+
 // ExpiryTime fetches Expiry Time
 func (c *Context) ExpiryTime() string {
 	expiryTime := c.b.GetExpiryTime()
@@ -149,6 +164,11 @@ func (c *Context) ExpiryTime() string {
 	} else {
 		return expiryTime.Format(time.RFC1123Z)
 	}
+}
+
+// Category fetches Category
+func (c *Context) Category() string {
+	return c.b.GetCategory()
 }
 
 // BackupType fetches Backup Type

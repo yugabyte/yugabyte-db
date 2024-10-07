@@ -599,4 +599,10 @@ public class NativeKubernetesManager extends KubernetesManager {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getNamespacedServices'");
   }
+
+  @Override
+  public boolean checkStatefulSetStatus(
+      Map<String, String> config, String namespace, String labelSelector, int replicaCount) {
+    throw new UnsupportedOperationException("Not implemented");
+  }
 }

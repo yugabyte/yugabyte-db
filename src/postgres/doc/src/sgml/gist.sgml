@@ -53,156 +53,160 @@
 
   <table id="gist-builtin-opclasses-table">
    <title>Built-in <acronym>GiST</acronym> Operator Classes</title>
-   <tgroup cols="4">
+   <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="2*"/>
     <thead>
      <row>
       <entry>Name</entry>
-      <entry>Indexed Data Type</entry>
       <entry>Indexable Operators</entry>
       <entry>Ordering Operators</entry>
      </row>
     </thead>
     <tbody>
      <row>
-      <entry><literal>box_ops</literal></entry>
-      <entry><type>box</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&lt;|</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;&lt;|</literal>
-       <literal>&lt;@</literal>
-       <literal>@&gt;</literal>
-       <literal>@</literal>
-       <literal>|&amp;&gt;</literal>
-       <literal>|&gt;&gt;</literal>
-       <literal>~</literal>
-       <literal>~=</literal>
-      </entry>
-      <entry>
-      </entry>
+      <entry valign="middle" morerows="13"><literal>box_ops</literal></entry>
+      <entry><literal>&lt;&lt; (box, box)</literal></entry>
+      <entry valign="middle" morerows="13"><literal>&lt;-&gt; (box, point)</literal></entry>
      </row>
+     <row><entry><literal>&amp;&lt; (box, box)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (box, box)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (box, box)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (box, box)</literal></entry></row>
+     <row><entry><literal>~= (box, box)</literal></entry></row>
+     <row><entry><literal>@&gt; (box, box)</literal></entry></row>
+     <row><entry><literal>&lt;@ (box, box)</literal></entry></row>
+     <row><entry><literal>&amp;&lt;| (box, box)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (box, box)</literal></entry></row>
+     <row><entry><literal>|&gt;&gt; (box, box)</literal></entry></row>
+     <row><entry><literal>|&amp;&gt; (box, box)</literal></entry></row>
+     <row><entry><literal>~ (box, box)</literal></entry></row>
+     <row><entry><literal>@ (box, box)</literal></entry></row>
+
      <row>
-      <entry><literal>circle_ops</literal></entry>
-      <entry><type>circle</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&lt;|</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;&lt;|</literal>
-       <literal>&lt;@</literal>
-       <literal>@&gt;</literal>
-       <literal>@</literal>
-       <literal>|&amp;&gt;</literal>
-       <literal>|&gt;&gt;</literal>
-       <literal>~</literal>
-       <literal>~=</literal>
-      </entry>
-      <entry>
-       <literal>&lt;-&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="13"><literal>circle_ops</literal></entry>
+      <entry><literal>&lt;&lt; (circle, circle)</literal></entry>
+      <entry valign="middle" morerows="13"><literal>&lt;-&gt; (circle, point)</literal></entry>
      </row>
+     <row><entry><literal>&amp;&lt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>&lt;@ (circle, circle)</literal></entry></row>
+     <row><entry><literal>@&gt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>~= (circle, circle)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (circle, circle)</literal></entry></row>
+     <row><entry><literal>|&gt;&gt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (circle, circle)</literal></entry></row>
+     <row><entry><literal>&amp;&lt;| (circle, circle)</literal></entry></row>
+     <row><entry><literal>|&amp;&gt; (circle, circle)</literal></entry></row>
+     <row><entry><literal>@ (circle, circle)</literal></entry></row>
+     <row><entry><literal>~ (circle, circle)</literal></entry></row>
+
      <row>
-      <entry><literal>inet_ops</literal></entry>
-      <entry><type>inet</type>, <type>cidr</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&gt;&gt;=</literal>
-       <literal>&gt;</literal>
-       <literal>&gt;=</literal>
-       <literal>&lt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;&lt;=</literal>
-       <literal>&lt;</literal>
-       <literal>&lt;=</literal>
-       <literal>=</literal>
-      </entry>
-      <entry>
-      </entry>
+      <entry valign="middle" morerows="10"><literal>inet_ops</literal></entry>
+      <entry><literal>&lt;&lt; (inet, inet)</literal></entry>
+      <entry valign="middle" morerows="10"></entry>
      </row>
+     <row><entry><literal>&lt;&lt;= (inet, inet)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (inet, inet)</literal></entry></row>
+     <row><entry><literal>&gt;&gt;= (inet, inet)</literal></entry></row>
+     <row><entry><literal>= (inet, inet)</literal></entry></row>
+     <row><entry><literal>&lt;&gt; (inet, inet)</literal></entry></row>
+     <row><entry><literal>&lt; (inet, inet)</literal></entry></row>
+     <row><entry><literal>&lt;= (inet, inet)</literal></entry></row>
+     <row><entry><literal>&gt; (inet, inet)</literal></entry></row>
+     <row><entry><literal>&gt;= (inet, inet)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (inet, inet)</literal></entry></row>
+
      <row>
-      <entry><literal>point_ops</literal></entry>
-      <entry><type>point</type></entry>
-      <entry>
-       <literal>&gt;&gt;</literal>
-       <literal>&gt;^</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;@</literal>
-       <literal>&lt;@</literal>
-       <literal>&lt;@</literal>
-       <literal>&lt;^</literal>
-       <literal>~=</literal>
-      </entry>
-      <entry>
-       <literal>&lt;-&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="17"><literal>multirange_ops</literal></entry>
+      <entry><literal>= (anymultirange, anymultirange)</literal></entry>
+      <entry valign="middle" morerows="17"></entry>
      </row>
+     <row><entry><literal>&amp;&amp; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>@&gt; (anymultirange, anyelement)</literal></entry></row>
+     <row><entry><literal>@&gt; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>@&gt; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;@ (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&lt;@ (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;&lt; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&lt;&lt; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&lt; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&amp;&lt; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (anymultirange, anyrange)</literal></entry></row>
+     <row><entry><literal>-|- (anymultirange, anymultirange)</literal></entry></row>
+     <row><entry><literal>-|- (anymultirange, anyrange)</literal></entry></row>
+
      <row>
-      <entry><literal>poly_ops</literal></entry>
-      <entry><type>polygon</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&lt;|</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;&lt;|</literal>
-       <literal>&lt;@</literal>
-       <literal>@&gt;</literal>
-       <literal>@</literal>
-       <literal>|&amp;&gt;</literal>
-       <literal>|&gt;&gt;</literal>
-       <literal>~</literal>
-       <literal>~=</literal>
-      </entry>
-      <entry>
-       <literal>&lt;-&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="7"><literal>point_ops</literal></entry>
+      <entry><literal>|&gt;&gt; (point, point)</literal></entry>
+      <entry valign="middle" morerows="7"><literal>&lt;-&gt; (point, point)</literal></entry>
      </row>
+     <row><entry><literal>&lt;&lt; (point, point)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (point, point)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (point, point)</literal></entry></row>
+     <row><entry><literal>~= (point, point)</literal></entry></row>
+     <row><entry><literal>&lt;@ (point, box)</literal></entry></row>
+     <row><entry><literal>&lt;@ (point, polygon)</literal></entry></row>
+     <row><entry><literal>&lt;@ (point, circle)</literal></entry></row>
+
      <row>
-      <entry><literal>range_ops</literal></entry>
-      <entry>any range type</entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;@</literal>
-       <literal>-|-</literal>
-       <literal>=</literal>
-       <literal>@&gt;</literal>
-       <literal>@&gt;</literal>
-      </entry>
-      <entry>
-      </entry>
+      <entry valign="middle" morerows="13"><literal>poly_ops</literal></entry>
+      <entry><literal>&lt;&lt; (polygon, polygon)</literal></entry>
+      <entry valign="middle" morerows="13"><literal>&lt;-&gt; (polygon, point)</literal></entry>
      </row>
+     <row><entry><literal>&amp;&lt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&lt;@ (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>@&gt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>~= (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&lt;| (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>|&amp;&gt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>|&gt;&gt; (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>@ (polygon, polygon)</literal></entry></row>
+     <row><entry><literal>~ (polygon, polygon)</literal></entry></row>
+
      <row>
-      <entry><literal>tsquery_ops</literal></entry>
-      <entry><type>tsquery</type></entry>
-      <entry>
-       <literal>&lt;@</literal>
-       <literal>@&gt;</literal>
-      </entry>
-      <entry>
-      </entry>
+      <entry valign="middle" morerows="17"><literal>range_ops</literal></entry>
+      <entry><literal>= (anyrange, anyrange)</literal></entry>
+      <entry valign="middle" morerows="17"></entry>
      </row>
+     <row><entry><literal>&amp;&amp; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>@&gt; (anyrange, anyelement)</literal></entry></row>
+     <row><entry><literal>@&gt; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>@&gt; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&lt;@ (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;@ (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&lt;&lt; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;&lt; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&amp;&lt; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&lt; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (anyrange, anymultirange)</literal></entry></row>
+     <row><entry><literal>-|- (anyrange, anyrange)</literal></entry></row>
+     <row><entry><literal>-|- (anyrange, anymultirange)</literal></entry></row>
+
      <row>
-      <entry><literal>tsvector_ops</literal></entry>
-      <entry><type>tsvector</type></entry>
-      <entry>
-       <literal>@@</literal>
-      </entry>
-      <entry>
-      </entry>
+      <entry valign="middle" morerows="1"><literal>tsquery_ops</literal></entry>
+      <entry><literal>&lt;@ (tsquery, tsquery)</literal></entry>
+      <entry valign="middle" morerows="1"></entry>
+     </row>
+     <row><entry><literal>@&gt; (tsquery, tsquery)</literal></entry></row>
+     <row>
+      <entry valign="middle"><literal>tsvector_ops</literal></entry>
+      <entry><literal>@@ (tsvector, tsquery)</literal></entry>
+      <entry></entry>
      </row>
     </tbody>
    </tgroup>
@@ -268,7 +272,7 @@ CREATE INDEX ON my_table USING GIST (my_inet_column inet_ops);
 
  <para>
    There are five methods that an index operator class for
-   <acronym>GiST</acronym> must provide, and four that are optional.
+   <acronym>GiST</acronym> must provide, and six that are optional.
    Correctness of the index is ensured
    by proper implementation of the <function>same</function>, <function>consistent</function>
    and <function>union</function> methods, while efficiency (size and speed) of the
@@ -286,7 +290,11 @@ CREATE INDEX ON my_table USING GIST (my_inet_column inet_ops);
    if the operator class wishes to support ordered scans (nearest-neighbor
    searches). The optional ninth method <function>fetch</function> is needed if the
    operator class wishes to support index-only scans, except when the
-   <function>compress</function> method is omitted.
+   <function>compress</function> method is omitted. The optional tenth method
+   <function>options</function> is needed if the operator class has
+   user-specified parameters.
+   The optional eleventh method <function>sortsupport</function> is used to
+   speed up building a <acronym>GiST</acronym> index.
  </para>
 
  <variablelist>
@@ -366,8 +374,8 @@ my_consistent(PG_FUNCTION_ARGS)
       <para>
        Depending on which operators you have included in the class, the data
        type of <varname>query</varname> could vary with the operator, since it will
-       be whatever type is on the righthand side of the operator, which might
-       be different from the indexed data type appearing on the lefthand side.
+       be whatever type is on the right-hand side of the operator, which might
+       be different from the indexed data type appearing on the left-hand side.
        (The above code skeleton assumes that only one type is possible; if
        not, fetching the <varname>query</varname> argument value would have to depend
        on the operator.)  It is recommended that the SQL declaration of
@@ -696,8 +704,8 @@ my_picksplit(PG_FUNCTION_ARGS)
 
         /*
          * Choose where to put the index entries and update unionL and unionR
-         * accordingly. Append the entries to either v_spl_left or
-         * v_spl_right, and care about the counters.
+         * accordingly. Append the entries to either v-&gt;spl_left or
+         * v-&gt;spl_right, and care about the counters.
          */
 
         if (my_choice_is_left(unionL, curl, unionR, curr))
@@ -910,7 +918,7 @@ Datum
 my_fetch(PG_FUNCTION_ARGS)
 {
     GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
-    input_data_type *in = DatumGetP(entry->key);
+    input_data_type *in = DatumGetPointer(entry->key);
     fetched_data_type *fetched_data;
     GISTENTRY  *retval;
 
@@ -921,7 +929,7 @@ my_fetch(PG_FUNCTION_ARGS)
      * Convert 'fetched_data' into the a Datum of the original datatype.
      */
 
-    /* fill *retval from fetch_data. */
+    /* fill *retval from fetched_data. */
     gistentryinit(*retval, PointerGetDatum(converted_datum),
                   entry->rel, entry->page, entry->offset, FALSE);
 
@@ -936,6 +944,229 @@ my_fetch(PG_FUNCTION_ARGS)
        a <function>fetch</function> function.
       </para>
 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><function>options</function></term>
+     <listitem>
+      <para>
+       Allows definition of user-visible parameters that control operator
+       class behavior.
+      </para>
+
+      <para>
+        The <acronym>SQL</acronym> declaration of the function must look like this:
+
+<programlisting>
+CREATE OR REPLACE FUNCTION my_options(internal)
+RETURNS void
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+</programlisting>
+      </para>
+
+      <para>
+       The function is passed a pointer to a <structname>local_relopts</structname>
+       struct, which needs to be filled with a set of operator class
+       specific options.  The options can be accessed from other support
+       functions using the <literal>PG_HAS_OPCLASS_OPTIONS()</literal> and
+       <literal>PG_GET_OPCLASS_OPTIONS()</literal> macros.
+      </para>
+
+       <para>
+        An example implementation of my_options() and parameters use
+        from other support functions are given below:
+
+<programlisting>
+typedef enum MyEnumType
+{
+    MY_ENUM_ON,
+    MY_ENUM_OFF,
+    MY_ENUM_AUTO
+} MyEnumType;
+
+typedef struct
+{
+    int32   vl_len_;    /* varlena header (do not touch directly!) */
+    int     int_param;  /* integer parameter */
+    double  real_param; /* real parameter */
+    MyEnumType enum_param; /* enum parameter */
+    int     str_param;  /* string parameter */
+} MyOptionsStruct;
+
+/* String representation of enum values */
+static relopt_enum_elt_def myEnumValues[] =
+{
+    {"on", MY_ENUM_ON},
+    {"off", MY_ENUM_OFF},
+    {"auto", MY_ENUM_AUTO},
+    {(const char *) NULL}   /* list terminator */
+};
+
+static char *str_param_default = "default";
+
+/*
+ * Sample validator: checks that string is not longer than 8 bytes.
+ */
+static void
+validate_my_string_relopt(const char *value)
+{
+    if (strlen(value) > 8)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("str_param must be at most 8 bytes")));
+}
+
+/*
+ * Sample filler: switches characters to lower case.
+ */
+static Size
+fill_my_string_relopt(const char *value, void *ptr)
+{
+    char   *tmp = str_tolower(value, strlen(value), DEFAULT_COLLATION_OID);
+    int     len = strlen(tmp);
+
+    if (ptr)
+        strcpy((char *) ptr, tmp);
+
+    pfree(tmp);
+    return len + 1;
+}
+
+PG_FUNCTION_INFO_V1(my_options);
+
+Datum
+my_options(PG_FUNCTION_ARGS)
+{
+    local_relopts *relopts = (local_relopts *) PG_GETARG_POINTER(0);
+
+    init_local_reloptions(relopts, sizeof(MyOptionsStruct));
+    add_local_int_reloption(relopts, "int_param", "integer parameter",
+                            100, 0, 1000000,
+                            offsetof(MyOptionsStruct, int_param));
+    add_local_real_reloption(relopts, "real_param", "real parameter",
+                             1.0, 0.0, 1000000.0,
+                             offsetof(MyOptionsStruct, real_param));
+    add_local_enum_reloption(relopts, "enum_param", "enum parameter",
+                             myEnumValues, MY_ENUM_ON,
+                             "Valid values are: \"on\", \"off\" and \"auto\".",
+                             offsetof(MyOptionsStruct, enum_param));
+    add_local_string_reloption(relopts, "str_param", "string parameter",
+                               str_param_default,
+                               &amp;validate_my_string_relopt,
+                               &amp;fill_my_string_relopt,
+                               offsetof(MyOptionsStruct, str_param));
+
+    PG_RETURN_VOID();
+}
+
+PG_FUNCTION_INFO_V1(my_compress);
+
+Datum
+my_compress(PG_FUNCTION_ARGS)
+{
+    int     int_param = 100;
+    double  real_param = 1.0;
+    MyEnumType enum_param = MY_ENUM_ON;
+    char   *str_param = str_param_default;
+
+    /*
+     * Normally, when opclass contains 'options' method, then options are always
+     * passed to support functions.  However, if you add 'options' method to
+     * existing opclass, previously defined indexes have no options, so the
+     * check is required.
+     */
+    if (PG_HAS_OPCLASS_OPTIONS())
+    {
+        MyOptionsStruct *options = (MyOptionsStruct *) PG_GET_OPCLASS_OPTIONS();
+
+        int_param = options->int_param;
+        real_param = options->real_param;
+        enum_param = options->enum_param;
+        str_param = GET_STRING_RELOPTION(options, str_param);
+    }
+
+    /* the rest implementation of support function */
+}
+
+</programlisting>
+      </para>
+
+      <para>
+       Since the representation of the key in <acronym>GiST</acronym> is
+       flexible, it may depend on user-specified parameters.  For instance,
+       the length of key signature may be specified.  See
+       <literal>gtsvector_options()</literal> for example.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><function>sortsupport</function></term>
+     <listitem>
+      <para>
+       Returns a comparator function to sort data in a way that preserves
+       locality. It is used by <command>CREATE INDEX</command> and
+       <command>REINDEX</command> commands. The quality of the created index
+       depends on how well the sort order determined by the comparator function
+       preserves locality of the inputs.
+      </para>
+      <para>
+       The <function>sortsupport</function> method is optional. If it is not
+       provided, <command>CREATE INDEX</command> builds the index by inserting
+       each tuple to the tree using the <function>penalty</function> and
+       <function>picksplit</function> functions, which is much slower.
+      </para>
+
+      <para>
+       The <acronym>SQL</acronym> declaration of the function must look like
+       this:
+
+<programlisting>
+CREATE OR REPLACE FUNCTION my_sortsupport(internal)
+RETURNS void
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+</programlisting>
+
+       The argument is a pointer to a <structname>SortSupport</structname>
+       struct. At a minimum, the function must fill in its comparator field.
+       The comparator takes three arguments: two Datums to compare, and
+       a pointer to the <structname>SortSupport</structname> struct. The
+       Datums are the two indexed values in the format that they are stored
+       in the index; that is, in the format returned by the
+       <function>compress</function> method. The full API is defined in
+       <filename>src/include/utils/sortsupport.h</filename>.
+       </para>
+
+       <para>
+        The matching code in the C module could then follow this skeleton:
+
+<programlisting>
+PG_FUNCTION_INFO_V1(my_sortsupport);
+
+static int
+my_fastcmp(Datum x, Datum y, SortSupport ssup)
+{
+  /* establish order between x and y by computing some sorting value z */
+
+  int z1 = ComputeSpatialCode(x);
+  int z2 = ComputeSpatialCode(y);
+
+  return z1 == z2 ? 0 : z1 > z2 ? 1 : -1;
+}
+
+Datum
+my_sortsupport(PG_FUNCTION_ARGS)
+{
+  SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+  ssup->comparator = my_fastcmp;
+  PG_RETURN_VOID();
+}
+</programlisting>
+      </para>
      </listitem>
     </varlistentry>
   </variablelist>
@@ -960,23 +1191,38 @@ my_fetch(PG_FUNCTION_ARGS)
  <title>Implementation</title>
 
  <sect2 id="gist-buffering-build">
-  <title>GiST buffering build</title>
+  <title>GiST Index Build Methods</title>
+
   <para>
-   Building large GiST indexes by simply inserting all the tuples tends to be
-   slow, because if the index tuples are scattered across the index and the
-   index is large enough to not fit in cache, the insertions need to perform
-   a lot of random I/O.  Beginning in version 9.2, PostgreSQL supports a more
-   efficient method to build GiST indexes based on buffering, which can
-   dramatically reduce the number of random I/Os needed for non-ordered data
-   sets. For well-ordered data sets the benefit is smaller or non-existent,
-   because only a small number of pages receive new tuples at a time, and
-   those pages fit in cache even if the index as whole does not.
+   The simplest way to build a GiST index is just to insert all the entries,
+   one by one.  This tends to be slow for large indexes, because if the
+   index tuples are scattered across the index and the index is large enough
+   to not fit in cache, a lot of random I/O will be
+   needed.  <productname>PostgreSQL</productname> supports two alternative
+   methods for initial build of a GiST index: <firstterm>sorted</firstterm>
+   and <firstterm>buffered</firstterm> modes.
   </para>
 
   <para>
-   However, buffering index build needs to call the <function>penalty</function>
-   function more often, which consumes some extra CPU resources. Also, the
-   buffers used in the buffering build need temporary disk space, up to
+   The sorted method is only available if each of the opclasses used by the
+   index provides a <function>sortsupport</function> function, as described
+   in <xref linkend="gist-extensibility"/>.  If they do, this method is
+   usually the best, so it is used by default.
+  </para>
+
+  <para>
+   The buffered method works by not inserting tuples directly into the index
+   right away.  It can dramatically reduce the amount of random I/O needed
+   for non-ordered data sets.  For well-ordered data sets the benefit is
+   smaller or non-existent, because only a small number of pages receive new
+   tuples at a time, and those pages fit in cache even if the index as a
+   whole does not.
+  </para>
+
+  <para>
+   The buffered method needs to call the <function>penalty</function>
+   function more often than the simple method does, which consumes some
+   extra CPU resources. Also, the buffers need temporary disk space, up to
    the size of the resulting index. Buffering can also influence the quality
    of the resulting index, in both positive and negative directions. That
    influence depends on various factors, like the distribution of the input
@@ -984,12 +1230,13 @@ my_fetch(PG_FUNCTION_ARGS)
   </para>
 
   <para>
-   By default, a GiST index build switches to the buffering method when the
-   index size reaches <xref linkend="guc-effective-cache-size"/>. It can
-   be manually turned on or off by the <literal>buffering</literal> parameter
-   to the CREATE INDEX command. The default behavior is good for most cases,
-   but turning buffering off might speed up the build somewhat if the input
-   data is ordered.
+   If sorting is not possible, then by default a GiST index build switches
+   to the buffering method when the index size reaches
+   <xref linkend="guc-effective-cache-size"/>.  Buffering can be manually
+   forced or prevented by the <literal>buffering</literal> parameter to the
+   CREATE INDEX command.  The default behavior is good for most cases, but
+   turning buffering off might speed up the build somewhat if the input data
+   is ordered.
   </para>
 
  </sect2>

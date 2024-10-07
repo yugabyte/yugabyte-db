@@ -3,7 +3,7 @@
  * tlist.c
  *	  Target list manipulation routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,13 +17,19 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/tlist.h"
 
 /* YB includes. */
 #include "miscadmin.h"
 
-
-/* Test if an expression node represents a SRF call.  Beware multiple eval! */
+/*
+ * Test if an expression node represents a SRF call.  Beware multiple eval!
+ *
+ * Please note that this is only meant for use in split_pathtarget_at_srfs();
+ * if you use it anywhere else, your code is almost certainly wrong for SRFs
+ * nested within expressions.  Use expression_returns_set() instead.
+ */
 #define IS_SRF_CALL(node) \
 	((IsA(node, FuncExpr) && ((FuncExpr *) (node))->funcretset) || \
 	 (IsA(node, OpExpr) && ((OpExpr *) (node))->opretset))
@@ -56,9 +62,9 @@ typedef struct
 } split_pathtarget_context;
 
 static bool split_pathtarget_walker(Node *node,
-						split_pathtarget_context *context);
+									split_pathtarget_context *context);
 static void add_sp_item_to_pathtarget(PathTarget *target,
-						  split_pathtarget_item *item);
+									  split_pathtarget_item *item);
 static void add_sp_items_to_pathtarget(PathTarget *target, List *items);
 
 
@@ -81,34 +87,6 @@ tlist_member(Expr *node, List *targetlist)
 		TargetEntry *tlentry = (TargetEntry *) lfirst(temp);
 
 		if (equal(node, tlentry->expr))
-			return tlentry;
-	}
-	return NULL;
-}
-
-/*
- * tlist_member_ignore_relabel
- *	  Same as above, except that we ignore top-level RelabelType nodes
- *	  while checking for a match.  This is needed for some scenarios
- *	  involving binary-compatible sort operations.
- */
-TargetEntry *
-tlist_member_ignore_relabel(Expr *node, List *targetlist)
-{
-	ListCell   *temp;
-
-	while (node && IsA(node, RelabelType))
-		node = ((RelabelType *) node)->arg;
-
-	foreach(temp, targetlist)
-	{
-		TargetEntry *tlentry = (TargetEntry *) lfirst(temp);
-		Expr	   *tlexpr = tlentry->expr;
-
-		while (tlexpr && IsA(tlexpr, RelabelType))
-			tlexpr = ((RelabelType *) tlexpr)->arg;
-
-		if (equal(node, tlexpr))
 			return tlentry;
 	}
 	return NULL;
@@ -289,7 +267,7 @@ tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
 				return false;	/* tlist longer than colTypes */
 			if (exprType((Node *) tle->expr) != lfirst_oid(curColType))
 				return false;
-			curColType = lnext(curColType);
+			curColType = lnext(colTypes, curColType);
 		}
 	}
 	if (curColType != NULL)
@@ -323,7 +301,7 @@ tlist_same_collations(List *tlist, List *colCollations, bool junkOK)
 				return false;	/* tlist longer than colCollations */
 			if (exprCollation((Node *) tle->expr) != lfirst_oid(curColColl))
 				return false;
-			curColColl = lnext(curColColl);
+			curColColl = lnext(colCollations, curColColl);
 		}
 	}
 	if (curColColl != NULL)
@@ -515,6 +493,31 @@ extract_grouping_ops(List *groupClause)
 }
 
 /*
+ * extract_grouping_collations - make an array of the grouping column collations
+ *		for a SortGroupClause list
+ */
+Oid *
+extract_grouping_collations(List *groupClause, List *tlist)
+{
+	int			numCols = list_length(groupClause);
+	int			colno = 0;
+	Oid		   *grpCollations;
+	ListCell   *glitem;
+
+	grpCollations = (Oid *) palloc(sizeof(Oid) * numCols);
+
+	foreach(glitem, groupClause)
+	{
+		SortGroupClause *groupcl = (SortGroupClause *) lfirst(glitem);
+		TargetEntry *tle = get_sortgroupclause_tle(groupcl, tlist);
+
+		grpCollations[colno++] = exprCollation((Node *) tle->expr);
+	}
+
+	return grpCollations;
+}
+
+/*
  * extract_grouping_cols - make an array of the grouping column resnos
  *		for a SortGroupClause list
  */
@@ -614,6 +617,13 @@ make_pathtarget_from_tlist(List *tlist)
 		i++;
 	}
 
+	/*
+	 * Mark volatility as unknown.  The contain_volatile_functions function
+	 * will determine if there are any volatile functions when called for the
+	 * first time with this PathTarget.
+	 */
+	target->has_volatile_expr = VOLATILITY_UNKNOWN;
+
 	return target;
 }
 
@@ -651,9 +661,8 @@ make_tlist_from_pathtarget(PathTarget *target)
  * copy_pathtarget
  *	  Copy a PathTarget.
  *
- * The new PathTarget has its own List cells, but shares the underlying
- * target expression trees with the old one.  We duplicate the List cells
- * so that items can be added to one target without damaging the other.
+ * The new PathTarget has its own exprs List, but shares the underlying
+ * target expression trees with the old one.
  */
 PathTarget *
 copy_pathtarget(PathTarget *src)
@@ -716,6 +725,16 @@ add_column_to_pathtarget(PathTarget *target, Expr *expr, Index sortgroupref)
 		target->sortgrouprefs = (Index *) palloc0(nexprs * sizeof(Index));
 		target->sortgrouprefs[nexprs - 1] = sortgroupref;
 	}
+
+	/*
+	 * Reset has_volatile_expr to UNKNOWN.  We just leave it up to
+	 * contain_volatile_functions to set this properly again.  Technically we
+	 * could save some effort here and just check the new Expr, but it seems
+	 * better to keep the logic for setting this flag in one location rather
+	 * than duplicating the logic here.
+	 */
+	if (target->has_volatile_expr == VOLATILITY_NOVOLATILE)
+		target->has_volatile_expr = VOLATILITY_UNKNOWN;
 }
 
 /*
@@ -857,7 +876,7 @@ apply_pathtarget_labeling_to_tlist(List *tlist, PathTarget *target)
  *
  * The outputs of this function are two parallel lists, one a list of
  * PathTargets and the other an integer list of bool flags indicating
- * whether the corresponding PathTarget contains any evaluatable SRFs.
+ * whether the corresponding PathTarget contains any evaluable SRFs.
  * The lists are given in the order they'd need to be evaluated in, with
  * the "lowest" PathTarget first.  So the last list entry is always the
  * originally given PathTarget, and any entries before it indicate evaluation
@@ -1008,7 +1027,7 @@ split_pathtarget_at_srfs(PlannerInfo *root,
 		List	   *level_srfs = (List *) lfirst(lc1);
 		PathTarget *ntarget;
 
-		if (lnext(lc1) == NULL)
+		if (lnext(context.level_srfs, lc1) == NULL)
 		{
 			ntarget = target;
 		}
@@ -1023,13 +1042,15 @@ split_pathtarget_at_srfs(PlannerInfo *root,
 			 * later levels.
 			 */
 			add_sp_items_to_pathtarget(ntarget, level_srfs);
-			for_each_cell(lc, lnext(lc2))
+			for_each_cell(lc, context.level_input_vars,
+						  lnext(context.level_input_vars, lc2))
 			{
 				List	   *input_vars = (List *) lfirst(lc);
 
 				add_sp_items_to_pathtarget(ntarget, input_vars);
 			}
-			for_each_cell(lc, lnext(lc3))
+			for_each_cell(lc, context.level_input_srfs,
+						  lnext(context.level_input_srfs, lc3))
 			{
 				List	   *input_srfs = (List *) lfirst(lc);
 				ListCell   *lcx;

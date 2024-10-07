@@ -15,6 +15,10 @@ type: indexpage
 
 YugabyteDB Anywhere is a control plane used to deploy and manage YugabyteDB database clusters.
 
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
+
 To prepare your infrastructure for YugabyteDB Anywhere, you need to do the following:
 
 - [Configure cloud permissions](./cloud-permissions/)

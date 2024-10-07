@@ -625,7 +625,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       } else {
         log.debug("Previous {} Universe task failed, retrying", ybaUniverseName);
         CustomerTask cTask =
-            customerTaskManager.retryCustomerTask(customerUUID, taskInfo.getTaskUUID());
+            customerTaskManager.retryCustomerTask(customerUUID, taskInfo.getUuid());
         universeTaskMap.put(getWorkQueueKey(ybUniverse), cTask.getTaskUUID());
       }
     } catch (Exception e) {

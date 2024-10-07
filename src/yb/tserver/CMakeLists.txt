@@ -222,6 +222,7 @@ set(TSERVER_SRCS
   pg_mutation_counter.cc
   pg_response_cache.cc
   pg_sequence_cache.cc
+  pg_shared_mem_pool.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   tserver_xcluster_context.cc
@@ -241,6 +242,7 @@ set(TSERVER_SRCS
   tablet_server_options.cc
   tablet_service.cc
   tablet_validator.cc
+  ts_data_size_metrics.cc
   ts_local_lock_manager.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc

@@ -25,6 +25,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/dockv/intent.h"
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/iter_util.h"
@@ -143,6 +144,10 @@ inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
   return prefix_len;
 }
 
+rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
+  return statistics ? statistics->IntentsDBStatistics() : nullptr;
+}
+
 } // namespace
 
 #define TRACE_BOUNDS "bounds = \"" << lowerbound_.ToDebugHexString() << "\"" \
@@ -177,9 +182,9 @@ IntentAwareIterator::IntentAwareIterator(
 
   if (txn_op_context) {
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
-        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
-        read_operation_data.statistics ? read_operation_data.statistics->IntentsDBStatistics()
-                                       : nullptr);
+        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
+        &intent_upperbound_, read_opts.cache_restart_block_keys,
+        GetIntentsDBStatistics(read_operation_data.statistics));
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:

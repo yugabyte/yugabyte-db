@@ -1,6 +1,14 @@
 --
 -- Test foreign-data wrapper and server management.
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION test_fdw_handler()
+    RETURNS fdw_handler
+    AS :'regresslib', 'test_fdw_handler'
+    LANGUAGE C;
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when roles don't exist
 SET client_min_messages TO 'warning';
@@ -30,8 +38,8 @@ SELECT srvname, srvoptions FROM pg_foreign_server;
 (0 rows)
 
 SELECT * FROM pg_user_mapping;
- umuser | umserver | umoptions 
---------+----------+-----------
+ oid | umuser | umserver | umoptions 
+-----+--------+----------+-----------
 (0 rows)
 
 -- CREATE FOREIGN DATA WRAPPER
@@ -95,9 +103,14 @@ CREATE FOREIGN DATA WRAPPER test_fdw HANDLER invalid_fdw_handler;  -- ERROR
 ERROR:  function invalid_fdw_handler must return type fdw_handler
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler HANDLER invalid_fdw_handler;  -- ERROR
 ERROR:  conflicting or redundant options
+LINE 1: ...GN DATA WRAPPER test_fdw HANDLER test_fdw_handler HANDLER in...
+                                                             ^
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler;
 DROP FOREIGN DATA WRAPPER test_fdw;
 -- ALTER FOREIGN DATA WRAPPER
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (nonexistent 'fdw');         -- ERROR
+ERROR:  invalid option "nonexistent"
+HINT:  There are no valid options in this context.
 ALTER FOREIGN DATA WRAPPER foo;                             -- ERROR
 ERROR:  syntax error at or near ";"
 LINE 1: ALTER FOREIGN DATA WRAPPER foo;
@@ -201,6 +214,8 @@ ALTER FOREIGN DATA WRAPPER foo HANDLER invalid_fdw_handler;  -- ERROR
 ERROR:  function invalid_fdw_handler must return type fdw_handler
 ALTER FOREIGN DATA WRAPPER foo HANDLER test_fdw_handler HANDLER anything;  -- ERROR
 ERROR:  conflicting or redundant options
+LINE 1: ...FOREIGN DATA WRAPPER foo HANDLER test_fdw_handler HANDLER an...
+                                                             ^
 ALTER FOREIGN DATA WRAPPER foo HANDLER test_fdw_handler;
 WARNING:  changing the foreign-data wrapper handler can change behavior of existing foreign tables
 DROP FUNCTION invalid_fdw_handler();
@@ -238,9 +253,9 @@ CREATE SERVER s1 FOREIGN DATA WRAPPER foo;
 COMMENT ON SERVER s1 IS 'foreign server';
 CREATE USER MAPPING FOR current_user SERVER s1;
 CREATE USER MAPPING FOR current_user SERVER s1;				-- ERROR
-ERROR:  user mapping for "regress_foreign_data_user" already exists for server s1
+ERROR:  user mapping for "regress_foreign_data_user" already exists for server "s1"
 CREATE USER MAPPING IF NOT EXISTS FOR current_user SERVER s1; -- NOTICE
-NOTICE:  user mapping for "regress_foreign_data_user" already exists for server s1, skipping
+NOTICE:  user mapping for "regress_foreign_data_user" already exists for server "s1", skipping
 \dew+
                                                 List of foreign-data wrappers
     Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
@@ -441,8 +456,8 @@ ALTER SERVER s1 OWNER TO regress_test_indirect;
 RESET ROLE;
 DROP ROLE regress_test_indirect;                            -- ERROR
 ERROR:  role "regress_test_indirect" cannot be dropped because some objects depend on it
-DETAIL:  owner of server s1
-privileges for foreign-data wrapper foo
+DETAIL:  privileges for foreign-data wrapper foo
+owner of server s1
 \des+
                                                                                  List of foreign servers
  Name |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description 
@@ -578,7 +593,7 @@ CREATE USER MAPPING FOR current_user SERVER s1;             -- ERROR
 ERROR:  server "s1" does not exist
 CREATE USER MAPPING FOR current_user SERVER s4;
 CREATE USER MAPPING FOR user SERVER s4;                     -- ERROR duplicate
-ERROR:  user mapping for "regress_foreign_data_user" already exists for server s4
+ERROR:  user mapping for "regress_foreign_data_user" already exists for server "s4"
 CREATE USER MAPPING FOR public SERVER s4 OPTIONS ("this mapping" 'is public');
 CREATE USER MAPPING FOR user SERVER s8 OPTIONS (username 'test', password 'secret');    -- ERROR
 ERROR:  invalid option "username"
@@ -618,7 +633,7 @@ ERROR:  role "regress_test_missing_role" does not exist
 ALTER USER MAPPING FOR user SERVER ss4 OPTIONS (gotcha 'true'); -- ERROR
 ERROR:  server "ss4" does not exist
 ALTER USER MAPPING FOR public SERVER s5 OPTIONS (gotcha 'true');            -- ERROR
-ERROR:  user mapping for "public" does not exist for the server
+ERROR:  user mapping for "public" does not exist for server "s5"
 ALTER USER MAPPING FOR current_user SERVER s8 OPTIONS (username 'test');    -- ERROR
 ERROR:  invalid option "username"
 HINT:  Valid options in this context are: user, password
@@ -648,13 +663,13 @@ ERROR:  role "regress_test_missing_role" does not exist
 DROP USER MAPPING FOR user SERVER ss4;
 ERROR:  server "ss4" does not exist
 DROP USER MAPPING FOR public SERVER s7;                     -- ERROR
-ERROR:  user mapping for "public" does not exist for the server
+ERROR:  user mapping for "public" does not exist for server "s7"
 DROP USER MAPPING IF EXISTS FOR regress_test_missing_role SERVER s4;
 NOTICE:  role "regress_test_missing_role" does not exist, skipping
 DROP USER MAPPING IF EXISTS FOR user SERVER ss4;
-NOTICE:  server does not exist, skipping
+NOTICE:  server "ss4" does not exist, skipping
 DROP USER MAPPING IF EXISTS FOR public SERVER s7;
-NOTICE:  user mapping for "public" does not exist for the server, skipping
+NOTICE:  user mapping for "public" does not exist for server "s7", skipping
 CREATE USER MAPPING FOR public SERVER s8;
 SET ROLE regress_test_role;
 DROP USER MAPPING FOR public SERVER s8;                     -- ERROR
@@ -684,10 +699,6 @@ LINE 1: CREATE FOREIGN TABLE ft1 ();
                                    ^
 CREATE FOREIGN TABLE ft1 () SERVER no_server;                   -- ERROR
 ERROR:  server "no_server" does not exist
-CREATE FOREIGN TABLE ft1 () SERVER s0 WITH OIDS;                -- ERROR
-ERROR:  syntax error at or near "WITH"
-LINE 1: CREATE FOREIGN TABLE ft1 () SERVER s0 WITH OIDS;
-                                              ^
 CREATE FOREIGN TABLE ft1 (
 	c1 integer OPTIONS ("param 1" 'val1') PRIMARY KEY,
 	c2 text OPTIONS (param2 'val2', param3 'val3'),
@@ -744,7 +755,8 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 (1 row)
 
 CREATE INDEX id_ft1_c2 ON ft1 (c2);                             -- ERROR
-ERROR:  cannot create index on foreign table "ft1"
+ERROR:  cannot create index on relation "ft1"
+DETAIL:  This operation is not supported for foreign tables.
 SELECT * FROM ft1;                                              -- ERROR
 ERROR:  foreign-data wrapper "dummy" has no handler
 EXPLAIN SELECT * FROM ft1;                                      -- ERROR
@@ -752,10 +764,62 @@ ERROR:  foreign-data wrapper "dummy" has no handler
 CREATE TABLE lt1 (a INT) PARTITION BY RANGE (a);
 CREATE FOREIGN TABLE ft_part1
   PARTITION OF lt1 FOR VALUES FROM (0) TO (1000) SERVER s0;
-CREATE INDEX ON lt1 (a);                                        -- ERROR
-ERROR:  cannot create index on partitioned table "lt1"
+CREATE INDEX ON lt1 (a);                              -- skips partition
+CREATE UNIQUE INDEX ON lt1 (a);                                 -- ERROR
+ERROR:  cannot create unique index on partitioned table "lt1"
+DETAIL:  Table "lt1" contains partitions that are foreign tables.
+ALTER TABLE lt1 ADD PRIMARY KEY (a);                            -- ERROR
+ERROR:  cannot create unique index on partitioned table "lt1"
 DETAIL:  Table "lt1" contains partitions that are foreign tables.
 DROP TABLE lt1;
+CREATE TABLE lt1 (a INT) PARTITION BY RANGE (a);
+CREATE INDEX ON lt1 (a);
+CREATE FOREIGN TABLE ft_part1
+  PARTITION OF lt1 FOR VALUES FROM (0) TO (1000) SERVER s0;
+CREATE FOREIGN TABLE ft_part2 (a INT) SERVER s0;
+ALTER TABLE lt1 ATTACH PARTITION ft_part2 FOR VALUES FROM (1000) TO (2000);
+DROP FOREIGN TABLE ft_part1, ft_part2;
+CREATE UNIQUE INDEX ON lt1 (a);
+ALTER TABLE lt1 ADD PRIMARY KEY (a);
+CREATE FOREIGN TABLE ft_part1
+  PARTITION OF lt1 FOR VALUES FROM (0) TO (1000) SERVER s0;     -- ERROR
+ERROR:  cannot create foreign partition of partitioned table "lt1"
+DETAIL:  Table "lt1" contains indexes that are unique.
+CREATE FOREIGN TABLE ft_part2 (a INT NOT NULL) SERVER s0;
+ALTER TABLE lt1 ATTACH PARTITION ft_part2
+  FOR VALUES FROM (1000) TO (2000);                             -- ERROR
+ERROR:  cannot attach foreign table "ft_part2" as partition of partitioned table "lt1"
+DETAIL:  Partitioned table "lt1" contains unique indexes.
+DROP TABLE lt1;
+DROP FOREIGN TABLE ft_part2;
+CREATE TABLE lt1 (a INT) PARTITION BY RANGE (a);
+CREATE INDEX ON lt1 (a);
+CREATE TABLE lt1_part1
+  PARTITION OF lt1 FOR VALUES FROM (0) TO (1000)
+  PARTITION BY RANGE (a);
+CREATE FOREIGN TABLE ft_part_1_1
+  PARTITION OF lt1_part1 FOR VALUES FROM (0) TO (100) SERVER s0;
+CREATE FOREIGN TABLE ft_part_1_2 (a INT) SERVER s0;
+ALTER TABLE lt1_part1 ATTACH PARTITION ft_part_1_2 FOR VALUES FROM (100) TO (200);
+CREATE UNIQUE INDEX ON lt1 (a);
+ERROR:  cannot create unique index on partitioned table "lt1"
+DETAIL:  Table "lt1" contains partitions that are foreign tables.
+ALTER TABLE lt1 ADD PRIMARY KEY (a);
+ERROR:  cannot create unique index on partitioned table "lt1_part1"
+DETAIL:  Table "lt1_part1" contains partitions that are foreign tables.
+DROP FOREIGN TABLE ft_part_1_1, ft_part_1_2;
+CREATE UNIQUE INDEX ON lt1 (a);
+ALTER TABLE lt1 ADD PRIMARY KEY (a);
+CREATE FOREIGN TABLE ft_part_1_1
+  PARTITION OF lt1_part1 FOR VALUES FROM (0) TO (100) SERVER s0;
+ERROR:  cannot create foreign partition of partitioned table "lt1_part1"
+DETAIL:  Table "lt1_part1" contains indexes that are unique.
+CREATE FOREIGN TABLE ft_part_1_2 (a INT NOT NULL) SERVER s0;
+ALTER TABLE lt1_part1 ATTACH PARTITION ft_part_1_2 FOR VALUES FROM (100) TO (200);
+ERROR:  cannot attach foreign table "ft_part_1_2" as partition of partitioned table "lt1_part1"
+DETAIL:  Partitioned table "lt1_part1" contains unique indexes.
+DROP TABLE lt1;
+DROP FOREIGN TABLE ft_part_1_2;
 -- ALTER FOREIGN TABLE
 COMMENT ON FOREIGN TABLE ft1 IS 'foreign table';
 COMMENT ON FOREIGN TABLE ft1 IS NULL;
@@ -816,13 +880,13 @@ LINE 1: ALTER FOREIGN TABLE ft1 ADD PRIMARY KEY (c7);
                                     ^
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c9_check CHECK (c9 < 0) NOT VALID;
 ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERRABLE; -- ERROR
-ERROR:  "ft1" is not a table
+ERROR:  ALTER action ALTER CONSTRAINT cannot be performed on relation "ft1"
+DETAIL:  This operation is not supported for foreign tables.
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c9_check;
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT no_const;               -- ERROR
 ERROR:  constraint "no_const" of relation "ft1" does not exist
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT IF EXISTS no_const;
 NOTICE:  constraint "no_const" of relation "ft1" does not exist, skipping
-ALTER FOREIGN TABLE ft1 SET WITH OIDS;
 ALTER FOREIGN TABLE ft1 OWNER TO regress_test_role;
 ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
 ALTER FOREIGN TABLE ft1 DROP COLUMN no_column;                  -- ERROR
@@ -1208,11 +1272,10 @@ ERROR:  permission denied for foreign-data wrapper foo
 ALTER SERVER s9 VERSION '1.1';
 GRANT USAGE ON FOREIGN SERVER s9 TO regress_test_role;
 CREATE USER MAPPING FOR current_user SERVER s9;
--- We use terse mode to avoid ordering issues in cascade detail output.
-\set VERBOSITY terse
 DROP SERVER s9 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to user mapping for public on server s9
+drop cascades to user mapping for regress_unprivileged_role on server s9
 RESET ROLE;
 CREATE SERVER s9 FOREIGN DATA WRAPPER foo;
 GRANT USAGE ON FOREIGN SERVER s9 TO regress_unprivileged_role;
@@ -1280,10 +1343,10 @@ SET ROLE regress_unprivileged_role;
 (9 rows)
 
 RESET ROLE;
-\set VERBOSITY terse
 DROP SERVER s10 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to user mapping for public on server s10
+drop cascades to user mapping for regress_unprivileged_role on server s10
 -- Triggers
 CREATE FUNCTION dummy_trigger() RETURNS TRIGGER AS $$
   BEGIN
@@ -1625,12 +1688,15 @@ Inherits: fd_pt1
 Child tables: ct3,
               ft3
 
-\set VERBOSITY terse
 DROP FOREIGN TABLE ft2; -- ERROR
 ERROR:  cannot drop foreign table ft2 because other objects depend on it
+DETAIL:  table ct3 depends on foreign table ft2
+foreign table ft3 depends on foreign table ft2
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP FOREIGN TABLE ft2 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to table ct3
+drop cascades to foreign table ft3
 CREATE FOREIGN TABLE ft2 (
 	c1 integer NOT NULL,
 	c2 text,
@@ -1725,63 +1791,6 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 Inherits: fd_pt1
 
--- OID system column
-ALTER TABLE fd_pt1 SET WITH OIDS;
-\d+ fd_pt1
-                                   Table "public.fd_pt1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    | 10000        | 
- c2     | text    |           |          |         | extended |              | 
- c3     | date    |           |          |         | plain    |              | 
-Check constraints:
-    "fd_pt1chk3" CHECK (c2 <> ''::text)
-Child tables: ft2
-Has OIDs: yes
-
-\d+ ft2
-                                       Foreign table "public.ft2"
- Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
- c1     | integer |           | not null |         |             | plain    |              | 
- c2     | text    |           |          |         |             | extended |              | 
- c3     | date    |           |          |         |             | plain    |              | 
-Check constraints:
-    "fd_pt1chk2" CHECK (c2 <> ''::text)
-    "fd_pt1chk3" CHECK (c2 <> ''::text)
-Server: s0
-FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Has OIDs: yes
-
-ALTER TABLE ft2 SET WITHOUT OIDS;  -- ERROR
-ERROR:  cannot drop inherited column "oid"
-ALTER TABLE fd_pt1 SET WITHOUT OIDS;
-\d+ fd_pt1
-                                   Table "public.fd_pt1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    | 10000        | 
- c2     | text    |           |          |         | extended |              | 
- c3     | date    |           |          |         | plain    |              | 
-Check constraints:
-    "fd_pt1chk3" CHECK (c2 <> ''::text)
-Child tables: ft2
-
-\d+ ft2
-                                       Foreign table "public.ft2"
- Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
- c1     | integer |           | not null |         |             | plain    |              | 
- c2     | text    |           |          |         |             | extended |              | 
- c3     | date    |           |          |         |             | plain    |              | 
-Check constraints:
-    "fd_pt1chk2" CHECK (c2 <> ''::text)
-    "fd_pt1chk3" CHECK (c2 <> ''::text)
-Server: s0
-FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
 ALTER TABLE fd_pt1 RENAME COLUMN c2 TO f2;
@@ -1813,11 +1822,6 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 Inherits: fd_pt1
 
--- TRUNCATE doesn't work on foreign tables, either directly or recursively
-TRUNCATE ft2;  -- ERROR
-ERROR:  "ft2" is not a table
-TRUNCATE fd_pt1;  -- ERROR
-ERROR:  "ft2" is not a table
 DROP TABLE fd_pt1 CASCADE;
 NOTICE:  drop cascades to foreign table ft2
 -- IMPORT FOREIGN SCHEMA
@@ -1853,7 +1857,7 @@ CREATE TABLE fd_pt2 (
 CREATE FOREIGN TABLE fd_pt2_1 PARTITION OF fd_pt2 FOR VALUES IN (1)
   SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -1898,7 +1902,7 @@ ERROR:  table "fd_pt2_1" contains column "c4" not found in parent "fd_pt2"
 DETAIL:  The new partition may contain only the columns present in parent.
 DROP FOREIGN TABLE fd_pt2_1;
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -1925,7 +1929,7 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 -- no attach partition validation occurs for foreign tables
 ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -1953,7 +1957,7 @@ ERROR:  cannot add column to a partition
 ALTER TABLE fd_pt2_1 ALTER c3 SET NOT NULL;
 ALTER TABLE fd_pt2_1 ADD CONSTRAINT p21chk CHECK (c2 <> '');
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -1983,7 +1987,7 @@ ERROR:  column "c1" is marked NOT NULL in parent table
 ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
 ALTER TABLE fd_pt2 ALTER c2 SET NOT NULL;
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -2011,7 +2015,7 @@ ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
 ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
 ALTER TABLE fd_pt2 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
 \d+ fd_pt2
-                                   Table "public.fd_pt2"
+                             Partitioned table "public.fd_pt2"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  c1     | integer |           | not null |         | plain    |              | 
@@ -2038,11 +2042,6 @@ ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);       -- ERROR
 ERROR:  child table is missing constraint "fd_pt2chk1"
 ALTER FOREIGN TABLE fd_pt2_1 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
 ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
--- TRUNCATE doesn't work on foreign tables, either directly or recursively
-TRUNCATE fd_pt2_1;  -- ERROR
-ERROR:  "fd_pt2_1" is not a table
-TRUNCATE fd_pt2;  -- ERROR
-ERROR:  "fd_pt2_1" is not a table
 DROP FOREIGN TABLE fd_pt2_1;
 DROP TABLE fd_pt2;
 -- foreign table cannot be part of partition tree made of temporary
@@ -2060,18 +2059,23 @@ DROP TABLE temp_parted;
 DROP SCHEMA foreign_schema CASCADE;
 DROP ROLE regress_test_role;                                -- ERROR
 ERROR:  role "regress_test_role" cannot be dropped because some objects depend on it
-DETAIL:  privileges for server s4
-privileges for foreign-data wrapper foo
+DETAIL:  privileges for foreign-data wrapper foo
+privileges for server s4
 owner of user mapping for regress_test_role on server s6
 DROP SERVER t1 CASCADE;
 NOTICE:  drop cascades to user mapping for public on server t1
 DROP USER MAPPING FOR regress_test_role SERVER s6;
-\set VERBOSITY terse
 DROP FOREIGN DATA WRAPPER foo CASCADE;
 NOTICE:  drop cascades to 5 other objects
+DETAIL:  drop cascades to server s4
+drop cascades to user mapping for regress_foreign_data_user on server s4
+drop cascades to server s6
+drop cascades to server s9
+drop cascades to user mapping for regress_unprivileged_role on server s9
 DROP SERVER s8 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to user mapping for regress_foreign_data_user on server s8
+drop cascades to user mapping for public on server s8
 DROP ROLE regress_test_indirect;
 DROP ROLE regress_test_role;
 DROP ROLE regress_unprivileged_role;                        -- ERROR
@@ -2097,7 +2101,7 @@ SELECT srvname, srvoptions FROM pg_foreign_server;
 (0 rows)
 
 SELECT * FROM pg_user_mapping;
- umuser | umserver | umoptions 
---------+----------+-----------
+ oid | umuser | umserver | umoptions 
+-----+--------+----------+-----------
 (0 rows)
 

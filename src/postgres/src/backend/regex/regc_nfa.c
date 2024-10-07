@@ -57,18 +57,27 @@ newnfa(struct vars *v,
 		return NULL;
 	}
 
+	/* Make the NFA minimally valid, so freenfa() will behave sanely */
 	nfa->states = NULL;
 	nfa->slast = NULL;
-	nfa->free = NULL;
+	nfa->freestates = NULL;
+	nfa->freearcs = NULL;
+	nfa->lastsb = NULL;
+	nfa->lastab = NULL;
+	nfa->lastsbused = 0;
+	nfa->lastabused = 0;
 	nfa->nstates = 0;
 	nfa->cm = cm;
 	nfa->v = v;
 	nfa->bos[0] = nfa->bos[1] = COLORLESS;
 	nfa->eos[0] = nfa->eos[1] = COLORLESS;
+	nfa->flags = 0;
+	nfa->minmatchall = nfa->maxmatchall = -1;
 	nfa->parent = parent;		/* Precedes newfstate so parent is valid. */
+
+	/* Create required infrastructure */
 	nfa->post = newfstate(nfa, '@');	/* number 0 */
 	nfa->pre = newfstate(nfa, '>'); /* number 1 */
-
 	nfa->init = newstate(nfa);	/* may become invalid later */
 	nfa->final = newstate(nfa);
 	if (ISERR())
@@ -97,23 +106,27 @@ newnfa(struct vars *v,
 static void
 freenfa(struct nfa *nfa)
 {
-	struct state *s;
+	struct statebatch *sb;
+	struct statebatch *sbnext;
+	struct arcbatch *ab;
+	struct arcbatch *abnext;
 
-	while ((s = nfa->states) != NULL)
+	for (sb = nfa->lastsb; sb != NULL; sb = sbnext)
 	{
-		s->nins = s->nouts = 0; /* don't worry about arcs */
-		freestate(nfa, s);
+		sbnext = sb->next;
+		nfa->v->spaceused -= STATEBATCHSIZE(sb->nstates);
+		FREE(sb);
 	}
-	while ((s = nfa->free) != NULL)
+	nfa->lastsb = NULL;
+	for (ab = nfa->lastab; ab != NULL; ab = abnext)
 	{
-		nfa->free = s->next;
-		destroystate(nfa, s);
+		abnext = ab->next;
+		nfa->v->spaceused -= ARCBATCHSIZE(ab->narcs);
+		FREE(ab);
 	}
+	nfa->lastab = NULL;
 
-	nfa->slast = NULL;
 	nfa->nstates = -1;
-	nfa->pre = NULL;
-	nfa->post = NULL;
 	FREE(nfa);
 }
 
@@ -136,28 +149,43 @@ newstate(struct nfa *nfa)
 		return NULL;
 	}
 
-	if (nfa->free != NULL)
+	/* first, recycle anything that's on the freelist */
+	if (nfa->freestates != NULL)
 	{
-		s = nfa->free;
-		nfa->free = s->next;
+		s = nfa->freestates;
+		nfa->freestates = s->next;
 	}
+	/* otherwise, is there anything left in the last statebatch? */
+	else if (nfa->lastsb != NULL && nfa->lastsbused < nfa->lastsb->nstates)
+	{
+		s = &nfa->lastsb->s[nfa->lastsbused++];
+	}
+	/* otherwise, need to allocate a new statebatch */
 	else
 	{
+		struct statebatch *newSb;
+		size_t		nstates;
+
 		if (nfa->v->spaceused >= REG_MAX_COMPILE_SPACE)
 		{
 			NERR(REG_ETOOBIG);
 			return NULL;
 		}
-		s = (struct state *) MALLOC(sizeof(struct state));
-		if (s == NULL)
+		nstates = (nfa->lastsb != NULL) ? nfa->lastsb->nstates * 2 : FIRSTSBSIZE;
+		if (nstates > MAXSBSIZE)
+			nstates = MAXSBSIZE;
+		newSb = (struct statebatch *) MALLOC(STATEBATCHSIZE(nstates));
+		if (newSb == NULL)
 		{
 			NERR(REG_ESPACE);
 			return NULL;
 		}
-		nfa->v->spaceused += sizeof(struct state);
-		s->oas.next = NULL;
-		s->free = NULL;
-		s->noas = 0;
+		nfa->v->spaceused += STATEBATCHSIZE(nstates);
+		newSb->nstates = nstates;
+		newSb->next = nfa->lastsb;
+		nfa->lastsb = newSb;
+		nfa->lastsbused = 1;
+		s = &newSb->s[0];
 	}
 
 	assert(nfa->nstates >= 0);
@@ -238,32 +266,8 @@ freestate(struct nfa *nfa,
 		nfa->states = s->next;
 	}
 	s->prev = NULL;
-	s->next = nfa->free;		/* don't delete it, put it on the free list */
-	nfa->free = s;
-}
-
-/*
- * destroystate - really get rid of an already-freed state
- */
-static void
-destroystate(struct nfa *nfa,
-			 struct state *s)
-{
-	struct arcbatch *ab;
-	struct arcbatch *abnext;
-
-	assert(s->no == FREESTATE);
-	for (ab = s->oas.next; ab != NULL; ab = abnext)
-	{
-		abnext = ab->next;
-		FREE(ab);
-		nfa->v->spaceused -= sizeof(struct arcbatch);
-	}
-	s->ins = NULL;
-	s->outs = NULL;
-	s->next = NULL;
-	FREE(s);
-	nfa->v->spaceused -= sizeof(struct state);
+	s->next = nfa->freestates;	/* don't delete it, put it on the free list */
+	nfa->freestates = s;
 }
 
 /*
@@ -271,6 +275,11 @@ destroystate(struct nfa *nfa,
  *
  * This function checks to make sure that no duplicate arcs are created.
  * In general we never want duplicates.
+ *
+ * However: in principle, a RAINBOW arc is redundant with any plain arc
+ * (unless that arc is for a pseudocolor).  But we don't try to recognize
+ * that redundancy, either here or in allied operations such as moveins().
+ * The pseudocolor consideration makes that more costly than it seems worth.
  */
 static void
 newarc(struct nfa *nfa,
@@ -327,8 +336,7 @@ createarc(struct nfa *nfa,
 {
 	struct arc *a;
 
-	/* the arc is physically allocated within its from-state */
-	a = allocarc(nfa, from);
+	a = allocarc(nfa);
 	if (NISERR())
 		return;
 	assert(a != NULL);
@@ -362,55 +370,52 @@ createarc(struct nfa *nfa,
 }
 
 /*
- * allocarc - allocate a new out-arc within a state
+ * allocarc - allocate a new arc within an NFA
  */
 static struct arc *				/* NULL for failure */
-allocarc(struct nfa *nfa,
-		 struct state *s)
+allocarc(struct nfa *nfa)
 {
 	struct arc *a;
 
-	/* shortcut */
-	if (s->free == NULL && s->noas < ABSIZE)
+	/* first, recycle anything that's on the freelist */
+	if (nfa->freearcs != NULL)
 	{
-		a = &s->oas.a[s->noas];
-		s->noas++;
-		return a;
+		a = nfa->freearcs;
+		nfa->freearcs = a->freechain;
 	}
-
-	/* if none at hand, get more */
-	if (s->free == NULL)
+	/* otherwise, is there anything left in the last arcbatch? */
+	else if (nfa->lastab != NULL && nfa->lastabused < nfa->lastab->narcs)
+	{
+		a = &nfa->lastab->a[nfa->lastabused++];
+	}
+	/* otherwise, need to allocate a new arcbatch */
+	else
 	{
 		struct arcbatch *newAb;
-		int			i;
+		size_t		narcs;
 
 		if (nfa->v->spaceused >= REG_MAX_COMPILE_SPACE)
 		{
 			NERR(REG_ETOOBIG);
 			return NULL;
 		}
-		newAb = (struct arcbatch *) MALLOC(sizeof(struct arcbatch));
+		narcs = (nfa->lastab != NULL) ? nfa->lastab->narcs * 2 : FIRSTABSIZE;
+		if (narcs > MAXABSIZE)
+			narcs = MAXABSIZE;
+		newAb = (struct arcbatch *) MALLOC(ARCBATCHSIZE(narcs));
 		if (newAb == NULL)
 		{
 			NERR(REG_ESPACE);
 			return NULL;
 		}
-		nfa->v->spaceused += sizeof(struct arcbatch);
-		newAb->next = s->oas.next;
-		s->oas.next = newAb;
-
-		for (i = 0; i < ABSIZE; i++)
-		{
-			newAb->a[i].type = 0;
-			newAb->a[i].freechain = &newAb->a[i + 1];
-		}
-		newAb->a[ABSIZE - 1].freechain = NULL;
-		s->free = &newAb->a[0];
+		nfa->v->spaceused += ARCBATCHSIZE(narcs);
+		newAb->narcs = narcs;
+		newAb->next = nfa->lastab;
+		nfa->lastab = newAb;
+		nfa->lastabused = 1;
+		a = &newAb->a[0];
 	}
-	assert(s->free != NULL);
 
-	a = s->free;
-	s->free = a->freechain;
 	return a;
 }
 
@@ -471,7 +476,7 @@ freearc(struct nfa *nfa,
 	}
 	to->nins--;
 
-	/* clean up and place on from-state's free list */
+	/* clean up and place on NFA's free list */
 	victim->type = 0;
 	victim->from = NULL;		/* precautions... */
 	victim->to = NULL;
@@ -479,17 +484,58 @@ freearc(struct nfa *nfa,
 	victim->inchainRev = NULL;
 	victim->outchain = NULL;
 	victim->outchainRev = NULL;
-	victim->freechain = from->free;
-	from->free = victim;
+	victim->freechain = nfa->freearcs;
+	nfa->freearcs = victim;
+}
+
+/*
+ * changearcsource - flip an arc to have a different from state
+ *
+ * Caller must have verified that there is no pre-existing duplicate arc.
+ */
+static void
+changearcsource(struct arc *a, struct state *newfrom)
+{
+	struct state *oldfrom = a->from;
+	struct arc *predecessor;
+
+	assert(oldfrom != newfrom);
+
+	/* take it off old source's out-chain */
+	assert(oldfrom != NULL);
+	predecessor = a->outchainRev;
+	if (predecessor == NULL)
+	{
+		assert(oldfrom->outs == a);
+		oldfrom->outs = a->outchain;
+	}
+	else
+	{
+		assert(predecessor->outchain == a);
+		predecessor->outchain = a->outchain;
+	}
+	if (a->outchain != NULL)
+	{
+		assert(a->outchain->outchainRev == a);
+		a->outchain->outchainRev = predecessor;
+	}
+	oldfrom->nouts--;
+
+	a->from = newfrom;
+
+	/* prepend it to new source's out-chain */
+	a->outchain = newfrom->outs;
+	a->outchainRev = NULL;
+	if (newfrom->outs)
+		newfrom->outs->outchainRev = a;
+	newfrom->outs = a;
+	newfrom->nouts++;
 }
 
 /*
  * changearctarget - flip an arc to have a different to state
  *
  * Caller must have verified that there is no pre-existing duplicate arc.
- *
- * Note that because we store arcs in their from state, we can't easily have
- * a similar changearcsource function.
  */
 static void
 changearctarget(struct arc *a, struct state *newto)
@@ -731,6 +777,10 @@ sortouts_cmp(const void *a, const void *b)
  * However, if we have a whole lot of arcs to deal with, retail duplicate
  * checks become too slow.  In that case we proceed by sorting and merging
  * the arc lists, and then we can indeed just update the arcs in-place.
+ *
+ * On the other hand, it's also true that this is frequently called with
+ * a brand-new newState that has no existing in-arcs.  In that case,
+ * de-duplication is unnecessary, so we can just blindly move all the arcs.
  */
 static void
 moveins(struct nfa *nfa,
@@ -739,7 +789,18 @@ moveins(struct nfa *nfa,
 {
 	assert(oldState != newState);
 
-	if (!BULK_ARC_OP_USE_SORT(oldState->nins, newState->nins))
+	if (newState->nins == 0)
+	{
+		/* No need for de-duplication */
+		struct arc *a;
+
+		while ((a = oldState->ins) != NULL)
+		{
+			createarc(nfa, a->type, a->co, a->from, newState);
+			freearc(nfa, a);
+		}
+	}
+	else if (!BULK_ARC_OP_USE_SORT(oldState->nins, newState->nins))
 	{
 		/* With not too many arcs, just do them one at a time */
 		struct arc *a;
@@ -823,6 +884,11 @@ moveins(struct nfa *nfa,
 
 /*
  * copyins - copy in arcs of a state to another state
+ *
+ * The comments for moveins() apply here as well.  However, in current
+ * usage, this is *only* called with brand-new target states, so that
+ * only the "no need for de-duplication" code path is ever reached.
+ * We keep the rest #ifdef'd out in case it's needed in the future.
  */
 static void
 copyins(struct nfa *nfa,
@@ -830,8 +896,18 @@ copyins(struct nfa *nfa,
 		struct state *newState)
 {
 	assert(oldState != newState);
+	assert(newState->nins == 0);	/* see comment above */
 
-	if (!BULK_ARC_OP_USE_SORT(oldState->nins, newState->nins))
+	if (newState->nins == 0)
+	{
+		/* No need for de-duplication */
+		struct arc *a;
+
+		for (a = oldState->ins; a != NULL; a = a->inchain)
+			createarc(nfa, a->type, a->co, a->from, newState);
+	}
+#ifdef NOT_USED					/* see comment above */
+	else if (!BULK_ARC_OP_USE_SORT(oldState->nins, newState->nins))
 	{
 		/* With not too many arcs, just do them one at a time */
 		struct arc *a;
@@ -898,6 +974,7 @@ copyins(struct nfa *nfa,
 			createarc(nfa, a->type, a->co, a->from, newState);
 		}
 	}
+#endif							/* NOT_USED */
 }
 
 /*
@@ -1002,6 +1079,8 @@ mergeins(struct nfa *nfa,
 
 /*
  * moveouts - move all out arcs of a state to another state
+ *
+ * See comments for moveins()
  */
 static void
 moveouts(struct nfa *nfa,
@@ -1010,7 +1089,18 @@ moveouts(struct nfa *nfa,
 {
 	assert(oldState != newState);
 
-	if (!BULK_ARC_OP_USE_SORT(oldState->nouts, newState->nouts))
+	if (newState->nouts == 0)
+	{
+		/* No need for de-duplication */
+		struct arc *a;
+
+		while ((a = oldState->outs) != NULL)
+		{
+			createarc(nfa, a->type, a->co, newState, a->to);
+			freearc(nfa, a);
+		}
+	}
+	else if (!BULK_ARC_OP_USE_SORT(oldState->nouts, newState->nouts))
 	{
 		/* With not too many arcs, just do them one at a time */
 		struct arc *a;
@@ -1024,9 +1114,9 @@ moveouts(struct nfa *nfa,
 	else
 	{
 		/*
-		 * With many arcs, use a sort-merge approach.  Note that createarc()
-		 * will put new arcs onto the front of newState's chain, so it does
-		 * not break our walk through the sorted part of the chain.
+		 * With many arcs, use a sort-merge approach.  Note changearcsource()
+		 * will put the arc onto the front of newState's chain, so it does not
+		 * break our walk through the sorted part of the chain.
 		 */
 		struct arc *oa;
 		struct arc *na;
@@ -1056,8 +1146,12 @@ moveouts(struct nfa *nfa,
 				case -1:
 					/* newState does not have anything matching oa */
 					oa = oa->outchain;
-					createarc(nfa, a->type, a->co, newState, a->to);
-					freearc(nfa, a);
+
+					/*
+					 * Rather than doing createarc+freearc, we can just unlink
+					 * and relink the existing arc struct.
+					 */
+					changearcsource(a, newState);
 					break;
 				case 0:
 					/* match, advance in both lists */
@@ -1080,8 +1174,7 @@ moveouts(struct nfa *nfa,
 			struct arc *a = oa;
 
 			oa = oa->outchain;
-			createarc(nfa, a->type, a->co, newState, a->to);
-			freearc(nfa, a);
+			changearcsource(a, newState);
 		}
 	}
 
@@ -1091,6 +1184,8 @@ moveouts(struct nfa *nfa,
 
 /*
  * copyouts - copy out arcs of a state to another state
+ *
+ * See comments for copyins()
  */
 static void
 copyouts(struct nfa *nfa,
@@ -1098,8 +1193,18 @@ copyouts(struct nfa *nfa,
 		 struct state *newState)
 {
 	assert(oldState != newState);
+	assert(newState->nouts == 0);	/* see comment above */
 
-	if (!BULK_ARC_OP_USE_SORT(oldState->nouts, newState->nouts))
+	if (newState->nouts == 0)
+	{
+		/* No need for de-duplication */
+		struct arc *a;
+
+		for (a = oldState->outs; a != NULL; a = a->outchain)
+			createarc(nfa, a->type, a->co, newState, a->to);
+	}
+#ifdef NOT_USED					/* see comment above */
+	else if (!BULK_ARC_OP_USE_SORT(oldState->nouts, newState->nouts))
 	{
 		/* With not too many arcs, just do them one at a time */
 		struct arc *a;
@@ -1166,10 +1271,14 @@ copyouts(struct nfa *nfa,
 			createarc(nfa, a->type, a->co, newState, a->to);
 		}
 	}
+#endif							/* NOT_USED */
 }
 
 /*
  * cloneouts - copy out arcs of a state to another state pair, modifying type
+ *
+ * This is only used to convert PLAIN arcs to AHEAD/BEHIND arcs, which share
+ * the same interpretation of "co".  It wouldn't be sensible with LACONs.
  */
 static void
 cloneouts(struct nfa *nfa,
@@ -1181,9 +1290,13 @@ cloneouts(struct nfa *nfa,
 	struct arc *a;
 
 	assert(old != from);
+	assert(type == AHEAD || type == BEHIND);
 
 	for (a = old->outs; a != NULL; a = a->outchain)
+	{
+		assert(a->type == PLAIN);
 		newarc(nfa, type, a->co, from, to);
+	}
 }
 
 /*
@@ -1321,6 +1434,77 @@ duptraverse(struct nfa *nfa,
 			break;
 		assert(a->to->tmp != NULL);
 		cparc(nfa, a, s->tmp, a->to->tmp);
+	}
+}
+
+/*
+ * removeconstraints - remove any constraints in an NFA
+ *
+ * Constraint arcs are replaced by empty arcs, essentially treating all
+ * constraints as automatically satisfied.
+ */
+static void
+removeconstraints(struct nfa *nfa,
+				  struct state *start,	/* process subNFA starting here */
+				  struct state *stop)	/* and stopping here */
+{
+	if (start == stop)
+		return;
+
+	stop->tmp = stop;
+	removetraverse(nfa, start);
+	/* done, except for clearing out the tmp pointers */
+
+	stop->tmp = NULL;
+	cleartraverse(nfa, start);
+}
+
+/*
+ * removetraverse - recursive heart of removeconstraints
+ */
+static void
+removetraverse(struct nfa *nfa,
+			   struct state *s)
+{
+	struct arc *a;
+	struct arc *oa;
+
+	/* Since this is recursive, it could be driven to stack overflow */
+	if (STACK_TOO_DEEP(nfa->v->re))
+	{
+		NERR(REG_ETOOBIG);
+		return;
+	}
+
+	if (s->tmp != NULL)
+		return;					/* already done */
+
+	s->tmp = s;
+	for (a = s->outs; a != NULL && !NISERR(); a = oa)
+	{
+		removetraverse(nfa, a->to);
+		if (NISERR())
+			break;
+		oa = a->outchain;
+		switch (a->type)
+		{
+			case PLAIN:
+			case EMPTY:
+				/* nothing to do */
+				break;
+			case AHEAD:
+			case BEHIND:
+			case '^':
+			case '$':
+			case LACON:
+				/* replace it */
+				newarc(nfa, EMPTY, 0, s, a->to);
+				freearc(nfa, a);
+				break;
+			default:
+				NERR(REG_ASSERT);
+				break;
+		}
 	}
 }
 
@@ -1597,7 +1781,7 @@ pull(struct nfa *nfa,
 	for (a = from->ins; a != NULL && !NISERR(); a = nexta)
 	{
 		nexta = a->inchain;
-		switch (combine(con, a))
+		switch (combine(nfa, con, a))
 		{
 			case INCOMPATIBLE:	/* destroy the arc */
 				freearc(nfa, a);
@@ -1622,6 +1806,10 @@ pull(struct nfa *nfa,
 				}
 				cparc(nfa, con, a->from, s);
 				cparc(nfa, a, s, to);
+				freearc(nfa, a);
+				break;
+			case REPLACEARC:	/* replace arc's color */
+				newarc(nfa, a->type, con->co, a->from, to);
 				freearc(nfa, a);
 				break;
 			default:
@@ -1764,7 +1952,7 @@ push(struct nfa *nfa,
 	for (a = to->outs; a != NULL && !NISERR(); a = nexta)
 	{
 		nexta = a->outchain;
-		switch (combine(con, a))
+		switch (combine(nfa, con, a))
 		{
 			case INCOMPATIBLE:	/* destroy the arc */
 				freearc(nfa, a);
@@ -1791,6 +1979,10 @@ push(struct nfa *nfa,
 				cparc(nfa, a, from, s);
 				freearc(nfa, a);
 				break;
+			case REPLACEARC:	/* replace arc's color */
+				newarc(nfa, a->type, con->co, from, a->to);
+				freearc(nfa, a);
+				break;
 			default:
 				assert(NOTREACHED);
 				break;
@@ -1810,9 +2002,11 @@ push(struct nfa *nfa,
  * #def INCOMPATIBLE	1	// destroys arc
  * #def SATISFIED		2	// constraint satisfied
  * #def COMPATIBLE		3	// compatible but not satisfied yet
+ * #def REPLACEARC		4	// replace arc's color with constraint color
  */
 static int
-combine(struct arc *con,
+combine(struct nfa *nfa,
+		struct arc *con,
 		struct arc *a)
 {
 #define  CA(ct,at)	 (((ct)<<CHAR_BIT) | (at))
@@ -1827,14 +2021,48 @@ combine(struct arc *con,
 		case CA(BEHIND, PLAIN):
 			if (con->co == a->co)
 				return SATISFIED;
+			if (con->co == RAINBOW)
+			{
+				/* con is satisfied unless arc's color is a pseudocolor */
+				if (!(nfa->cm->cd[a->co].flags & PSEUDO))
+					return SATISFIED;
+			}
+			else if (a->co == RAINBOW)
+			{
+				/* con is incompatible if it's for a pseudocolor */
+				/* (this is hypothetical; we make no such constraints today) */
+				if (nfa->cm->cd[con->co].flags & PSEUDO)
+					return INCOMPATIBLE;
+				/* otherwise, constraint constrains arc to be only its color */
+				return REPLACEARC;
+			}
 			return INCOMPATIBLE;
 			break;
 		case CA('^', '^'):		/* collision, similar constraints */
 		case CA('$', '$'):
-		case CA(AHEAD, AHEAD):
+			if (con->co == a->co)	/* true duplication */
+				return SATISFIED;
+			return INCOMPATIBLE;
+			break;
+		case CA(AHEAD, AHEAD):	/* collision, similar constraints */
 		case CA(BEHIND, BEHIND):
 			if (con->co == a->co)	/* true duplication */
 				return SATISFIED;
+			if (con->co == RAINBOW)
+			{
+				/* con is satisfied unless arc's color is a pseudocolor */
+				if (!(nfa->cm->cd[a->co].flags & PSEUDO))
+					return SATISFIED;
+			}
+			else if (a->co == RAINBOW)
+			{
+				/* con is incompatible if it's for a pseudocolor */
+				/* (this is hypothetical; we make no such constraints today) */
+				if (nfa->cm->cd[con->co].flags & PSEUDO)
+					return INCOMPATIBLE;
+				/* otherwise, constraint constrains arc to be only its color */
+				return REPLACEARC;
+			}
 			return INCOMPATIBLE;
 			break;
 		case CA('^', BEHIND):	/* collision, dissimilar constraints */
@@ -2821,13 +3049,459 @@ analyze(struct nfa *nfa)
 	if (NISERR())
 		return 0;
 
+	/* Detect whether NFA can't match anything */
 	if (nfa->pre->outs == NULL)
 		return REG_UIMPOSSIBLE;
+
+	/* Detect whether NFA matches all strings (possibly with length bounds) */
+	checkmatchall(nfa);
+
+	/* Detect whether NFA can possibly match a zero-length string */
 	for (a = nfa->pre->outs; a != NULL; a = a->outchain)
 		for (aa = a->to->outs; aa != NULL; aa = aa->outchain)
 			if (aa->to == nfa->post)
 				return REG_UEMPTYMATCH;
 	return 0;
+}
+
+/*
+ * checkmatchall - does the NFA represent no more than a string length test?
+ *
+ * If so, set nfa->minmatchall and nfa->maxmatchall correctly (they are -1
+ * to begin with) and set the MATCHALL bit in nfa->flags.
+ *
+ * To succeed, we require all arcs to be PLAIN RAINBOW arcs, except for those
+ * for pseudocolors (i.e., BOS/BOL/EOS/EOL).  We must be able to reach the
+ * post state via RAINBOW arcs, and if there are any loops in the graph, they
+ * must be loop-to-self arcs, ensuring that each loop iteration consumes
+ * exactly one character.  (Longer loops are problematic because they create
+ * non-consecutive possible match lengths; we have no good way to represent
+ * that situation for lengths beyond the DUPINF limit.)
+ *
+ * Pseudocolor arcs complicate things a little.  We know that they can only
+ * appear as pre-state outarcs (for BOS/BOL) or post-state inarcs (for
+ * EOS/EOL).  There, they must exactly replicate the parallel RAINBOW arcs,
+ * e.g. if the pre state has one RAINBOW outarc to state 2, it must have BOS
+ * and BOL outarcs to state 2, and no others.  Missing or extra pseudocolor
+ * arcs can occur, meaning that the NFA involves some constraint on the
+ * adjacent characters, which makes it not a matchall NFA.
+ */
+static void
+checkmatchall(struct nfa *nfa)
+{
+	bool	  **haspaths;
+	struct state *s;
+	int			i;
+
+	/*
+	 * If there are too many states, don't bother trying to detect matchall.
+	 * This limit serves to bound the time and memory we could consume below.
+	 * Note that even if the graph is all-RAINBOW, if there are significantly
+	 * more than DUPINF states then it's likely that there are paths of length
+	 * more than DUPINF, which would force us to fail anyhow.  In practice,
+	 * plausible ways of writing a matchall regex with maximum finite path
+	 * length K tend not to have very many more than K states.
+	 */
+	if (nfa->nstates > DUPINF * 2)
+		return;
+
+	/*
+	 * First, scan all the states to verify that only RAINBOW arcs appear,
+	 * plus pseudocolor arcs adjacent to the pre and post states.  This lets
+	 * us quickly eliminate most cases that aren't matchall NFAs.
+	 */
+	for (s = nfa->states; s != NULL; s = s->next)
+	{
+		struct arc *a;
+
+		for (a = s->outs; a != NULL; a = a->outchain)
+		{
+			if (a->type != PLAIN)
+				return;			/* any LACONs make it non-matchall */
+			if (a->co != RAINBOW)
+			{
+				if (nfa->cm->cd[a->co].flags & PSEUDO)
+				{
+					/*
+					 * Pseudocolor arc: verify it's in a valid place (this
+					 * seems quite unlikely to fail, but let's be sure).
+					 */
+					if (s == nfa->pre &&
+						(a->co == nfa->bos[0] || a->co == nfa->bos[1]))
+						 /* okay BOS/BOL arc */ ;
+					else if (a->to == nfa->post &&
+							 (a->co == nfa->eos[0] || a->co == nfa->eos[1]))
+						 /* okay EOS/EOL arc */ ;
+					else
+						return; /* unexpected pseudocolor arc */
+					/* We'll check these arcs some more below. */
+				}
+				else
+					return;		/* any other color makes it non-matchall */
+			}
+		}
+		/* Also, assert that the tmp fields are available for use. */
+		assert(s->tmp == NULL);
+	}
+
+	/*
+	 * The next cheapest check we can make is to verify that the BOS/BOL
+	 * outarcs of the pre state reach the same states as its RAINBOW outarcs.
+	 * If they don't, the NFA expresses some constraints on the character
+	 * before the matched string, making it non-matchall.  Likewise, the
+	 * EOS/EOL inarcs of the post state must match its RAINBOW inarcs.
+	 */
+	if (!check_out_colors_match(nfa->pre, RAINBOW, nfa->bos[0]) ||
+		!check_out_colors_match(nfa->pre, RAINBOW, nfa->bos[1]) ||
+		!check_in_colors_match(nfa->post, RAINBOW, nfa->eos[0]) ||
+		!check_in_colors_match(nfa->post, RAINBOW, nfa->eos[1]))
+		return;
+
+	/*
+	 * Initialize an array of path-length arrays, in which
+	 * checkmatchall_recurse will return per-state results.  This lets us
+	 * memo-ize the recursive search and avoid exponential time consumption.
+	 */
+	haspaths = (bool **) MALLOC(nfa->nstates * sizeof(bool *));
+	if (haspaths == NULL)
+		return;					/* fail quietly */
+	memset(haspaths, 0, nfa->nstates * sizeof(bool *));
+
+	/*
+	 * Recursively search the graph for all-RAINBOW paths to the "post" state,
+	 * starting at the "pre" state, and computing the lengths of the paths.
+	 * (Given the preceding checks, there should be at least one such path.
+	 * However we could get back a false result anyway, in case there are
+	 * multi-state loops, paths exceeding DUPINF+1 length, or non-algorithmic
+	 * failures such as ENOMEM.)
+	 */
+	if (checkmatchall_recurse(nfa, nfa->pre, haspaths))
+	{
+		/* The useful result is the path length array for the pre state */
+		bool	   *haspath = haspaths[nfa->pre->no];
+		int			minmatch,
+					maxmatch,
+					morematch;
+
+		assert(haspath != NULL);
+
+		/*
+		 * haspath[] now represents the set of possible path lengths; but we
+		 * want to reduce that to a min and max value, because it doesn't seem
+		 * worth complicating regexec.c to deal with nonconsecutive possible
+		 * match lengths.  Find min and max of first run of lengths, then
+		 * verify there are no nonconsecutive lengths.
+		 */
+		for (minmatch = 0; minmatch <= DUPINF + 1; minmatch++)
+		{
+			if (haspath[minmatch])
+				break;
+		}
+		assert(minmatch <= DUPINF + 1); /* else checkmatchall_recurse lied */
+		for (maxmatch = minmatch; maxmatch < DUPINF + 1; maxmatch++)
+		{
+			if (!haspath[maxmatch + 1])
+				break;
+		}
+		for (morematch = maxmatch + 1; morematch <= DUPINF + 1; morematch++)
+		{
+			if (haspath[morematch])
+			{
+				haspath = NULL; /* fail, there are nonconsecutive lengths */
+				break;
+			}
+		}
+
+		if (haspath != NULL)
+		{
+			/*
+			 * Success, so record the info.  Here we have a fine point: the
+			 * path length from the pre state includes the pre-to-initial
+			 * transition, so it's one more than the actually matched string
+			 * length.  (We avoided counting the final-to-post transition
+			 * within checkmatchall_recurse, but not this one.)  This is why
+			 * checkmatchall_recurse allows one more level of path length than
+			 * might seem necessary.  This decrement also takes care of
+			 * converting checkmatchall_recurse's definition of "infinity" as
+			 * "DUPINF+1" to our normal representation as "DUPINF".
+			 */
+			assert(minmatch > 0);	/* else pre and post states were adjacent */
+			nfa->minmatchall = minmatch - 1;
+			nfa->maxmatchall = maxmatch - 1;
+			nfa->flags |= MATCHALL;
+		}
+	}
+
+	/* Clean up */
+	for (i = 0; i < nfa->nstates; i++)
+	{
+		if (haspaths[i] != NULL)
+			FREE(haspaths[i]);
+	}
+	FREE(haspaths);
+}
+
+/*
+ * checkmatchall_recurse - recursive search for checkmatchall
+ *
+ * s is the state to be examined in this recursion level.
+ * haspaths[] is an array of per-state exit path length arrays.
+ *
+ * We return true if the search was performed successfully, false if
+ * we had to fail because of multi-state loops or other internal reasons.
+ * (Because "dead" states that can't reach the post state have been
+ * eliminated, and we already verified that only RAINBOW and matching
+ * pseudocolor arcs exist, every state should have RAINBOW path(s) to
+ * the post state.  Hence we take a false result from recursive calls
+ * as meaning that we'd better fail altogether, not just that that
+ * particular state can't reach the post state.)
+ *
+ * On success, we store a malloc'd result array in haspaths[s->no],
+ * showing the possible path lengths from s to the post state.
+ * Each state's haspath[] array is of length DUPINF+2.  The entries from
+ * k = 0 to DUPINF are true if there is an all-RAINBOW path of length k
+ * from this state to the string end.  haspath[DUPINF+1] is true if all
+ * path lengths >= DUPINF+1 are possible.  (Situations that cannot be
+ * represented under these rules cause failure.)
+ *
+ * checkmatchall is responsible for eventually freeing the haspath[] arrays.
+ */
+static bool
+checkmatchall_recurse(struct nfa *nfa, struct state *s, bool **haspaths)
+{
+	bool		result = false;
+	bool		foundloop = false;
+	bool	   *haspath;
+	struct arc *a;
+
+	/*
+	 * Since this is recursive, it could be driven to stack overflow.  But we
+	 * need not treat that as a hard failure; just deem the NFA non-matchall.
+	 */
+	if (STACK_TOO_DEEP(nfa->v->re))
+		return false;
+
+	/* In case the search takes a long time, check for cancel */
+	if (CANCEL_REQUESTED(nfa->v->re))
+	{
+		NERR(REG_CANCEL);
+		return false;
+	}
+
+	/* Create a haspath array for this state */
+	haspath = (bool *) MALLOC((DUPINF + 2) * sizeof(bool));
+	if (haspath == NULL)
+		return false;			/* again, treat as non-matchall */
+	memset(haspath, 0, (DUPINF + 2) * sizeof(bool));
+
+	/* Mark this state as being visited */
+	assert(s->tmp == NULL);
+	s->tmp = s;
+
+	for (a = s->outs; a != NULL; a = a->outchain)
+	{
+		if (a->co != RAINBOW)
+			continue;			/* ignore pseudocolor arcs */
+		if (a->to == nfa->post)
+		{
+			/* We found an all-RAINBOW path to the post state */
+			result = true;
+
+			/*
+			 * Mark this state as being zero steps away from the string end
+			 * (the transition to the post state isn't counted).
+			 */
+			haspath[0] = true;
+		}
+		else if (a->to == s)
+		{
+			/* We found a cycle of length 1, which we'll deal with below. */
+			foundloop = true;
+		}
+		else if (a->to->tmp != NULL)
+		{
+			/* It's busy, so we found a cycle of length > 1, so fail. */
+			result = false;
+			break;
+		}
+		else
+		{
+			/* Consider paths forward through this to-state. */
+			bool	   *nexthaspath;
+			int			i;
+
+			/* If to-state was not already visited, recurse */
+			if (haspaths[a->to->no] == NULL)
+			{
+				result = checkmatchall_recurse(nfa, a->to, haspaths);
+				/* Fail if any recursive path fails */
+				if (!result)
+					break;
+			}
+			else
+			{
+				/* The previous visit must have found path(s) to the end */
+				result = true;
+			}
+			assert(a->to->tmp == NULL);
+			nexthaspath = haspaths[a->to->no];
+			assert(nexthaspath != NULL);
+
+			/*
+			 * Now, for every path of length i from a->to to the string end,
+			 * there is a path of length i + 1 from s to the string end.
+			 */
+			if (nexthaspath[DUPINF] != nexthaspath[DUPINF + 1])
+			{
+				/*
+				 * a->to has a path of length exactly DUPINF, but not longer;
+				 * or it has paths of all lengths > DUPINF but not one of
+				 * exactly that length.  In either case, we cannot represent
+				 * the possible path lengths from s correctly, so fail.
+				 */
+				result = false;
+				break;
+			}
+			/* Merge knowledge of these path lengths into what we have */
+			for (i = 0; i < DUPINF; i++)
+				haspath[i + 1] |= nexthaspath[i];
+			/* Infinity + 1 is still infinity */
+			haspath[DUPINF + 1] |= nexthaspath[DUPINF + 1];
+		}
+	}
+
+	if (result && foundloop)
+	{
+		/*
+		 * If there is a length-1 loop at this state, then find the shortest
+		 * known path length to the end.  The loop means that every larger
+		 * path length is possible, too.  (It doesn't matter whether any of
+		 * the longer lengths were already known possible.)
+		 */
+		int			i;
+
+		for (i = 0; i <= DUPINF; i++)
+		{
+			if (haspath[i])
+				break;
+		}
+		for (i++; i <= DUPINF + 1; i++)
+			haspath[i] = true;
+	}
+
+	/* Report out the completed path length map */
+	assert(s->no < nfa->nstates);
+	assert(haspaths[s->no] == NULL);
+	haspaths[s->no] = haspath;
+
+	/* Mark state no longer busy */
+	s->tmp = NULL;
+
+	return result;
+}
+
+/*
+ * check_out_colors_match - subroutine for checkmatchall
+ *
+ * Check whether the set of states reachable from s by arcs of color co1
+ * is equivalent to the set reachable by arcs of color co2.
+ * checkmatchall already verified that all of the NFA's arcs are PLAIN,
+ * so we need not examine arc types here.
+ */
+static bool
+check_out_colors_match(struct state *s, color co1, color co2)
+{
+	bool		result = true;
+	struct arc *a;
+
+	/*
+	 * To do this in linear time, we assume that the NFA contains no duplicate
+	 * arcs.  Run through the out-arcs, marking states reachable by arcs of
+	 * color co1.  Run through again, un-marking states reachable by arcs of
+	 * color co2; if we see a not-marked state, we know this co2 arc is
+	 * unmatched.  Then run through again, checking for still-marked states,
+	 * and in any case leaving all the tmp fields reset to NULL.
+	 */
+	for (a = s->outs; a != NULL; a = a->outchain)
+	{
+		if (a->co == co1)
+		{
+			assert(a->to->tmp == NULL);
+			a->to->tmp = a->to;
+		}
+	}
+	for (a = s->outs; a != NULL; a = a->outchain)
+	{
+		if (a->co == co2)
+		{
+			if (a->to->tmp != NULL)
+				a->to->tmp = NULL;
+			else
+				result = false; /* unmatched co2 arc */
+		}
+	}
+	for (a = s->outs; a != NULL; a = a->outchain)
+	{
+		if (a->co == co1)
+		{
+			if (a->to->tmp != NULL)
+			{
+				result = false; /* unmatched co1 arc */
+				a->to->tmp = NULL;
+			}
+		}
+	}
+	return result;
+}
+
+/*
+ * check_in_colors_match - subroutine for checkmatchall
+ *
+ * Check whether the set of states that can reach s by arcs of color co1
+ * is equivalent to the set that can reach s by arcs of color co2.
+ * checkmatchall already verified that all of the NFA's arcs are PLAIN,
+ * so we need not examine arc types here.
+ */
+static bool
+check_in_colors_match(struct state *s, color co1, color co2)
+{
+	bool		result = true;
+	struct arc *a;
+
+	/*
+	 * Identical algorithm to check_out_colors_match, except examine the
+	 * from-states of s' inarcs.
+	 */
+	for (a = s->ins; a != NULL; a = a->inchain)
+	{
+		if (a->co == co1)
+		{
+			assert(a->from->tmp == NULL);
+			a->from->tmp = a->from;
+		}
+	}
+	for (a = s->ins; a != NULL; a = a->inchain)
+	{
+		if (a->co == co2)
+		{
+			if (a->from->tmp != NULL)
+				a->from->tmp = NULL;
+			else
+				result = false; /* unmatched co2 arc */
+		}
+	}
+	for (a = s->ins; a != NULL; a = a->inchain)
+	{
+		if (a->co == co1)
+		{
+			if (a->from->tmp != NULL)
+			{
+				result = false; /* unmatched co1 arc */
+				a->from->tmp = NULL;
+			}
+		}
+	}
+	return result;
 }
 
 /*
@@ -2876,7 +3550,9 @@ compact(struct nfa *nfa,
 	cnfa->eos[0] = nfa->eos[0];
 	cnfa->eos[1] = nfa->eos[1];
 	cnfa->ncolors = maxcolor(nfa->cm) + 1;
-	cnfa->flags = 0;
+	cnfa->flags = nfa->flags;
+	cnfa->minmatchall = nfa->minmatchall;
+	cnfa->maxmatchall = nfa->maxmatchall;
 
 	ca = cnfa->arcs;
 	for (s = nfa->states; s != NULL; s = s->next)
@@ -2895,6 +3571,7 @@ compact(struct nfa *nfa,
 					break;
 				case LACON:
 					assert(s->no != cnfa->pre);
+					assert(a->co >= 0);
 					ca->co = (color) (cnfa->ncolors + a->co);
 					ca->to = a->to->no;
 					ca++;
@@ -2902,7 +3579,7 @@ compact(struct nfa *nfa,
 					break;
 				default:
 					NERR(REG_ASSERT);
-					break;
+					return;
 			}
 		carcsort(first, ca - first);
 		ca->co = COLORLESS;
@@ -2942,6 +3619,7 @@ carc_cmp(const void *a, const void *b)
 		return -1;
 	if (aa->to > bb->to)
 		return +1;
+	/* This is unreached, since there should be no duplicate arcs now: */
 	return 0;
 }
 
@@ -2951,11 +3629,11 @@ carc_cmp(const void *a, const void *b)
 static void
 freecnfa(struct cnfa *cnfa)
 {
-	assert(cnfa->nstates != 0); /* not empty already */
-	cnfa->nstates = 0;
+	assert(!NULLCNFA(*cnfa));	/* not empty already */
 	FREE(cnfa->stflags);
 	FREE(cnfa->states);
 	FREE(cnfa->arcs);
+	ZAPCNFA(*cnfa);
 }
 
 /*
@@ -2979,6 +3657,16 @@ dumpnfa(struct nfa *nfa,
 		fprintf(f, ", eos [%ld]", (long) nfa->eos[0]);
 	if (nfa->eos[1] != COLORLESS)
 		fprintf(f, ", eol [%ld]", (long) nfa->eos[1]);
+	if (nfa->flags & HASLACONS)
+		fprintf(f, ", haslacons");
+	if (nfa->flags & MATCHALL)
+	{
+		fprintf(f, ", minmatchall %d", nfa->minmatchall);
+		if (nfa->maxmatchall == DUPINF)
+			fprintf(f, ", maxmatchall inf");
+		else
+			fprintf(f, ", maxmatchall %d", nfa->maxmatchall);
+	}
 	fprintf(f, "\n");
 	for (s = nfa->states; s != NULL; s = s->next)
 	{
@@ -3012,13 +3700,13 @@ dumpstate(struct state *s,
 		fprintf(f, "\tno out arcs\n");
 	else
 		dumparcs(s, f);
-	fflush(f);
 	for (a = s->ins; a != NULL; a = a->inchain)
 	{
 		if (a->to != s)
 			fprintf(f, "\tlink from %d to %d on %d's in-chain\n",
 					a->from->no, a->to->no, s->no);
 	}
+	fflush(f);
 }
 
 /*
@@ -3062,19 +3750,27 @@ dumparc(struct arc *a,
 		FILE *f)
 {
 	struct arc *aa;
-	struct arcbatch *ab;
 
 	fprintf(f, "\t");
 	switch (a->type)
 	{
 		case PLAIN:
-			fprintf(f, "[%ld]", (long) a->co);
+			if (a->co == RAINBOW)
+				fprintf(f, "[*]");
+			else
+				fprintf(f, "[%ld]", (long) a->co);
 			break;
 		case AHEAD:
-			fprintf(f, ">%ld>", (long) a->co);
+			if (a->co == RAINBOW)
+				fprintf(f, ">*>");
+			else
+				fprintf(f, ">%ld>", (long) a->co);
 			break;
 		case BEHIND:
-			fprintf(f, "<%ld<", (long) a->co);
+			if (a->co == RAINBOW)
+				fprintf(f, "<*<");
+			else
+				fprintf(f, "<%ld<", (long) a->co);
 			break;
 		case LACON:
 			fprintf(f, ":%ld:", (long) a->co);
@@ -3091,16 +3787,11 @@ dumparc(struct arc *a,
 	}
 	if (a->from != s)
 		fprintf(f, "?%d?", a->from->no);
-	for (ab = &a->from->oas; ab != NULL; ab = ab->next)
-	{
-		for (aa = &ab->a[0]; aa < &ab->a[ABSIZE]; aa++)
-			if (aa == a)
-				break;			/* NOTE BREAK OUT */
-		if (aa < &ab->a[ABSIZE])	/* propagate break */
+	for (aa = a->from->outs; aa != NULL; aa = aa->outchain)
+		if (aa == a)
 			break;				/* NOTE BREAK OUT */
-	}
-	if (ab == NULL)
-		fprintf(f, "?!?");		/* not in allocated space */
+	if (aa == NULL)
+		fprintf(f, "?!?");		/* missing from out-chain */
 	fprintf(f, "->");
 	if (a->to == NULL)
 	{
@@ -3137,6 +3828,14 @@ dumpcnfa(struct cnfa *cnfa,
 		fprintf(f, ", eol [%ld]", (long) cnfa->eos[1]);
 	if (cnfa->flags & HASLACONS)
 		fprintf(f, ", haslacons");
+	if (cnfa->flags & MATCHALL)
+	{
+		fprintf(f, ", minmatchall %d", cnfa->minmatchall);
+		if (cnfa->maxmatchall == DUPINF)
+			fprintf(f, ", maxmatchall inf");
+		else
+			fprintf(f, ", maxmatchall %d", cnfa->maxmatchall);
+	}
 	fprintf(f, "\n");
 	for (st = 0; st < cnfa->nstates; st++)
 		dumpcstate(st, cnfa, f);
@@ -3161,7 +3860,9 @@ dumpcstate(int st,
 	pos = 1;
 	for (ca = cnfa->states[st]; ca->co != COLORLESS; ca++)
 	{
-		if (ca->co < cnfa->ncolors)
+		if (ca->co == RAINBOW)
+			fprintf(f, "\t[*]->%d", ca->to);
+		else if (ca->co < cnfa->ncolors)
 			fprintf(f, "\t[%ld]->%d", (long) ca->co, ca->to);
 		else
 			fprintf(f, "\t:%ld:->%d", (long) (ca->co - cnfa->ncolors), ca->to);

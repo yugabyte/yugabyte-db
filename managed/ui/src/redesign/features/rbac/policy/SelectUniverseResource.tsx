@@ -132,11 +132,10 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   const [allowAll, setAllowAll] = useToggle(
     roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll
   );
-
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
     !allowAll
       ? getUniverseLabelAndValue(
-        roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
+        roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet ?? []
       )
       : getUniverseLabelAndValue([], true)
   );
@@ -158,7 +157,7 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
     return (
       <div className={classes.flex}>
         <span className={classes.universeCount}>
-          {roleMappings.resourceDefinitionSet[ResourceGroupIndex]?.resourceUUIDSet.length}/
+          {roleMappings.resourceDefinitionSet[ResourceGroupIndex]?.resourceUUIDSet?.length}/
           {universeList.length}
         </span>
         {t('universes')}

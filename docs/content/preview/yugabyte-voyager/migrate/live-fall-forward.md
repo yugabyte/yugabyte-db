@@ -9,7 +9,8 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-badges: tp
+tags:
+  feature: tech-preview
 type: docs
 ---
 
@@ -685,14 +686,14 @@ Perform the following steps to prepare your source-replica database:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#oracle-source-replica" class="nav-link active" id="oracle-source-replica-tab" data-bs-toggle="tab"
+    <a href="#oracle-source-replica" class="nav-link active" id="oracle-tab" data-bs-toggle="tab"
       role="tab" aria-controls="oracle-source-replica" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>
   </li>
   <li >
-    <a href="#pg-source-replica" class="nav-link" id="pg-source-replica-tab" data-bs-toggle="tab"
+    <a href="#pg-source-replica" class="nav-link" id="pg-tab" data-bs-toggle="tab"
       role="tab" aria-controls="pg-source-replica" aria-selected="false">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL
@@ -785,7 +786,7 @@ Perform the following steps to prepare your source-replica database:
     ```
 
   </div>
-  <div id="pg-source-replica" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-source-replica-tab">
+  <div id="pg-source-replica" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
 {{< tabpane text=true >}}
 
@@ -941,6 +942,10 @@ yb-voyager export data from source --export-dir <EXPORT_DIR> \
 For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
 {{< /note >}}
 
+{{< note title= "Migrating source databases with large row sizes" >}}
+If a table's row size on the source database is too large, and exceeds the default [RPC message size](../../../reference/configuration/all-flags-yb-master/#rpc-max-message-size), import data will fail with the error `ERROR: Sending too long RPC message..`. So, you need to migrate those tables separately after removing the large rows.
+{{< /note >}}
+
 The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase similar to the following:
 
 ```output
@@ -1026,6 +1031,15 @@ When importing a very large database, run the import data to target command in a
 If the `yb-voyager import data to target` command terminates before completing the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
 
 {{< /tip >}}
+
+{{< note title= "Migrating Oracle source databases with large row sizes" >}}
+When migrating from Oracle source, during the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
+
+```sh
+export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
+```
+
+{{< /note >}}
 
 #### get data-migration-report
 

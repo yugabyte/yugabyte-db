@@ -76,6 +76,15 @@ Status DocPgInit() {
 
 //-----------------------------------------------------------------------------
 // Types
+//
+// YBTODO(skumar@yugabyte.com) This work on TYPE need works.
+// - Postgres has added some new type macros and removed others. I removed the
+//   obsolete types, but new ones need to be introduced here.
+// - Access to Postgres macros such as TEXTOID should be coded in src/postgres
+//   layer. Docdb would then make callback to Postgres. That's how we've done
+//   in our code. Why does this module work directly with Postgres macros?
+// I noted that nobody in SQL frontend team reviewed this work in the past.
+// In the future, please discuss with them when calling or using Posgres API.
 //-----------------------------------------------------------------------------
 
 class DocPgTypeAnalyzer {
@@ -373,8 +382,6 @@ char *get_array_string_value(
     case BPCHAROID:
     case VARCHAROID:
     case PATHOID:
-    case RELTIMEOID:
-    case TINTERVALOID:
     case ACLITEMOID:
     case INETOID:
     case NUMERICOID:
@@ -425,7 +432,6 @@ char *get_array_string_value(
       break;
 
     case INT4OID:
-    case ABSTIMEOID:
     case DATEOID:
     case ANYOID:
       SET_ELEM_LEN_BYVAL_ALIGN(sizeof(int32), true, 'i');
@@ -661,12 +667,6 @@ uint32_t get_array_element_type(uint32_t pg_data_type) {
       return FLOAT4OID;
     case FLOAT8ARRAYOID:
       return FLOAT8OID;
-    case ABSTIMEARRAYOID:
-      return ABSTIMEOID;
-    case RELTIMEARRAYOID:
-      return RELTIMEOID;
-    case TINTERVALARRAYOID:
-      return TINTERVALOID;
     case CIRCLEARRAYOID:
       return CIRCLEOID;
     case MACADDRARRAYOID:
@@ -1023,51 +1023,6 @@ Status SetValueFromQLBinaryHelper(
       set_string_value(datum, func_name, cdc_datum_message);
       break;
     }
-    case PGNODETREEOID: {
-      func_name = "pg_node_tree_out";
-      string pg_node_tree_val = ql_value.binary_value();
-      size = pg_node_tree_val.size();
-      val = const_cast<char *>(pg_node_tree_val.c_str());
-      uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
-    case PGNDISTINCTOID: {
-      func_name = "pg_ndistinct_out";
-      string pg_ndistinct_val = ql_value.binary_value();
-      size = pg_ndistinct_val.size();
-      val = const_cast<char *>(pg_ndistinct_val.c_str());
-      uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
-    case PGDEPENDENCIESOID: {
-      func_name = "pg_dependencies_out";
-      string pg_dependencies_val = ql_value.binary_value();
-      size = pg_dependencies_val.size();
-      val = const_cast<char *>(pg_dependencies_val.c_str());
-      uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
-    case PGDDLCOMMANDOID: {
-      func_name = "pg_ddl_command_out";
-      int64_t pg_ddl_command_val = ql_value.int64_value();
-      size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<int64 *>(&pg_ddl_command_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
-    case SMGROID: {
-      func_name = "smgrout";
-      int smgr_val = ql_value.int16_value();
-      size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<int16 *>(&smgr_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
     case POINTOID: {
       func_name = "point_out";
       string point_val = ql_value.binary_value();
@@ -1413,7 +1368,7 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
     case TXID_SNAPSHOTOID: {
-      func_name = "txid_snapshot_out";
+      func_name = "pg_snapshot_out";
       string txid_val = ql_value.binary_value();
       size = txid_val.size();
       val = const_cast<char *>(txid_val.c_str());
@@ -1473,15 +1428,6 @@ Status SetValueFromQLBinaryHelper(
       set_string_value(datum, func_name, cdc_datum_message);
       break;
     }
-    case EVTTRIGGEROID: {
-      func_name = "event_trigger_out";
-      uint32 event_trigger_val = ql_value.uint32_value();
-      size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<uint32 *>(&event_trigger_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
     case LANGUAGE_HANDLEROID: {
       func_name = "language_handler_out";
       uint32 language_handler_val = ql_value.uint32_value();
@@ -1497,15 +1443,6 @@ Status SetValueFromQLBinaryHelper(
       size = arg_type->datum_fixed_size;
       uint64_t datum =
           arg_type->yb_to_datum(reinterpret_cast<int64 *>(&internal_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
-      break;
-    }
-    case OPAQUEOID: {
-      func_name = "opaque_out";
-      int opaque_val = ql_value.int32_value();
-      size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<int32 *>(&opaque_val), size, &type_attrs);
       set_string_value(datum, func_name, cdc_datum_message);
       break;
     }
@@ -1836,24 +1773,6 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
 
-    case ABSTIMEARRAYOID: {
-      func_name = "abstimeout";
-      set_array_string_value(ql_value, arg_type, ABSTIMEOID, func_name, cdc_datum_message);
-      break;
-    }
-
-    case RELTIMEARRAYOID: {
-      func_name = "reltimeout";
-      set_array_string_value(ql_value, arg_type, RELTIMEOID, func_name, cdc_datum_message);
-      break;
-    }
-
-    case TINTERVALARRAYOID: {
-      func_name = "tintervalout";
-      set_array_string_value(ql_value, arg_type, TINTERVALOID, func_name, cdc_datum_message);
-      break;
-    }
-
     case ACLITEMARRAYOID: {
       func_name = "aclitemout";
       set_array_string_value(ql_value, arg_type, ACLITEMOID, func_name, cdc_datum_message);
@@ -2035,7 +1954,7 @@ Status SetValueFromQLBinaryHelper(
     }
 
     case TXID_SNAPSHOTARRAYOID: {
-      func_name = "txid_snapshot_out";
+      func_name = "pg_snapshot_out";
       set_array_string_value(ql_value, arg_type, TXID_SNAPSHOTOID, func_name, cdc_datum_message);
       break;
     }

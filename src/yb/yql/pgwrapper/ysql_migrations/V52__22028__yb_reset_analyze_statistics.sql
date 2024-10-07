@@ -11,10 +11,10 @@ BEGIN;
     false, false, false, 'v', 'u', 1, 0, 2278, '26', NULL, NULL, '{table_oid}',
     NULL, NULL,
 $$
-    UPDATE pg_class c SET reltuples = 0
+    UPDATE pg_class c SET reltuples = -1
     WHERE
-        relkind IN ('r', 'm', 'i')
-        AND reltuples > 0
+        relkind IN ('r', 'p', 'm', 'i')
+        AND reltuples >= 0
         AND NOT EXISTS (
             SELECT 0 FROM pg_namespace ns
             WHERE ns.oid = relnamespace
@@ -52,11 +52,12 @@ $$
                           )
                       )
         );
-    UPDATE pg_statistic_ext SET (stxndistinct, stxdependencies) = (NULL, NULL)
+    DELETE FROM pg_statistic_ext_data
     WHERE
         EXISTS (
             SELECT 0 FROM pg_class c
-            WHERE c.oid = stxrelid
+            JOIN pg_statistic_ext e ON c.oid = e.stxrelid
+            WHERE e.oid = stxoid
                   AND (table_oid IS NULL OR c.oid = table_oid)
                   AND ((SELECT rolsuper FROM pg_roles r
                         WHERE rolname = session_user)

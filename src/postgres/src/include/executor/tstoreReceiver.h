@@ -4,7 +4,7 @@
  *	  prototypes for tstoreReceiver.c
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/tstoreReceiver.h
@@ -22,8 +22,10 @@
 extern DestReceiver *CreateTuplestoreDestReceiver(void);
 
 extern void SetTuplestoreDestReceiverParams(DestReceiver *self,
-								Tuplestorestate *tStore,
-								MemoryContext tContext,
-								bool detoast);
+											Tuplestorestate *tStore,
+											MemoryContext tContext,
+											bool detoast,
+											TupleDesc target_tupdesc,
+											const char *map_failure_msg);
 
 #endif							/* TSTORE_RECEIVER_H */

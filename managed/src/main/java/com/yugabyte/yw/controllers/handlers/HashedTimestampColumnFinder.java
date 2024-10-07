@@ -111,13 +111,15 @@ public class HashedTimestampColumnFinder {
           continue;
         }
 
-        log.trace(
-            "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
-            randomTServer.nodeName,
-            CommonUtils.logTableName(dbname.datname),
-            response.message,
-            responseJSON,
-            responseJSON.length());
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
+              randomTServer.nodeName,
+              CommonUtils.logTableName(dbname.datname),
+              response.message,
+              responseJSON,
+              responseJSON.length());
+        }
         // Accumulate all entries for database into universe's list of hashed timestamp columns.
         hashedTimestampResponse.addAll(
             objectMapper.readValue(
@@ -125,14 +127,16 @@ public class HashedTimestampColumnFinder {
       }
 
       for (HashedTimestampColumnFinderResponse res : hashedTimestampResponse) {
-        log.trace(
-            "Final JSON responses: current_database: {}, "
-                + "table_name: {}, index_name: {}, index_command: {}, description: {}",
-            res.currentDatabase,
-            CommonUtils.logTableName(res.tableName),
-            res.indexName,
-            res.indexCommand,
-            res.description);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Final JSON responses: current_database: {}, "
+                  + "table_name: {}, index_name: {}, index_command: {}, description: {}",
+              res.currentDatabase,
+              CommonUtils.logTableName(res.tableName),
+              res.indexName,
+              res.indexCommand,
+              res.description);
+        }
       }
 
       return hashedTimestampResponse;

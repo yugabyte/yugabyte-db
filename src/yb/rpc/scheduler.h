@@ -116,6 +116,7 @@ class Scheduler {
 class ScheduledTaskTracker {
  public:
   ScheduledTaskTracker() = default;
+  ~ScheduledTaskTracker();
 
   explicit ScheduledTaskTracker(Scheduler* scheduler);
 

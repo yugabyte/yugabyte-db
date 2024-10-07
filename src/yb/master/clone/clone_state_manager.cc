@@ -675,8 +675,6 @@ Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_sta
       LOG(INFO) << Format("Marking clone as complete for source namespace $0 with seq_no $1",
                           lock->pb.source_namespace_id(), lock->pb.clone_request_seq_no());
       lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::COMPLETE);
-      LOG(INFO) << Format(
-          "Marking clone of namespace: $0 as complete", lock->pb.source_namespace_id());
       auto status = external_funcs_->Upsert(clone_state->Epoch().leader_term, clone_state);
       if (status.ok()) {
         lock.Commit();

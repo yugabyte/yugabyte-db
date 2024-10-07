@@ -11,9 +11,13 @@
 // under the License.
 //
 
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <gtest/gtest.h>
+
+#include "yb/common/pgsql_error.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -26,13 +30,9 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
-DECLARE_bool(enable_wait_queues);
-DECLARE_string(ysql_pg_conf_csv);
-
-namespace yb::pgwrapper {
-
 using namespace std::literals;
 
+namespace yb::pgwrapper {
 namespace {
 
 YB_DEFINE_ENUM(ExplicitRowLock, (kNoLock)(kForUpdate)(kForNoKeyUpdate)(kForShare)(kForKeyShare));
@@ -40,6 +40,10 @@ YB_DEFINE_ENUM(ExplicitRowLock, (kNoLock)(kForUpdate)(kForNoKeyUpdate)(kForShare
 template<class T>
 std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
   return ToString(param_info.param);
+}
+
+Status SetExplicitRowLockingBatchSize(PGConn& conn, size_t value) {
+  return conn.ExecuteFormat("SET yb_explicit_row_locking_batch_size = $0", value);
 }
 
 } // namespace
@@ -203,6 +207,88 @@ TEST_F(PgMiscConflictsTest, DifferentColumnsConcurrentUpdate) {
   ASSERT_TRUE(IsSerializeAccessError(aux_conn.Execute("UPDATE t SET v1 = 10 WHERE k = 1")));
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(aux_conn.RollbackTransaction());
+}
+
+class PgExplicitRowLockingTest : public PgMiscConflictsTest {
+ protected:
+  void SetUp() override {
+    PgMiscConflictsTest::SetUp();
+    CHECK_OK(Prepare());
+  }
+
+  Status CreateKVTableWithValues(std::string_view name) {
+    RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", name));
+    return conn_->ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 3) AS s", name);
+  }
+
+  // Helper function to check that error message in batched and non batched mode matches.
+  Status CheckRowLockErrorMessage(std::string_view table_name, const std::string& lock_query) {
+    static const auto kErrorPattern = "could not obtain lock on row in relation \"$0\""s;
+
+    auto row_locker =
+        [&conn = *low_pri_conn_, &lock_query](size_t batch_size) mutable -> Result<std::string> {
+          RETURN_NOT_OK(SetExplicitRowLockingBatchSize(conn, batch_size));
+          return TryLockRowWithFailure(conn, lock_query);
+        };
+    RETURN_NOT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+    RETURN_NOT_OK(conn_->Fetch(Format("SELECT * FROM $0 WHERE k = 1 FOR UPDATE", table_name)));
+
+    const auto non_batched_mode_error_msg = VERIFY_RESULT(row_locker(/*batch_size =*/1));
+    const auto expected_substring = Format(kErrorPattern, table_name);
+    SCHECK_STR_CONTAINS(non_batched_mode_error_msg, expected_substring);
+    const auto batched_mode_error_msg = VERIFY_RESULT(row_locker(/*batch_size =*/1024));
+    SCHECK_EQ(
+        batched_mode_error_msg, non_batched_mode_error_msg, IllegalState,
+        "Error messages in batched and non-batched mode expected to be equal");
+
+    return conn_->CommitTransaction();
+  }
+
+  static constexpr auto kTableName_1 = "very_very_long_name_1"sv;
+  static constexpr auto kTableName_2 = "very_very_long_name_2"sv;
+
+  std::optional<PGConn> conn_;
+  std::optional<PGConn> low_pri_conn_;
+
+ private:
+  static Result<std::string> TryLockRowWithFailure(PGConn& conn, const std::string& lock_query) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    const auto status = ResultToStatus(conn.Fetch(lock_query));
+    SCHECK(!status.ok(), IllegalState, "Row lock query expected to fail");
+    RETURN_NOT_OK(conn.RollbackTransaction());
+    return AuxilaryMessage(status).value();
+  }
+
+  Status Prepare() {
+    DCHECK(!conn_ && !low_pri_conn_);
+    conn_.emplace(VERIFY_RESULT(SetHighPriTxn(Connect())));
+    low_pri_conn_.emplace(VERIFY_RESULT(SetLowPriTxn(Connect())));
+    return CreateKVTableWithValues(kTableName_1);
+  }
+
+};
+
+// The test checks error messages in case of using batched and non batched mode for explicit
+// row locking match and both contains expected table name.
+TEST_F_EX(
+    PgMiscConflictsTest, ExplicitRowLockingSingleTableErrorMessage, PgExplicitRowLockingTest) {
+  constexpr auto kTableName = kTableName_1;
+
+  ASSERT_OK(CheckRowLockErrorMessage(
+      kTableName, Format("SELECT * FROM $0 WHERE k = 1 FOR SHARE NOWAIT", kTableName)));
+}
+
+// The test checks error messages in case of using batched and non batched mode for explicit
+// row locking match and both contains expected table name.
+TEST_F_EX(
+    PgMiscConflictsTest, ExplicitRowLockingMultipleTablesErrorMessage, PgExplicitRowLockingTest) {
+  ASSERT_OK(CreateKVTableWithValues(kTableName_2));
+
+  const auto lock_query = Format(
+      "SELECT * FROM $0 INNER JOIN $1 ON $0.k = $1.k WHERE $0.k = 1 FOR SHARE NOWAIT",
+      kTableName_1, kTableName_2);
+  ASSERT_OK(CheckRowLockErrorMessage(kTableName_1, lock_query));
+  ASSERT_OK(CheckRowLockErrorMessage(kTableName_2, lock_query));
 }
 
 } // namespace yb::pgwrapper

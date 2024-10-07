@@ -4,22 +4,20 @@
  *	 EXEC_BACKEND case; it might be extended to do so, but it would be
  *	 considerably more complex.
  *
- * Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/postmaster/fork_process.c
  */
 #include "postgres.h"
-#include "postmaster/fork_process.h"
 
 #include <fcntl.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-#ifdef USE_OPENSSL
-#include <openssl/rand.h>
-#endif
+
+#include "postmaster/fork_process.h"
 
 #ifndef WIN32
 /*
@@ -107,12 +105,8 @@ fork_process(void)
 			}
 		}
 
-		/*
-		 * Make sure processes do not share OpenSSL randomness state.
-		 */
-#ifdef USE_OPENSSL
-		RAND_cleanup();
-#endif
+		/* do post-fork initialization for random number generation */
+		pg_strong_random_init();
 	}
 
 	return result;

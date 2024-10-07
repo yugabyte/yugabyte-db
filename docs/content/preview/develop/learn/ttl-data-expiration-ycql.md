@@ -3,7 +3,8 @@ title: TTL for data expiration in YCQL
 headerTitle: TTL for data expiration
 linkTitle: TTL for data expiration
 description: Learn how to use TTL for data expiration in YCQL.
-badges: ycql
+tags:
+  other: ycql
 menu:
   preview:
     identifier: ttl-data-expiration-ycql
@@ -165,4 +166,3 @@ There are several ways to work with TTL:
 4. [`WriteTime` function](../../../api/ycql/expr_fcall/#writetime-function) returns timestamp when a row or column was inserted.
 5. [Update row or column TTL](../../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column.
 6. [YB-TServer flags related to TTL](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags) to configure the YB-TServer for file expiration based on TTL.
-

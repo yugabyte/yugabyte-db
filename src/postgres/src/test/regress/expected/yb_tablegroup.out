@@ -27,18 +27,19 @@ DROP TABLEGROUP name
             Table "pg_catalog.pg_yb_tablegroup"
     Column     |   Type    | Collation | Nullable | Default
 ---------------+-----------+-----------+----------+---------
+ oid           | oid       |           | not null |
  grpname       | name      |           | not null |
  grpowner      | oid       |           | not null |
  grptablespace | oid       |           | not null |
  grpacl        | aclitem[] |           |          |
- grpoptions    | text[]    |           |          |
+ grpoptions    | text[]    | C         |          |
 Indexes:
     "pg_yb_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
  oid  |          relname           | reltype | relnatts
 ------+----------------------------+---------+----------
- 8036 | pg_yb_tablegroup           |    8038 |        5
+ 8036 | pg_yb_tablegroup           |    8038 |        6
  8037 | pg_yb_tablegroup_oid_index |       0 |        1
 (2 rows)
 

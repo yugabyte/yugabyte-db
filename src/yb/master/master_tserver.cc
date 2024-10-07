@@ -36,6 +36,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 
 namespace yb {
@@ -154,11 +156,8 @@ tserver::TServerSharedData& MasterTabletServer::SharedObject() {
 
 Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
-    tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  if (FLAGS_create_initial_sys_catalog_snapshot) {
-    return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
-  }
-  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
+    tserver::GetTserverCatalogVersionInfoResponsePB* resp) const {
+  return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
@@ -222,6 +221,12 @@ Result<std::vector<tablet::TabletStatusPB>> MasterTabletServer::GetLocalTabletsM
 Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const {
   LOG(DFATAL) << "Unexpected call of GetMetrics()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetMetrics()");
+}
+
+Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
+    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+  LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
 
 } // namespace master

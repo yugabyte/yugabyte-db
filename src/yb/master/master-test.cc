@@ -163,7 +163,7 @@ TEST_F(MasterTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
-      webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
+      webserver_dir, {"masters", "tservers", "tables"}, mini_master_->master());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
@@ -640,7 +640,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   ASSERT_EQ(descs.size(), 1);
   auto new_desc = descs[0];
   EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
-  EXPECT_TRUE(original_desc->IsRemoved());
+  EXPECT_TRUE(original_desc->IsReplaced());
 
   auto updated_original_common = original_common;
   updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
@@ -650,7 +650,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
-  EXPECT_TRUE(new_desc->IsRemoved());
+  EXPECT_TRUE(new_desc->IsReplaced());
 }
 
 TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
@@ -1188,9 +1188,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
@@ -1238,9 +1236,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
 TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto replication_info = cluster_config.mutable_replication_info();
 
   // update replication info
@@ -1282,10 +1278,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
-  auto config_resp = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  ASSERT_TRUE(config_resp.has_cluster_config());
-  auto cluster_config = config_resp.cluster_config();
-
+  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   CreateTableRequestPB req;
 
   // Fail due to not cloud_info.
@@ -2780,6 +2773,76 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
   ASSERT_OK(mini_master->Start());
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
   ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterTest, TestGetClosestLiveTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  auto& catalog_manager = mini_master_->catalog_manager();
+  auto result = catalog_manager.GetClosestLiveTserver();
+  // No valid tservers.
+  ASSERT_NOK(result);
+
+  uint32 tserver_idx = 1;
+  auto add_tserver = [this, &tserver_idx](
+                         const std::string& uuid, std::string&& cloud, std::string&& region,
+                         std::string&& zone, std::string&& host) -> Status {
+    TSToMasterCommonPB common;
+    TSRegistrationPB registration;
+    common.mutable_ts_instance()->set_permanent_uuid(Format(uuid));
+    common.mutable_ts_instance()->set_instance_seqno(0);
+    const auto address = MakeHostPortPB(std::move(host), 1000 + tserver_idx++);
+    *registration.mutable_common()->add_broadcast_addresses() = address;
+    *registration.mutable_common()->add_private_rpc_addresses() = address;
+    *registration.mutable_common()->mutable_cloud_info() =
+        MakeCloudInfoPB(std::move(cloud), std::move(region), std::move(zone));
+    RETURN_NOT_OK(SendHeartbeat(common, registration));
+    return Status::OK();
+  };
+
+  // Default placement is cloud1, rack1, zone.
+  // Add tserver in different cloud.
+  {
+    const auto tserver1_uuid = "uuid-1";
+    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
+  }
+
+  // Add tserver in same cloud, different region.
+  {
+    const auto tserver2_uuid = "uuid-2";
+    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
+  }
+
+  // Add tserver in same cloud, same region, different zone.
+  {
+    const auto tserver3_uuid = "uuid-3";
+    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
+  }
+
+  // Add tserver in same cloud, same region, same zone, different host.
+  {
+    const auto tserver4_uuid = "uuid-4";
+    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
+  }
+
+  // Add tserver in same host as master.
+  {
+    ServerRegistrationPB master_registration;
+    ASSERT_OK(mini_master_->master()->GetMasterRegistration(&master_registration));
+    auto master_host = master_registration.private_rpc_addresses().begin()->host();
+    const auto tserver5_uuid = "uuid-5";
+    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
+  }
 }
 
 } // namespace master

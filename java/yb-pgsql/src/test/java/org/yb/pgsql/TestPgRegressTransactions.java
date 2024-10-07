@@ -27,7 +27,7 @@ public class TestPgRegressTransactions extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressTransaction() throws Exception {
+  public void schedule() throws Exception {
     runPgRegressTest("yb_transactions_schedule");
   }
 }

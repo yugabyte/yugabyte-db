@@ -1,0 +1,26 @@
+{{- $tags := replace .Params.tags.feature " " "," -}}
+{{- $tags := split (replaceRE ",+" "," $tags) "," -}}
+{{- /* map of tag to links + display */ -}}
+{{- $linkmap := dict
+  "ea" (slice "/preview/releases/versioning/#feature-maturity" "EA")
+  "early-access" (slice "/preview/releases/versioning/#feature-maturity" "EARLY ACCESS")
+  "ga" (slice "/preview/releases/versioning/#feature-maturity" "GA")
+  "general" (slice "/preview/releases/versioning/#feature-maturity" "GENERAL AVAILABILITY")
+  "tech-preview" (slice "/preview/releases/versioning/#feature-maturity" "TECH PREVIEW")
+  "tp" (slice "/preview/releases/versioning/#feature-maturity" "TP")
+-}}
+{{- $classmap := dict
+  "ea" "early-access"
+  "early-access" "early-access"
+  "ga" "ga"
+  "general" "general-availability"
+  "tech-preview" "tech-preview"
+  "tp" "tech-preview"
+-}}
+
+{{- range $k, $v := $tags -}}
+  {{if $v }}
+    {{- $info := index $linkmap $v -}}
+    <a class="tag feature {{index $classmap $v}}" href="{{ index $info 0 }}">{{ index $info 1 }}</a>
+  {{- end -}}
+{{- end -}}

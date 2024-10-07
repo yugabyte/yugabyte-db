@@ -188,14 +188,16 @@ public class UnusedIndexFinder {
       }
 
       for (UnusedIndexFinderResponse res : unusedIndexResponse) {
-        log.trace(
-            "Final JSON responses: current_database: {}, table_name: {}, "
-                + "index_name: {}, index_command: {}, description: {}",
-            res.currentDatabase,
-            CommonUtils.logTableName(res.tableName),
-            res.indexName,
-            res.indexCommand,
-            res.description);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Final JSON responses: current_database: {}, table_name: {}, "
+                  + "index_name: {}, index_command: {}, description: {}",
+              res.currentDatabase,
+              CommonUtils.logTableName(res.tableName),
+              res.indexName,
+              res.indexCommand,
+              res.description);
+        }
       }
 
       return unusedIndexResponse;

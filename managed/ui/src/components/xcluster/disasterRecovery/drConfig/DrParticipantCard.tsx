@@ -25,7 +25,7 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
 
     padding: theme.spacing(2),
-    width: (props: { width?: number }) => (props.width ? `${props.width}px` : '480px'),
+    minWidth: (props: { width?: number }) => (props.width ? `${props.width}px` : '480px'),
     height: '80px',
 
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,

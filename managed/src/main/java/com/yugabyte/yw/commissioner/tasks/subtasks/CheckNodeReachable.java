@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CheckNodeReachable extends NodeTaskBase {
 
-  private NodeUniverseManager nodeUniverseManager;
+  private final NodeUniverseManager nodeUniverseManager;
 
   @Inject
   protected CheckNodeReachable(

@@ -23,12 +23,12 @@ release-zip: all
 	unzip ./hypopg-$(EXTVERSION).zip
 	rm ./hypopg-$(EXTVERSION).zip
 	rm ./hypopg-$(EXTVERSION)/.gitignore
-	rm ./hypopg-$(EXTVERSION)/docs/ -rf
+	rm -rf ./hypopg-$(EXTVERSION)/docs/
 	rm ./hypopg-$(EXTVERSION)/typedefs.list
 	rm ./hypopg-$(EXTVERSION)/TODO.md
 	sed -i -e "s/__VERSION__/$(EXTVERSION)/g"  ./hypopg-$(EXTVERSION)/META.json
 	zip -r ./hypopg-$(EXTVERSION).zip ./hypopg-$(EXTVERSION)/
-	rm ./hypopg-$(EXTVERSION) -rf
+	rm -rf ./hypopg-$(EXTVERSION)
 
 
 DATA = $(wildcard *--*.sql)
@@ -50,6 +50,8 @@ endif
 ifneq ($(MAJORVERSION),$(filter $(MAJORVERSION), 9.2 9.3 9.4 9.5 9.6))
 	REGRESS += hypo_hash
 endif
+
+REGRESS += hypo_hide_index
 
 DEBUILD_ROOT = /tmp/$(EXTENSION)
 

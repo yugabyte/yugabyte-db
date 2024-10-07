@@ -1,3 +1,6 @@
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 -- Create new tables
 CREATE TABLE x(a int PRIMARY KEY, b text);
 CREATE TABLE y(a int PRIMARY KEY, b text);

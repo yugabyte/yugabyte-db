@@ -3221,12 +3221,14 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
+#ifdef YB_TODO // yb_terminated_queries is not yet supported in PG15
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
   auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
+#endif
 }
 
 TEST_F_EX(PgLibPqTest,
@@ -3951,20 +3953,75 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
 
 static std::optional<std::string> GetCatalogTableNameFromIndexName(const string& index_name) {
   static const std::regex table_name_regex(
-      "(pg_foreign_data_wrapper|pg_largeobject_metadata|pg_replication_origin|"
-      "pg_yb_catalog_version|pg_partitioned_table|pg_subscription_rel|"
-      "pg_db_role_setting|pg_publication_rel|pg_yb_role_profile|pg_foreign_server|"
-      "pg_event_trigger|pg_foreign_table|pg_shdescription|pg_statistic_ext|"
-      "pg_ts_config_map|pg_yb_tablegroup|pg_auth_members|pg_subscription|"
-      "pg_user_mapping|pg_yb_migration|pg_default_acl|pg_description|"
-      "pg_largeobject|pg_publication|pg_ts_template|pg_constraint|pg_conversion|"
-      "pg_init_privs|pg_pltemplate|pg_shseclabel|pg_tablespace|pg_yb_profile|"
-      "pg_aggregate|pg_attribute|pg_collation|pg_extension|pg_namespace|"
-      "pg_statistic|pg_transform|pg_ts_config|pg_ts_parser|pg_database|"
-      "pg_inherits|pg_language|pg_operator|pg_opfamily|pg_seclabel|pg_sequence|"
-      "pg_shdepend|pg_attrdef|pg_opclass|pg_rewrite|pg_trigger|pg_ts_dict|"
-      "pg_amproc|pg_authid|pg_depend|pg_policy|pg_class|pg_index|pg_range|"
-      "pg_amop|pg_cast|pg_enum|pg_proc|pg_type|pg_am)_.*");
+      "(pg_publication_namespace|"
+      "pg_foreign_data_wrapper|"
+      "pg_largeobject_metadata|"
+      "pg_replication_origin|"
+      "pg_statistic_ext_data|"
+      "pg_yb_catalog_version|"
+      "pg_partitioned_table|"
+      "pg_subscription_rel|"
+      "pg_db_role_setting|"
+      "pg_publication_rel|"
+      "pg_yb_role_profile|"
+      "pg_foreign_server|"
+      "pg_event_trigger|"
+      "pg_foreign_table|"
+      "pg_parameter_acl|"
+      "pg_shdescription|"
+      "pg_statistic_ext|"
+      "pg_ts_config_map|"
+      "pg_yb_tablegroup|"
+      "pg_auth_members|"
+      "pg_subscription|"
+      "pg_user_mapping|"
+      "pg_yb_migration|"
+      "pg_default_acl|"
+      "pg_description|"
+      "pg_largeobject|"
+      "pg_publication|"
+      "pg_ts_template|"
+      "pg_constraint|"
+      "pg_conversion|"
+      "pg_init_privs|"
+      "pg_shseclabel|"
+      "pg_tablespace|"
+      "pg_yb_profile|"
+      "pg_aggregate|"
+      "pg_attribute|"
+      "pg_collation|"
+      "pg_extension|"
+      "pg_namespace|"
+      "pg_statistic|"
+      "pg_transform|"
+      "pg_ts_config|"
+      "pg_ts_parser|"
+      "pg_database|"
+      "pg_inherits|"
+      "pg_language|"
+      "pg_operator|"
+      "pg_opfamily|"
+      "pg_seclabel|"
+      "pg_sequence|"
+      "pg_shdepend|"
+      "pg_attrdef|"
+      "pg_opclass|"
+      "pg_rewrite|"
+      "pg_trigger|"
+      "pg_ts_dict|"
+      "pg_amproc|"
+      "pg_authid|"
+      "pg_depend|"
+      "pg_policy|"
+      "pg_class|"
+      "pg_index|"
+      "pg_range|"
+      "pg_amop|"
+      "pg_cast|"
+      "pg_enum|"
+      "pg_proc|"
+      "pg_type|"
+      "pg_am)_.*");
 
   std::smatch match;
   if (std::regex_search(index_name, match, table_name_regex)) {
@@ -4313,6 +4370,65 @@ TEST_F(PgPostmasterExitTest, YB_LINUX_ONLY_TEST(SignalBackendOnPostmasterDeath))
 // This test validates that in an all environments, an idle backend exits when the postmaster exits.
 TEST_F(PgPostmasterExitTest, SignalIdleBackendOnPostmasterDeath) {
   ASSERT_OK(TestPostmasterExit());
+}
+
+TEST_F(PgLibPqTest, FillShellTypeDefinition) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  // Create a shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type; -- create shell type
+CREATE FUNCTION base_type_in(cstring) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2in';
+CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
+CREATE FUNCTION base_type_recv(internal) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
+CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
+      )#"));
+
+  // Using a shell type as column type is an error. Note that shell type is now
+  // cached in conn2.
+  ASSERT_NOK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+
+  // Fill the definition of the shell type.
+  ASSERT_OK(conn1.Execute(
+      R"#(
+CREATE TYPE base_type (
+   INPUT = base_type_in,
+   OUTPUT = base_type_out,
+   RECEIVE = base_type_recv,
+   SEND = base_type_send,
+   LIKE = smallint,
+   CATEGORY = 'N',
+   PREFERRED = FALSE,
+   DELIMITER = ',',
+   COLLATABLE = FALSE
+); -- fill definition
+      )#"));
+  // Wait for heartbeat to propagate the new catalog version to trigger
+  // catalog cache refresh on conn2.
+  SleepFor(2s);
+
+  // Now that the shell type definition is filled, we should not get an error any more.
+  ASSERT_OK(conn2.Execute("CREATE TABLE default_test (f1 base_type, f2 int)"));
+}
+
+TEST_F(PgLibPqTest, CollationWithPartitionedTable) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE n_tablespace LOCATION '/data_n'"));
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE e_tablespace LOCATION '/data_e'"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE a"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
+  ASSERT_OK(conn.Execute("CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a text NOT NULL collate numeric) PARTITION BY RANGE(a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_n PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('A') TO ('Lzzzzz') TABLESPACE n_tablespace"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_e PARTITION of t (a, PRIMARY KEY (a HASH)) "
+                         "FOR VALUES FROM ('M') TO ('Zzzzzz') TABLESPACE e_tablespace"));
+  conn = ASSERT_RESULT(ConnectToDB("a"));
 }
 
 } // namespace pgwrapper

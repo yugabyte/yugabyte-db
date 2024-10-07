@@ -4,10 +4,10 @@
  *	  Shared temporary file management.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/storage/sharedfilespace.h
+ * src/include/storage/sharedfileset.h
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 
 #include "storage/dsm.h"
 #include "storage/fd.h"
+#include "storage/fileset.h"
 #include "storage/spin.h"
 
 /*
@@ -24,22 +25,13 @@
  */
 typedef struct SharedFileSet
 {
-	pid_t		creator_pid;	/* PID of the creating process */
-	uint32		number;			/* per-PID identifier */
+	FileSet		fs;
 	slock_t		mutex;			/* mutex protecting the reference count */
 	int			refcnt;			/* number of attached backends */
-	int			ntablespaces;	/* number of tablespaces to use */
-	Oid			tablespaces[8]; /* OIDs of tablespaces to use. Assumes that
-								 * it's rare that there more than temp
-								 * tablespaces. */
 } SharedFileSet;
 
 extern void SharedFileSetInit(SharedFileSet *fileset, dsm_segment *seg);
 extern void SharedFileSetAttach(SharedFileSet *fileset, dsm_segment *seg);
-extern File SharedFileSetCreate(SharedFileSet *fileset, const char *name);
-extern File SharedFileSetOpen(SharedFileSet *fileset, const char *name);
-extern bool SharedFileSetDelete(SharedFileSet *fileset, const char *name,
-					bool error_on_failure);
 extern void SharedFileSetDeleteAll(SharedFileSet *fileset);
 
 #endif

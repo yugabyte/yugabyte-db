@@ -19,17 +19,22 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/locks.h"
+#include "yb/util/shared_lock.h"
+
 #include "yb/vector/distance.h"
 #include "yb/vector/usearch_include_wrapper_internal.h"
 #include "yb/vector/coordinate_types.h"
 
 namespace yb::vectorindex {
 
-using unum::usearch::metric_punned_t;
-using unum::usearch::metric_kind_t;
-using unum::usearch::scalar_kind_t;
-using unum::usearch::index_dense_gt;
+using unum::usearch::byte_t;
 using unum::usearch::index_dense_config_t;
+using unum::usearch::index_dense_gt;
+using unum::usearch::metric_kind_t;
+using unum::usearch::metric_punned_t;
+using unum::usearch::output_file_t;
+using unum::usearch::scalar_kind_t;
 
 index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   index_dense_config_t config;
@@ -90,11 +95,38 @@ class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
     if (!index_.add(vertex_id, v.data())) {
       return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
     }
+    has_entries_ = true;
     return Status::OK();
+  }
+
+  Status SaveToFile(const std::string& file_path) const override {
+    if (!index_.save(output_file_t(file_path.c_str()))) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", file_path);
+    }
+    return Status::OK();
+  }
+
+
+  Status AttachToFile(const std::string& input_path) override {
+    auto result = decltype(index_)::make(input_path.c_str(), /* view= */ true);
+    if (result) {
+      index_ = std::move(result.index);
+      return Status::OK();
+    }
+    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", input_path);
+  }
+
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return metric_(
+        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
   }
 
   std::vector<VertexWithDistance<DistanceResult>> Search(
       const Vector& query_vector, size_t max_num_results) const override {
+    if (!has_entries_) {
+      return {};
+    }
     auto usearch_results = index_.search(query_vector.data(), max_num_results);
     std::vector<VertexWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
@@ -119,6 +151,7 @@ class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
   DistanceKind distance_kind_;
   metric_punned_t metric_;
   index_dense_gt<VertexId> index_;
+  std::atomic<bool> has_entries_{false};
 };
 
 }  // namespace
