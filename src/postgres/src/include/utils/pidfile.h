@@ -3,7 +3,7 @@
  * pidfile.h
  *	  Declarations describing the data directory lock file (postmaster.pid)
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/pidfile.h
@@ -28,7 +28,8 @@
  *
  * Lines 6 and up are added via AddToDataDirLockFile() after initial file
  * creation; also, line 5 is initially empty and is changed after the first
- * Unix socket is opened.
+ * Unix socket is opened.  Onlookers should not assume that lines 4 and up
+ * are filled in any particular order.
  *
  * Socket lock file(s), if used, have the same contents as lines 1-5, with
  * line 5 being their own directory.

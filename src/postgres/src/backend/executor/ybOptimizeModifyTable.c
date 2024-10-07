@@ -474,6 +474,7 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
  */
 void
 YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
+											 ResultRelInfo *resultRelInfo,
 											 EState *estate,
 											 HeapTuple oldtuple,
 											 HeapTuple newtuple,
@@ -501,7 +502,6 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 	if (oldtuple == NULL)
 		return;
 
-	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
 	Relation rel = resultRelInfo->ri_RelationDesc;
 
 	/*

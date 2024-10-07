@@ -15,7 +15,7 @@
  * a usable vsnprintf(), then a copy of our own implementation of it will
  * be linked into libpq.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/interfaces/libpq/pqexpbuffer.h
@@ -185,6 +185,6 @@ extern void appendPQExpBufferChar(PQExpBuffer str, char ch);
  * if necessary.
  */
 extern void appendBinaryPQExpBuffer(PQExpBuffer str,
-						const char *data, size_t datalen);
+									const char *data, size_t datalen);
 
 #endif							/* PQEXPBUFFER_H */

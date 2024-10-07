@@ -23,7 +23,7 @@ public class DefaultTaskExecutionListener implements TaskExecutionListener {
 
   @Override
   public void beforeTask(TaskInfo taskInfo) {
-    MDC.put(Commissioner.TASK_ID, taskInfo.getTaskUUID().toString());
+    MDC.put(Commissioner.TASK_ID, taskInfo.getUuid().toString());
     log.info("About to execute task {}", taskInfo);
     if (beforeTaskConsumer != null) {
       beforeTaskConsumer.accept(taskInfo);
@@ -34,6 +34,6 @@ public class DefaultTaskExecutionListener implements TaskExecutionListener {
   public void afterTask(TaskInfo taskInfo, Throwable t) {
     MDC.remove(Commissioner.TASK_ID);
     log.info("Task {} is completed", taskInfo);
-    providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
+    providerEditRestrictionManager.onTaskFinished(taskInfo.getUuid());
   }
 }

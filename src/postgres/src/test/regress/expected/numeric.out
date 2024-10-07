@@ -661,6 +661,432 @@ SELECT t1.id1, t1.result, t2.expected
 (0 rows)
 
 -- ******************************
+-- * Check behavior with Inf and NaN inputs.  It's easiest to handle these
+-- * separately from the num_data framework used above, because some input
+-- * combinations will throw errors.
+-- ******************************
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('-1'),('4.2'),('inf'),('-inf'),('nan'))
+SELECT x1, x2,
+  x1 + x2 AS sum,
+  x1 - x2 AS diff,
+  x1 * x2 AS prod
+FROM v AS v1(x1), v AS v2(x2);
+    x1     |    x2     |    sum    |   diff    |   prod    
+-----------+-----------+-----------+-----------+-----------
+         0 |         0 |         0 |         0 |         0
+         0 |         1 |         1 |        -1 |         0
+         0 |        -1 |        -1 |         1 |         0
+         0 |       4.2 |       4.2 |      -4.2 |       0.0
+         0 |  Infinity |  Infinity | -Infinity |       NaN
+         0 | -Infinity | -Infinity |  Infinity |       NaN
+         0 |       NaN |       NaN |       NaN |       NaN
+         1 |         0 |         1 |         1 |         0
+         1 |         1 |         2 |         0 |         1
+         1 |        -1 |         0 |         2 |        -1
+         1 |       4.2 |       5.2 |      -3.2 |       4.2
+         1 |  Infinity |  Infinity | -Infinity |  Infinity
+         1 | -Infinity | -Infinity |  Infinity | -Infinity
+         1 |       NaN |       NaN |       NaN |       NaN
+        -1 |         0 |        -1 |        -1 |         0
+        -1 |         1 |         0 |        -2 |        -1
+        -1 |        -1 |        -2 |         0 |         1
+        -1 |       4.2 |       3.2 |      -5.2 |      -4.2
+        -1 |  Infinity |  Infinity | -Infinity | -Infinity
+        -1 | -Infinity | -Infinity |  Infinity |  Infinity
+        -1 |       NaN |       NaN |       NaN |       NaN
+       4.2 |         0 |       4.2 |       4.2 |       0.0
+       4.2 |         1 |       5.2 |       3.2 |       4.2
+       4.2 |        -1 |       3.2 |       5.2 |      -4.2
+       4.2 |       4.2 |       8.4 |       0.0 |     17.64
+       4.2 |  Infinity |  Infinity | -Infinity |  Infinity
+       4.2 | -Infinity | -Infinity |  Infinity | -Infinity
+       4.2 |       NaN |       NaN |       NaN |       NaN
+  Infinity |         0 |  Infinity |  Infinity |       NaN
+  Infinity |         1 |  Infinity |  Infinity |  Infinity
+  Infinity |        -1 |  Infinity |  Infinity | -Infinity
+  Infinity |       4.2 |  Infinity |  Infinity |  Infinity
+  Infinity |  Infinity |  Infinity |       NaN |  Infinity
+  Infinity | -Infinity |       NaN |  Infinity | -Infinity
+  Infinity |       NaN |       NaN |       NaN |       NaN
+ -Infinity |         0 | -Infinity | -Infinity |       NaN
+ -Infinity |         1 | -Infinity | -Infinity | -Infinity
+ -Infinity |        -1 | -Infinity | -Infinity |  Infinity
+ -Infinity |       4.2 | -Infinity | -Infinity | -Infinity
+ -Infinity |  Infinity |       NaN | -Infinity | -Infinity
+ -Infinity | -Infinity | -Infinity |       NaN |  Infinity
+ -Infinity |       NaN |       NaN |       NaN |       NaN
+       NaN |         0 |       NaN |       NaN |       NaN
+       NaN |         1 |       NaN |       NaN |       NaN
+       NaN |        -1 |       NaN |       NaN |       NaN
+       NaN |       4.2 |       NaN |       NaN |       NaN
+       NaN |  Infinity |       NaN |       NaN |       NaN
+       NaN | -Infinity |       NaN |       NaN |       NaN
+       NaN |       NaN |       NaN |       NaN |       NaN
+(49 rows)
+
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('-1'),('4.2'),('inf'),('-inf'),('nan'))
+SELECT x1, x2,
+  x1 / x2 AS quot,
+  x1 % x2 AS mod,
+  div(x1, x2) AS div
+FROM v AS v1(x1), v AS v2(x2) WHERE x2 != 0;
+    x1     |    x2     |          quot           | mod  |    div    
+-----------+-----------+-------------------------+------+-----------
+         0 |         1 |  0.00000000000000000000 |    0 |         0
+         1 |         1 |  1.00000000000000000000 |    0 |         1
+        -1 |         1 | -1.00000000000000000000 |    0 |        -1
+       4.2 |         1 |      4.2000000000000000 |  0.2 |         4
+  Infinity |         1 |                Infinity |  NaN |  Infinity
+ -Infinity |         1 |               -Infinity |  NaN | -Infinity
+       NaN |         1 |                     NaN |  NaN |       NaN
+         0 |        -1 |  0.00000000000000000000 |    0 |         0
+         1 |        -1 | -1.00000000000000000000 |    0 |        -1
+        -1 |        -1 |  1.00000000000000000000 |    0 |         1
+       4.2 |        -1 |     -4.2000000000000000 |  0.2 |        -4
+  Infinity |        -1 |               -Infinity |  NaN | -Infinity
+ -Infinity |        -1 |                Infinity |  NaN |  Infinity
+       NaN |        -1 |                     NaN |  NaN |       NaN
+         0 |       4.2 |  0.00000000000000000000 |  0.0 |         0
+         1 |       4.2 |  0.23809523809523809524 |  1.0 |         0
+        -1 |       4.2 | -0.23809523809523809524 | -1.0 |         0
+       4.2 |       4.2 |  1.00000000000000000000 |  0.0 |         1
+  Infinity |       4.2 |                Infinity |  NaN |  Infinity
+ -Infinity |       4.2 |               -Infinity |  NaN | -Infinity
+       NaN |       4.2 |                     NaN |  NaN |       NaN
+         0 |  Infinity |                       0 |    0 |         0
+         1 |  Infinity |                       0 |    1 |         0
+        -1 |  Infinity |                       0 |   -1 |         0
+       4.2 |  Infinity |                       0 |  4.2 |         0
+  Infinity |  Infinity |                     NaN |  NaN |       NaN
+ -Infinity |  Infinity |                     NaN |  NaN |       NaN
+       NaN |  Infinity |                     NaN |  NaN |       NaN
+         0 | -Infinity |                       0 |    0 |         0
+         1 | -Infinity |                       0 |    1 |         0
+        -1 | -Infinity |                       0 |   -1 |         0
+       4.2 | -Infinity |                       0 |  4.2 |         0
+  Infinity | -Infinity |                     NaN |  NaN |       NaN
+ -Infinity | -Infinity |                     NaN |  NaN |       NaN
+       NaN | -Infinity |                     NaN |  NaN |       NaN
+         0 |       NaN |                     NaN |  NaN |       NaN
+         1 |       NaN |                     NaN |  NaN |       NaN
+        -1 |       NaN |                     NaN |  NaN |       NaN
+       4.2 |       NaN |                     NaN |  NaN |       NaN
+  Infinity |       NaN |                     NaN |  NaN |       NaN
+ -Infinity |       NaN |                     NaN |  NaN |       NaN
+       NaN |       NaN |                     NaN |  NaN |       NaN
+(42 rows)
+
+SELECT 'inf'::numeric / '0';
+ERROR:  division by zero
+SELECT '-inf'::numeric / '0';
+ERROR:  division by zero
+SELECT 'nan'::numeric / '0';
+ ?column? 
+----------
+      NaN
+(1 row)
+
+SELECT '0'::numeric / '0';
+ERROR:  division by zero
+SELECT 'inf'::numeric % '0';
+ERROR:  division by zero
+SELECT '-inf'::numeric % '0';
+ERROR:  division by zero
+SELECT 'nan'::numeric % '0';
+ ?column? 
+----------
+      NaN
+(1 row)
+
+SELECT '0'::numeric % '0';
+ERROR:  division by zero
+SELECT div('inf'::numeric, '0');
+ERROR:  division by zero
+SELECT div('-inf'::numeric, '0');
+ERROR:  division by zero
+SELECT div('nan'::numeric, '0');
+ div 
+-----
+ NaN
+(1 row)
+
+SELECT div('0'::numeric, '0');
+ERROR:  division by zero
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('-1'),('4.2'),('-7.777'),('inf'),('-inf'),('nan'))
+SELECT x, -x as minusx, abs(x), floor(x), ceil(x), sign(x), numeric_inc(x) as inc
+FROM v;
+     x     |  minusx   |   abs    |   floor   |   ceil    | sign |    inc    
+-----------+-----------+----------+-----------+-----------+------+-----------
+         0 |         0 |        0 |         0 |         0 |    0 |         1
+         1 |        -1 |        1 |         1 |         1 |    1 |         2
+        -1 |         1 |        1 |        -1 |        -1 |   -1 |         0
+       4.2 |      -4.2 |      4.2 |         4 |         5 |    1 |       5.2
+    -7.777 |     7.777 |    7.777 |        -8 |        -7 |   -1 |    -6.777
+  Infinity | -Infinity | Infinity |  Infinity |  Infinity |    1 |  Infinity
+ -Infinity |  Infinity | Infinity | -Infinity | -Infinity |   -1 | -Infinity
+       NaN |       NaN |      NaN |       NaN |       NaN |  NaN |       NaN
+(8 rows)
+
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('-1'),('4.2'),('-7.777'),('inf'),('-inf'),('nan'))
+SELECT x, round(x), round(x,1) as round1, trunc(x), trunc(x,1) as trunc1
+FROM v;
+     x     |   round   |  round1   |   trunc   |  trunc1   
+-----------+-----------+-----------+-----------+-----------
+         0 |         0 |       0.0 |         0 |       0.0
+         1 |         1 |       1.0 |         1 |       1.0
+        -1 |        -1 |      -1.0 |        -1 |      -1.0
+       4.2 |         4 |       4.2 |         4 |       4.2
+    -7.777 |        -8 |      -7.8 |        -7 |      -7.7
+  Infinity |  Infinity |  Infinity |  Infinity |  Infinity
+ -Infinity | -Infinity | -Infinity | -Infinity | -Infinity
+       NaN |       NaN |       NaN |       NaN |       NaN
+(8 rows)
+
+-- the large values fall into the numeric abbreviation code's maximal classes
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('-1'),('4.2'),('-7.777'),('1e340'),('-1e340'),
+         ('inf'),('-inf'),('nan'),
+         ('inf'),('-inf'),('nan'))
+SELECT substring(x::text, 1, 32)
+FROM v ORDER BY x;
+            substring             
+----------------------------------
+ -Infinity
+ -Infinity
+ -1000000000000000000000000000000
+ -7.777
+ -1
+ 0
+ 1
+ 4.2
+ 10000000000000000000000000000000
+ Infinity
+ Infinity
+ NaN
+ NaN
+(13 rows)
+
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('4.2'),('inf'),('nan'))
+SELECT x, sqrt(x)
+FROM v;
+    x     |       sqrt        
+----------+-------------------
+        0 | 0.000000000000000
+        1 | 1.000000000000000
+      4.2 | 2.049390153191920
+ Infinity |          Infinity
+      NaN |               NaN
+(5 rows)
+
+SELECT sqrt('-1'::numeric);
+ERROR:  cannot take square root of a negative number
+SELECT sqrt('-inf'::numeric);
+ERROR:  cannot take square root of a negative number
+WITH v(x) AS
+  (VALUES('1'::numeric),('4.2'),('inf'),('nan'))
+SELECT x,
+  log(x),
+  log10(x),
+  ln(x)
+FROM v;
+    x     |        log         |       log10        |         ln         
+----------+--------------------+--------------------+--------------------
+        1 | 0.0000000000000000 | 0.0000000000000000 | 0.0000000000000000
+      4.2 | 0.6232492903979005 | 0.6232492903979005 | 1.4350845252893226
+ Infinity |           Infinity |           Infinity |           Infinity
+      NaN |                NaN |                NaN |                NaN
+(4 rows)
+
+SELECT ln('0'::numeric);
+ERROR:  cannot take logarithm of zero
+SELECT ln('-1'::numeric);
+ERROR:  cannot take logarithm of a negative number
+SELECT ln('-inf'::numeric);
+ERROR:  cannot take logarithm of a negative number
+WITH v(x) AS
+  (VALUES('2'::numeric),('4.2'),('inf'),('nan'))
+SELECT x1, x2,
+  log(x1, x2)
+FROM v AS v1(x1), v AS v2(x2);
+    x1    |    x2    |        log         
+----------+----------+--------------------
+        2 |        2 | 1.0000000000000000
+        2 |      4.2 | 2.0703893278913979
+        2 | Infinity |           Infinity
+        2 |      NaN |                NaN
+      4.2 |        2 | 0.4830009440873890
+      4.2 |      4.2 | 1.0000000000000000
+      4.2 | Infinity |           Infinity
+      4.2 |      NaN |                NaN
+ Infinity |        2 |                  0
+ Infinity |      4.2 |                  0
+ Infinity | Infinity |                NaN
+ Infinity |      NaN |                NaN
+      NaN |        2 |                NaN
+      NaN |      4.2 |                NaN
+      NaN | Infinity |                NaN
+      NaN |      NaN |                NaN
+(16 rows)
+
+SELECT log('0'::numeric, '10');
+ERROR:  cannot take logarithm of zero
+SELECT log('10'::numeric, '0');
+ERROR:  cannot take logarithm of zero
+SELECT log('-inf'::numeric, '10');
+ERROR:  cannot take logarithm of a negative number
+SELECT log('10'::numeric, '-inf');
+ERROR:  cannot take logarithm of a negative number
+SELECT log('inf'::numeric, '0');
+ERROR:  cannot take logarithm of zero
+SELECT log('inf'::numeric, '-inf');
+ERROR:  cannot take logarithm of a negative number
+SELECT log('-inf'::numeric, 'inf');
+ERROR:  cannot take logarithm of a negative number
+WITH v(x) AS
+  (VALUES('0'::numeric),('1'),('2'),('4.2'),('inf'),('nan'))
+SELECT x1, x2,
+  power(x1, x2)
+FROM v AS v1(x1), v AS v2(x2) WHERE x1 != 0 OR x2 >= 0;
+    x1    |    x2    |        power        
+----------+----------+---------------------
+        0 |        0 |  1.0000000000000000
+        0 |        1 |  0.0000000000000000
+        0 |        2 |  0.0000000000000000
+        0 |      4.2 |  0.0000000000000000
+        0 | Infinity |                   0
+        0 |      NaN |                 NaN
+        1 |        0 |  1.0000000000000000
+        1 |        1 |  1.0000000000000000
+        1 |        2 |  1.0000000000000000
+        1 |      4.2 |  1.0000000000000000
+        1 | Infinity |                   1
+        1 |      NaN |                   1
+        2 |        0 |  1.0000000000000000
+        2 |        1 |  2.0000000000000000
+        2 |        2 |  4.0000000000000000
+        2 |      4.2 |  18.379173679952560
+        2 | Infinity |            Infinity
+        2 |      NaN |                 NaN
+      4.2 |        0 |  1.0000000000000000
+      4.2 |        1 |  4.2000000000000000
+      4.2 |        2 | 17.6400000000000000
+      4.2 |      4.2 |  414.61691860129675
+      4.2 | Infinity |            Infinity
+      4.2 |      NaN |                 NaN
+ Infinity |        0 |                   1
+ Infinity |        1 |            Infinity
+ Infinity |        2 |            Infinity
+ Infinity |      4.2 |            Infinity
+ Infinity | Infinity |            Infinity
+ Infinity |      NaN |                 NaN
+      NaN |        0 |                   1
+      NaN |        1 |                 NaN
+      NaN |        2 |                 NaN
+      NaN |      4.2 |                 NaN
+      NaN | Infinity |                 NaN
+      NaN |      NaN |                 NaN
+(36 rows)
+
+SELECT power('0'::numeric, '-1');
+ERROR:  zero raised to a negative power is undefined
+SELECT power('0'::numeric, '-inf');
+ERROR:  zero raised to a negative power is undefined
+SELECT power('-1'::numeric, 'inf');
+ power 
+-------
+     1
+(1 row)
+
+SELECT power('-2'::numeric, '3');
+        power        
+---------------------
+ -8.0000000000000000
+(1 row)
+
+SELECT power('-2'::numeric, '3.3');
+ERROR:  a negative number raised to a non-integer power yields a complex result
+SELECT power('-2'::numeric, '-1');
+        power        
+---------------------
+ -0.5000000000000000
+(1 row)
+
+SELECT power('-2'::numeric, '-1.5');
+ERROR:  a negative number raised to a non-integer power yields a complex result
+SELECT power('-2'::numeric, 'inf');
+  power   
+----------
+ Infinity
+(1 row)
+
+SELECT power('-2'::numeric, '-inf');
+ power 
+-------
+     0
+(1 row)
+
+SELECT power('inf'::numeric, '-2');
+ power 
+-------
+     0
+(1 row)
+
+SELECT power('inf'::numeric, '-inf');
+ power 
+-------
+     0
+(1 row)
+
+SELECT power('-inf'::numeric, '2');
+  power   
+----------
+ Infinity
+(1 row)
+
+SELECT power('-inf'::numeric, '3');
+   power   
+-----------
+ -Infinity
+(1 row)
+
+SELECT power('-inf'::numeric, '4.5');
+ERROR:  a negative number raised to a non-integer power yields a complex result
+SELECT power('-inf'::numeric, '-2');
+ power 
+-------
+     0
+(1 row)
+
+SELECT power('-inf'::numeric, '-3');
+ power 
+-------
+     0
+(1 row)
+
+SELECT power('-inf'::numeric, '0');
+ power 
+-------
+     1
+(1 row)
+
+SELECT power('-inf'::numeric, 'inf');
+  power   
+----------
+ Infinity
+(1 row)
+
+SELECT power('-inf'::numeric, '-inf');
+ power 
+-------
+     0
+(1 row)
+
+-- ******************************
 -- * miscellaneous checks for things that have been broken in the past...
 -- ******************************
 -- numeric AVG used to fail on some platforms
@@ -668,6 +1094,18 @@ SELECT AVG(val) FROM num_data;
           avg           
 ------------------------
  -13430913.592242320700
+(1 row)
+
+SELECT MAX(val) FROM num_data;
+        max         
+--------------------
+ 7799461.4119000000
+(1 row)
+
+SELECT MIN(val) FROM num_data;
+         min          
+----------------------
+ -83028485.0000000000
 (1 row)
 
 SELECT STDDEV(val) FROM num_data;
@@ -696,6 +1134,13 @@ ERROR:  numeric field overflow
 DETAIL:  A field with precision 4, scale 4 must round to an absolute value less than 1.
 INSERT INTO fract_only VALUES (7, '0.00001');
 INSERT INTO fract_only VALUES (8, '0.00017');
+INSERT INTO fract_only VALUES (9, 'NaN');
+INSERT INTO fract_only VALUES (10, 'Inf');	-- should fail
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 4, scale 4 cannot hold an infinite value.
+INSERT INTO fract_only VALUES (11, '-Inf');	-- should fail
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 4, scale 4 cannot hold an infinite value.
 SELECT * FROM fract_only;
  id |   val   
 ----+---------
@@ -705,9 +1150,59 @@ SELECT * FROM fract_only;
   5 |  0.9999
   7 |  0.0000
   8 |  0.0002
-(6 rows)
+  9 |     NaN
+(7 rows)
 
 DROP TABLE fract_only;
+-- Check conversion to integers
+SELECT (-9223372036854775808.5)::int8; -- should fail
+ERROR:  bigint out of range
+SELECT (-9223372036854775808.4)::int8; -- ok
+         int8         
+----------------------
+ -9223372036854775808
+(1 row)
+
+SELECT 9223372036854775807.4::int8; -- ok
+        int8         
+---------------------
+ 9223372036854775807
+(1 row)
+
+SELECT 9223372036854775807.5::int8; -- should fail
+ERROR:  bigint out of range
+SELECT (-2147483648.5)::int4; -- should fail
+ERROR:  integer out of range
+SELECT (-2147483648.4)::int4; -- ok
+    int4     
+-------------
+ -2147483648
+(1 row)
+
+SELECT 2147483647.4::int4; -- ok
+    int4    
+------------
+ 2147483647
+(1 row)
+
+SELECT 2147483647.5::int4; -- should fail
+ERROR:  integer out of range
+SELECT (-32768.5)::int2; -- should fail
+ERROR:  smallint out of range
+SELECT (-32768.4)::int2; -- ok
+  int2  
+--------
+ -32768
+(1 row)
+
+SELECT 32767.4::int2; -- ok
+ int2  
+-------
+ 32767
+(1 row)
+
+SELECT 32767.5::int2; -- should fail
+ERROR:  smallint out of range
 -- Check inf/nan conversion behavior
 SELECT 'NaN'::float8::numeric;
  numeric 
@@ -716,9 +1211,35 @@ SELECT 'NaN'::float8::numeric;
 (1 row)
 
 SELECT 'Infinity'::float8::numeric;
-ERROR:  cannot convert infinity to numeric
+ numeric  
+----------
+ Infinity
+(1 row)
+
 SELECT '-Infinity'::float8::numeric;
-ERROR:  cannot convert infinity to numeric
+  numeric  
+-----------
+ -Infinity
+(1 row)
+
+SELECT 'NaN'::numeric::float8;
+ float8 
+--------
+    NaN
+(1 row)
+
+SELECT 'Infinity'::numeric::float8;
+  float8  
+----------
+ Infinity
+(1 row)
+
+SELECT '-Infinity'::numeric::float8;
+  float8   
+-----------
+ -Infinity
+(1 row)
+
 SELECT 'NaN'::float4::numeric;
  numeric 
 ---------
@@ -726,9 +1247,59 @@ SELECT 'NaN'::float4::numeric;
 (1 row)
 
 SELECT 'Infinity'::float4::numeric;
-ERROR:  cannot convert infinity to numeric
+ numeric  
+----------
+ Infinity
+(1 row)
+
 SELECT '-Infinity'::float4::numeric;
-ERROR:  cannot convert infinity to numeric
+  numeric  
+-----------
+ -Infinity
+(1 row)
+
+SELECT 'NaN'::numeric::float4;
+ float4 
+--------
+    NaN
+(1 row)
+
+SELECT 'Infinity'::numeric::float4;
+  float4  
+----------
+ Infinity
+(1 row)
+
+SELECT '-Infinity'::numeric::float4;
+  float4   
+-----------
+ -Infinity
+(1 row)
+
+SELECT '42'::int2::numeric;
+ numeric 
+---------
+      42
+(1 row)
+
+SELECT 'NaN'::numeric::int2;
+ERROR:  cannot convert NaN to smallint
+SELECT 'Infinity'::numeric::int2;
+ERROR:  cannot convert infinity to smallint
+SELECT '-Infinity'::numeric::int2;
+ERROR:  cannot convert infinity to smallint
+SELECT 'NaN'::numeric::int4;
+ERROR:  cannot convert NaN to integer
+SELECT 'Infinity'::numeric::int4;
+ERROR:  cannot convert infinity to integer
+SELECT '-Infinity'::numeric::int4;
+ERROR:  cannot convert infinity to integer
+SELECT 'NaN'::numeric::int8;
+ERROR:  cannot convert NaN to bigint
+SELECT 'Infinity'::numeric::int8;
+ERROR:  cannot convert infinity to bigint
+SELECT '-Infinity'::numeric::int8;
+ERROR:  cannot convert infinity to bigint
 -- Simple check that ceil(), floor(), and round() work correctly
 CREATE TABLE ceil_floor_round (a numeric);
 INSERT INTO ceil_floor_round VALUES ('-5.5');
@@ -794,6 +1365,10 @@ SELECT width_bucket('NaN', 3.0, 4.0, 888);
 ERROR:  operand, lower bound, and upper bound cannot be NaN
 SELECT width_bucket(0::float8, 'NaN', 4.0::float8, 888);
 ERROR:  operand, lower bound, and upper bound cannot be NaN
+SELECT width_bucket(2.0, 3.0, '-inf', 888);
+ERROR:  lower and upper bounds must be finite
+SELECT width_bucket(0::float8, '-inf', 4.0::float8, 888);
+ERROR:  lower and upper bounds must be finite
 -- normal operation
 CREATE TABLE width_bucket_test (operand_num numeric, operand_f8 float8);
 COPY width_bucket_test (operand_num) FROM stdin;
@@ -834,8 +1409,19 @@ SELECT
  10.0000000000001 |    6 |     6 |    0 |     0 |    5 |     5 |   21 |    21 |    8 |     8
 (19 rows)
 
--- for float8 only, check positive and negative infinity: we require
+-- Check positive and negative infinity: we require
 -- finite bucket bounds, but allow an infinite operand
+SELECT width_bucket(0.0::numeric, 'Infinity'::numeric, 5, 10); -- error
+ERROR:  lower and upper bounds must be finite
+SELECT width_bucket(0.0::numeric, 5, '-Infinity'::numeric, 20); -- error
+ERROR:  lower and upper bounds must be finite
+SELECT width_bucket('Infinity'::numeric, 1, 10, 10),
+       width_bucket('-Infinity'::numeric, 1, 10, 10);
+ width_bucket | width_bucket 
+--------------+--------------
+           11 |            0
+(1 row)
+
 SELECT width_bucket(0.0::float8, 'Infinity'::float8, 5, 10); -- error
 ERROR:  lower and upper bounds must be finite
 SELECT width_bucket(0.0::float8, 5, '-Infinity'::float8, 20); -- error
@@ -848,437 +1434,415 @@ SELECT width_bucket('Infinity'::float8, 1, 10, 10),
 (1 row)
 
 DROP TABLE width_bucket_test;
+-- Simple test for roundoff error when results should be exact
+SELECT x, width_bucket(x::float8, 10, 100, 9) as flt,
+       width_bucket(x::numeric, 10, 100, 9) as num
+FROM generate_series(0, 110, 10) x;
+  x  | flt | num 
+-----+-----+-----
+   0 |   0 |   0
+  10 |   1 |   1
+  20 |   2 |   2
+  30 |   3 |   3
+  40 |   4 |   4
+  50 |   5 |   5
+  60 |   6 |   6
+  70 |   7 |   7
+  80 |   8 |   8
+  90 |   9 |   9
+ 100 |  10 |  10
+ 110 |  10 |  10
+(12 rows)
+
+SELECT x, width_bucket(x::float8, 100, 10, 9) as flt,
+       width_bucket(x::numeric, 100, 10, 9) as num
+FROM generate_series(0, 110, 10) x;
+  x  | flt | num 
+-----+-----+-----
+   0 |  10 |  10
+  10 |  10 |  10
+  20 |   9 |   9
+  30 |   8 |   8
+  40 |   7 |   7
+  50 |   6 |   6
+  60 |   5 |   5
+  70 |   4 |   4
+  80 |   3 |   3
+  90 |   2 |   2
+ 100 |   1 |   1
+ 110 |   0 |   0
+(12 rows)
+
+--
 -- TO_CHAR()
 --
-SELECT '' AS to_char_1, to_char(val, '9G999G999G999G999G999')
+SELECT to_char(val, '9G999G999G999G999G999')
 	FROM num_data;
- to_char_1 |        to_char         
------------+------------------------
-           |                      0
-           |                      0
-           |            -34,338,492
-           |                      4
-           |              7,799,461
-           |                 16,397
-           |                 93,902
-           |            -83,028,485
-           |                 74,881
-           |            -24,926,804
+        to_char         
+------------------------
+                      0
+                      0
+            -34,338,492
+                      4
+              7,799,461
+                 16,397
+                 93,902
+            -83,028,485
+                 74,881
+            -24,926,804
 (10 rows)
 
-SELECT '' AS to_char_2, to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
+SELECT to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
 	FROM num_data;
- to_char_2 |                  to_char                   
------------+--------------------------------------------
-           |                       .000,000,000,000,000
-           |                       .000,000,000,000,000
-           |            -34,338,492.215,397,047,000,000
-           |                      4.310,000,000,000,000
-           |              7,799,461.411,900,000,000,000
-           |                 16,397.038,491,000,000,000
-           |                 93,901.577,630,260,000,000
-           |            -83,028,485.000,000,000,000,000
-           |                 74,881.000,000,000,000,000
-           |            -24,926,804.045,047,420,000,000
+                  to_char                   
+--------------------------------------------
+                       .000,000,000,000,000
+                       .000,000,000,000,000
+            -34,338,492.215,397,047,000,000
+                      4.310,000,000,000,000
+              7,799,461.411,900,000,000,000
+                 16,397.038,491,000,000,000
+                 93,901.577,630,260,000,000
+            -83,028,485.000,000,000,000,000
+                 74,881.000,000,000,000,000
+            -24,926,804.045,047,420,000,000
 (10 rows)
 
-SELECT '' AS to_char_3, to_char(val, '9999999999999999.999999999999999PR')
+SELECT to_char(val, '9999999999999999.999999999999999PR')
 	FROM num_data;
- to_char_3 |              to_char               
------------+------------------------------------
-           |                  .000000000000000 
-           |                  .000000000000000 
-           |         <34338492.215397047000000>
-           |                 4.310000000000000 
-           |           7799461.411900000000000 
-           |             16397.038491000000000 
-           |             93901.577630260000000 
-           |         <83028485.000000000000000>
-           |             74881.000000000000000 
-           |         <24926804.045047420000000>
+              to_char               
+------------------------------------
+                  .000000000000000 
+                  .000000000000000 
+         <34338492.215397047000000>
+                 4.310000000000000 
+           7799461.411900000000000 
+             16397.038491000000000 
+             93901.577630260000000 
+         <83028485.000000000000000>
+             74881.000000000000000 
+         <24926804.045047420000000>
 (10 rows)
 
-SELECT '' AS to_char_4, to_char(val, '9999999999999999.999999999999999S')
+SELECT to_char(val, '9999999999999999.999999999999999S')
 	FROM num_data;
- to_char_4 |              to_char              
------------+-----------------------------------
-           |                 .000000000000000+
-           |                 .000000000000000+
-           |         34338492.215397047000000-
-           |                4.310000000000000+
-           |          7799461.411900000000000+
-           |            16397.038491000000000+
-           |            93901.577630260000000+
-           |         83028485.000000000000000-
-           |            74881.000000000000000+
-           |         24926804.045047420000000-
+              to_char              
+-----------------------------------
+                 .000000000000000+
+                 .000000000000000+
+         34338492.215397047000000-
+                4.310000000000000+
+          7799461.411900000000000+
+            16397.038491000000000+
+            93901.577630260000000+
+         83028485.000000000000000-
+            74881.000000000000000+
+         24926804.045047420000000-
 (10 rows)
 
-SELECT '' AS to_char_5,  to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data;
- to_char_5 |              to_char              
------------+-----------------------------------
-           |                  .000000000000000
-           |                  .000000000000000
-           | -        34338492.215397047000000
-           |                 4.310000000000000
-           |           7799461.411900000000000
-           |             16397.038491000000000
-           |             93901.577630260000000
-           | -        83028485.000000000000000
-           |             74881.000000000000000
-           | -        24926804.045047420000000
+SELECT to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data;
+              to_char              
+-----------------------------------
+                  .000000000000000
+                  .000000000000000
+ -        34338492.215397047000000
+                 4.310000000000000
+           7799461.411900000000000
+             16397.038491000000000
+             93901.577630260000000
+ -        83028485.000000000000000
+             74881.000000000000000
+ -        24926804.045047420000000
 (10 rows)
 
-SELECT '' AS to_char_6,  to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data;
- to_char_6 |       to_char       
------------+---------------------
-           | +0.
-           | +0.
-           | -34338492.215397047
-           | +4.31
-           | +7799461.4119
-           | +16397.038491
-           | +93901.57763026
-           | -83028485.
-           | +74881.
-           | -24926804.04504742
+SELECT to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data;
+       to_char       
+---------------------
+ +0.
+ +0.
+ -34338492.215397047
+ +4.31
+ +7799461.4119
+ +16397.038491
+ +93901.57763026
+ -83028485.
+ +74881.
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_7,  to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data;
- to_char_7 |       to_char        
------------+----------------------
-           | 0.
-           | 0.
-           | <34338492.215397047>
-           | 4.31
-           | 7799461.4119
-           | 16397.038491
-           | 93901.57763026
-           | <83028485.>
-           | 74881.
-           | <24926804.04504742>
+SELECT to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data;
+       to_char        
+----------------------
+ 0.
+ 0.
+ <34338492.215397047>
+ 4.31
+ 7799461.4119
+ 16397.038491
+ 93901.57763026
+ <83028485.>
+ 74881.
+ <24926804.04504742>
 (10 rows)
 
-SELECT '' AS to_char_8,  to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data;
- to_char_8 |              to_char              
------------+-----------------------------------
-           | +                .000000000000000
-           | +                .000000000000000
-           | -        34338492.215397047000000
-           | +               4.310000000000000
-           | +         7799461.411900000000000
-           | +           16397.038491000000000
-           | +           93901.577630260000000
-           | -        83028485.000000000000000
-           | +           74881.000000000000000
-           | -        24926804.045047420000000
+SELECT to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data;
+              to_char              
+-----------------------------------
+ +                .000000000000000
+ +                .000000000000000
+ -        34338492.215397047000000
+ +               4.310000000000000
+ +         7799461.411900000000000
+ +           16397.038491000000000
+ +           93901.577630260000000
+ -        83028485.000000000000000
+ +           74881.000000000000000
+ -        24926804.045047420000000
 (10 rows)
 
-SELECT '' AS to_char_9,  to_char(val, '0999999999999999.999999999999999')       FROM num_data;
- to_char_9 |              to_char              
------------+-----------------------------------
-           |  0000000000000000.000000000000000
-           |  0000000000000000.000000000000000
-           | -0000000034338492.215397047000000
-           |  0000000000000004.310000000000000
-           |  0000000007799461.411900000000000
-           |  0000000000016397.038491000000000
-           |  0000000000093901.577630260000000
-           | -0000000083028485.000000000000000
-           |  0000000000074881.000000000000000
-           | -0000000024926804.045047420000000
+SELECT to_char(val, '0999999999999999.999999999999999')       FROM num_data;
+              to_char              
+-----------------------------------
+  0000000000000000.000000000000000
+  0000000000000000.000000000000000
+ -0000000034338492.215397047000000
+  0000000000000004.310000000000000
+  0000000007799461.411900000000000
+  0000000000016397.038491000000000
+  0000000000093901.577630260000000
+ -0000000083028485.000000000000000
+  0000000000074881.000000000000000
+ -0000000024926804.045047420000000
 (10 rows)
 
-SELECT '' AS to_char_10, to_char(val, 'S0999999999999999.999999999999999')      FROM num_data;
- to_char_10 |              to_char              
-------------+-----------------------------------
-            | +0000000000000000.000000000000000
-            | +0000000000000000.000000000000000
-            | -0000000034338492.215397047000000
-            | +0000000000000004.310000000000000
-            | +0000000007799461.411900000000000
-            | +0000000000016397.038491000000000
-            | +0000000000093901.577630260000000
-            | -0000000083028485.000000000000000
-            | +0000000000074881.000000000000000
-            | -0000000024926804.045047420000000
+SELECT to_char(val, 'S0999999999999999.999999999999999')      FROM num_data;
+              to_char              
+-----------------------------------
+ +0000000000000000.000000000000000
+ +0000000000000000.000000000000000
+ -0000000034338492.215397047000000
+ +0000000000000004.310000000000000
+ +0000000007799461.411900000000000
+ +0000000000016397.038491000000000
+ +0000000000093901.577630260000000
+ -0000000083028485.000000000000000
+ +0000000000074881.000000000000000
+ -0000000024926804.045047420000000
 (10 rows)
 
-SELECT '' AS to_char_11, to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data;
- to_char_11 |           to_char           
-------------+-----------------------------
-            | 0000000000000000.
-            | 0000000000000000.
-            | -0000000034338492.215397047
-            | 0000000000000004.31
-            | 0000000007799461.4119
-            | 0000000000016397.038491
-            | 0000000000093901.57763026
-            | -0000000083028485.
-            | 0000000000074881.
-            | -0000000024926804.04504742
+SELECT to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data;
+           to_char           
+-----------------------------
+ 0000000000000000.
+ 0000000000000000.
+ -0000000034338492.215397047
+ 0000000000000004.31
+ 0000000007799461.4119
+ 0000000000016397.038491
+ 0000000000093901.57763026
+ -0000000083028485.
+ 0000000000074881.
+ -0000000024926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_12, to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
- to_char_12 |       to_char       
-------------+---------------------
-            | .0
-            | .0
-            | -34338492.215397047
-            | 4.31
-            | 7799461.4119
-            | 16397.038491
-            | 93901.57763026
-            | -83028485.0
-            | 74881.0
-            | -24926804.04504742
+SELECT to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
+       to_char       
+---------------------
+ .0
+ .0
+ -34338492.215397047
+ 4.31
+ 7799461.4119
+ 16397.038491
+ 93901.57763026
+ -83028485.0
+ 74881.0
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_13, to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
- to_char_13 |       to_char       
-------------+---------------------
-            | 0000.000
-            | 0000.000
-            | -34338492.215397047
-            | 0004.310
-            | 7799461.4119
-            | 16397.038491
-            | 93901.57763026
-            | -83028485.000
-            | 74881.000
-            | -24926804.04504742
+SELECT to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
+       to_char       
+---------------------
+ 0000.000
+ 0000.000
+ -34338492.215397047
+ 0004.310
+ 7799461.4119
+ 16397.038491
+ 93901.57763026
+ -83028485.000
+ 74881.000
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_14, to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
- to_char_14 |           to_char           
-------------+-----------------------------
-            | 0000000000000000.00000
-            | 0000000000000000.00000
-            | -0000000034338492.215397047
-            | 0000000000000004.31000
-            | 0000000007799461.41190
-            | 0000000000016397.038491
-            | 0000000000093901.57763026
-            | -0000000083028485.00000
-            | 0000000000074881.00000
-            | -0000000024926804.04504742
+SELECT to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
+           to_char           
+-----------------------------
+ 0000000000000000.00000
+ 0000000000000000.00000
+ -0000000034338492.215397047
+ 0000000000000004.31000
+ 0000000007799461.41190
+ 0000000000016397.038491
+ 0000000000093901.57763026
+ -0000000083028485.00000
+ 0000000000074881.00000
+ -0000000024926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_15, to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
- to_char_15 |       to_char       
-------------+---------------------
-            | 0000000.0
-            | 0000000.0
-            | -34338492.215397047
-            | 0000004.31
-            | 7799461.4119
-            | 0016397.038491
-            | 0093901.57763026
-            | -83028485.0
-            | 0074881.0
-            | -24926804.04504742
+SELECT to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
+       to_char       
+---------------------
+ 0000000.0
+ 0000000.0
+ -34338492.215397047
+ 0000004.31
+ 7799461.4119
+ 0016397.038491
+ 0093901.57763026
+ -83028485.0
+ 0074881.0
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_16, to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
- to_char_16 |              to_char               
-------------+------------------------------------
-            |                   .000000000000000
-            |                   .000000000000000
-            |          -34338492.215397047000000
-            |                  4.310000000000000
-            |            7799461.411900000000000
-            |              16397.038491000000000
-            |              93901.577630260000000
-            |          -83028485.000000000000000
-            |              74881.000000000000000
-            |          -24926804.045047420000000
+SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
+              to_char               
+------------------------------------
+                   .000000000000000
+                   .000000000000000
+          -34338492.215397047000000
+                  4.310000000000000
+            7799461.411900000000000
+              16397.038491000000000
+              93901.577630260000000
+          -83028485.000000000000000
+              74881.000000000000000
+          -24926804.045047420000000
 (10 rows)
 
-SELECT '' AS to_char_17, to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
- to_char_17 |       to_char       
-------------+---------------------
-            | 0.
-            | 0.
-            | -34338492.215397047
-            | 4.31
-            | 7799461.4119
-            | 16397.038491
-            | 93901.57763026
-            | -83028485.
-            | 74881.
-            | -24926804.04504742
+SELECT to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
+       to_char       
+---------------------
+ 0.
+ 0.
+ -34338492.215397047
+ 4.31
+ 7799461.4119
+ 16397.038491
+ 93901.57763026
+ -83028485.
+ 74881.
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_18, to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
- to_char_18 |                                to_char                                
-------------+-----------------------------------------------------------------------
-            |                                  +. 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                                  +. 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                  -3 4 3 3 8 4 9 2 . 2 1 5 3 9 7 0 4 7 0 0 0 0 0 0 0 0
-            |                                +4 . 3 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                    +7 7 9 9 4 6 1 . 4 1 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                        +1 6 3 9 7 . 0 3 8 4 9 1 0 0 0 0 0 0 0 0 0 0 0
-            |                        +9 3 9 0 1 . 5 7 7 6 3 0 2 6 0 0 0 0 0 0 0 0 0
-            |                  -8 3 0 2 8 4 8 5 . 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                        +7 4 8 8 1 . 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            |                  -2 4 9 2 6 8 0 4 . 0 4 5 0 4 7 4 2 0 0 0 0 0 0 0 0 0
+SELECT to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+                                to_char                                
+-----------------------------------------------------------------------
+                                  +. 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+                                  +. 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+                  -3 4 3 3 8 4 9 2 . 2 1 5 3 9 7 0 4 7 0 0 0 0 0 0 0 0
+                                +4 . 3 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+                    +7 7 9 9 4 6 1 . 4 1 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0
+                        +1 6 3 9 7 . 0 3 8 4 9 1 0 0 0 0 0 0 0 0 0 0 0
+                        +9 3 9 0 1 . 5 7 7 6 3 0 2 6 0 0 0 0 0 0 0 0 0
+                  -8 3 0 2 8 4 8 5 . 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+                        +7 4 8 8 1 . 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+                  -2 4 9 2 6 8 0 4 . 0 4 5 0 4 7 4 2 0 0 0 0 0 0 0 0 0
 (10 rows)
 
-SELECT '' AS to_char_19, to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
- to_char_19 |                        to_char                        
-------------+-------------------------------------------------------
-            |                 +0 .                 
-            |                 +0 .                 
-            |          -3 4 3 3 8 4 9 2 . 2 1 5 3 9 7 0 4 7        
-            |                 +4 . 3 1               
-            |           +7 7 9 9 4 6 1 . 4 1 1 9             
-            |             +1 6 3 9 7 . 0 3 8 4 9 1           
-            |             +9 3 9 0 1 . 5 7 7 6 3 0 2 6         
-            |          -8 3 0 2 8 4 8 5 .                 
-            |             +7 4 8 8 1 .                 
-            |          -2 4 9 2 6 8 0 4 . 0 4 5 0 4 7 4 2         
+SELECT to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+                        to_char                        
+-------------------------------------------------------
+                 +0 .                 
+                 +0 .                 
+          -3 4 3 3 8 4 9 2 . 2 1 5 3 9 7 0 4 7        
+                 +4 . 3 1               
+           +7 7 9 9 4 6 1 . 4 1 1 9             
+             +1 6 3 9 7 . 0 3 8 4 9 1           
+             +9 3 9 0 1 . 5 7 7 6 3 0 2 6         
+          -8 3 0 2 8 4 8 5 .                 
+             +7 4 8 8 1 .                 
+          -2 4 9 2 6 8 0 4 . 0 4 5 0 4 7 4 2         
 (10 rows)
 
-SELECT '' AS to_char_20, to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data;
- to_char_20 |                          to_char                          
-------------+-----------------------------------------------------------
-            |       text      9999     "text between quote marks"     0
-            |       text      9999     "text between quote marks"     0
-            |       text    -3 9999 433 "text between quote marks" 8492
-            |       text      9999     "text between quote marks"     4
-            |       text      9999  779 "text between quote marks" 9461
-            |       text      9999    1 "text between quote marks" 6397
-            |       text      9999    9 "text between quote marks" 3902
-            |       text    -8 9999 302 "text between quote marks" 8485
-            |       text      9999    7 "text between quote marks" 4881
-            |       text    -2 9999 492 "text between quote marks" 6804
+SELECT to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data;
+                          to_char                          
+-----------------------------------------------------------
+       text      9999     "text between quote marks"     0
+       text      9999     "text between quote marks"     0
+       text    -3 9999 433 "text between quote marks" 8492
+       text      9999     "text between quote marks"     4
+       text      9999  779 "text between quote marks" 9461
+       text      9999    1 "text between quote marks" 6397
+       text      9999    9 "text between quote marks" 3902
+       text    -8 9999 302 "text between quote marks" 8485
+       text      9999    7 "text between quote marks" 4881
+       text    -2 9999 492 "text between quote marks" 6804
 (10 rows)
 
-SELECT '' AS to_char_21, to_char(val, '999999SG9999999999')			FROM num_data;
- to_char_21 |      to_char      
-------------+-------------------
-            |       +         0
-            |       +         0
-            |       -  34338492
-            |       +         4
-            |       +   7799461
-            |       +     16397
-            |       +     93902
-            |       -  83028485
-            |       +     74881
-            |       -  24926804
+SELECT to_char(val, '999999SG9999999999')			FROM num_data;
+      to_char      
+-------------------
+       +         0
+       +         0
+       -  34338492
+       +         4
+       +   7799461
+       +     16397
+       +     93902
+       -  83028485
+       +     74881
+       -  24926804
 (10 rows)
 
-SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
- to_char_22 |       to_char       
-------------+---------------------
-            | 0.
-            | 0.
-            | -34338492.215397047
-            | 4.31
-            | 7799461.4119
-            | 16397.038491
-            | 93901.57763026
-            | -83028485.
-            | 74881.
-            | -24926804.04504742
+SELECT to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
+       to_char       
+---------------------
+ 0.
+ 0.
+ -34338492.215397047
+ 4.31
+ 7799461.4119
+ 16397.038491
+ 93901.57763026
+ -83028485.
+ 74881.
+ -24926804.04504742
 (10 rows)
 
-SELECT '' AS to_char_23, to_char(val, '9.999EEEE')				FROM num_data;
- to_char_23 |  to_char   
-------------+------------
-            |  0.000e+00
-            |  0.000e+00
-            | -3.434e+07
-            |  4.310e+00
-            |  7.799e+06
-            |  1.640e+04
-            |  9.390e+04
-            | -8.303e+07
-            |  7.488e+04
-            | -2.493e+07
+SELECT to_char(val, '9.999EEEE')				FROM num_data;
+  to_char   
+------------
+  0.000e+00
+  0.000e+00
+ -3.434e+07
+  4.310e+00
+  7.799e+06
+  1.640e+04
+  9.390e+04
+ -8.303e+07
+  7.488e+04
+ -2.493e+07
 (10 rows)
 
-SELECT '' AS to_char_24, to_char('100'::numeric, 'FM999.9');
- to_char_24 | to_char 
-------------+---------
-            | 100.
-(1 row)
+WITH v(val) AS
+  (VALUES('0'::numeric),('-4.2'),('4.2e9'),('1.2e-5'),('inf'),('-inf'),('nan'))
+SELECT val,
+  to_char(val, '9.999EEEE') as numeric,
+  to_char(val::float8, '9.999EEEE') as float8,
+  to_char(val::float4, '9.999EEEE') as float4
+FROM v;
+    val     |  numeric   |   float8   |   float4   
+------------+------------+------------+------------
+          0 |  0.000e+00 |  0.000e+00 |  0.000e+00
+       -4.2 | -4.200e+00 | -4.200e+00 | -4.200e+00
+ 4200000000 |  4.200e+09 |  4.200e+09 |  4.200e+09
+   0.000012 |  1.200e-05 |  1.200e-05 |  1.200e-05
+   Infinity |  #.####### |  #.####### |  #.#######
+  -Infinity |  #.####### |  #.####### |  #.#######
+        NaN |  #.####### |  #.####### |  #.#######
+(7 rows)
 
-SELECT '' AS to_char_25, to_char('100'::numeric, 'FM999.');
- to_char_25 | to_char 
-------------+---------
-            | 100
-(1 row)
-
-SELECT '' AS to_char_26, to_char('100'::numeric, 'FM999');
- to_char_26 | to_char 
-------------+---------
-            | 100
-(1 row)
-
--- Check parsing of literal text in a format string
-SELECT '' AS to_char_27, to_char('100'::numeric, 'foo999');
- to_char_27 | to_char 
-------------+---------
-            | foo 100
-(1 row)
-
-SELECT '' AS to_char_28, to_char('100'::numeric, 'f\oo999');
- to_char_28 | to_char  
-------------+----------
-            | f\oo 100
-(1 row)
-
-SELECT '' AS to_char_29, to_char('100'::numeric, 'f\\oo999');
- to_char_29 |  to_char  
-------------+-----------
-            | f\\oo 100
-(1 row)
-
-SELECT '' AS to_char_30, to_char('100'::numeric, 'f\"oo999');
- to_char_30 | to_char  
-------------+----------
-            | f"oo 100
-(1 row)
-
-SELECT '' AS to_char_31, to_char('100'::numeric, 'f\\"oo999');
- to_char_31 |  to_char  
-------------+-----------
-            | f\"oo 100
-(1 row)
-
-SELECT '' AS to_char_32, to_char('100'::numeric, 'f"ool"999');
- to_char_32 | to_char  
-------------+----------
-            | fool 100
-(1 row)
-
-SELECT '' AS to_char_33, to_char('100'::numeric, 'f"\ool"999');
- to_char_33 | to_char  
-------------+----------
-            | fool 100
-(1 row)
-
-SELECT '' AS to_char_34, to_char('100'::numeric, 'f"\\ool"999');
- to_char_34 |  to_char  
-------------+-----------
-            | f\ool 100
-(1 row)
-
-SELECT '' AS to_char_35, to_char('100'::numeric, 'f"ool\"999');
- to_char_35 | to_char  
-------------+----------
-            | fool"999
-(1 row)
-
-SELECT '' AS to_char_36, to_char('100'::numeric, 'f"ool\\"999');
- to_char_36 |  to_char  
-------------+-----------
-            | fool\ 100
-(1 row)
-
--- Test scientific notation with various exponents
 WITH v(exp) AS
   (VALUES(-16379),(-16378),(-1234),(-789),(-45),(-5),(-4),(-3),(-2),(-1),(0),
          (1),(2),(3),(4),(5),(38),(275),(2345),(45678),(131070),(131071))
@@ -1311,139 +1875,254 @@ FROM v;
  131071 |  1.235e+131071
 (22 rows)
 
+WITH v(val) AS
+  (VALUES('0'::numeric),('-4.2'),('4.2e9'),('1.2e-5'),('inf'),('-inf'),('nan'))
+SELECT val,
+  to_char(val, 'MI9999999999.99') as numeric,
+  to_char(val::float8, 'MI9999999999.99') as float8,
+  to_char(val::float4, 'MI9999999999.99') as float4
+FROM v;
+    val     |    numeric     |     float8     |     float4     
+------------+----------------+----------------+----------------
+          0 |            .00 |            .00 |            .00
+       -4.2 | -         4.20 | -         4.20 | -         4.20
+ 4200000000 |  4200000000.00 |  4200000000.00 |  4200000000
+   0.000012 |            .00 |            .00 |            .00
+   Infinity |    Infinity    |    Infinity    |    Infinity
+  -Infinity | -  Infinity    | -  Infinity    | -  Infinity
+        NaN |         NaN    |         NaN    |         NaN
+(7 rows)
+
+WITH v(val) AS
+  (VALUES('0'::numeric),('-4.2'),('4.2e9'),('1.2e-5'),('inf'),('-inf'),('nan'))
+SELECT val,
+  to_char(val, 'MI99.99') as numeric,
+  to_char(val::float8, 'MI99.99') as float8,
+  to_char(val::float4, 'MI99.99') as float4
+FROM v;
+    val     | numeric | float8 | float4 
+------------+---------+--------+--------
+          0 |    .00  |    .00 |    .00
+       -4.2 | - 4.20  | - 4.20 | - 4.20
+ 4200000000 |  ##.##  |  ##.## |  ##.
+   0.000012 |    .00  |    .00 |    .00
+   Infinity |  ##.##  |  ##.## |  ##.
+  -Infinity | -##.##  | -##.## | -##.
+        NaN |  ##.##  |  ##.## |  ##.##
+(7 rows)
+
+SELECT to_char('100'::numeric, 'FM999.9');
+ to_char 
+---------
+ 100.
+(1 row)
+
+SELECT to_char('100'::numeric, 'FM999.');
+ to_char 
+---------
+ 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'FM999');
+ to_char 
+---------
+ 100
+(1 row)
+
+-- Check parsing of literal text in a format string
+SELECT to_char('100'::numeric, 'foo999');
+ to_char 
+---------
+ foo 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f\oo999');
+ to_char  
+----------
+ f\oo 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f\\oo999');
+  to_char  
+-----------
+ f\\oo 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f\"oo999');
+ to_char  
+----------
+ f"oo 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f\\"oo999');
+  to_char  
+-----------
+ f\"oo 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f"ool"999');
+ to_char  
+----------
+ fool 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f"\ool"999');
+ to_char  
+----------
+ fool 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f"\\ool"999');
+  to_char  
+-----------
+ f\ool 100
+(1 row)
+
+SELECT to_char('100'::numeric, 'f"ool\"999');
+ to_char  
+----------
+ fool"999
+(1 row)
+
+SELECT to_char('100'::numeric, 'f"ool\\"999');
+  to_char  
+-----------
+ fool\ 100
+(1 row)
+
 -- TO_NUMBER()
 --
 SET lc_numeric = 'C';
-SELECT '' AS to_number_1,  to_number('-34,338,492', '99G999G999');
- to_number_1 | to_number 
--------------+-----------
-             | -34338492
+SELECT to_number('-34,338,492', '99G999G999');
+ to_number 
+-----------
+ -34338492
 (1 row)
 
-SELECT '' AS to_number_2,  to_number('-34,338,492.654,878', '99G999G999D999G999');
- to_number_2 |    to_number     
--------------+------------------
-             | -34338492.654878
+SELECT to_number('-34,338,492.654,878', '99G999G999D999G999');
+    to_number     
+------------------
+ -34338492.654878
 (1 row)
 
-SELECT '' AS to_number_3,  to_number('<564646.654564>', '999999.999999PR');
- to_number_3 |   to_number    
--------------+----------------
-             | -564646.654564
+SELECT to_number('<564646.654564>', '999999.999999PR');
+   to_number    
+----------------
+ -564646.654564
 (1 row)
 
-SELECT '' AS to_number_4,  to_number('0.00001-', '9.999999S');
- to_number_4 | to_number 
--------------+-----------
-             |  -0.00001
+SELECT to_number('0.00001-', '9.999999S');
+ to_number 
+-----------
+  -0.00001
 (1 row)
 
-SELECT '' AS to_number_5,  to_number('5.01-', 'FM9.999999S');
- to_number_5 | to_number 
--------------+-----------
-             |     -5.01
+SELECT to_number('5.01-', 'FM9.999999S');
+ to_number 
+-----------
+     -5.01
 (1 row)
 
-SELECT '' AS to_number_5,  to_number('5.01-', 'FM9.999999MI');
- to_number_5 | to_number 
--------------+-----------
-             |     -5.01
+SELECT to_number('5.01-', 'FM9.999999MI');
+ to_number 
+-----------
+     -5.01
 (1 row)
 
-SELECT '' AS to_number_7,  to_number('5 4 4 4 4 8 . 7 8', '9 9 9 9 9 9 . 9 9');
- to_number_7 | to_number 
--------------+-----------
-             | 544448.78
+SELECT to_number('5 4 4 4 4 8 . 7 8', '9 9 9 9 9 9 . 9 9');
+ to_number 
+-----------
+ 544448.78
 (1 row)
 
-SELECT '' AS to_number_8,  to_number('.01', 'FM9.99');
- to_number_8 | to_number 
--------------+-----------
-             |      0.01
+SELECT to_number('.01', 'FM9.99');
+ to_number 
+-----------
+      0.01
 (1 row)
 
-SELECT '' AS to_number_9,  to_number('.0', '99999999.99999999');
- to_number_9 | to_number 
--------------+-----------
-             |       0.0
+SELECT to_number('.0', '99999999.99999999');
+ to_number 
+-----------
+       0.0
 (1 row)
 
-SELECT '' AS to_number_10, to_number('0', '99.99');
- to_number_10 | to_number 
---------------+-----------
-              |         0
+SELECT to_number('0', '99.99');
+ to_number 
+-----------
+         0
 (1 row)
 
-SELECT '' AS to_number_11, to_number('.-01', 'S99.99');
- to_number_11 | to_number 
---------------+-----------
-              |     -0.01
+SELECT to_number('.-01', 'S99.99');
+ to_number 
+-----------
+     -0.01
 (1 row)
 
-SELECT '' AS to_number_12, to_number('.01-', '99.99S');
- to_number_12 | to_number 
---------------+-----------
-              |     -0.01
+SELECT to_number('.01-', '99.99S');
+ to_number 
+-----------
+     -0.01
 (1 row)
 
-SELECT '' AS to_number_13, to_number(' . 0 1-', ' 9 9 . 9 9 S');
- to_number_13 | to_number 
---------------+-----------
-              |     -0.01
+SELECT to_number(' . 0 1-', ' 9 9 . 9 9 S');
+ to_number 
+-----------
+     -0.01
 (1 row)
 
-SELECT '' AS to_number_14, to_number('34,50','999,99');
- to_number_14 | to_number 
---------------+-----------
-              |      3450
+SELECT to_number('34,50','999,99');
+ to_number 
+-----------
+      3450
 (1 row)
 
-SELECT '' AS to_number_15, to_number('123,000','999G');
- to_number_15 | to_number 
---------------+-----------
-              |       123
+SELECT to_number('123,000','999G');
+ to_number 
+-----------
+       123
 (1 row)
 
-SELECT '' AS to_number_16, to_number('123456','999G999');
- to_number_16 | to_number 
---------------+-----------
-              |    123456
+SELECT to_number('123456','999G999');
+ to_number 
+-----------
+    123456
 (1 row)
 
-SELECT '' AS to_number_17, to_number('$1234.56','L9,999.99');
- to_number_17 | to_number 
---------------+-----------
-              |   1234.56
+SELECT to_number('$1234.56','L9,999.99');
+ to_number 
+-----------
+   1234.56
 (1 row)
 
-SELECT '' AS to_number_18, to_number('$1234.56','L99,999.99');
- to_number_18 | to_number 
---------------+-----------
-              |   1234.56
+SELECT to_number('$1234.56','L99,999.99');
+ to_number 
+-----------
+   1234.56
 (1 row)
 
-SELECT '' AS to_number_19, to_number('$1,234.56','L99,999.99');
- to_number_19 | to_number 
---------------+-----------
-              |   1234.56
+SELECT to_number('$1,234.56','L99,999.99');
+ to_number 
+-----------
+   1234.56
 (1 row)
 
-SELECT '' AS to_number_20, to_number('1234.56','L99,999.99');
- to_number_20 | to_number 
---------------+-----------
-              |   1234.56
+SELECT to_number('1234.56','L99,999.99');
+ to_number 
+-----------
+   1234.56
 (1 row)
 
-SELECT '' AS to_number_21, to_number('1,234.56','L99,999.99');
- to_number_21 | to_number 
---------------+-----------
-              |   1234.56
+SELECT to_number('1,234.56','L99,999.99');
+ to_number 
+-----------
+   1234.56
 (1 row)
 
-SELECT '' AS to_number_22, to_number('42nd', '99th');
- to_number_22 | to_number 
---------------+-----------
-              |        42
+SELECT to_number('42nd', '99th');
+ to_number 
+-----------
+        42
 (1 row)
 
 RESET lc_numeric;
@@ -1459,6 +2138,12 @@ INSERT INTO num_input_test(n1) VALUES ('555.50');
 INSERT INTO num_input_test(n1) VALUES ('-555.50');
 INSERT INTO num_input_test(n1) VALUES ('NaN ');
 INSERT INTO num_input_test(n1) VALUES ('        nan');
+INSERT INTO num_input_test(n1) VALUES (' inf ');
+INSERT INTO num_input_test(n1) VALUES (' +inf ');
+INSERT INTO num_input_test(n1) VALUES (' -inf ');
+INSERT INTO num_input_test(n1) VALUES (' Infinity ');
+INSERT INTO num_input_test(n1) VALUES (' +inFinity ');
+INSERT INTO num_input_test(n1) VALUES (' -INFINITY ');
 -- bad inputs
 INSERT INTO num_input_test(n1) VALUES ('     ');
 ERROR:  invalid input syntax for type numeric: "     "
@@ -1492,18 +2177,91 @@ INSERT INTO num_input_test(n1) VALUES (' N aN ');
 ERROR:  invalid input syntax for type numeric: " N aN "
 LINE 1: INSERT INTO num_input_test(n1) VALUES (' N aN ');
                                                ^
+INSERT INTO num_input_test(n1) VALUES ('+ infinity');
+ERROR:  invalid input syntax for type numeric: "+ infinity"
+LINE 1: INSERT INTO num_input_test(n1) VALUES ('+ infinity');
+                                               ^
 SELECT * FROM num_input_test;
-   n1    
----------
-     123
- 3245874
-  -93853
-  555.50
- -555.50
-     NaN
-     NaN
-(7 rows)
+    n1     
+-----------
+       123
+   3245874
+    -93853
+    555.50
+   -555.50
+       NaN
+       NaN
+  Infinity
+  Infinity
+ -Infinity
+  Infinity
+  Infinity
+ -Infinity
+(13 rows)
 
+--
+-- Test precision and scale typemods
+--
+CREATE TABLE num_typemod_test (
+  millions numeric(3, -6),
+  thousands numeric(3, -3),
+  units numeric(3, 0),
+  thousandths numeric(3, 3),
+  millionths numeric(3, 6)
+);
+\d num_typemod_test
+               Table "public.num_typemod_test"
+   Column    |     Type      | Collation | Nullable | Default 
+-------------+---------------+-----------+----------+---------
+ millions    | numeric(3,-6) |           |          | 
+ thousands   | numeric(3,-3) |           |          | 
+ units       | numeric(3,0)  |           |          | 
+ thousandths | numeric(3,3)  |           |          | 
+ millionths  | numeric(3,6)  |           |          | 
+
+-- rounding of valid inputs
+INSERT INTO num_typemod_test VALUES (123456, 123, 0.123, 0.000123, 0.000000123);
+INSERT INTO num_typemod_test VALUES (654321, 654, 0.654, 0.000654, 0.000000654);
+INSERT INTO num_typemod_test VALUES (2345678, 2345, 2.345, 0.002345, 0.000002345);
+INSERT INTO num_typemod_test VALUES (7654321, 7654, 7.654, 0.007654, 0.000007654);
+INSERT INTO num_typemod_test VALUES (12345678, 12345, 12.345, 0.012345, 0.000012345);
+INSERT INTO num_typemod_test VALUES (87654321, 87654, 87.654, 0.087654, 0.000087654);
+INSERT INTO num_typemod_test VALUES (123456789, 123456, 123.456, 0.123456, 0.000123456);
+INSERT INTO num_typemod_test VALUES (987654321, 987654, 987.654, 0.987654, 0.000987654);
+INSERT INTO num_typemod_test VALUES ('NaN', 'NaN', 'NaN', 'NaN', 'NaN');
+SELECT scale(millions), * FROM num_typemod_test ORDER BY millions;
+ scale | millions  | thousands | units | thousandths | millionths 
+-------+-----------+-----------+-------+-------------+------------
+     0 |         0 |         0 |     0 |       0.000 |   0.000000
+     0 |   1000000 |      1000 |     1 |       0.001 |   0.000001
+     0 |   2000000 |      2000 |     2 |       0.002 |   0.000002
+     0 |   8000000 |      8000 |     8 |       0.008 |   0.000008
+     0 |  12000000 |     12000 |    12 |       0.012 |   0.000012
+     0 |  88000000 |     88000 |    88 |       0.088 |   0.000088
+     0 | 123000000 |    123000 |   123 |       0.123 |   0.000123
+     0 | 988000000 |    988000 |   988 |       0.988 |   0.000988
+       |       NaN |       NaN |   NaN |         NaN |        NaN
+(9 rows)
+
+-- invalid inputs
+INSERT INTO num_typemod_test (millions) VALUES ('inf');
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale -6 cannot hold an infinite value.
+INSERT INTO num_typemod_test (millions) VALUES (999500000);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale -6 must round to an absolute value less than 10^9.
+INSERT INTO num_typemod_test (thousands) VALUES (999500);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale -3 must round to an absolute value less than 10^6.
+INSERT INTO num_typemod_test (units) VALUES (999.5);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale 0 must round to an absolute value less than 10^3.
+INSERT INTO num_typemod_test (thousandths) VALUES (0.9995);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale 3 must round to an absolute value less than 1.
+INSERT INTO num_typemod_test (millionths) VALUES (0.0009995);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale 6 must round to an absolute value less than 10^-3.
 --
 -- Test some corner cases for multiplication
 --
@@ -1529,6 +2287,12 @@ select 4769999999999999999999999999999999999999999999999999999999999999999999999
                                                                                      ?column?                                                                                     
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  47699999999999999999999999999999999999999999999999999999999999999999999999999999999999985230000000000000000000000000000000000000000000000000000000000000000000000000000000000001
+(1 row)
+
+select trim_scale((0.1 - 2e-16383) * (0.1 - 3e-16383));
+ trim_scale 
+------------
+       0.01
 (1 row)
 
 --
@@ -1613,6 +2377,57 @@ select div(12345678901234567890, 123) * 123 + 12345678901234567890 % 123;
 (1 row)
 
 --
+-- Test some corner cases for square root
+--
+select sqrt(1.000000000000003::numeric);
+       sqrt        
+-------------------
+ 1.000000000000001
+(1 row)
+
+select sqrt(1.000000000000004::numeric);
+       sqrt        
+-------------------
+ 1.000000000000002
+(1 row)
+
+select sqrt(96627521408608.56340355805::numeric);
+        sqrt         
+---------------------
+ 9829929.87811248648
+(1 row)
+
+select sqrt(96627521408608.56340355806::numeric);
+        sqrt         
+---------------------
+ 9829929.87811248649
+(1 row)
+
+select sqrt(515549506212297735.073688290367::numeric);
+          sqrt          
+------------------------
+ 718017761.766585921184
+(1 row)
+
+select sqrt(515549506212297735.073688290368::numeric);
+          sqrt          
+------------------------
+ 718017761.766585921185
+(1 row)
+
+select sqrt(8015491789940783531003294973900306::numeric);
+       sqrt        
+-------------------
+ 89529278953540017
+(1 row)
+
+select sqrt(8015491789940783531003294973900307::numeric);
+       sqrt        
+-------------------
+ 89529278953540018
+(1 row)
+
+--
 -- Test code path for raising to integer powers
 --
 select 10.0 ^ -2147483648 as rounds_to_zero;
@@ -1656,6 +2471,24 @@ select 0.12 ^ (-20);
  2608405330458882702.5529619561355838
 (1 row)
 
+select 1.000000000123 ^ (-2147483648);
+      ?column?      
+--------------------
+ 0.7678656556403084
+(1 row)
+
+select coalesce(nullif(0.9999999999 ^ 23300000000000, 0), 0) as rounds_to_zero;
+ rounds_to_zero 
+----------------
+              0
+(1 row)
+
+select round(((1 - 1.500012345678e-1000) ^ 1.45e1003) * 1e1000);
+                          round                           
+----------------------------------------------------------
+ 25218976308958387188077465658068501556514992509509282366
+(1 row)
+
 -- cases that used to error out
 select 0.12 ^ (-25);
                  ?column?                  
@@ -1667,6 +2500,43 @@ select 0.5678 ^ (-85);
                 ?column?                
 ----------------------------------------
  782333637740774446257.7719390061997396
+(1 row)
+
+select coalesce(nullif(0.9999999999 ^ 70000000000000, 0), 0) as underflows;
+ underflows 
+------------
+          0
+(1 row)
+
+-- negative base to integer powers
+select (-1.0) ^ 2147483646;
+      ?column?      
+--------------------
+ 1.0000000000000000
+(1 row)
+
+select (-1.0) ^ 2147483647;
+      ?column?       
+---------------------
+ -1.0000000000000000
+(1 row)
+
+select (-1.0) ^ 2147483648;
+      ?column?      
+--------------------
+ 1.0000000000000000
+(1 row)
+
+select (-1.0) ^ 1000000000000000;
+      ?column?      
+--------------------
+ 1.0000000000000000
+(1 row)
+
+select (-1.0) ^ 1000000000000001;
+      ?column?       
+---------------------
+ -1.0000000000000000
 (1 row)
 
 --
@@ -1787,6 +2657,36 @@ select exp(1.0::numeric(71,70));
  2.7182818284590452353602874713526624977572470936999595749669676277240766
 (1 row)
 
+select exp('nan'::numeric);
+ exp 
+-----
+ NaN
+(1 row)
+
+select exp('inf'::numeric);
+   exp    
+----------
+ Infinity
+(1 row)
+
+select exp('-inf'::numeric);
+ exp 
+-----
+   0
+(1 row)
+
+select coalesce(nullif(exp(-5000::numeric), 0), 0) as rounds_to_zero;
+ rounds_to_zero 
+----------------
+              0
+(1 row)
+
+select coalesce(nullif(exp(-10000::numeric), 0), 0) as underflows;
+ underflows 
+------------
+          0
+(1 row)
+
 -- cases that used to generate inaccurate results
 select exp(32.999);
          exp         
@@ -1858,6 +2758,12 @@ select * from generate_series('nan'::numeric, 100::numeric, 10::numeric);
 ERROR:  start value cannot be NaN
 select * from generate_series(0::numeric, 'nan'::numeric, 10::numeric);
 ERROR:  stop value cannot be NaN
+select * from generate_series('inf'::numeric, 'inf'::numeric, 10::numeric);
+ERROR:  start value cannot be infinity
+select * from generate_series(0::numeric, 'inf'::numeric, 10::numeric);
+ERROR:  stop value cannot be infinity
+select * from generate_series(0::numeric, '42'::numeric, '-inf'::numeric);
+ERROR:  step size cannot be infinity
 -- Checks maximum, output is truncated
 select (i / (10::numeric ^ 131071))::numeric(1,0)
 	from generate_series(6 * (10::numeric ^ 131071),
@@ -2063,6 +2969,12 @@ select scale(numeric 'NaN');
       
 (1 row)
 
+select scale(numeric 'inf');
+ scale 
+-------
+      
+(1 row)
+
 select scale(NULL::numeric);
  scale 
 -------
@@ -2112,6 +3024,144 @@ select scale(-13.000000000000000);
 (1 row)
 
 --
+-- Tests for min_scale()
+--
+select min_scale(numeric 'NaN') is NULL; -- should be true
+ ?column? 
+----------
+ t
+(1 row)
+
+select min_scale(numeric 'inf') is NULL; -- should be true
+ ?column? 
+----------
+ t
+(1 row)
+
+select min_scale(0);                     -- no digits
+ min_scale 
+-----------
+         0
+(1 row)
+
+select min_scale(0.00);                  -- no digits again
+ min_scale 
+-----------
+         0
+(1 row)
+
+select min_scale(1.0);                   -- no scale
+ min_scale 
+-----------
+         0
+(1 row)
+
+select min_scale(1.1);                   -- scale 1
+ min_scale 
+-----------
+         1
+(1 row)
+
+select min_scale(1.12);                  -- scale 2
+ min_scale 
+-----------
+         2
+(1 row)
+
+select min_scale(1.123);                 -- scale 3
+ min_scale 
+-----------
+         3
+(1 row)
+
+select min_scale(1.1234);                -- scale 4, filled digit
+ min_scale 
+-----------
+         4
+(1 row)
+
+select min_scale(1.12345);               -- scale 5, 2 NDIGITS
+ min_scale 
+-----------
+         5
+(1 row)
+
+select min_scale(1.1000);                -- 1 pos in NDIGITS
+ min_scale 
+-----------
+         1
+(1 row)
+
+select min_scale(1e100);                 -- very big number
+ min_scale 
+-----------
+         0
+(1 row)
+
+--
+-- Tests for trim_scale()
+--
+select trim_scale(numeric 'NaN');
+ trim_scale 
+------------
+        NaN
+(1 row)
+
+select trim_scale(numeric 'inf');
+ trim_scale 
+------------
+   Infinity
+(1 row)
+
+select trim_scale(1.120);
+ trim_scale 
+------------
+       1.12
+(1 row)
+
+select trim_scale(0);
+ trim_scale 
+------------
+          0
+(1 row)
+
+select trim_scale(0.00);
+ trim_scale 
+------------
+          0
+(1 row)
+
+select trim_scale(1.1234500);
+ trim_scale 
+------------
+    1.12345
+(1 row)
+
+select trim_scale(110123.12475871856128000);
+      trim_scale       
+-----------------------
+ 110123.12475871856128
+(1 row)
+
+select trim_scale(-1123.124718561280000000);
+    trim_scale     
+-------------------
+ -1123.12471856128
+(1 row)
+
+select trim_scale(-13.00000000000000000000);
+ trim_scale 
+------------
+        -13
+(1 row)
+
+select trim_scale(1e100);
+                                              trim_scale                                               
+-------------------------------------------------------------------------------------------------------
+ 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+(1 row)
+
+--
 -- Tests for SUM()
 --
 -- cases that need carry propagation
@@ -2127,3 +3177,163 @@ SELECT SUM((-9999)::numeric) FROM generate_series(1, 100000);
  -999900000
 (1 row)
 
+--
+-- Tests for VARIANCE()
+--
+CREATE TABLE num_variance (a numeric);
+INSERT INTO num_variance VALUES (0);
+INSERT INTO num_variance VALUES (3e-500);
+INSERT INTO num_variance VALUES (-3e-500);
+INSERT INTO num_variance VALUES (4e-500 - 1e-16383);
+INSERT INTO num_variance VALUES (-4e-500 + 1e-16383);
+-- variance is just under 12.5e-1000 and so should round down to 12e-1000
+SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
+ trim_scale 
+------------
+         12
+(1 row)
+
+-- check that parallel execution produces the same result
+BEGIN;
+ALTER TABLE num_variance SET (parallel_workers = 4);
+SET LOCAL parallel_setup_cost = 0;
+SET LOCAL max_parallel_workers_per_gather = 4;
+SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
+ trim_scale 
+------------
+         12
+(1 row)
+
+ROLLBACK;
+-- case where sum of squares would overflow but variance does not
+DELETE FROM num_variance;
+INSERT INTO num_variance SELECT 9e131071 + x FROM generate_series(1, 5) x;
+SELECT variance(a) FROM num_variance;
+      variance      
+--------------------
+ 2.5000000000000000
+(1 row)
+
+-- check that parallel execution produces the same result
+BEGIN;
+ALTER TABLE num_variance SET (parallel_workers = 4);
+SET LOCAL parallel_setup_cost = 0;
+SET LOCAL max_parallel_workers_per_gather = 4;
+SELECT variance(a) FROM num_variance;
+      variance      
+--------------------
+ 2.5000000000000000
+(1 row)
+
+ROLLBACK;
+DROP TABLE num_variance;
+--
+-- Tests for GCD()
+--
+SELECT a, b, gcd(a, b), gcd(a, -b), gcd(-b, a), gcd(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 46375::numeric),
+             (433125::numeric, 46375::numeric),
+             (43312.5::numeric, 4637.5::numeric),
+             (4331.250::numeric, 463.75000::numeric),
+             ('inf', '0'),
+             ('inf', '42'),
+             ('inf', 'inf')
+     ) AS v(a, b);
+    a     |     b     |   gcd   |   gcd   |   gcd   |   gcd   
+----------+-----------+---------+---------+---------+---------
+        0 |         0 |       0 |       0 |       0 |       0
+        0 |       NaN |     NaN |     NaN |     NaN |     NaN
+        0 |     46375 |   46375 |   46375 |   46375 |   46375
+   433125 |     46375 |     875 |     875 |     875 |     875
+  43312.5 |    4637.5 |    87.5 |    87.5 |    87.5 |    87.5
+ 4331.250 | 463.75000 | 8.75000 | 8.75000 | 8.75000 | 8.75000
+ Infinity |         0 |     NaN |     NaN |     NaN |     NaN
+ Infinity |        42 |     NaN |     NaN |     NaN |     NaN
+ Infinity |  Infinity |     NaN |     NaN |     NaN |     NaN
+(9 rows)
+
+--
+-- Tests for LCM()
+--
+SELECT a,b, lcm(a, b), lcm(a, -b), lcm(-b, a), lcm(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 13272::numeric),
+             (13272::numeric, 13272::numeric),
+             (423282::numeric, 13272::numeric),
+             (42328.2::numeric, 1327.2::numeric),
+             (4232.820::numeric, 132.72000::numeric),
+             ('inf', '0'),
+             ('inf', '42'),
+             ('inf', 'inf')
+     ) AS v(a, b);
+    a     |     b     |     lcm      |     lcm      |     lcm      |     lcm      
+----------+-----------+--------------+--------------+--------------+--------------
+        0 |         0 |            0 |            0 |            0 |            0
+        0 |       NaN |          NaN |          NaN |          NaN |          NaN
+        0 |     13272 |            0 |            0 |            0 |            0
+    13272 |     13272 |        13272 |        13272 |        13272 |        13272
+   423282 |     13272 |     11851896 |     11851896 |     11851896 |     11851896
+  42328.2 |    1327.2 |    1185189.6 |    1185189.6 |    1185189.6 |    1185189.6
+ 4232.820 | 132.72000 | 118518.96000 | 118518.96000 | 118518.96000 | 118518.96000
+ Infinity |         0 |          NaN |          NaN |          NaN |          NaN
+ Infinity |        42 |          NaN |          NaN |          NaN |          NaN
+ Infinity |  Infinity |          NaN |          NaN |          NaN |          NaN
+(10 rows)
+
+SELECT lcm(9999 * (10::numeric)^131068 + (10::numeric^131068 - 1), 2); -- overflow
+ERROR:  value overflows numeric format
+--
+-- Tests for factorial
+--
+SELECT factorial(4);
+ factorial 
+-----------
+        24
+(1 row)
+
+SELECT factorial(15);
+   factorial   
+---------------
+ 1307674368000
+(1 row)
+
+SELECT factorial(100000);
+ERROR:  value overflows numeric format
+SELECT factorial(0);
+ factorial 
+-----------
+         1
+(1 row)
+
+SELECT factorial(-4);
+ERROR:  factorial of a negative number is undefined
+--
+-- Tests for pg_lsn()
+--
+SELECT pg_lsn(23783416::numeric);
+  pg_lsn   
+-----------
+ 0/16AE7F8
+(1 row)
+
+SELECT pg_lsn(0::numeric);
+ pg_lsn 
+--------
+ 0/0
+(1 row)
+
+SELECT pg_lsn(18446744073709551615::numeric);
+      pg_lsn       
+-------------------
+ FFFFFFFF/FFFFFFFF
+(1 row)
+
+SELECT pg_lsn(-1::numeric);
+ERROR:  pg_lsn out of range
+SELECT pg_lsn(18446744073709551616::numeric);
+ERROR:  pg_lsn out of range
+SELECT pg_lsn('NaN'::numeric);
+ERROR:  cannot convert NaN to pg_lsn

@@ -27,14 +27,16 @@
  */
 CATALOG(pg_yb_role_profile,8054,YbRoleProfileRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8056,YbRoleProfileRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
+	Oid			    oid;			            /* oid */
 	Oid				rolprfrole;					/* OID of the role */
 	Oid				rolprfprofile;				/* OID of the profile */
 	char			rolprfstatus;				/* Refer to the status
 												   categories below */
 	int32			rolprffailedloginattempts;	/* Number of failed attempts */
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
-	timestamptz		rolprflockeduntil;			/* Lock timeout expiration
-												   time, if any */
+	/* Lock timeout expiration time, if any */
+	timestamptz		rolprflockeduntil BKI_FORCE_NULL BKI_DEFAULT(_null_);
+
 #endif
 } FormData_pg_yb_role_profile;
 
@@ -44,6 +46,8 @@ CATALOG(pg_yb_role_profile,8054,YbRoleProfileRelationId) BKI_SHARED_RELATION BKI
  * ----------------
  */
 typedef FormData_pg_yb_role_profile *Form_pg_yb_role_profile;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_role_profile_oid_index, 8055, YbRoleProfileOidIndexId, on pg_yb_role_profile using btree(oid oid_ops));
 
 /*
  * Symbolic values for rolprfstatus

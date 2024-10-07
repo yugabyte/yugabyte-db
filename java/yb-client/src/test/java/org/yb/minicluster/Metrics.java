@@ -163,11 +163,16 @@ public class Metrics {
      public final String query;
 
      public final long calls;
-     public final double total_time;
-     public final double min_time;
-     public final double max_time;
-     public final double mean_time;
-     public final double stddev_time;
+     public final double total_exec_time;
+     public final double total_plan_time;
+     public final double min_exec_time;
+     public final double min_plan_time;
+     public final double max_exec_time;
+     public final double max_plan_time;
+     public final double mean_exec_time;
+     public final double mean_plan_time;
+     public final double stddev_exec_time;
+     public final double stddev_plan_time;
      public final long rows;
      public final long local_blks_hit;
      public final long local_blks_read;
@@ -191,11 +196,16 @@ public class Metrics {
       query = metric.get("query").getAsString();
 
       calls = metric.get("calls").getAsLong();
-      total_time = metric.get("total_time").getAsDouble();
-      min_time = metric.get("min_time").getAsDouble();
-      max_time = metric.get("max_time").getAsDouble();
-      mean_time = metric.get("mean_time").getAsDouble();
-      stddev_time = metric.get("stddev_time").getAsDouble();
+      total_exec_time = metric.get("total_exec_time").getAsDouble();
+      total_plan_time = metric.get("total_plan_time").getAsDouble();
+      min_exec_time = metric.get("min_exec_time").getAsDouble();
+      min_plan_time = metric.get("min_plan_time").getAsDouble();
+      max_exec_time = metric.get("max_exec_time").getAsDouble();
+      max_plan_time = metric.get("max_plan_time").getAsDouble();
+      mean_exec_time = metric.get("mean_exec_time").getAsDouble();
+      mean_plan_time = metric.get("mean_plan_time").getAsDouble();
+      stddev_exec_time = metric.get("stddev_exec_time").getAsDouble();
+      stddev_plan_time = metric.get("stddev_plan_time").getAsDouble();
       rows = metric.get("rows").getAsLong();
       local_blks_hit = metric.get("local_blks_hit").getAsLong();
       local_blks_read = metric.get("local_blks_read").getAsLong();

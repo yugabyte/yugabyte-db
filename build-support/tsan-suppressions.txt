@@ -202,3 +202,8 @@ signal:yb::PstackWatcher::DumpStacks
 # Unexpected tsan warning in the getpwuid_r standard thread safe function which is called
 # from the pqGetpwuid function
 race:pqGetpwuid
+
+# Usearch and HNSWlib have non-trivial synchronisation, so TSAN detects false positive races there.
+# https://gist.github.com/spolitov/1624c44446196a0a35b6b9ceae877f92
+race:unum::usearch
+race:hnswlib::HierarchicalNSW

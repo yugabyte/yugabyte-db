@@ -46,6 +46,11 @@
 #   HEADERS_built_$(MODULE) -- as above but built first (also NOT cleaned)
 #   REGRESS -- list of regression test cases (without suffix)
 #   REGRESS_OPTS -- additional switches to pass to pg_regress
+#   TAP_TESTS -- switch to enable TAP tests
+#   ISOLATION -- list of isolation test cases
+#   ISOLATION_OPTS -- additional switches to pass to pg_isolation_regress
+#   NO_INSTALL -- don't define an install target, useful for test modules
+#     that don't need their build products to be installed
 #   NO_INSTALLCHECK -- don't define an installcheck target, useful e.g. if
 #     tests require special configuration, or don't use pg_regress
 #   EXTRA_CLEAN -- extra files to remove in 'make clean'
@@ -224,6 +229,8 @@ all: all-lib
 endif # MODULE_big
 
 
+ifndef NO_INSTALL
+
 install: all installdirs
 ifneq (,$(EXTENSION))
 	$(INSTALL_DATA) $(addprefix $(srcdir)/, $(addsuffix .control, $(EXTENSION))) '$(DESTDIR)$(datadir)/extension/'
@@ -333,6 +340,15 @@ endif # with_llvm
 uninstall: uninstall-lib
 endif # MODULE_big
 
+else # NO_INSTALL
+
+# Need this so that temp-install builds artifacts not meant for
+# installation (Normally, check should depend on all, but we don't do
+# that because of parallel make risk (dbf2ec1a1c0).)
+install: all
+
+endif # NO_INSTALL
+
 
 clean:
 ifdef MODULES
@@ -361,6 +377,12 @@ ifeq ($(PORTNAME), win)
 	rm -f regress.def
 endif
 endif # REGRESS
+ifdef TAP_TESTS
+	rm -rf tmp_check/
+endif
+ifdef ISOLATION
+	rm -rf output_iso/ tmp_check_iso/
+endif
 
 ifdef MODULE_big
 clean: clean-lib
@@ -371,12 +393,7 @@ distclean maintainer-clean: clean
 
 ifdef REGRESS
 
-# Select database to use for running the tests
-ifneq ($(USE_MODULE_DB),)
-  REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB_MODULE)
-else
-  REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
-endif
+REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
 
 # When doing a VPATH build, must copy over the data files so that the
 # driver script can find them.  We have to use an absolute path for
@@ -395,28 +412,51 @@ $(test_files_build): $(abs_builddir)/%: $(srcdir)/%
 	$(MKDIR_P) $(dir $@)
 	ln -s $< $@
 endif # VPATH
+endif # REGRESS
 
 .PHONY: submake
 submake:
 ifndef PGXS
 	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
+	$(MAKE) -C $(top_builddir)/src/test/isolation all
 endif
 
-# against installed postmaster
+ifdef ISOLATION
+ISOLATION_OPTS += --dbname=$(ISOLATION_TESTDB)
+endif
+
+# Standard rules to run regression tests including multiple test suites.
+# Runs against an installed postmaster.
 ifndef NO_INSTALLCHECK
 installcheck: submake $(REGRESS_PREP)
+ifdef REGRESS
 	$(pg_regress_installcheck) $(REGRESS_OPTS) $(REGRESS)
 endif
+ifdef ISOLATION
+	$(pg_isolation_regress_installcheck) $(ISOLATION_OPTS) $(ISOLATION)
+endif
+ifdef TAP_TESTS
+	$(prove_installcheck)
+endif
+endif # NO_INSTALLCHECK
 
+# Runs independently of any installation
 ifdef PGXS
 check:
 	@echo '"$(MAKE) check" is not supported.'
 	@echo 'Do "$(MAKE) install", then "$(MAKE) installcheck" instead.'
 else
 check: submake $(REGRESS_PREP)
+ifdef REGRESS
 	$(pg_regress_check) $(REGRESS_OPTS) $(REGRESS)
 endif
-endif # REGRESS
+ifdef ISOLATION
+	$(pg_isolation_regress_check) $(ISOLATION_OPTS) $(ISOLATION)
+endif
+ifdef TAP_TESTS
+	$(prove_check)
+endif
+endif # PGXS
 
 ifndef NO_TEMP_INSTALL
 checkprep: EXTRA_INSTALL+=$(subdir)

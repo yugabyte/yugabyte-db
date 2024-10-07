@@ -214,7 +214,6 @@ typedef unsigned int YBCPgOid;
 // Structure to hold the values of hidden columns when passing tuple from YB to PG.
 typedef struct PgSysColumns {
   // Postgres system columns.
-  uint32_t oid;
   uint32_t tableoid;
   uint32_t xmin;
   uint32_t cmin;
@@ -794,6 +793,12 @@ typedef struct PgExplicitRowLockParams {
   int pg_wait_policy;
   int docdb_wait_policy;
 } YBCPgExplicitRowLockParams;
+
+typedef struct PgExplicitRowLockErrorInfo {
+  bool is_initialized;
+  int pg_wait_policy;
+  YBCPgOid conflicting_table_id;
+} YBCPgExplicitRowLockErrorInfo;
 
 // For creating a new table...
 typedef enum PgYbrowidMode {

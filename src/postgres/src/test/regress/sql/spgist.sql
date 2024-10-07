@@ -71,3 +71,21 @@ create index spgist_point_idx2 on spgist_point_tbl using spgist(p) with (fillfac
 -- Modify fillfactor in existing index
 alter index spgist_point_idx set (fillfactor = 90);
 reindex index spgist_point_idx;
+
+-- Test index over a domain
+create domain spgist_text as varchar;
+create table spgist_domain_tbl (f1 spgist_text);
+create index spgist_domain_idx on spgist_domain_tbl using spgist(f1);
+insert into spgist_domain_tbl values('fee'), ('fi'), ('fo'), ('fum');
+explain (costs off)
+select * from spgist_domain_tbl where f1 = 'fo';
+select * from spgist_domain_tbl where f1 = 'fo';
+
+-- test an unlogged table, mostly to get coverage of spgistbuildempty
+create unlogged table spgist_unlogged_tbl(id serial, b box);
+create index spgist_unlogged_idx on spgist_unlogged_tbl using spgist (b);
+insert into spgist_unlogged_tbl(b)
+select box(point(i,j))
+  from generate_series(1,100,5) i,
+       generate_series(1,10,5) j;
+-- leave this table around, to help in testing dump/restore

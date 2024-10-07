@@ -2,21 +2,22 @@
 #
 # Makefile for src/bin/pgevent
 #
-# Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Copyright (c) 1996-2022, PostgreSQL Global Development Group
 #
 #-------------------------------------------------------------------------
 
 PGFILEDESC = "Eventlog message formatter"
 PGAPPICON=win32
 
-PGFILESHLIB = 1
 subdir = src/bin/pgevent
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 ifeq ($(PORTNAME), win32)
 
-OBJS=pgevent.o pgmsgevent.o
+OBJS = \
+	pgevent.o \
+	pgmsgevent.o
 NAME=pgevent
 
 SHLIB_LINK =

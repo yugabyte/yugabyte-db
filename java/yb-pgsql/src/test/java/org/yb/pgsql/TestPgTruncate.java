@@ -129,11 +129,11 @@ public class TestPgTruncate extends BasePgSQLTest {
       statement.execute("TRUNCATE " + tableName);
 
       assertOneRow(statement, String.format(countRowsStmt, tableName), 0);
-      assertOneRow(statement, String.format(countRelTuplesStmt, tableName), 0);
+      assertOneRow(statement, String.format(countRelTuplesStmt, tableName), -1);
       assertOneRow(statement, String.format(countRelTuplesStmt,
-        String.format("%s_pkey", tableName)), 0);
+        String.format("%s_pkey", tableName)), -1);
       assertOneRow(statement, String.format(countRelTuplesStmt,
-        String.format("%s_%s_idx", tableName, "vi")), 0);
+        String.format("%s_%s_idx", tableName, "vi")), -1);
 
     }
 

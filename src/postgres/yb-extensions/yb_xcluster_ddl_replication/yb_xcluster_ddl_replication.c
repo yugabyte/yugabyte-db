@@ -181,7 +181,7 @@ InsertIntoDDLQueue(Jsonb *yb_data)
  *   individual DDL (eg setting oids).
  */
 void
-DisallowMultiStatementQueries(const char *command_tag)
+DisallowMultiStatementQueries(CommandTag command_tag)
 {
 	List *parse_tree = pg_parse_query(debug_query_string);
 	ListCell *lc;
@@ -190,7 +190,7 @@ DisallowMultiStatementQueries(const char *command_tag)
 	{
 		++count;
 		RawStmt *stmt = (RawStmt *) lfirst(lc);
-		const char *stmt_command_tag = CreateCommandTag(stmt->stmt);
+		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
 
 		if (count > 1 || command_tag != stmt_command_tag)
 			elog(ERROR,
@@ -217,15 +217,16 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
-	(void) AddStringJsonEntry(state, "command_tag", trig_data->tag);
+	(void) AddStringJsonEntry(state, "command_tag",
+							  GetCommandTagName(trig_data->tag));
 
 	const char *current_user = GetUserNameFromId(save_userid, false);
 	if (current_user)
 		(void) AddStringJsonEntry(state, "user", current_user);
 
-	FunctionCallInfoData fcinfo;
-	InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-	const char *cur_schema = DatumGetCString(current_schema(&fcinfo));
+	LOCAL_FCINFO(fcinfo, 0);
+	InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+	const char *cur_schema = DatumGetCString(current_schema(fcinfo));
 	if (cur_schema)
 		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
@@ -395,9 +396,9 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 static bool
 IsInIgnoreList(EventTriggerData *trig_data)
 {
-	if (strncmp(trig_data->tag, "CREATE EXTENSION", 16) == 0 ||
-		strncmp(trig_data->tag, "DROP EXTENSION", 14) == 0 ||
-		strncmp(trig_data->tag, "ALTER EXTENSION", 15) == 0)
+	if (trig_data->tag == CMDTAG_CREATE_EXTENSION ||
+		trig_data->tag == CMDTAG_DROP_EXTENSION ||
+		trig_data->tag == CMDTAG_ALTER_EXTENSION)
 	{
 		return true;
 	}

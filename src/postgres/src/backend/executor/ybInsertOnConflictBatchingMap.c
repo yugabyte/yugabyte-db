@@ -9,10 +9,9 @@
 
 #include "postgres.h"
 
-#include "access/hash.h"
+#include "common/hashfn.h"
 #include "executor/tuptable.h"
 #include "utils/datum.h"
-#include "utils/hashutils.h"
 
 /*
  * YbInsertOnConflictBatchingKey
@@ -63,13 +62,6 @@ static bool YbInsertOnConflictBatching_equal(struct yb_insert_on_conflict_batchi
 #define SH_GET_HASH(tb, a) a->hash
 #define SH_DEFINE
 #include "lib/simplehash.h"
-
-/* Taken from pg_bitutils.c of upstream PG 15.2 */
-static inline uint32
-pg_rotate_left32(uint32 word, int n)
-{
-	return (word << n) | (word >> (32 - n));
-}
 
 /*
  * YbInsertOnConflictBatching_hash

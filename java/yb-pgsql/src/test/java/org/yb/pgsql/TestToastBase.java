@@ -46,7 +46,7 @@ public abstract class TestToastBase extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_pg_conf_csv", "max_stack_depth='7680kB'");
+    appendToYsqlPgConf(flags, "max_stack_depth='7680kB'");
     return flags;
   }
 

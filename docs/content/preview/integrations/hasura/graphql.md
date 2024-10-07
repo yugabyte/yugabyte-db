@@ -8,7 +8,7 @@ menu:
   preview_integrations:
     identifier: graphql
     parent: hasura
-    weight: 580
+    weight: 20
 type: docs
 ---
 

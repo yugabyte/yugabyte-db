@@ -1,4 +1,8 @@
-<!-- doc/src/sgml/ref/set_session_auth.sgml -->
+<!--
+doc/src/sgml/ref/set_session_auth.sgml
+PostgreSQL documentation
+-->
+
 <refentry id="sql-set-session-authorization">
  <indexterm zone="sql-set-session-authorization">
   <primary>SET SESSION AUTHORIZATION</primary>
@@ -41,7 +45,7 @@ RESET SESSION AUTHORIZATION
    identifier is normally equal to the session user identifier, but
    might change temporarily in the context of <literal>SECURITY DEFINER</literal>
    functions and similar mechanisms; it can also be changed by
-   <xref linkend="sql-set-role"/>.
+   <link linkend="sql-set-role"><command>SET ROLE</command></link>.
    The current user identifier is relevant for permission checking.
   </para>
 
@@ -54,7 +58,7 @@ RESET SESSION AUTHORIZATION
 
   <para>
    The <literal>SESSION</literal> and <literal>LOCAL</literal> modifiers act the same
-   as for the regular <xref linkend="sql-set"/>
+   as for the regular <link linkend="sql-set"><command>SET</command></link>
    command.
   </para>
 
@@ -80,7 +84,7 @@ RESET SESSION AUTHORIZATION
 <programlisting>
 SELECT SESSION_USER, CURRENT_USER;
 
- session_user | current_user 
+ session_user | current_user
 --------------+--------------
  peter        | peter
 
@@ -88,7 +92,7 @@ SET SESSION AUTHORIZATION 'paul';
 
 SELECT SESSION_USER, CURRENT_USER;
 
- session_user | current_user 
+ session_user | current_user
 --------------+--------------
  paul         | paul
 </programlisting>

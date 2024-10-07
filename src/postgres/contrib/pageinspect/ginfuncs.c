@@ -2,14 +2,12 @@
  * ginfuncs.c
  *		Functions to investigate the content of GIN indexes
  *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/ginfuncs.c
  */
 #include "postgres.h"
-
-#include "pageinspect.h"
 
 #include "access/gin.h"
 #include "access/gin_private.h"
@@ -18,6 +16,7 @@
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "pageinspect.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
@@ -46,11 +45,23 @@ gin_metapage_info(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
 	page = get_page_from_raw(raw_page);
 
-	opaq = (GinPageOpaque) PageGetSpecialPointer(page);
+	if (PageIsNew(page))
+		PG_RETURN_NULL();
+
+	if (PageGetSpecialSize(page) != MAXALIGN(sizeof(GinPageOpaqueData)))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("input page is not a valid GIN metapage"),
+				 errdetail("Expected special size %d, got %d.",
+						   (int) MAXALIGN(sizeof(GinPageOpaqueData)),
+						   (int) PageGetSpecialSize(page))));
+
+	opaq = GinPageGetOpaque(page);
+
 	if (opaq->flags != GIN_META)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -104,11 +115,22 @@ gin_page_opaque_info(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
 	page = get_page_from_raw(raw_page);
 
-	opaq = (GinPageOpaque) PageGetSpecialPointer(page);
+	if (PageIsNew(page))
+		PG_RETURN_NULL();
+
+	if (PageGetSpecialSize(page) != MAXALIGN(sizeof(GinPageOpaqueData)))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("input page is not a valid GIN data leaf page"),
+				 errdetail("Expected special size %d, got %d.",
+						   (int) MAXALIGN(sizeof(GinPageOpaqueData)),
+						   (int) PageGetSpecialSize(page))));
+
+	opaq = GinPageGetOpaque(page);
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -145,7 +167,8 @@ gin_page_opaque_info(PG_FUNCTION_ARGS)
 	values[0] = Int64GetDatum(opaq->rightlink);
 	values[1] = Int32GetDatum(opaq->maxoff);
 	values[2] = PointerGetDatum(construct_array(flags, nflags,
-												TEXTOID, -1, false, 'i'));
+												TEXTOID,
+												-1, false, TYPALIGN_INT));
 
 	/* Build and return the result tuple. */
 	resultTuple = heap_form_tuple(tupdesc, values, nulls);
@@ -170,7 +193,7 @@ gin_leafpage_items(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -184,15 +207,21 @@ gin_leafpage_items(PG_FUNCTION_ARGS)
 
 		page = get_page_from_raw(raw_page);
 
+		if (PageIsNew(page))
+		{
+			MemoryContextSwitchTo(mctx);
+			PG_RETURN_NULL();
+		}
+
 		if (PageGetSpecialSize(page) != MAXALIGN(sizeof(GinPageOpaqueData)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("input page is not a valid GIN data leaf page"),
-					 errdetail("Special size %d, expected %d",
-							   (int) PageGetSpecialSize(page),
-							   (int) MAXALIGN(sizeof(GinPageOpaqueData)))));
+					 errdetail("Expected special size %d, got %d.",
+							   (int) MAXALIGN(sizeof(GinPageOpaqueData)),
+							   (int) PageGetSpecialSize(page))));
 
-		opaq = (GinPageOpaque) PageGetSpecialPointer(page);
+		opaq = GinPageGetOpaque(page);
 		if (opaq->flags != (GIN_DATA | GIN_LEAF | GIN_COMPRESSED))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -248,7 +277,7 @@ gin_leafpage_items(PG_FUNCTION_ARGS)
 													ndecoded,
 													TIDOID,
 													sizeof(ItemPointerData),
-													false, 's'));
+													false, TYPALIGN_SHORT));
 		pfree(tids_datum);
 		pfree(tids);
 
@@ -260,6 +289,6 @@ gin_leafpage_items(PG_FUNCTION_ARGS)
 
 		SRF_RETURN_NEXT(fctx, result);
 	}
-	else
-		SRF_RETURN_DONE(fctx);
+
+	SRF_RETURN_DONE(fctx);
 }

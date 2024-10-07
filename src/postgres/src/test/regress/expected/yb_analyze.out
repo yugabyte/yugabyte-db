@@ -1,3 +1,5 @@
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
 -- Create new tables
 CREATE TABLE x(a int PRIMARY KEY, b text);
 CREATE TABLE y(a int PRIMARY KEY, b text);
@@ -22,8 +24,8 @@ ORDER BY
   relname, staattnum;
  relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
 ---------+-----------+-----------+-------------+----------+-------------
- x       |         0 |           |             |          |
- y       |         0 |           |             |          |
+ x       |        -1 |           |             |          |
+ y       |        -1 |           |             |          |
 (2 rows)
 
 -- Explain queries without statistics

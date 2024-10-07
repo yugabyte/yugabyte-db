@@ -20,8 +20,8 @@
 
 #include "yb/consensus/metadata.pb.h"
 
-#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 

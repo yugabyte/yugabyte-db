@@ -3,7 +3,7 @@
  * tsrank.c
  *		rank tsvector by tsquery
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -16,11 +16,10 @@
 #include <limits.h>
 #include <math.h>
 
+#include "miscadmin.h"
 #include "tsearch/ts_utils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "miscadmin.h"
-
 
 static const float weights[] = {0.1f, 0.2f, 0.4f, 1.0f};
 
@@ -337,8 +336,8 @@ calc_rank_or(const float *w, TSVector t, TSQuery q)
 				}
 			}
 /*
-			limit (sum(i/i^2),i->inf) = pi^2/6
-			resj = sum(wi/i^2),i=1,noccurence,
+			limit (sum(1/i^2),i=1,inf) = pi^2/6
+			resj = sum(wi/i^2),i=1,noccurrence,
 			wi - should be sorted desc,
 			don't sort for now, just choose maximum weight. This should be corrected
 			Oleg Bartunov
@@ -557,14 +556,18 @@ typedef struct
 #define QR_GET_OPERAND_DATA(q, v) \
 	( (q)->operandData + (((QueryItem*)(v)) - GETQUERY((q)->query)) )
 
-static bool
-checkcondition_QueryOperand(void *checkval, QueryOperand *val, ExecPhraseData *data)
+/*
+ * TS_execute callback for matching a tsquery operand to QueryRepresentation
+ */
+static TSTernaryValue
+checkcondition_QueryOperand(void *checkval, QueryOperand *val,
+							ExecPhraseData *data)
 {
 	QueryRepresentation *qr = (QueryRepresentation *) checkval;
 	QueryRepresentationOperand *opData = QR_GET_OPERAND_DATA(qr, val);
 
 	if (!opData->operandexists)
-		return false;
+		return TS_NO;
 
 	if (data)
 	{
@@ -574,7 +577,7 @@ checkcondition_QueryOperand(void *checkval, QueryOperand *val, ExecPhraseData *d
 			data->pos += MAXQROPOS - opData->npos;
 	}
 
-	return true;
+	return TS_YES;
 }
 
 typedef struct
@@ -694,7 +697,7 @@ Cover(DocRepresentation *doc, int len, QueryRepresentation *qr, CoverExt *ext)
 		fillQueryRepresentationData(qr, ptr);
 
 		if (TS_execute(GETQUERY(qr->query), (void *) qr,
-					   TS_EXEC_CALC_NOT, checkcondition_QueryOperand))
+					   TS_EXEC_EMPTY, checkcondition_QueryOperand))
 		{
 			if (WEP_GETPOS(ptr->pos) < ext->p)
 			{
@@ -738,7 +741,7 @@ get_docrep(TSVector txt, QueryRepresentation *qr, int *doclen)
 	doc = (DocRepresentation *) palloc(sizeof(DocRepresentation) * len);
 
 	/*
-	 * Iterate through query to make DocRepresentaion for words and it's
+	 * Iterate through query to make DocRepresentation for words and it's
 	 * entries satisfied by query
 	 */
 	for (i = 0; i < qr->query->size; i++)
@@ -854,8 +857,7 @@ calc_rank_cd(const float4 *arrdata, TSVector txt, TSQuery query, int method)
 	double		Wdoc = 0.0;
 	double		invws[lengthof(weights)];
 	double		SumDist = 0.0,
-				PrevExtPos = 0.0,
-				CurExtPos = 0.0;
+				PrevExtPos = 0.0;
 	int			NExtent = 0;
 	QueryRepresentation qr;
 
@@ -886,6 +888,7 @@ calc_rank_cd(const float4 *arrdata, TSVector txt, TSQuery query, int method)
 	{
 		double		Cpos = 0.0;
 		double		InvSum = 0.0;
+		double		CurExtPos;
 		int			nNoise;
 		DocRepresentation *ptr = ext.begin;
 

@@ -13,30 +13,24 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="hasura-1/">
-      <div class="head">
-        <img class="icon" src="/images/develop/graphql/hasura/hasura.png" aria-hidden="true"/>
-        <div class="title">Build applications with Hasura</div>
-      </div>
-      <div class="body">
-          Use the Hasura GraphQL engine with YugabyteDB to explore using GraphQL to add data and run queries.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Build applications with Hasura"
+    body="Use the Hasura GraphQL engine with YugabyteDB to explore using GraphQL to add data and run queries."
+    href="hasura-1/"
+    icon="/images/develop/graphql/hasura/hasura.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="graphql/">
-      <div class="head">
-        <img class="icon" src="/images/develop/graphql/hasura/hasura.png" aria-hidden="true"/>
-        <div class="title">Benchmarking</div>
-      </div>
-      <div class="body">
-          Use the Yugabyte benchmark tool in GraphQL applications.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Benchmarking"
+    body="Use the Yugabyte benchmark tool in GraphQL applications."
+    href="graphql/"
+    icon="/images/develop/graphql/hasura/hasura.png">}}
 
-</div>
+  {{<index/item
+    title="Connect to Hasura Cloud"
+    body="Connect a YugabyteDB Aeon cluster to a Hasura Cloud project."
+    href="hasura-cloud/"
+    icon="/images/develop/graphql/hasura/hasura.png">}}
+
+{{</index/block>}}

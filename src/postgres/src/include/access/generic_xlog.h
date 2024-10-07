@@ -4,7 +4,7 @@
  *	  Generic xlog API definition.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/generic_xlog.h
@@ -32,7 +32,7 @@ typedef struct GenericXLogState GenericXLogState;
 /* API for construction of generic xlog records */
 extern GenericXLogState *GenericXLogStart(Relation relation);
 extern Page GenericXLogRegisterBuffer(GenericXLogState *state, Buffer buffer,
-						  int flags);
+									  int flags);
 extern XLogRecPtr GenericXLogFinish(GenericXLogState *state);
 extern void GenericXLogAbort(GenericXLogState *state);
 

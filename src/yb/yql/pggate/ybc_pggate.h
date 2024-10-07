@@ -33,6 +33,11 @@ typedef const void * ConstSliceVector;
 typedef void * SliceSet;
 typedef const void * ConstSliceSet;
 
+typedef struct PgExplicitRowLockStatus {
+  YBCStatus ybc_status;
+  YBCPgExplicitRowLockErrorInfo error_info;
+} YBCPgExplicitRowLockStatus;
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
@@ -47,7 +52,7 @@ void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats);
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 uint64_t YBCPgGetSessionID();
 
@@ -446,9 +451,6 @@ YBCStatus YBCPgBackfillIndex(
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
-// Check if any statement target is a system column reference.
-YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
-
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.
@@ -568,7 +570,8 @@ YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          bool is_region_local,
                          YBCPgStatement *handle);
 
-YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+YBCStatus YBCPgInitRandomState(
+    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
 
@@ -763,10 +766,10 @@ YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
                                           bool relation_is_region_local);
 
 // Explicit Row-level Locking.
-YBCStatus YBCAddExplicitRowLockIntent(
-    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
-    YBCPgOid database_oid, const YBCPgExplicitRowLockParams *params, bool is_region_local);
-YBCStatus YBCFlushExplicitRowLockIntents();
+YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid, YBCPgOid database_oid,
+    const YBCPgExplicitRowLockParams *params, bool is_region_local);
+YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 bool YBCIsInitDbModeEnvVarSet();
 

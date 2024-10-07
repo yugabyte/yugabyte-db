@@ -1,0 +1,15 @@
+*.o
+*.a
+*.so
+*.so.*
+*.sdf
+*.opensdf
+*.suo
+*.*.user
+*.bc
+/.deps/
+/orafce.sql
+/orafce.sql.in
+/results
+[Oo]bj/
+[Bb]in/

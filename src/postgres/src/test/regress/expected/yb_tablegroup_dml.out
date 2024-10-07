@@ -334,5 +334,8 @@ DROP TABLEGROUP tg_test2;
 -- drop database
 \c yugabyte
 DROP DATABASE test_tablegroups;
-\c test_tablegroups
-\connect: FATAL:  database "test_tablegroups" does not exist
+SELECT count(*) FROM pg_database WHERE datname = 'test_tablegroups';
+ count 
+-------
+     0
+(1 row)

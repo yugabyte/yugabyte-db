@@ -78,6 +78,8 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-8'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
+Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
+
 ## Fundamentals
 
 Learn how to perform common tasks required for Java application development using the YugabyteDB JDBC driver.
@@ -92,10 +94,12 @@ The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 
 The following connection properties need to be added to enable load balancing:
 
-- `load-balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `load-balance` - enable cluster-aware load balancing by setting this property to one of the allowed values other than `false`; disabled by default.
 - `topology-keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes ). You can change this value by including the `yb-servers-refresh-interval` parameter.
+
+For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 

@@ -39,7 +39,7 @@ class PgSample : public PgDmlRead {
   Status Prepare() override;
 
   // Prepare PgSamplePicker's random state
-  Status InitRandomState(double rstate_w, uint64 rand_state);
+  Status InitRandomState(double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
   // Make PgSamplePicker to process next block of rows in the table.
   // The has_more parameter is set to true if table has and needs more blocks.

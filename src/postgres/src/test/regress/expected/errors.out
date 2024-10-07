@@ -92,8 +92,8 @@ ERROR:  relation "nonesuch" does not exist
 alter table nonesuch rename to stud_emp;
 ERROR:  relation "nonesuch" does not exist
 -- conflict
-alter table stud_emp rename to aggtest;
-ERROR:  relation "aggtest" already exists
+alter table stud_emp rename to student;
+ERROR:  relation "student" already exists
 -- self-conflict
 alter table stud_emp rename to stud_emp;
 ERROR:  relation "stud_emp" already exists
@@ -108,8 +108,8 @@ ERROR:  column "nonesuchatt" does not exist
 alter table emp rename column salary to manager;
 ERROR:  column "manager" of relation "stud_emp" already exists
 -- conflict
-alter table emp rename column salary to oid;
-ERROR:  column name "oid" conflicts with a system column name
+alter table emp rename column salary to ctid;
+ERROR:  column name "ctid" conflicts with a system column name
 --
 -- TRANSACTION STUFF
 -- not in a xact
@@ -445,10 +445,3 @@ NULL);
 ERROR:  syntax error at or near "NUL"
 LINE 16: ...L, id2 TEXT NOT NULL PRIMARY KEY, id3 INTEGER NOT NUL, id4 I...
                                                               ^
--- Check that stack depth detection mechanism works and
--- max_stack_depth is not set too high
-create function infinite_recurse() returns int as
-'select infinite_recurse()' language sql;
-\set VERBOSITY terse
-select infinite_recurse();
-ERROR:  stack depth limit exceeded

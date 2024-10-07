@@ -26,20 +26,22 @@ ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="param
 ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
     RENAME TO <replaceable>new_name</replaceable>
 ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
-    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
     SET SCHEMA <replaceable>new_schema</replaceable>
 ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
-    DEPENDS ON EXTENSION <replaceable>extension_name</replaceable>
+    [ NO ] DEPENDS ON EXTENSION <replaceable>extension_name</replaceable>
 
 <phrase>where <replaceable class="parameter">action</replaceable> is one of:</phrase>
 
     CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
-    IMMUTABLE | STABLE | VOLATILE | [ NOT ] LEAKPROOF
+    IMMUTABLE | STABLE | VOLATILE
+    [ NOT ] LEAKPROOF
     [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER
     PARALLEL { UNSAFE | RESTRICTED | SAFE }
     COST <replaceable class="parameter">execution_cost</replaceable>
     ROWS <replaceable class="parameter">result_rows</replaceable>
+    SUPPORT <replaceable class="parameter">support_function</replaceable>
     SET <replaceable class="parameter">configuration_parameter</replaceable> { TO | = } { <replaceable class="parameter">value</replaceable> | DEFAULT }
     SET <replaceable class="parameter">configuration_parameter</replaceable> FROM CURRENT
     RESET <replaceable class="parameter">configuration_parameter</replaceable>
@@ -152,10 +154,16 @@ ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="param
    </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">extension_name</replaceable></term>
+    <term><literal>DEPENDS ON EXTENSION <replaceable class="parameter">extension_name</replaceable></literal></term>
+    <term><literal>NO DEPENDS ON EXTENSION <replaceable class="parameter">extension_name</replaceable></literal></term>
     <listitem>
      <para>
-      The name of the extension that the function is to depend on.
+      This form marks the function as dependent on the extension, or no longer
+      dependent on that extension if <literal>NO</literal> is specified.
+      A function that's marked as dependent on an extension is dropped when the
+      extension is dropped, even if <literal>CASCADE</literal> is not specified.
+      A function can depend upon multiple extensions, and will be dropped when
+      any one of those extensions is dropped.
      </para>
     </listitem>
    </varlistentry>
@@ -246,6 +254,24 @@ ALTER FUNCTION <replaceable>name</replaceable> [ ( [ [ <replaceable class="param
        function.  See <xref linkend="sql-createfunction"/> for more information.
       </para>
      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SUPPORT</literal> <replaceable class="parameter">support_function</replaceable></term>
+
+    <listitem>
+     <para>
+      Set or change the planner support function to use for this function.
+      See <xref linkend="xfunc-optimization"/> for details.  You must be
+      superuser to use this option.
+     </para>
+
+     <para>
+      This option cannot be used to remove the support function altogether,
+      since it must name a new support function.  Use <command>CREATE OR
+      REPLACE FUNCTION</command> if you need to do that.
+     </para>
+    </listitem>
    </varlistentry>
 
      <varlistentry>

@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.PitrConfig;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
@@ -61,6 +63,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
 import java.util.UUID;
@@ -80,6 +83,7 @@ import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.SnapshotInfo;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
+import play.libs.Json;
 
 public class BackupUtil {
 
@@ -880,5 +884,22 @@ public class BackupUtil {
         .forEach(
             (keyspace, tables) -> mergedKeyspaceTables.add(new KeyspaceTables(tables, keyspace)));
     return mergedKeyspaceTables;
+  }
+
+  public static boolean getManualIncrementPITEnabled(UUID baseBackupUUID) {
+    Optional<Backup> baseBackupOpt = Backup.maybeGet(baseBackupUUID);
+    if (baseBackupOpt.isPresent()) {
+      UUID scheduleUUID = baseBackupOpt.get().getScheduleUUID();
+      if (scheduleUUID != null) {
+        Optional<Schedule> scheduleOpt = Schedule.maybeGet(scheduleUUID);
+        if (scheduleOpt.isPresent()) {
+          BackupRequestParams params =
+              Json.fromJson(scheduleOpt.get().getTaskParams(), BackupRequestParams.class);
+          return params.enablePointInTimeRestore;
+        }
+      }
+      return baseBackupOpt.get().getBackupInfo().isPointInTimeRestoreEnabled();
+    }
+    return false;
   }
 }

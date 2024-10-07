@@ -13,15 +13,22 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 
 // Test upgrade and rollback with a simple workload with updates and selects.
-class BasicUpgradeTest : public UpgradeTestBase {
+class BasicUpgradeTest : public UpgradeTestBase, public ::testing::WithParamInterface<std::string> {
  public:
-  explicit BasicUpgradeTest(const std::string& from_version) : UpgradeTestBase(from_version) {}
+  BasicUpgradeTest() : UpgradeTestBase(GetParam()) {}
   virtual ~BasicUpgradeTest() = default;
+
+  void TearDown() override {
+    keep_running_ = false;
+    test_thread_holder_.JoinAll();
+    UpgradeTestBase::TearDown();
+  }
 
   Status VerifyVersionFromDB(const std::string& expected_version) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
@@ -70,6 +77,7 @@ class BasicUpgradeTest : public UpgradeTestBase {
     return Status::OK();
   }
 
+ private:
   static constexpr auto kAccountBalanceTable = "account_balance";
   static const int kNumUsers = 3;
   Status PrepareTableAndStartWorkload() {
@@ -85,21 +93,14 @@ class BasicUpgradeTest : public UpgradeTestBase {
     LOG(INFO) << "Initial data inserted: ";
     RETURN_NOT_OK(PrintAccountBalanceTable());
 
-    test_thread_holder_.AddThread([this]() {
-      update_status_ = RunUpdateAccountBalanceWorkload(keep_running_, allow_errors_);
-    });
-    test_thread_holder_.AddThread(
-        [this]() { scan_status_ = RunScanAccountBalanceWorkload(keep_running_, allow_errors_); });
+    test_thread_holder_.AddThread([this]() { update_status_ = RunUpdateAccountBalanceWorkload(); });
+    test_thread_holder_.AddThread([this]() { scan_status_ = RunScanAccountBalanceWorkload(); });
 
-    // Wait for a few runs.
-    SleepFor(3s);
-
-    return Status::OK();
+    return WaitFor10Runs();
   }
 
   Status StopWorkloadAndCheckResults() {
-    // Wait for a few extra runs.
-    SleepFor(10s);
+    RETURN_NOT_OK(WaitFor10Runs());
 
     keep_running_ = false;
     test_thread_holder_.JoinAll();
@@ -127,7 +128,7 @@ class BasicUpgradeTest : public UpgradeTestBase {
   // Setup the connection if needed. Return true if a valid connection is ready.
   // If we failed to create a connection and allowed_errors is set then returns false, else returns
   // bad Status.
-  Result<bool> TrySetupConn(std::unique_ptr<pgwrapper::PGConn>& conn, bool allow_errors) {
+  Result<bool> TrySetupConn(std::unique_ptr<pgwrapper::PGConn>& conn, bool cached_allow_errors) {
     if (conn) {
       return true;
     }
@@ -137,23 +138,29 @@ class BasicUpgradeTest : public UpgradeTestBase {
     };
 
     auto conn_result = try_create_conn();
-    if (conn_result.ok()) {
-      conn.swap(*conn_result);
-      return true;
+    Status status;
+    if (!conn_result.ok()) {
+      status = std::move(conn_result.status());
+    } else {
+      status =
+          conn_result.get()->Execute(Format("SET statement_timeout = '$0s'", 2 * kTimeMultiplier));
+      if (status.ok()) {
+        conn.swap(*conn_result);
+        return true;
+      }
     }
 
-    if (allow_errors) {
-      LOG(ERROR) << "Failed to create new connection: " << conn_result.status();
+    if (ErrorsAllowed(cached_allow_errors)) {
+      LOG(ERROR) << "Failed to create new connection: " << status;
 
       return false;
     }
 
-    return conn_result.status();
+    return status;
   }
 
   // Move 500 from each user except the last one to the last user.
-  Status RunUpdateAccountBalanceWorkload(
-      std::atomic<bool>& keep_running, std::atomic<bool>& allow_errors) {
+  Status RunUpdateAccountBalanceWorkload() {
     std::ostringstream oss;
     oss << "BEGIN TRANSACTION;";
     for (int i = 0; i < kNumUsers - 1; i++) {
@@ -167,30 +174,31 @@ class BasicUpgradeTest : public UpgradeTestBase {
     std::unique_ptr<pgwrapper::PGConn> conn;
     LOG(INFO) << "Running update workload in a loop: " << update_query;
 
-    while (keep_running) {
+    while (keep_running_) {
       SleepFor(100ms);
 
-      if (!VERIFY_RESULT(TrySetupConn(conn, allow_errors))) {
+      auto cached_allow_errors = allow_errors_.load();
+      if (!VERIFY_RESULT(TrySetupConn(conn, cached_allow_errors))) {
         continue;
       }
 
       auto status = conn->Execute(update_query);
       if (!status.ok()) {
         LOG(WARNING) << "Failed to update: " << status;
-        if (!allow_errors) {
+        if (!ErrorsAllowed(cached_allow_errors)) {
           return status;
         }
         conn.reset();
         continue;
       }
+      num_updates_++;
     }
 
     return Status::OK();
   }
 
   // Make sure the total balance remains unchanged.
-  Status RunScanAccountBalanceWorkload(
-      std::atomic<bool>& keep_running, std::atomic<bool>& allow_errors) {
+  Status RunScanAccountBalanceWorkload() {
     const auto select_salary_sum_query = Format("SELECT SUM(salary) FROM $0", kAccountBalanceTable);
     int64_t total_salary = 0;
     {
@@ -200,17 +208,18 @@ class BasicUpgradeTest : public UpgradeTestBase {
 
     LOG(INFO) << "Running consumer workload in a loop: " << select_salary_sum_query;
     std::unique_ptr<pgwrapper::PGConn> conn;
-    while (keep_running) {
+    while (keep_running_) {
       SleepFor(100ms);
 
-      if (!VERIFY_RESULT(TrySetupConn(conn, allow_errors))) {
+      auto cached_allow_errors = allow_errors_.load();
+      if (!VERIFY_RESULT(TrySetupConn(conn, cached_allow_errors))) {
         continue;
       }
 
       auto salary_result = conn->FetchRow<int64_t>(select_salary_sum_query);
       if (!salary_result.ok()) {
         LOG(WARNING) << "Failed to fetch salary sum: " << salary_result.status();
-        if (!allow_errors) {
+        if (!ErrorsAllowed(cached_allow_errors)) {
           return salary_result.status();
         }
         conn.reset();
@@ -223,40 +232,46 @@ class BasicUpgradeTest : public UpgradeTestBase {
         return STATUS_FORMAT(
             IllegalState, "Expected total $0, received total $1", total_salary, *salary_result);
       }
+      num_scans_++;
     }
 
     return Status::OK();
   }
 
+  // allow_errors_ can change in the middle of a connection, or command execution. Its ok to fail if
+  // allow_errors_ was set before execution started, or is currently set.
+  bool ErrorsAllowed(bool cached_allow_errors) {
+    return allow_errors_.load() || cached_allow_errors;
+  }
+
+  // Wait for 10 runs of the update and scan workload.
+  Status WaitFor10Runs() {
+    uint32 initial_num_updates = num_updates_;
+    uint32 initial_num_scans = num_scans_;
+    return LoggedWaitFor(
+        [&]() {
+          YB_LOG_EVERY_N_SECS(INFO, 1) << YB_STRUCT_TO_STRING(
+              initial_num_scans, num_scans_, initial_num_updates, num_updates_);
+          return num_updates_ >= initial_num_updates + 10 && num_scans_ >= initial_num_scans + 10;
+        },
+        10s, "Waiting for 10 runs of update and scan");
+  }
+
  private:
   Status update_status_, scan_status_;
+  std::atomic<uint32> num_updates_{0}, num_scans_{0};
   std::atomic<bool> keep_running_{true}, allow_errors_{false};
 };
 
-class TestBasicUpgradeFrom_2_20_2_4 : public BasicUpgradeTest {
- public:
-  TestBasicUpgradeFrom_2_20_2_4() : BasicUpgradeTest(kBuild_2_20_2_4) {}
-};
+TEST_P(BasicUpgradeTest, TestUpgrade) { ASSERT_OK(TestUpgrade()); }
 
-TEST_F_EX(BasicUpgradeTest, TestUpgradeFrom_2_20_2_4, TestBasicUpgradeFrom_2_20_2_4) {
-  ASSERT_OK(TestUpgrade());
-}
+TEST_P(BasicUpgradeTest, TestRollback) { ASSERT_OK(TestRollback()); }
 
-TEST_F_EX(BasicUpgradeTest, TestRollbackTo_2_20_2_4, TestBasicUpgradeFrom_2_20_2_4) {
-  ASSERT_OK(TestRollback());
-}
-
-class TestBasicUpgradeFrom_2024_1_0_1 : public BasicUpgradeTest {
- public:
-  TestBasicUpgradeFrom_2024_1_0_1() : BasicUpgradeTest(kBuild_2024_1_0_1) {}
-};
-
-TEST_F_EX(BasicUpgradeTest, TestUpgradeFrom_2024_1_0_1, TestBasicUpgradeFrom_2024_1_0_1) {
-  ASSERT_OK(TestUpgrade());
-}
-
-TEST_F_EX(BasicUpgradeTest, TestRollbackTo_2024_1_0_1, TestBasicUpgradeFrom_2024_1_0_1) {
-  ASSERT_OK(TestRollback());
-}
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2_20_2_4, BasicUpgradeTest, ::testing::Values(kBuild_2_20_2_4));
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2024_1_0_1, BasicUpgradeTest, ::testing::Values(kBuild_2024_1_0_1));
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2024_2_0_0, BasicUpgradeTest, ::testing::Values(kBuild_2024_2_0_0));
 
 }  // namespace yb

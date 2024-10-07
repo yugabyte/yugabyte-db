@@ -125,9 +125,10 @@ static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
 static void yb_ash_ExecutorFinish(QueryDesc *queryDesc);
 static void yb_ash_ExecutorEnd(QueryDesc *queryDesc);
 static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+								  bool readOnlyTree,
 								  ProcessUtilityContext context, ParamListInfo params,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
-								  char *completionTag);
+								  QueryCompletion *qc);
 
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
@@ -308,8 +309,6 @@ YbAshShmemInit(void)
 							 YbAshShmemSize(),
 							 &found);
 
-	LWLockRegisterTranche(LWTRANCHE_YB_ASH_CIRCULAR_BUFFER, "yb_ash_circular_buffer");
-
 	if (!found)
 	{
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
@@ -426,9 +425,10 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 
 static void
 yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					  bool readOnlyTree,
 					  ProcessUtilityContext context, ParamListInfo params,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
-					  char *completionTag)
+					  QueryCompletion *qc)
 {
 	uint64		query_id;
 	bool		skip_nested_level;
@@ -460,12 +460,14 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
+								readOnlyTree,
 								context, params, queryEnv,
-								dest, completionTag);
+								dest, qc);
 		else
 			standard_ProcessUtility(pstmt, queryString,
+									readOnlyTree,
 									context, params, queryEnv,
-									dest, completionTag);
+									dest, qc);
 		if (!skip_nested_level)
 		{
 			--nested_level;

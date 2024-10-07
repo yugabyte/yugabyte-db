@@ -36,7 +36,7 @@
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
-#include "nodes/relation.h"
+#include "access/relation.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
@@ -404,7 +404,7 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 		/* Flush sorter. */
 		bool result = tuplesort_gettupleslot(
 			sorter, true,  false, result_slot, NULL);
-		Assert(!result || !result_slot->tts_isempty);
+		Assert(!result || !TTS_EMPTY(result_slot));
 		if (result)
 			return result_slot;
 
@@ -456,6 +456,10 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	ExprContext *econtext = CreateExprContext(estate);
 	TupleDesc outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
 
+	const TupleTableSlotOps * innerops = bnlstate->js.ps.innerops;
+	bool inneropsfixed = bnlstate->js.ps.inneropsfixed;
+	bool inneropsset = bnlstate->js.ps.inneropsset;
+
 	Assert(UseHash(plan, bnlstate));
 
 	int num_hashClauseInfos = plan->num_hashClauseInfos;
@@ -486,13 +490,28 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 						  &bnlstate->innerHashFunctions,
 						  &bnlstate->outerHashFunctions);
 
+	/*
+	 * Since hash table stores MinimalTuple, both LHS and RHS operands of the
+	 * hash table comparator will be MinimalTuple. The operands will be stored
+	 * in ecxt_innertuple and ecxt_outertuple (see TupleHashTableMatch).
+	 * Therefore, both innerops and outerops must be TTSOpsMinimalTuple when
+	 * compiling the hash table comparator. outerops is already handled in
+	 * ExecInitYbBatchedNestLoop. Temporarily set the innerops to
+	 * &TTSOpsMinimalTuple.
+	 */
+	bnlstate->js.ps.innerops = &TTSOpsMinimalTuple;
+	bnlstate->js.ps.inneropsfixed = true;
+	bnlstate->js.ps.inneropsset = true;
+
 	ExprState *tab_eq_fn =
 		ybPrepareOuterExprsEqualFn(outerParamExprs,
 								   eqops,
 								   (PlanState *) bnlstate);
 
-	bnlstate->hashslot =
-		ExecAllocTableSlot(&estate->es_tupleTable, outer_tdesc);
+	/* revert to original innerops */
+	bnlstate->js.ps.innerops = innerops;
+	bnlstate->js.ps.inneropsfixed = inneropsfixed;
+	bnlstate->js.ps.inneropsset = inneropsset;
 
 	/* Per batch memory context for the hash table to work with */
 	MemoryContext tablecxt =
@@ -535,7 +554,7 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		while (binfo->current != NULL)
 		{
 			BucketTupleInfo *btinfo = lfirst(binfo->current);
-			binfo->current = binfo->current->next;
+			binfo->current = lnext(binfo->tuples, binfo->current);
 
 			while (btinfo != NULL && !(btinfo->matched))
 			{
@@ -581,7 +600,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	{
 		BucketTupleInfo *curr_btinfo = lfirst(binfo->current);
 		/* Change the bucket's state for the next invocation of this method */
-		binfo->current = binfo->current->next;
+		binfo->current = lnext(binfo->tuples, binfo->current);
 
 		/* We found a bucket with more matching tuples to be outputted. */
 		BucketTupleInfo *btinfo = (BucketTupleInfo *) curr_btinfo;
@@ -649,7 +668,7 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 	bool isnew = false;
 
 	Assert(!TupIsNull(slot));
-	TupleHashEntry orig_data = LookupTupleHashEntry(ht, slot, &isnew);
+	TupleHashEntry orig_data = LookupTupleHashEntry(ht, slot, &isnew, NULL);
 	Assert(orig_data != NULL);
 	Assert(orig_data->firstTuple != NULL);
 	MemoryContext cxt = MemoryContextSwitchTo(ht->tablecxt);
@@ -747,7 +766,7 @@ RegisterOuterMatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	(void) econtext;
 	ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo,
 								 bnlstate->bnl_batchTupNo - 1);
-	lc->data.int_value = 1;
+	lfirst_int(lc) = 1;
 	return;
 }
 
@@ -867,8 +886,11 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			if (have_outer_tuple)
 			{
 				elog(DEBUG2, "saving new outer tuple information");
-				econtext->ecxt_outertuple = outerTupleSlot;
-				LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, outerTupleSlot);
+				if (TTS_IS_MINIMALTUPLE(outerTupleSlot))
+					econtext->ecxt_outertuple = outerTupleSlot;
+				else
+					ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
+				LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 			}
 		}
 
@@ -890,7 +912,7 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			Assert(nlp->paramval->varattno > 0);
 			if (have_outer_tuple)
 			{
-				prm->value = slot_getattr(outerTupleSlot,
+				prm->value = slot_getattr(econtext->ecxt_outertuple,
 										  nlp->paramval->varattno,
 										  &(prm->isnull));
 			}
@@ -973,10 +995,23 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 		eflags &= ~EXEC_FLAG_REWIND;
 	innerPlanState(bnlstate) = ExecInitNode(innerPlan(plan), estate, eflags);
 
+	PlanState *outerPlan = outerPlanState(bnlstate);
+	if (outerPlan->resultopsset && outerPlan->resultops != &TTSOpsMinimalTuple)
+	{
+		/* the outer tuple always has to be a minimal tuple */
+		bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
+		bnlstate->js.ps.outeropsfixed = true;
+		bnlstate->js.ps.outeropsset = true;
+		bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
+			ExecInitExtraTupleSlot(estate,
+								   outerPlan->ps_ResultTupleDesc,
+								   &TTSOpsMinimalTuple);
+	}
+
 	/*
 	 * Initialize result slot, type and projection.
 	 */
-	ExecInitResultTupleSlotTL(&bnlstate->js.ps);
+	ExecInitResultTupleSlotTL(&bnlstate->js.ps, &TTSOpsMinimalTuple);
 	ExecAssignProjectionInfo(&bnlstate->js.ps, NULL);
 
 	/*
@@ -1007,7 +1042,8 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 			bnlstate->nl_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(
 					estate,
-					ExecGetResultType(innerPlanState(bnlstate)));
+					ExecGetResultType(innerPlanState(bnlstate)),
+					&TTSOpsVirtual);
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d",

@@ -547,7 +547,8 @@ void MasterTestBase::CheckTables(
 }
 
 Status MasterTestBase::UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
-  RETURN_NOT_OK(cluster_client_->ChangeMasterClusterConfig(*cluster_config));
+  RETURN_NOT_OK(
+      cluster_client_->ChangeMasterClusterConfig(SysClusterConfigEntryPB(*cluster_config)));
   // Bump version number by 1, so we do not have to re-query.
   cluster_config->set_version(cluster_config->version() + 1);
   LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();

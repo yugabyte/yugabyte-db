@@ -149,6 +149,10 @@ struct FullCompactionStatus {
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
+  // todo(zdrudi): this is not safe because we can free TSDescriptor objects now. Safe-ish for now
+  // because we look at these structs to verify no raw pointers exist before freeing any
+  // TSDescriptor object.
+  // https://github.com/yugabyte/yugabyte-db/issues/24044
   TSDescriptor* ts_desc;
   tablet::RaftGroupStatePB state;
   PeerRole role;
@@ -865,6 +869,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   bool colocated() const;
 
   ::yb::master::SysNamespaceEntryPB_State state() const;
+
+  ::yb::master::SysNamespaceEntryPB_YsqlNextMajorVersionState ysql_next_major_version_state() const;
 
   std::string ToString() const override;
 

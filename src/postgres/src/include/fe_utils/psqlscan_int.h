@@ -27,14 +27,14 @@
  * is the start state number, which is easy enough to manage --- usually,
  * in fact, we just need to set it to INITIAL when changing lexers.  But to
  * make that work at all, we must use re-entrant lexers, so that all the
- * relevant state is in the yyscanner_t attached to the PsqlScanState;
+ * relevant state is in the yyscan_t attached to the PsqlScanState;
  * if we were using lexers with separate static state we would soon end up
  * with dangling buffer pointers in one or the other.  Also note that this
  * is unlikely to work very nicely if the lexers aren't all built with the
  * same flex version, or if they don't use the same flex options.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/psqlscan_int.h
@@ -110,9 +110,18 @@ typedef struct PsqlScanStateData
 	 * and updated with its finishing state on exit.
 	 */
 	int			start_state;	/* yylex's starting/finishing state */
+	int			state_before_str_stop;	/* start cond. before end quote */
 	int			paren_depth;	/* depth of nesting in parentheses */
 	int			xcdepth;		/* depth of nesting in slash-star comments */
 	char	   *dolqstart;		/* current $foo$ quote start string */
+
+	/*
+	 * State to track boundaries of BEGIN ... END blocks in function
+	 * definitions, so that semicolons do not send query too early.
+	 */
+	int			identifier_count;	/* identifiers since start of statement */
+	char		identifiers[4]; /* records the first few identifiers */
+	int			begin_depth;	/* depth of begin/end pairs */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,
@@ -128,21 +137,21 @@ typedef struct PsqlScanStateData
  * compatible lexers.
  */
 extern void psqlscan_push_new_buffer(PsqlScanState state,
-						 const char *newstr, const char *varname);
+									 const char *newstr, const char *varname);
 extern void psqlscan_pop_buffer_stack(PsqlScanState state);
 extern void psqlscan_select_top_buffer(PsqlScanState state);
 extern bool psqlscan_var_is_current_source(PsqlScanState state,
-							   const char *varname);
+										   const char *varname);
 extern YY_BUFFER_STATE psqlscan_prepare_buffer(PsqlScanState state,
-						const char *txt, int len,
-						char **txtcopy);
+											   const char *txt, int len,
+											   char **txtcopy);
 extern void psqlscan_emit(PsqlScanState state, const char *txt, int len);
 extern char *psqlscan_extract_substring(PsqlScanState state,
-						   const char *txt, int len);
+										const char *txt, int len);
 extern void psqlscan_escape_variable(PsqlScanState state,
-						 const char *txt, int len,
-						 PsqlScanQuoteType quote);
+									 const char *txt, int len,
+									 PsqlScanQuoteType quote);
 extern void psqlscan_test_variable(PsqlScanState state,
-					   const char *txt, int len);
+								   const char *txt, int len);
 
 #endif							/* PSQLSCAN_INT_H */

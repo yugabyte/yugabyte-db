@@ -149,6 +149,7 @@ ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
 ADD_YB_TEST(vector_index_docdb-test)
+ADD_YB_TEST(vector_lsm-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

@@ -260,7 +260,8 @@ public class TestPgWrapper extends BasePgSQLTest {
       statement.execute(
           "CREATE TABLE testnotnullconstraint (k int primary key, v1 text not null)");
       thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("null value in column \"v1\" violates not-null constraint");
+      thrown.expectMessage("null value in column \"v1\" of relation \"testnotnullconstraint\"" +
+                           " violates not-null constraint");
       statement.execute("INSERT INTO testnotnullconstraint(k, v1) VALUES (1, null)");
     }
   }

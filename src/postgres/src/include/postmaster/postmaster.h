@@ -3,7 +3,7 @@
  * postmaster.h
  *	  Exports from postmaster/postmaster.c.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/postmaster/postmaster.h
@@ -14,26 +14,27 @@
 #define _POSTMASTER_H
 
 /* GUC options */
-extern bool EnableSSL;
-extern int	ReservedBackends;
+extern PGDLLIMPORT bool EnableSSL;
+extern PGDLLIMPORT int ReservedBackends;
 extern PGDLLIMPORT int PostPortNumber;
-extern int	Unix_socket_permissions;
-extern char *Unix_socket_group;
-extern char *Unix_socket_directories;
-extern char *ListenAddresses;
-extern bool ClientAuthInProgress;
-extern int	PreAuthDelay;
-extern int	AuthenticationTimeout;
-extern bool Log_connections;
-extern bool log_hostname;
-extern bool enable_bonjour;
-extern char *bonjour_name;
-extern bool restart_after_crash;
+extern PGDLLIMPORT int Unix_socket_permissions;
+extern PGDLLIMPORT char *Unix_socket_group;
+extern PGDLLIMPORT char *Unix_socket_directories;
+extern PGDLLIMPORT char *ListenAddresses;
+extern PGDLLIMPORT bool ClientAuthInProgress;
+extern PGDLLIMPORT int PreAuthDelay;
+extern PGDLLIMPORT int AuthenticationTimeout;
+extern PGDLLIMPORT bool Log_connections;
+extern PGDLLIMPORT bool log_hostname;
+extern PGDLLIMPORT bool enable_bonjour;
+extern PGDLLIMPORT char *bonjour_name;
+extern PGDLLIMPORT bool restart_after_crash;
+extern PGDLLIMPORT bool remove_temp_files_after_crash;
 
 #ifdef WIN32
-extern HANDLE PostmasterHandle;
+extern PGDLLIMPORT HANDLE PostmasterHandle;
 #else
-extern int	postmaster_alive_fds[2];
+extern PGDLLIMPORT int postmaster_alive_fds[2];
 
 /*
  * Constants that represent which of postmaster_alive_fds is held by
@@ -48,10 +49,10 @@ extern PGDLLIMPORT const char *progname;
 
 extern void PostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
 extern void ClosePostmasterPorts(bool am_syslogger);
+extern void InitProcessGlobals(void);
 
 extern int	MaxLivePostmasterChildren(void);
 
-extern int	GetNumShmemAttachedBgworkers(void);
 extern bool PostmasterMarkPIDForWorkerNotify(int);
 
 #ifdef EXEC_BACKEND

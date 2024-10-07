@@ -21,7 +21,7 @@
  * The fields are separated by tabs. Lines beginning with # are comments, and
  * are ignored. Empty lines are also ignored.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/timeline.c
@@ -37,6 +37,7 @@
 #include "access/timeline.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
+#include "access/xlogarchive.h"
 #include "access/xlogdefs.h"
 #include "pgstat.h"
 #include "storage/fd.h"
@@ -77,7 +78,6 @@ readTimeLineHistory(TimeLineID targetTLI)
 	List	   *result;
 	char		path[MAXPGPATH];
 	char		histfname[MAXFNAMELEN];
-	char		fline[MAXPGPATH];
 	FILE	   *fd;
 	TimeLineHistoryEntry *entry;
 	TimeLineID	lasttli = 0;
@@ -122,15 +122,30 @@ readTimeLineHistory(TimeLineID targetTLI)
 	 * Parse the file...
 	 */
 	prevend = InvalidXLogRecPtr;
-	while (fgets(fline, sizeof(fline), fd) != NULL)
+	for (;;)
 	{
-		/* skip leading whitespace and check for # comment */
+		char		fline[MAXPGPATH];
+		char	   *res;
 		char	   *ptr;
 		TimeLineID	tli;
 		uint32		switchpoint_hi;
 		uint32		switchpoint_lo;
 		int			nfields;
 
+		pgstat_report_wait_start(WAIT_EVENT_TIMELINE_HISTORY_READ);
+		res = fgets(fline, sizeof(fline), fd);
+		pgstat_report_wait_end();
+		if (res == NULL)
+		{
+			if (ferror(fd))
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not read file \"%s\": %m", path)));
+
+			break;
+		}
+
+		/* skip leading whitespace and check for # comment */
 		for (ptr = fline; *ptr; ptr++)
 		{
 			if (!isspace((unsigned char) *ptr))
@@ -370,7 +385,11 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 			}
 			pgstat_report_wait_end();
 		}
-		CloseTransientFile(srcfd);
+
+		if (CloseTransientFile(srcfd) != 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not close file \"%s\": %m", path)));
 	}
 
 	/*
@@ -383,11 +402,12 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 			 "%s%u\t%X/%X\t%s\n",
 			 (srcfd < 0) ? "" : "\n",
 			 parentTLI,
-			 (uint32) (switchpoint >> 32), (uint32) (switchpoint),
+			 LSN_FORMAT_ARGS(switchpoint),
 			 reason);
 
 	nbytes = strlen(buffer);
 	errno = 0;
+	pgstat_report_wait_start(WAIT_EVENT_TIMELINE_HISTORY_WRITE);
 	if ((int) write(fd, buffer, nbytes) != nbytes)
 	{
 		int			save_errno = errno;
@@ -403,6 +423,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 				(errcode_for_file_access(),
 				 errmsg("could not write to file \"%s\": %m", tmppath)));
 	}
+	pgstat_report_wait_end();
 
 	pgstat_report_wait_start(WAIT_EVENT_TIMELINE_HISTORY_SYNC);
 	if (pg_fsync(fd) != 0)
@@ -411,11 +432,10 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 				 errmsg("could not fsync file \"%s\": %m", tmppath)));
 	pgstat_report_wait_end();
 
-	if (CloseTransientFile(fd))
+	if (CloseTransientFile(fd) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not close file \"%s\": %m", tmppath)));
-
 
 	/*
 	 * Now move the completed history file into place with its final name.
@@ -426,7 +446,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	 * Perform the rename using link if available, paranoidly trying to avoid
 	 * overwriting an existing file (there shouldn't be one).
 	 */
-	durable_link_or_rename(tmppath, path, ERROR);
+	durable_rename_excl(tmppath, path, ERROR);
 
 	/* The history file can be archived immediately. */
 	if (XLogArchivingActive())
@@ -490,11 +510,10 @@ writeTimeLineHistoryFile(TimeLineID tli, char *content, int size)
 				 errmsg("could not fsync file \"%s\": %m", tmppath)));
 	pgstat_report_wait_end();
 
-	if (CloseTransientFile(fd))
+	if (CloseTransientFile(fd) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not close file \"%s\": %m", tmppath)));
-
 
 	/*
 	 * Now move the completed history file into place with its final name.
@@ -505,7 +524,7 @@ writeTimeLineHistoryFile(TimeLineID tli, char *content, int size)
 	 * Perform the rename using link if available, paranoidly trying to avoid
 	 * overwriting an existing file (there shouldn't be one).
 	 */
-	durable_link_or_rename(tmppath, path, ERROR);
+	durable_rename_excl(tmppath, path, ERROR);
 }
 
 /*

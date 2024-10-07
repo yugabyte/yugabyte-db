@@ -94,7 +94,7 @@ CREATE TABLE S1.P_TBL_DEFAULT PARTITION OF S1.P_TBL DEFAULT;
 CREATE INDEX P_TBL_K_IDX on S1.P_TBL(k);
 ALTER TABLE S1.P_TBL SET SCHEMA S2;
 \d+ S2.P_TBL
-                                     Table "s2.p_tbl"
+                               Partitioned table "s2.p_tbl"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
  k      | integer |           | not null |         | plain    |              |

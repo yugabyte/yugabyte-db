@@ -64,8 +64,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState& stats_state,
-      YbctidReader&& ybctid_reader);
-  ~PgSession();
+      YbctidReader&& ybctid_reader,
+      bool is_pg_binary_upgrade);
+  virtual ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
@@ -350,6 +351,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgOperationBuffer buffer_;
 
   bool has_write_ops_in_ddl_mode_ = false;
+
+  // This session is upgrading to PG15.
+  const bool is_major_pg_version_upgrade_;
 };
 
 }  // namespace yb::pggate

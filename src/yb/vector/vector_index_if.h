@@ -28,10 +28,12 @@ namespace yb::vectorindex {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
+  using SearchResult = std::vector<VertexWithDistance<DistanceResult>>;
+
   virtual ~VectorIndexReaderIf() = default;
 
-  virtual std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) const = 0;
+  virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
+  virtual SearchResult Search(const Vector& query_vector, size_t max_num_results) const = 0;
 };
 
 template<IndexableVectorType Vector>
@@ -71,7 +73,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>()>;
 
 template<class Index>
-  auto CreateIndexFactory(const HNSWOptions& options) {
+auto CreateIndexFactory(const HNSWOptions& options) {
   return [options]() {
     return std::make_shared<Index>(options);
   };

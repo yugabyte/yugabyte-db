@@ -35,6 +35,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -67,6 +70,8 @@ public class TaskInfo extends Model {
 
   public static final Set<State> INCOMPLETE_STATES =
       Sets.immutableEnumSet(State.Created, State.Initializing, State.Running, State.Abort);
+
+  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
   /** These are the various states of the task and taskgroup. */
   public enum State {
@@ -212,16 +217,21 @@ public class TaskInfo extends Model {
     details.setError(error);
   }
 
+  @JsonIgnore
+  public synchronized String getVersion() {
+    return details == null ? "" : details.getVersion();
+  }
+
+  @JsonIgnore
+  public synchronized void setVersion(String version) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setVersion(version);
+  }
+
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
-  }
-
-  public UUID getTaskUUID() {
-    return uuid;
-  }
-
-  public void setTaskUUID(UUID taskUUID) {
-    uuid = taskUUID;
   }
 
   @JsonIgnore
@@ -233,8 +243,6 @@ public class TaskInfo extends Model {
   public JsonNode getRedactedParams() {
     return RedactingService.filterSecretFields(taskParams, RedactingService.RedactionTarget.LOGS);
   }
-
-  public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
 
   @Deprecated
   public static TaskInfo get(UUID taskUUID) {
@@ -274,26 +282,38 @@ public class TaskInfo extends Model {
         .findList();
   }
 
+  public static List<TaskInfo> getRecentParentTasksInStates(
+      Set<State> expectedStates, Duration timeWindow) {
+    ExpressionList<TaskInfo> query = find.query().where().isNull("parent_uuid");
+    if (CollectionUtils.isNotEmpty(expectedStates)) {
+      query = query.in("task_state", expectedStates);
+    }
+    if (timeWindow != null && !timeWindow.isZero()) {
+      Instant endTime = Instant.now().minus(timeWindow.getSeconds(), ChronoUnit.SECONDS);
+      query = query.gt("create_time", Date.from(endTime));
+    }
+    query = query.orderBy("create_time desc");
+    return query.findList();
+  }
+
   // Returns  partial object
   @JsonIgnore
   public List<TaskInfo> getSubTasks() {
     ExpressionList<TaskInfo> subTaskQuery =
-        TaskInfo.find
-            .query()
+        find.query()
             .select(GET_SUBTASKS_FG)
             .where()
-            .eq("parent_uuid", getTaskUUID())
+            .eq("parent_uuid", getUuid())
             .orderBy("position asc");
     return subTaskQuery.findList();
   }
 
   @JsonIgnore
   public List<TaskInfo> getIncompleteSubTasks() {
-    return TaskInfo.find
-        .query()
+    return find.query()
         .select(GET_SUBTASKS_FG)
         .where()
-        .eq("parent_uuid", getTaskUUID())
+        .eq("parent_uuid", getUuid())
         .in("task_state", INCOMPLETE_STATES)
         .findList();
   }
@@ -301,7 +321,7 @@ public class TaskInfo extends Model {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("taskType : ").append(taskType);
+    sb.append("taskType: ").append(taskType);
     sb.append(", ");
     sb.append("taskState: ").append(taskState);
     return sb.toString();
@@ -322,6 +342,7 @@ public class TaskInfo extends Model {
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
    *     subTaskGroups.
    */
+  @JsonIgnore
   public UserTaskDetails getUserTaskDetails(TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
     List<TaskInfo> result = getSubTasks();
@@ -352,7 +373,7 @@ public class TaskInfo extends Model {
       }
       if (taskCache != null) {
         // Populate extra details about task progress from Task Cache.
-        JsonNode cacheData = taskCache.get(taskInfo.getTaskUUID().toString());
+        JsonNode cacheData = taskCache.get(taskInfo.getUuid().toString());
         subTask.populateDetails(cacheData);
       }
       if (subTask.getState().getPrecedence() < taskInfo.getTaskState().getPrecedence()) {
@@ -374,7 +395,7 @@ public class TaskInfo extends Model {
    */
   @JsonIgnore
   public double getPercentCompleted() {
-    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
+    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getUuid()).findCount();
     if (numSubtasks == 0) {
       if (getTaskState() == TaskInfo.State.Success) {
         return 100.0;
@@ -385,7 +406,7 @@ public class TaskInfo extends Model {
         TaskInfo.find
             .query()
             .where()
-            .eq("parent_uuid", getTaskUUID())
+            .eq("parent_uuid", getUuid())
             .eq("task_state", TaskInfo.State.Success)
             .findCount();
     return numSubtasksCompleted * 100.0 / numSubtasks;

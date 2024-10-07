@@ -3,7 +3,7 @@
  * tid.c
  *	  Functions for the built-in type tuple id
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,16 +22,18 @@
 
 #include "access/heapam.h"
 #include "access/sysattr.h"
+#include "access/tableam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-#include "utils/tqual.h"
 #include "utils/varlena.h"
 
 
@@ -44,6 +46,8 @@
 #define RDELIM			')'
 #define DELIM			','
 #define NTIDARGS		2
+
+static ItemPointer currtid_for_view(Relation viewrel, ItemPointer tid);
 
 /* ----------------------------------------------------------------
  *		tidin
@@ -60,10 +64,10 @@ tidin(PG_FUNCTION_ARGS)
 	BlockNumber blockNumber;
 	OffsetNumber offsetNumber;
 	char	   *badp;
-	int			hold_offset;
+	unsigned long cvt;
 
 	for (i = 0, p = str; *p && i < NTIDARGS && *p != RDELIM; p++)
-		if (*p == DELIM || (*p == LDELIM && !i))
+		if (*p == DELIM || (*p == LDELIM && i == 0))
 			coord[i++] = p + 1;
 
 	if (i < NTIDARGS)
@@ -73,22 +77,36 @@ tidin(PG_FUNCTION_ARGS)
 						"tid", str)));
 
 	errno = 0;
-	blockNumber = strtoul(coord[0], &badp, 10);
+	cvt = strtoul(coord[0], &badp, 10);
 	if (errno || *badp != DELIM)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));
+	blockNumber = (BlockNumber) cvt;
 
-	hold_offset = strtol(coord[1], &badp, 10);
-	if (errno || *badp != RDELIM ||
-		hold_offset > USHRT_MAX || hold_offset < 0)
+	/*
+	 * Cope with possibility that unsigned long is wider than BlockNumber, in
+	 * which case strtoul will not raise an error for some values that are out
+	 * of the range of BlockNumber.  (See similar code in oidin().)
+	 */
+#if SIZEOF_LONG > 4
+	if (cvt != (unsigned long) blockNumber &&
+		cvt != (unsigned long) ((int32) blockNumber))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));
+#endif
 
-	offsetNumber = hold_offset;
+	cvt = strtoul(coord[1], &badp, 10);
+	if (errno || *badp != RDELIM ||
+		cvt > USHRT_MAX)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type %s: \"%s\"",
+						"tid", str)));
+	offsetNumber = (OffsetNumber) cvt;
 
 	result = (ItemPointer) palloc(sizeof(ItemPointerData));
 
@@ -239,6 +257,33 @@ tidsmaller(PG_FUNCTION_ARGS)
 	PG_RETURN_ITEMPOINTER(ItemPointerCompare(arg1, arg2) <= 0 ? arg1 : arg2);
 }
 
+Datum
+hashtid(PG_FUNCTION_ARGS)
+{
+	ItemPointer key = PG_GETARG_ITEMPOINTER(0);
+
+	/*
+	 * While you'll probably have a lot of trouble with a compiler that
+	 * insists on appending pad space to struct ItemPointerData, we can at
+	 * least make this code work, by not using sizeof(ItemPointerData).
+	 * Instead rely on knowing the sizes of the component fields.
+	 */
+	return hash_any((unsigned char *) key,
+					sizeof(BlockIdData) + sizeof(OffsetNumber));
+}
+
+Datum
+hashtidextended(PG_FUNCTION_ARGS)
+{
+	ItemPointer key = PG_GETARG_ITEMPOINTER(0);
+	uint64		seed = PG_GETARG_INT64(1);
+
+	/* As above */
+	return hash_any_extended((unsigned char *) key,
+							 sizeof(BlockIdData) + sizeof(OffsetNumber),
+							 seed);
+}
+
 
 /*
  *	Functions to get latest tid of a specified tuple.
@@ -246,12 +291,44 @@ tidsmaller(PG_FUNCTION_ARGS)
  *	Maybe these implementations should be moved to another place
  */
 
-static ItemPointerData Current_last_tid = {{0, 0}, 0};
-
-void
-setLastTid(const ItemPointer tid)
+/*
+ * Utility wrapper for current CTID functions.
+ *		Returns the latest version of a tuple pointing at "tid" for
+ *		relation "rel".
+ */
+static ItemPointer
+currtid_internal(Relation rel, ItemPointer tid)
 {
-	Current_last_tid = *tid;
+	ItemPointer result;
+	AclResult	aclresult;
+	Snapshot	snapshot;
+	TableScanDesc scan;
+
+	result = (ItemPointer) palloc(sizeof(ItemPointerData));
+
+	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
+								  ACL_SELECT);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
+					   RelationGetRelationName(rel));
+
+	if (rel->rd_rel->relkind == RELKIND_VIEW)
+		return currtid_for_view(rel, tid);
+
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+		elog(ERROR, "cannot look at latest visible tid for relation \"%s.%s\"",
+			 get_namespace_name(RelationGetNamespace(rel)),
+			 RelationGetRelationName(rel));
+
+	ItemPointerCopy(tid, result);
+
+	snapshot = RegisterSnapshot(GetLatestSnapshot());
+	scan = table_beginscan_tid(rel, snapshot);
+	table_tuple_get_latest_tid(scan, result);
+	table_endscan(scan);
+	UnregisterSnapshot(snapshot);
+
+	return result;
 }
 
 /*
@@ -259,7 +336,7 @@ setLastTid(const ItemPointer tid)
  *		CTID should be defined in the view and it must
  *		correspond to the CTID of a base relation.
  */
-static Datum
+static ItemPointer
 currtid_for_view(Relation viewrel, ItemPointer tid)
 {
 	TupleDesc	att = RelationGetDescr(viewrel);
@@ -309,8 +386,13 @@ currtid_for_view(Relation viewrel, ItemPointer tid)
 					rte = rt_fetch(var->varno, query->rtable);
 					if (rte)
 					{
-						heap_close(viewrel, AccessShareLock);
-						return DirectFunctionCall2(currtid_byreloid, ObjectIdGetDatum(rte->relid), PointerGetDatum(tid));
+						ItemPointer result;
+						Relation	rel;
+
+						rel = table_open(rte->relid, AccessShareLock);
+						result = currtid_internal(rel, tid);
+						table_close(rel, AccessShareLock);
+						return result;
 					}
 				}
 			}
@@ -318,48 +400,14 @@ currtid_for_view(Relation viewrel, ItemPointer tid)
 		}
 	}
 	elog(ERROR, "currtid cannot handle this view");
-	return (Datum) 0;
+	return NULL;
 }
 
-Datum
-currtid_byreloid(PG_FUNCTION_ARGS)
-{
-	Oid			reloid = PG_GETARG_OID(0);
-	ItemPointer tid = PG_GETARG_ITEMPOINTER(1);
-	ItemPointer result;
-	Relation	rel;
-	AclResult	aclresult;
-	Snapshot	snapshot;
-
-	result = (ItemPointer) palloc(sizeof(ItemPointerData));
-	if (!reloid)
-	{
-		*result = Current_last_tid;
-		PG_RETURN_ITEMPOINTER(result);
-	}
-
-	rel = heap_open(reloid, AccessShareLock);
-
-	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
-								  ACL_SELECT);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
-					   RelationGetRelationName(rel));
-
-	if (rel->rd_rel->relkind == RELKIND_VIEW)
-		return currtid_for_view(rel, tid);
-
-	ItemPointerCopy(tid, result);
-
-	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	heap_get_latest_tid(rel, snapshot, result);
-	UnregisterSnapshot(snapshot);
-
-	heap_close(rel, AccessShareLock);
-
-	PG_RETURN_ITEMPOINTER(result);
-}
-
+/*
+ * currtid_byrelname
+ *		Get the latest tuple version of the tuple pointing at a CTID, for a
+ *		given relation name.
+ */
 Datum
 currtid_byrelname(PG_FUNCTION_ARGS)
 {
@@ -368,29 +416,14 @@ currtid_byrelname(PG_FUNCTION_ARGS)
 	ItemPointer result;
 	RangeVar   *relrv;
 	Relation	rel;
-	AclResult	aclresult;
-	Snapshot	snapshot;
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-	rel = heap_openrv(relrv, AccessShareLock);
+	rel = table_openrv(relrv, AccessShareLock);
 
-	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
-								  ACL_SELECT);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
-					   RelationGetRelationName(rel));
+	/* grab the latest tuple version associated to this CTID */
+	result = currtid_internal(rel, tid);
 
-	if (rel->rd_rel->relkind == RELKIND_VIEW)
-		return currtid_for_view(rel, tid);
-
-	result = (ItemPointer) palloc(sizeof(ItemPointerData));
-	ItemPointerCopy(tid, result);
-
-	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	heap_get_latest_tid(rel, snapshot, result);
-	UnregisterSnapshot(snapshot);
-
-	heap_close(rel, AccessShareLock);
+	table_close(rel, AccessShareLock);
 
 	PG_RETURN_ITEMPOINTER(result);
 }

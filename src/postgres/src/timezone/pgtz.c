@@ -3,7 +3,7 @@
  * pgtz.c
  *	  Timezone Library Integration Functions
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/timezone/pgtz.c
@@ -32,8 +32,8 @@ pg_tz	   *log_timezone = NULL;
 
 
 static bool scan_directory_ci(const char *dirname,
-				  const char *fname, int fnamelen,
-				  char *canonname, int canonnamelen);
+							  const char *fname, int fnamelen,
+							  char *canonname, int canonnamelen);
 
 
 /*
@@ -203,15 +203,13 @@ init_timezone_hashtable(void)
 {
 	HASHCTL		hash_ctl;
 
-	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
-
 	hash_ctl.keysize = TZ_STRLEN_MAX + 1;
 	hash_ctl.entrysize = sizeof(pg_tz_cache);
 
 	timezone_cache = hash_create("Timezones",
 								 4,
 								 &hash_ctl,
-								 HASH_ELEM);
+								 HASH_ELEM | HASH_STRINGS);
 	if (!timezone_cache)
 		return false;
 
@@ -357,7 +355,7 @@ pg_tzset_offset(long gmtoffset)
  * is to ensure that log_timezone has a valid value before any logging GUC
  * variables could become set to values that require elog.c to provide
  * timestamps (e.g., log_line_prefix).  We may as well initialize
- * session_timestamp to something valid, too.
+ * session_timezone to something valid, too.
  */
 void
 pg_timezone_initialize(void)

@@ -202,7 +202,7 @@ Status DoAppendPartialToString(const MessageLite &msg, Out* output) {
   auto old_size = output->size();
   int byte_size = msg.ByteSize();
 
-  if (std_util::cmp_greater(byte_size, FLAGS_protobuf_message_total_bytes_limit)) {
+  if (std::cmp_greater(byte_size, FLAGS_protobuf_message_total_bytes_limit)) {
     return STATUS_FORMAT(
         InternalError, "Serialized protobuf message is too big: $0 > $1", byte_size,
         FLAGS_protobuf_message_total_bytes_limit);

@@ -4,7 +4,7 @@
  *	  Routines to attempt to prove logical implications between predicate
  *	  expressions.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,9 +19,10 @@
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
-#include "optimizer/predtest.h"
+#include "nodes/pathnodes.h"
+#include "optimizer/optimizer.h"
 #include "utils/array.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -58,6 +59,7 @@ typedef struct PredIterInfoData
 {
 	/* node-type-specific iteration state */
 	void	   *state;
+	List	   *state_list;
 	/* initialize to do the iteration */
 	void		(*startup_fn) (Node *clause, PredIterInfo info);
 	/* next-component iteration function */
@@ -78,9 +80,9 @@ typedef struct PredIterInfoData
 
 
 static bool predicate_implied_by_recurse(Node *clause, Node *predicate,
-							 bool weak);
+										 bool weak);
 static bool predicate_refuted_by_recurse(Node *clause, Node *predicate,
-							 bool weak);
+										 bool weak);
 static PredClass predicate_classify(Node *clause, PredIterInfo info);
 static void list_startup_fn(Node *clause, PredIterInfo info);
 static Node *list_next_fn(PredIterInfo info);
@@ -93,18 +95,18 @@ static void arrayexpr_startup_fn(Node *clause, PredIterInfo info);
 static Node *arrayexpr_next_fn(PredIterInfo info);
 static void arrayexpr_cleanup_fn(PredIterInfo info);
 static bool predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
-								   bool weak);
+											   bool weak);
 static bool predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
-								   bool weak);
+											   bool weak);
 static Node *extract_not_arg(Node *clause);
 static Node *extract_strong_not_arg(Node *clause);
-static bool clause_is_strict_for(Node *clause, Node *subexpr);
+static bool clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false);
 static bool operator_predicate_proof(Expr *predicate, Node *clause,
-						 bool refute_it, bool weak);
+									 bool refute_it, bool weak);
 static bool operator_same_subexprs_proof(Oid pred_op, Oid clause_op,
-							 bool refute_it);
+										 bool refute_it);
 static bool operator_same_subexprs_lookup(Oid pred_op, Oid clause_op,
-							  bool refute_it);
+										  bool refute_it);
 static Oid	get_btree_test_op(Oid pred_op, Oid clause_op, bool refute_it);
 static void InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
 
@@ -815,7 +817,7 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate,
  * This function also implements enforcement of MAX_SAOP_ARRAY_SIZE: if a
  * ScalarArrayOpExpr's array has too many elements, we just classify it as an
  * atom.  (This will result in its being passed as-is to the simple_clause
- * functions, which will fail to prove anything about it.)	Note that we
+ * functions, many of which will fail to prove anything about it.) Note that we
  * cannot just stop after considering MAX_SAOP_ARRAY_SIZE elements; in general
  * that would result in wrong proofs, rather than failing to prove anything.
  */
@@ -839,14 +841,14 @@ predicate_classify(Node *clause, PredIterInfo info)
 	}
 
 	/* Handle normal AND and OR boolean clauses */
-	if (and_clause(clause))
+	if (is_andclause(clause))
 	{
 		info->startup_fn = boolexpr_startup_fn;
 		info->next_fn = list_next_fn;
 		info->cleanup_fn = list_cleanup_fn;
 		return CLASS_AND;
 	}
-	if (or_clause(clause))
+	if (is_orclause(clause))
 	{
 		info->startup_fn = boolexpr_startup_fn;
 		info->next_fn = list_next_fn;
@@ -904,7 +906,8 @@ predicate_classify(Node *clause, PredIterInfo info)
 static void
 list_startup_fn(Node *clause, PredIterInfo info)
 {
-	info->state = (void *) list_head((List *) clause);
+	info->state_list = (List *) clause;
+	info->state = (void *) list_head(info->state_list);
 }
 
 static Node *
@@ -916,7 +919,7 @@ list_next_fn(PredIterInfo info)
 	if (l == NULL)
 		return NULL;
 	n = lfirst(l);
-	info->state = (void *) lnext(l);
+	info->state = (void *) lnext(info->state_list, l);
 	return n;
 }
 
@@ -933,7 +936,8 @@ list_cleanup_fn(PredIterInfo info)
 static void
 boolexpr_startup_fn(Node *clause, PredIterInfo info)
 {
-	info->state = (void *) list_head(((BoolExpr *) clause)->args);
+	info->state_list = ((BoolExpr *) clause)->args;
+	info->state = (void *) list_head(info->state_list);
 }
 
 /*
@@ -1056,6 +1060,7 @@ arrayexpr_startup_fn(Node *clause, PredIterInfo info)
 
 	/* Initialize iteration variable to first member of ArrayExpr */
 	arrayexpr = (ArrayExpr *) lsecond(saop->args);
+	info->state_list = arrayexpr->elements;
 	state->next = list_head(arrayexpr->elements);
 }
 
@@ -1067,7 +1072,7 @@ arrayexpr_next_fn(PredIterInfo info)
 	if (state->next == NULL)
 		return NULL;
 	lsecond(state->opexpr.args) = lfirst(state->next);
-	state->next = lnext(state->next);
+	state->next = lnext(info->state_list, state->next);
 	return (Node *) &(state->opexpr);
 }
 
@@ -1098,8 +1103,8 @@ arrayexpr_cleanup_fn(PredIterInfo info)
  *
  * If the predicate is of the form "foo IS NOT NULL", and we are considering
  * strong implication, we can conclude that the predicate is implied if the
- * clause is strict for "foo", i.e., it must yield NULL when "foo" is NULL.
- * In that case truth of the clause requires that "foo" isn't NULL.
+ * clause is strict for "foo", i.e., it must yield false or NULL when "foo"
+ * is NULL.  In that case truth of the clause ensures that "foo" isn't NULL.
  * (Again, this is a safe conclusion because "foo" must be immutable.)
  * This doesn't work for weak implication, though.
  *
@@ -1130,7 +1135,7 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
 			!ntest->argisrow)
 		{
 			/* strictness of clause for foo implies foo IS NOT NULL */
-			if (clause_is_strict_for(clause, (Node *) ntest->arg))
+			if (clause_is_strict_for(clause, (Node *) ntest->arg, true))
 				return true;
 		}
 		return false;			/* we can't succeed below... */
@@ -1159,8 +1164,8 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
  *
  * A clause "foo IS NULL" refutes a predicate "foo IS NOT NULL" in all cases.
  * If we are considering weak refutation, it also refutes a predicate that
- * is strict for "foo", since then the predicate must yield NULL (and since
- * "foo" appears in the predicate, it's known immutable).
+ * is strict for "foo", since then the predicate must yield false or NULL
+ * (and since "foo" appears in the predicate, it's known immutable).
  *
  * (The main motivation for covering these IS [NOT] NULL cases is to support
  * using IS NULL/IS NOT NULL as partition-defining constraints.)
@@ -1193,7 +1198,7 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
 			return false;
 
 		/* strictness of clause for foo refutes foo IS NULL */
-		if (clause_is_strict_for(clause, (Node *) isnullarg))
+		if (clause_is_strict_for(clause, (Node *) isnullarg, true))
 			return true;
 
 		/* foo IS NOT NULL refutes foo IS NULL */
@@ -1225,7 +1230,7 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
 
 		/* foo IS NULL weakly refutes any predicate that is strict for foo */
 		if (weak &&
-			clause_is_strict_for((Node *) predicate, (Node *) isnullarg))
+			clause_is_strict_for((Node *) predicate, (Node *) isnullarg, true))
 			return true;
 
 		return false;			/* we can't succeed below... */
@@ -1292,17 +1297,30 @@ extract_strong_not_arg(Node *clause)
 
 
 /*
- * Can we prove that "clause" returns NULL if "subexpr" does?
+ * Can we prove that "clause" returns NULL (or FALSE) if "subexpr" is
+ * assumed to yield NULL?
  *
- * The base case is that clause and subexpr are equal().  (We assume that
- * the caller knows at least one of the input expressions is immutable,
- * as this wouldn't hold for volatile expressions.)
+ * In most places in the planner, "strictness" refers to a guarantee that
+ * an expression yields NULL output for a NULL input, and that's mostly what
+ * we're looking for here.  However, at top level where the clause is known
+ * to yield boolean, it may be sufficient to prove that it cannot return TRUE
+ * when "subexpr" is NULL.  The caller should pass allow_false = true when
+ * this weaker property is acceptable.  (When this function recurses
+ * internally, we pass down allow_false = false since we need to prove actual
+ * nullness of the subexpression.)
+ *
+ * We assume that the caller checked that least one of the input expressions
+ * is immutable.  All of the proof rules here involve matching "subexpr" to
+ * some portion of "clause", so that this allows assuming that "subexpr" is
+ * immutable without a separate check.
+ *
+ * The base case is that clause and subexpr are equal().
  *
  * We can also report success if the subexpr appears as a subexpression
  * of "clause" in a place where it'd force nullness of the overall result.
  */
 static bool
-clause_is_strict_for(Node *clause, Node *subexpr)
+clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
 {
 	ListCell   *lc;
 
@@ -1335,7 +1353,7 @@ clause_is_strict_for(Node *clause, Node *subexpr)
 	{
 		foreach(lc, ((OpExpr *) clause)->args)
 		{
-			if (clause_is_strict_for((Node *) lfirst(lc), subexpr))
+			if (clause_is_strict_for((Node *) lfirst(lc), subexpr, false))
 				return true;
 		}
 		return false;
@@ -1345,11 +1363,105 @@ clause_is_strict_for(Node *clause, Node *subexpr)
 	{
 		foreach(lc, ((FuncExpr *) clause)->args)
 		{
-			if (clause_is_strict_for((Node *) lfirst(lc), subexpr))
+			if (clause_is_strict_for((Node *) lfirst(lc), subexpr, false))
 				return true;
 		}
 		return false;
 	}
+
+	/*
+	 * CoerceViaIO is strict (whether or not the I/O functions it calls are).
+	 * Likewise, ArrayCoerceExpr is strict for its array argument (regardless
+	 * of what the per-element expression is), ConvertRowtypeExpr is strict at
+	 * the row level, and CoerceToDomain is strict too.  These are worth
+	 * checking mainly because it saves us having to explain to users why some
+	 * type coercions are known strict and others aren't.
+	 */
+	if (IsA(clause, CoerceViaIO))
+		return clause_is_strict_for((Node *) ((CoerceViaIO *) clause)->arg,
+									subexpr, false);
+	if (IsA(clause, ArrayCoerceExpr))
+		return clause_is_strict_for((Node *) ((ArrayCoerceExpr *) clause)->arg,
+									subexpr, false);
+	if (IsA(clause, ConvertRowtypeExpr))
+		return clause_is_strict_for((Node *) ((ConvertRowtypeExpr *) clause)->arg,
+									subexpr, false);
+	if (IsA(clause, CoerceToDomain))
+		return clause_is_strict_for((Node *) ((CoerceToDomain *) clause)->arg,
+									subexpr, false);
+
+	/*
+	 * ScalarArrayOpExpr is a special case.  Note that we'd only reach here
+	 * with a ScalarArrayOpExpr clause if we failed to deconstruct it into an
+	 * AND or OR tree, as for example if it has too many array elements.
+	 */
+	if (IsA(clause, ScalarArrayOpExpr))
+	{
+		ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+		Node	   *scalarnode = (Node *) linitial(saop->args);
+		Node	   *arraynode = (Node *) lsecond(saop->args);
+
+		/*
+		 * If we can prove the scalar input to be null, and the operator is
+		 * strict, then the SAOP result has to be null --- unless the array is
+		 * empty.  For an empty array, we'd get either false (for ANY) or true
+		 * (for ALL).  So if allow_false = true then the proof succeeds anyway
+		 * for the ANY case; otherwise we can only make the proof if we can
+		 * prove the array non-empty.
+		 */
+		if (clause_is_strict_for(scalarnode, subexpr, false) &&
+			op_strict(saop->opno))
+		{
+			int			nelems = 0;
+
+			if (allow_false && saop->useOr)
+				return true;	/* can succeed even if array is empty */
+
+			if (arraynode && IsA(arraynode, Const))
+			{
+				Const	   *arrayconst = (Const *) arraynode;
+				ArrayType  *arrval;
+
+				/*
+				 * If array is constant NULL then we can succeed, as in the
+				 * case below.
+				 */
+				if (arrayconst->constisnull)
+					return true;
+
+				/* Otherwise, we can compute the number of elements. */
+				arrval = DatumGetArrayTypeP(arrayconst->constvalue);
+				nelems = ArrayGetNItems(ARR_NDIM(arrval), ARR_DIMS(arrval));
+			}
+			else if (arraynode && IsA(arraynode, ArrayExpr) &&
+					 !((ArrayExpr *) arraynode)->multidims)
+			{
+				/*
+				 * We can also reliably count the number of array elements if
+				 * the input is a non-multidim ARRAY[] expression.
+				 */
+				nelems = list_length(((ArrayExpr *) arraynode)->elements);
+			}
+
+			/* Proof succeeds if array is definitely non-empty */
+			if (nelems > 0)
+				return true;
+		}
+
+		/*
+		 * If we can prove the array input to be null, the proof succeeds in
+		 * all cases, since ScalarArrayOpExpr will always return NULL for a
+		 * NULL array.  Otherwise, we're done here.
+		 */
+		return clause_is_strict_for(arraynode, subexpr, false);
+	}
+
+	/*
+	 * When recursing into an expression, we might find a NULL constant.
+	 * That's certainly NULL, whether it matches subexpr or not.
+	 */
+	if (IsA(clause, Const))
+		return ((Const *) clause)->constisnull;
 
 	return false;
 }
@@ -1870,7 +1982,6 @@ lookup_proof_cache(Oid pred_op, Oid clause_op, bool refute_it)
 		/* First time through: initialize the hash table */
 		HASHCTL		ctl;
 
-		MemSet(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(OprProofCacheKey);
 		ctl.entrysize = sizeof(OprProofCacheEntry);
 		OprProofCacheHash = hash_create("Btree proof lookup cache", 256,

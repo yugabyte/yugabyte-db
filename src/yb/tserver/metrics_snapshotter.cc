@@ -88,7 +88,7 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(metrics_snapshotter_interval_ms, 30 * 1000,
+DEFINE_RUNTIME_int32(metrics_snapshotter_interval_ms, 30 * 1000,
              "Interval at which the metrics are snapshotted.");
 TAG_FLAG(metrics_snapshotter_interval_ms, advanced);
 

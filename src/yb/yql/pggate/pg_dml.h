@@ -101,8 +101,6 @@ class PgDml : public PgStatement {
 
   [[nodiscard]] bool has_aggregate_targets() const { return has_aggregate_targets_; }
 
-  [[nodiscard]] bool has_system_targets() const { return has_system_targets_; }
-
   [[nodiscard]] bool has_secondary_index_with_doc_op() const;
 
   [[nodiscard]] bool has_doc_op() const { return doc_op_ != nullptr; }
@@ -199,7 +197,6 @@ class PgDml : public PgStatement {
   PgTable target_;
   std::vector<PgFetchedTarget*> targets_;
   bool has_aggregate_targets_ = false;
-  bool has_system_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.

@@ -1,0 +1,7 @@
+# src/test/regress/yb_table_schedule
+# This schedule is for non-ported tests only.
+
+test: yb_alter_table
+test: yb_alter_table_rewrite
+test: yb_create_table
+test: yb_drop_table

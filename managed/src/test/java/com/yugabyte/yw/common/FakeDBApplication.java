@@ -201,6 +201,6 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
       taskInfo.setParentUuid(parentUUID);
     }
     taskInfo.save();
-    return taskInfo.getTaskUUID();
+    return taskInfo.getUuid();
   }
 }

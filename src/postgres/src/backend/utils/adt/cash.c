@@ -26,7 +26,6 @@
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 #include "utils/cash.h"
-#include "utils/int8.h"
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
 
@@ -39,13 +38,13 @@ static const char *
 num_word(Cash value)
 {
 	static char buf[128];
-	static const char *small[] = {
+	static const char *const small[] = {
 		"zero", "one", "two", "three", "four", "five", "six", "seven",
 		"eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
 		"fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
 		"thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"
 	};
-	const char **big = small + 18;
+	const char *const *big = small + 18;
 	int			tu = value % 100;
 
 	/* deal with the simple cases first */
@@ -1107,7 +1106,7 @@ numeric_cash(PG_FUNCTION_ARGS)
 		scale *= 10;
 
 	/* multiply the input amount by scale factor */
-	numeric_scale = DirectFunctionCall1(int8_numeric, Int64GetDatum(scale));
+	numeric_scale = NumericGetDatum(int64_to_numeric(scale));
 	amount = DirectFunctionCall2(numeric_mul, amount, numeric_scale);
 
 	/* note that numeric_int8 will round to nearest integer for us */

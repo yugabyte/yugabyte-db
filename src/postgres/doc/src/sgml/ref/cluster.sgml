@@ -22,7 +22,12 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CLUSTER [VERBOSE] <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ]
+CLUSTER ( <replaceable class="parameter">option</replaceable> [, ...] ) <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ]
 CLUSTER [VERBOSE]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -57,7 +62,7 @@ CLUSTER [VERBOSE]
    <command>CLUSTER <replaceable class="parameter">table_name</replaceable></command>
    reclusters the table using the same index as before.  You can also
    use the <literal>CLUSTER</literal> or <literal>SET WITHOUT CLUSTER</literal>
-   forms of <xref linkend="sql-altertable"/> to set the index to be used for
+   forms of <link linkend="sql-altertable"><command>ALTER TABLE</command></link> to set the index to be used for
    future cluster operations, or to clear any previous setting.
   </para>
 
@@ -104,6 +109,20 @@ CLUSTER [VERBOSE]
     <listitem>
      <para>
       Prints a progress report as each table is clustered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
      </para>
     </listitem>
    </varlistentry>
@@ -159,7 +178,7 @@ CLUSTER [VERBOSE]
 
    <para>
     Because the planner records statistics about the ordering of
-    tables, it is advisable to run <xref linkend="sql-analyze"/>
+    tables, it is advisable to run <link linkend="sql-analyze"><command>ANALYZE</command></link>
     on the newly clustered table.
     Otherwise, the planner might make poor choices of query plans.
    </para>
@@ -170,6 +189,18 @@ CLUSTER [VERBOSE]
     then set up a periodic maintenance script that executes
     <command>CLUSTER</command> without any parameters, so that the desired tables
     are periodically reclustered.
+   </para>
+
+  <para>
+    Each backend running <command>CLUSTER</command> will report its progress
+    in the <structname>pg_stat_progress_cluster</structname> view. See
+    <xref linkend="cluster-progress-reporting"/> for details.
+  </para>
+
+   <para>
+    Clustering a partitioned table clusters each of its partitions using the
+    partition of the specified partitioned index.  When clustering a partitioned
+    table, the index may not be omitted.
    </para>
 
  </refsect1>
@@ -222,6 +253,7 @@ CLUSTER <replaceable class="parameter">index_name</replaceable> ON <replaceable 
 
   <simplelist type="inline">
    <member><xref linkend="app-clusterdb"/></member>
+   <member><xref linkend="cluster-progress-reporting"/></member>
   </simplelist>
  </refsect1>
 </refentry>

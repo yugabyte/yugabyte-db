@@ -3,7 +3,7 @@
  * _int_selfuncs.c
  *	  Functions for selectivity estimation of intarray operators
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -13,17 +13,17 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "_int.h"
 
+#include "_int.h"
 #include "access/htup_details.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "miscadmin.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
-#include "miscadmin.h"
 
 PG_FUNCTION_INFO_V1(_int_overlap_sel);
 PG_FUNCTION_INFO_V1(_int_contains_sel);
@@ -35,7 +35,7 @@ PG_FUNCTION_INFO_V1(_int_matchsel);
 
 
 static Selectivity int_query_opr_selec(ITEM *item, Datum *values, float4 *freqs,
-					int nmncelems, float4 minfreq);
+									   int nmncelems, float4 minfreq);
 static int	compare_val_int4(const void *a, const void *b);
 
 /*
@@ -43,7 +43,7 @@ static int	compare_val_int4(const void *a, const void *b);
  *
  * The default array selectivity operators for the @>, && and @< operators
  * work fine for integer arrays. However, if we tried to just use arraycontsel
- * and arracontjoinsel directly as the cost estimator functions for our
+ * and arraycontjoinsel directly as the cost estimator functions for our
  * operators, they would not work as intended, because they look at the
  * operator's OID. Our operators behave exactly like the built-in anyarray
  * versions, but we must tell the cost estimator functions which built-in

@@ -16,65 +16,6 @@
 PG_FUNCTION_INFO_V1(orafce_replace_empty_strings);
 PG_FUNCTION_INFO_V1(orafce_replace_null_strings);
 
-#if PG_VERSION_NUM < 100000
-
-static HeapTuple
-heap_modify_tuple_by_cols(HeapTuple tuple,
-						  TupleDesc tupleDesc,
-						  int nCols,
-						  int *replCols,
-						  Datum *replValues,
-						  bool *replIsnull)
-{
-	int			numberOfAttributes = tupleDesc->natts;
-	Datum	   *values;
-	bool	   *isnull;
-	HeapTuple	newTuple;
-	int			i;
-
-	/*
-	 * allocate and fill values and isnull arrays from the tuple, then replace
-	 * selected columns from the input arrays.
-	 */
-	values = (Datum *) palloc(numberOfAttributes * sizeof(Datum));
-	isnull = (bool *) palloc(numberOfAttributes * sizeof(bool));
-
-	heap_deform_tuple(tuple, tupleDesc, values, isnull);
-
-	for (i = 0; i < nCols; i++)
-	{
-		int			attnum = replCols[i];
-
-		if (attnum <= 0 || attnum > numberOfAttributes)
-			elog(ERROR, "invalid column number %d", attnum);
-		values[attnum - 1] = replValues[i];
-		isnull[attnum - 1] = replIsnull[i];
-	}
-
-	/*
-	 * create a new tuple from the values and isnull arrays
-	 */
-	newTuple = heap_form_tuple(tupleDesc, values, isnull);
-
-	pfree(values);
-	pfree(isnull);
-
-	/*
-	 * copy the identification info of the old tuple: t_ctid, t_self, and OID
-	 * (if any)
-	 */
-	newTuple->t_data->t_ctid = tuple->t_data->t_ctid;
-	newTuple->t_self = tuple->t_self;
-	newTuple->t_tableOid = tuple->t_tableOid;
-	HEAPTUPLE_COPY_YBCTID(tuple->t_ybctid, newTuple->t_ybctid);
-	if (tupleDesc->tdhasoid)
-		HeapTupleSetOid(newTuple, HeapTupleGetOid(tuple));
-
-	return newTuple;
-}
-
-#endif
-
 static void
 trigger_sanity_check(FunctionCallInfo fcinfo, const char *fname)
 {
@@ -116,18 +57,27 @@ get_rettuple(FunctionCallInfo fcinfo)
  * columns. When first argument is "on" or "true", then warnings will be raised.
  */
 static bool
-should_raise_warnings(FunctionCallInfo fcinfo)
+should_raise_warnings(FunctionCallInfo fcinfo, bool *raise_error)
 {
 	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
 	Trigger		   *trigger = trigdata->tg_trigger;
+
+	*raise_error = false;
 
 	if (trigger->tgnargs > 0)
 	{
 		char		  **args = trigger->tgargs;
 
 		if (strcmp(args[0], "on") == 0 ||
-				strcmp(args[0], "true") == 0)
+				strcmp(args[0], "true") == 0 ||
+				strcmp(args[0], "warning") == 0)
 			return true;
+
+		if (strcmp(args[0], "error") == 0)
+		{
+			*raise_error = true;
+			return true;
+		}
 	}
 
 	return false;
@@ -150,10 +100,11 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 	int				nresetcols = 0;
 	int				attnum;
 	bool			raise_warning = false;
+	bool			raise_error;
 	char		   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_empty_strings");
-	raise_warning = should_raise_warnings(fcinfo);
+	raise_warning = should_raise_warnings(fcinfo, &raise_error);
 
 	rettuple = get_rettuple(fcinfo);
 	tupdesc = trigdata->tg_relation->rd_att;
@@ -208,7 +159,7 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 						if (!relname)
 							relname = SPI_getrelname(trigdata->tg_relation);
 
-						elog(WARNING,
+						elog(raise_error ? ERROR : WARNING,
 				"Field \"%s\" of table \"%s\" is empty string (replaced by NULL).",
 								SPI_fname(tupdesc, attnum), relname);
 					}
@@ -254,10 +205,11 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 	int				nresetcols = 0;
 	int				attnum;
 	bool			raise_warning = false;
+	bool			raise_error;
 	char		   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_null_strings");
-	raise_warning = should_raise_warnings(fcinfo);
+	raise_warning = should_raise_warnings(fcinfo, &raise_error);
 
 	rettuple = get_rettuple(fcinfo);
 
@@ -311,7 +263,7 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 					if (!relname)
 						relname = SPI_getrelname(trigdata->tg_relation);
 
-					elog(WARNING,
+					elog(raise_error ? ERROR : WARNING,
 				"Field \"%s\" of table \"%s\" is NULL (replaced by '').",
 								SPI_fname(tupdesc, attnum), relname);
 				}

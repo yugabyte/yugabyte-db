@@ -12,47 +12,29 @@
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
+#include "plpy_elog.h"
+#include "plpy_exec.h"
+#include "plpy_main.h"
+#include "plpy_plpymodule.h"
+#include "plpy_procedure.h"
+#include "plpy_subxactobject.h"
+#include "plpython.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#include "plpython.h"
-
-#include "plpy_main.h"
-
-#include "plpy_elog.h"
-#include "plpy_exec.h"
-#include "plpy_plpymodule.h"
-#include "plpy_procedure.h"
-#include "plpy_subxactobject.h"
-
-
 /*
  * exported functions
  */
-
-#if PY_MAJOR_VERSION >= 3
-/* Use separate names to avoid clash in pg_pltemplate */
-#define plpython_validator plpython3_validator
-#define plpython_call_handler plpython3_call_handler
-#define plpython_inline_handler plpython3_inline_handler
-#endif
 
 extern void _PG_init(void);
 
 PG_MODULE_MAGIC;
 
-PG_FUNCTION_INFO_V1(plpython_validator);
-PG_FUNCTION_INFO_V1(plpython_call_handler);
-PG_FUNCTION_INFO_V1(plpython_inline_handler);
-
-#if PY_MAJOR_VERSION < 3
-/* Define aliases plpython2_call_handler etc */
-PG_FUNCTION_INFO_V1(plpython2_validator);
-PG_FUNCTION_INFO_V1(plpython2_call_handler);
-PG_FUNCTION_INFO_V1(plpython2_inline_handler);
-#endif
+PG_FUNCTION_INFO_V1(plpython3_validator);
+PG_FUNCTION_INFO_V1(plpython3_call_handler);
+PG_FUNCTION_INFO_V1(plpython3_inline_handler);
 
 
 static bool PLy_procedure_is_trigger(Form_pg_proc procStruct);
@@ -86,6 +68,10 @@ _PG_init(void)
 	 * the actual failure for later, so that operations like pg_restore can
 	 * load more than one plpython library so long as they don't try to do
 	 * anything much with the language.
+	 *
+	 * While we only support Python 3 these days, somebody might create an
+	 * out-of-tree version adding back support for Python 2. Conflicts with
+	 * such an extension should be detected.
 	 */
 	bitmask_ptr = (int **) find_rendezvous_variable("plpython_version_bitmask");
 	if (!(*bitmask_ptr))		/* am I the first? */
@@ -129,13 +115,9 @@ PLy_initialize(void)
 	if (inited)
 		return;
 
-#if PY_MAJOR_VERSION >= 3
 	PyImport_AppendInittab("plpy", PyInit_plpy);
-#endif
 	Py_Initialize();
-#if PY_MAJOR_VERSION >= 3
 	PyImport_ImportModule("plpy");
-#endif
 	PLy_init_interp();
 	PLy_init_plpy();
 	if (PyErr_Occurred())
@@ -175,7 +157,7 @@ PLy_init_interp(void)
 }
 
 Datum
-plpython_validator(PG_FUNCTION_ARGS)
+plpython3_validator(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
@@ -207,17 +189,8 @@ plpython_validator(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-#if PY_MAJOR_VERSION < 3
 Datum
-plpython2_validator(PG_FUNCTION_ARGS)
-{
-	/* call plpython validator with our fcinfo so it gets our oid */
-	return plpython_validator(fcinfo);
-}
-#endif							/* PY_MAJOR_VERSION < 3 */
-
-Datum
-plpython_call_handler(PG_FUNCTION_ARGS)
+plpython3_call_handler(PG_FUNCTION_ARGS)
 {
 	bool		nonatomic;
 	Datum		retval;
@@ -288,19 +261,11 @@ plpython_call_handler(PG_FUNCTION_ARGS)
 	return retval;
 }
 
-#if PY_MAJOR_VERSION < 3
 Datum
-plpython2_call_handler(PG_FUNCTION_ARGS)
+plpython3_inline_handler(PG_FUNCTION_ARGS)
 {
-	return plpython_call_handler(fcinfo);
-}
-#endif							/* PY_MAJOR_VERSION < 3 */
-
-Datum
-plpython_inline_handler(PG_FUNCTION_ARGS)
-{
+	LOCAL_FCINFO(fake_fcinfo, 0);
 	InlineCodeBlock *codeblock = (InlineCodeBlock *) DatumGetPointer(PG_GETARG_DATUM(0));
-	FunctionCallInfoData fake_fcinfo;
 	FmgrInfo	flinfo;
 	PLyProcedure proc;
 	PLyExecutionContext *exec_ctx;
@@ -312,9 +277,9 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 	if (SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
-	MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
+	MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
 	MemSet(&flinfo, 0, sizeof(flinfo));
-	fake_fcinfo.flinfo = &flinfo;
+	fake_fcinfo->flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
 	flinfo.fn_mcxt = GetCurrentMemoryContext();
 
@@ -352,7 +317,7 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 
 		PLy_procedure_compile(&proc, codeblock->source_text);
 		exec_ctx->curr_proc = &proc;
-		PLy_exec_function(&fake_fcinfo, &proc);
+		PLy_exec_function(fake_fcinfo, &proc);
 	}
 	PG_CATCH();
 	{
@@ -372,20 +337,10 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-#if PY_MAJOR_VERSION < 3
-Datum
-plpython2_inline_handler(PG_FUNCTION_ARGS)
-{
-	return plpython_inline_handler(fcinfo);
-}
-#endif							/* PY_MAJOR_VERSION < 3 */
-
 static bool
 PLy_procedure_is_trigger(Form_pg_proc procStruct)
 {
-	return (procStruct->prorettype == TRIGGEROID ||
-			(procStruct->prorettype == OPAQUEOID &&
-			 procStruct->pronargs == 0));
+	return (procStruct->prorettype == TRIGGEROID);
 }
 
 static void

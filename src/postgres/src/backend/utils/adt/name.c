@@ -9,7 +9,7 @@
  * always use NAMEDATALEN as the symbolic constant!   - jolly 8/21/95
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 #include "postgres.h"
 
 #include "catalog/namespace.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -28,6 +29,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/varlena.h"
 
 
 /*****************************************************************************
@@ -113,30 +115,42 @@ namesend(PG_FUNCTION_ARGS)
 
 
 /*****************************************************************************
- *	 PUBLIC ROUTINES														 *
+ *	 COMPARISON/SORTING ROUTINES											 *
  *****************************************************************************/
 
 /*
  *		nameeq	- returns 1 iff arguments are equal
  *		namene	- returns 1 iff arguments are not equal
- *
- *		BUGS:
- *				Assumes that "xy\0\0a" should be equal to "xy\0b".
- *				If not, can do the comparison backwards for efficiency.
- *
  *		namelt	- returns 1 iff a < b
  *		namele	- returns 1 iff a <= b
  *		namegt	- returns 1 iff a > b
  *		namege	- returns 1 iff a >= b
  *
+ * Note that the use of strncmp with NAMEDATALEN limit is mostly historical;
+ * strcmp would do as well, because we do not allow NAME values that don't
+ * have a '\0' terminator.  Whatever might be past the terminator is not
+ * considered relevant to comparisons.
  */
+static int
+namecmp(Name arg1, Name arg2, Oid collid)
+{
+	/* Fast path for common case used in system catalogs */
+	if (collid == C_COLLATION_OID)
+		return strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN);
+
+	/* Else rely on the varstr infrastructure */
+	return varstr_cmp(NameStr(*arg1), strlen(NameStr(*arg1)),
+					  NameStr(*arg2), strlen(NameStr(*arg2)),
+					  collid);
+}
+
 Datum
 nameeq(PG_FUNCTION_ARGS)
 {
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) == 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) == 0);
 }
 
 Datum
@@ -145,7 +159,7 @@ namene(PG_FUNCTION_ARGS)
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) != 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) != 0);
 }
 
 Datum
@@ -154,7 +168,7 @@ namelt(PG_FUNCTION_ARGS)
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) < 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) < 0);
 }
 
 Datum
@@ -163,7 +177,7 @@ namele(PG_FUNCTION_ARGS)
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) <= 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) <= 0);
 }
 
 Datum
@@ -172,7 +186,7 @@ namegt(PG_FUNCTION_ARGS)
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) > 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) > 0);
 }
 
 Datum
@@ -181,68 +195,54 @@ namege(PG_FUNCTION_ARGS)
 	Name		arg1 = PG_GETARG_NAME(0);
 	Name		arg2 = PG_GETARG_NAME(1);
 
-	PG_RETURN_BOOL(strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN) >= 0);
+	PG_RETURN_BOOL(namecmp(arg1, arg2, PG_GET_COLLATION()) >= 0);
 }
 
-
-/* (see char.c for comparison/operation routines) */
-
-int
-namecpy(Name n1, Name n2)
+Datum
+btnamecmp(PG_FUNCTION_ARGS)
 {
-	if (!n1 || !n2)
-		return -1;
-	StrNCpy(NameStr(*n1), NameStr(*n2), NAMEDATALEN);
-	return 0;
+	Name		arg1 = PG_GETARG_NAME(0);
+	Name		arg2 = PG_GETARG_NAME(1);
+
+	PG_RETURN_INT32(namecmp(arg1, arg2, PG_GET_COLLATION()));
 }
 
-#ifdef NOT_USED
-int
-namecat(Name n1, Name n2)
+Datum
+btnamesortsupport(PG_FUNCTION_ARGS)
 {
-	return namestrcat(n1, NameStr(*n2));	/* n2 can't be any longer than n1 */
-}
-#endif
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+	Oid			collid = ssup->ssup_collation;
+	MemoryContext oldcontext;
 
-#ifdef NOT_USED
-int
-namecmp(Name n1, Name n2)
-{
-	return strncmp(NameStr(*n1), NameStr(*n2), NAMEDATALEN);
-}
-#endif
+	oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
-int
+	/* Use generic string SortSupport */
+	varstr_sortsupport(ssup, NAMEOID, collid);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_RETURN_VOID();
+}
+
+
+/*****************************************************************************
+ *	 MISCELLANEOUS PUBLIC ROUTINES											 *
+ *****************************************************************************/
+
+void
 namestrcpy(Name name, const char *str)
 {
-	if (!name || !str)
-		return -1;
-	StrNCpy(NameStr(*name), str, NAMEDATALEN);
-	return 0;
+	/* NB: We need to zero-pad the destination. */
+	strncpy(NameStr(*name), str, NAMEDATALEN);
+	NameStr(*name)[NAMEDATALEN - 1] = '\0';
 }
 
-#ifdef NOT_USED
-int
-namestrcat(Name name, const char *str)
-{
-	int			i;
-	char	   *p,
-			   *q;
-
-	if (!name || !str)
-		return -1;
-	for (i = 0, p = NameStr(*name); i < NAMEDATALEN && *p; ++i, ++p)
-		;
-	for (q = str; i < NAMEDATALEN; ++i, ++p, ++q)
-	{
-		*p = *q;
-		if (!*q)
-			break;
-	}
-	return 0;
-}
-#endif
-
+/*
+ * Compare a NAME to a C string
+ *
+ * Assumes C collation always; be careful when using this for
+ * anything but equality checks!
+ */
 int
 namestrcmp(Name name, const char *str)
 {
@@ -318,7 +318,42 @@ current_schemas(PG_FUNCTION_ARGS)
 							NAMEOID,
 							NAMEDATALEN,	/* sizeof(Name) */
 							false,	/* Name is not by-val */
-							'c');	/* alignment of Name */
+							TYPALIGN_CHAR); /* alignment of Name */
 
 	PG_RETURN_POINTER(array);
+}
+
+/*
+ * SQL-function nameconcatoid(name, oid) returns name
+ *
+ * This is used in the information_schema to produce specific_name columns,
+ * which are supposed to be unique per schema.  We achieve that (in an ugly
+ * way) by appending the object's OID.  The result is the same as
+ *		($1::text || '_' || $2::text)::name
+ * except that, if it would not fit in NAMEDATALEN, we make it do so by
+ * truncating the name input (not the oid).
+ */
+Datum
+nameconcatoid(PG_FUNCTION_ARGS)
+{
+	Name		nam = PG_GETARG_NAME(0);
+	Oid			oid = PG_GETARG_OID(1);
+	Name		result;
+	char		suffix[20];
+	int			suflen;
+	int			namlen;
+
+	suflen = snprintf(suffix, sizeof(suffix), "_%u", oid);
+	namlen = strlen(NameStr(*nam));
+
+	/* Truncate oversize input by truncating name part, not suffix */
+	if (namlen + suflen >= NAMEDATALEN)
+		namlen = pg_mbcliplen(NameStr(*nam), namlen, NAMEDATALEN - 1 - suflen);
+
+	/* We use palloc0 here to ensure result is zero-padded */
+	result = (Name) palloc0(NAMEDATALEN);
+	memcpy(NameStr(*result), NameStr(*nam), namlen);
+	memcpy(NameStr(*result) + namlen, suffix, suflen);
+
+	PG_RETURN_NAME(result);
 }

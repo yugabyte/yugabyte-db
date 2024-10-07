@@ -5,7 +5,7 @@
  *
  * Access-method specific inspection functions are in separate files.
  *
- * Copyright (c) 2007-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pageinspect/rawpage.c
@@ -15,13 +15,13 @@
 
 #include "postgres.h"
 
-#include "pageinspect.h"
-
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "pageinspect.h"
 #include "storage/bufmgr.h"
 #include "storage/checksum.h"
 #include "utils/builtins.h"
@@ -32,13 +32,35 @@
 PG_MODULE_MAGIC;
 
 static bytea *get_raw_page_internal(text *relname, ForkNumber forknum,
-					  BlockNumber blkno);
+									BlockNumber blkno);
 
 
 /*
  * get_raw_page
  *
  * Returns a copy of a page from shared buffers as a bytea
+ */
+PG_FUNCTION_INFO_V1(get_raw_page_1_9);
+
+Datum
+get_raw_page_1_9(PG_FUNCTION_ARGS)
+{
+	text	   *relname = PG_GETARG_TEXT_PP(0);
+	int64		blkno = PG_GETARG_INT64(1);
+	bytea	   *raw_page;
+
+	if (blkno < 0 || blkno > MaxBlockNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid block number")));
+
+	raw_page = get_raw_page_internal(relname, MAIN_FORKNUM, blkno);
+
+	PG_RETURN_BYTEA_P(raw_page);
+}
+
+/*
+ * entry point for old extension version
  */
 PG_FUNCTION_INFO_V1(get_raw_page);
 
@@ -68,6 +90,32 @@ get_raw_page(PG_FUNCTION_ARGS)
  * get_raw_page_fork
  *
  * Same, for any fork
+ */
+PG_FUNCTION_INFO_V1(get_raw_page_fork_1_9);
+
+Datum
+get_raw_page_fork_1_9(PG_FUNCTION_ARGS)
+{
+	text	   *relname = PG_GETARG_TEXT_PP(0);
+	text	   *forkname = PG_GETARG_TEXT_PP(1);
+	int64		blkno = PG_GETARG_INT64(2);
+	bytea	   *raw_page;
+	ForkNumber	forknum;
+
+	forknum = forkname_to_number(text_to_cstring(forkname));
+
+	if (blkno < 0 || blkno > MaxBlockNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid block number")));
+
+	raw_page = get_raw_page_internal(relname, forknum, blkno);
+
+	PG_RETURN_BYTEA_P(raw_page);
+}
+
+/*
+ * Entry point for old extension version
  */
 PG_FUNCTION_INFO_V1(get_raw_page_fork);
 
@@ -102,37 +150,17 @@ get_raw_page_internal(text *relname, ForkNumber forknum, BlockNumber blkno)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
-	/* Check that this relation has storage */
-	if (rel->rd_rel->relkind == RELKIND_VIEW)
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot get raw page from view \"%s\"",
-						RelationGetRelationName(rel))));
-	if (rel->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot get raw page from composite type \"%s\"",
-						RelationGetRelationName(rel))));
-	if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot get raw page from foreign table \"%s\"",
-						RelationGetRelationName(rel))));
-	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot get raw page from partitioned table \"%s\"",
-						RelationGetRelationName(rel))));
-	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot get raw page from partitioned index \"%s\"",
-						RelationGetRelationName(rel))));
+				 errmsg("cannot get raw page from relation \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
 
 	/*
 	 * Reject attempts to read non-local temporary relations; we would be
@@ -218,7 +246,6 @@ Datum
 page_header(PG_FUNCTION_ARGS)
 {
 	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
-	int			raw_page_size;
 
 	TupleDesc	tupdesc;
 
@@ -233,20 +260,9 @@ page_header(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
-	raw_page_size = VARSIZE(raw_page) - VARHDRSZ;
-
-	/*
-	 * Check that enough data was supplied, so that we don't try to access
-	 * fields outside the supplied buffer.
-	 */
-	if (raw_page_size < SizeOfPageHeaderData)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("input page too small (%d bytes)", raw_page_size)));
-
-	page = (PageHeader) VARDATA(raw_page);
+	page = (PageHeader) get_page_from_raw(raw_page);
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -261,18 +277,40 @@ page_header(PG_FUNCTION_ARGS)
 	{
 		char		lsnchar[64];
 
-		snprintf(lsnchar, sizeof(lsnchar), "%X/%X",
-				 (uint32) (lsn >> 32), (uint32) lsn);
+		snprintf(lsnchar, sizeof(lsnchar), "%X/%X", LSN_FORMAT_ARGS(lsn));
 		values[0] = CStringGetTextDatum(lsnchar);
 	}
 	else
 		values[0] = LSNGetDatum(lsn);
 	values[1] = UInt16GetDatum(page->pd_checksum);
 	values[2] = UInt16GetDatum(page->pd_flags);
-	values[3] = UInt16GetDatum(page->pd_lower);
-	values[4] = UInt16GetDatum(page->pd_upper);
-	values[5] = UInt16GetDatum(page->pd_special);
-	values[6] = UInt16GetDatum(PageGetPageSize(page));
+
+	/* pageinspect >= 1.10 uses int4 instead of int2 for those fields */
+	switch (TupleDescAttr(tupdesc, 3)->atttypid)
+	{
+		case INT2OID:
+			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT2OID &&
+				   TupleDescAttr(tupdesc, 5)->atttypid == INT2OID &&
+				   TupleDescAttr(tupdesc, 6)->atttypid == INT2OID);
+			values[3] = UInt16GetDatum(page->pd_lower);
+			values[4] = UInt16GetDatum(page->pd_upper);
+			values[5] = UInt16GetDatum(page->pd_special);
+			values[6] = UInt16GetDatum(PageGetPageSize(page));
+			break;
+		case INT4OID:
+			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT4OID &&
+				   TupleDescAttr(tupdesc, 5)->atttypid == INT4OID &&
+				   TupleDescAttr(tupdesc, 6)->atttypid == INT4OID);
+			values[3] = Int32GetDatum(page->pd_lower);
+			values[4] = Int32GetDatum(page->pd_upper);
+			values[5] = Int32GetDatum(page->pd_special);
+			values[6] = Int32GetDatum(PageGetPageSize(page));
+			break;
+		default:
+			elog(ERROR, "incorrect output types");
+			break;
+	}
+
 	values[7] = UInt16GetDatum(PageGetPageLayoutVersion(page));
 	values[8] = TransactionIdGetDatum(page->pd_prune_xid);
 
@@ -292,32 +330,45 @@ page_header(PG_FUNCTION_ARGS)
  * Compute checksum of a raw page
  */
 
+PG_FUNCTION_INFO_V1(page_checksum_1_9);
 PG_FUNCTION_INFO_V1(page_checksum);
 
-Datum
-page_checksum(PG_FUNCTION_ARGS)
+static Datum
+page_checksum_internal(PG_FUNCTION_ARGS, enum pageinspect_version ext_version)
 {
 	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
-	uint32		blkno = PG_GETARG_INT32(1);
-	int			raw_page_size;
-	PageHeader	page;
+	int64		blkno = (ext_version == PAGEINSPECT_V1_8 ? PG_GETARG_UINT32(1) : PG_GETARG_INT64(1));
+	Page		page;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
-	raw_page_size = VARSIZE(raw_page) - VARHDRSZ;
-
-	/*
-	 * Check that the supplied page is of the right size.
-	 */
-	if (raw_page_size != BLCKSZ)
+	if (blkno < 0 || blkno > MaxBlockNumber)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("incorrect size of input page (%d bytes)", raw_page_size)));
+				 errmsg("invalid block number")));
 
-	page = (PageHeader) VARDATA(raw_page);
+	page = get_page_from_raw(raw_page);
+
+	if (PageIsNew(page))
+		PG_RETURN_NULL();
 
 	PG_RETURN_INT16(pg_checksum_page((char *) page, blkno));
+}
+
+Datum
+page_checksum_1_9(PG_FUNCTION_ARGS)
+{
+	return page_checksum_internal(fcinfo, PAGEINSPECT_V1_9);
+}
+
+/*
+ * Entry point for old extension version
+ */
+Datum
+page_checksum(PG_FUNCTION_ARGS)
+{
+	return page_checksum_internal(fcinfo, PAGEINSPECT_V1_8);
 }

@@ -5,6 +5,7 @@ description: YugabyteDB Aeon cluster authentication and encryption.
 headcontent: Download your cluster certificate to connect securely
 aliases:
   - /preview/yugabyte-cloud/cloud-connect/cloud-secure-clusters/cloud-authentication/
+  - /preview/secure/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-authentication

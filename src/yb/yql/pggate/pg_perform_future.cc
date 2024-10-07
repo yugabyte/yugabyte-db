@@ -24,14 +24,21 @@ namespace yb::pggate {
 namespace {
 
 Status PatchStatus(const Status& status, const PgObjectIds& relations) {
+  if (status.ok()) {
+    return status;
+  }
+
   const auto max_relation_index = relations.size();
-  const auto duplicate_key_op_index =
-      PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
-          ? OpIndex::ValueFromStatus(status).get_value_or(max_relation_index) : max_relation_index;
-  return duplicate_key_op_index < max_relation_index
-      ? STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-            .CloneAndAddErrorCode(RelationOid(relations[duplicate_key_op_index].object_oid))
-      : status;
+  const auto op_index = OpIndex::ValueFromStatus(status).get_value_or(max_relation_index);
+  if (op_index < max_relation_index) {
+    static const auto duplicate_key_status =
+        STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+    const auto& actual_status =
+        PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
+          ? duplicate_key_status : status;
+    return  actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
+  }
+  return status;
 }
 
 } // namespace

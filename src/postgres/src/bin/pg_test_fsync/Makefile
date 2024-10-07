@@ -7,7 +7,9 @@ subdir = src/bin/pg_test_fsync
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = pg_test_fsync.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	pg_test_fsync.o
 
 all: pg_test_fsync
 
@@ -20,8 +22,15 @@ install: all installdirs
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
+check:
+	$(prove_check)
+
+installcheck:
+	$(prove_installcheck)
+
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_test_fsync$(X)'
 
 clean distclean maintainer-clean:
 	rm -f pg_test_fsync$(X) $(OBJS)
+	rm -rf tmp_check

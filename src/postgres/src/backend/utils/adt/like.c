@@ -7,7 +7,7 @@
  *		A big hack of the regexp.c code!! Contributed by
  *		Keith Parks <emkxp01@mtcc.demon.co.uk> (7/95).
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,21 +31,21 @@
 #define LIKE_ABORT						(-1)
 
 
-static int SB_MatchText(char *t, int tlen, char *p, int plen,
-			 pg_locale_t locale, bool locale_is_c);
+static int	SB_MatchText(const char *t, int tlen, const char *p, int plen,
+						 pg_locale_t locale, bool locale_is_c);
 static text *SB_do_like_escape(text *, text *);
 
-static int MB_MatchText(char *t, int tlen, char *p, int plen,
-			 pg_locale_t locale, bool locale_is_c);
+static int	MB_MatchText(const char *t, int tlen, const char *p, int plen,
+						 pg_locale_t locale, bool locale_is_c);
 static text *MB_do_like_escape(text *, text *);
 
-static int UTF8_MatchText(char *t, int tlen, char *p, int plen,
-			   pg_locale_t locale, bool locale_is_c);
+static int	UTF8_MatchText(const char *t, int tlen, const char *p, int plen,
+						   pg_locale_t locale, bool locale_is_c);
 
-static int SB_IMatchText(char *t, int tlen, char *p, int plen,
-			  pg_locale_t locale, bool locale_is_c);
+static int	SB_IMatchText(const char *t, int tlen, const char *p, int plen,
+						  pg_locale_t locale, bool locale_is_c);
 
-static int	GenericMatchText(char *s, int slen, char *p, int plen);
+static int	GenericMatchText(const char *s, int slen, const char *p, int plen, Oid collation);
 static int	Generic_Text_IC_like(text *str, text *pat, Oid collation);
 
 /*--------------------
@@ -54,7 +54,7 @@ static int	Generic_Text_IC_like(text *str, text *pat, Oid collation);
  *--------------------
  */
 static inline int
-wchareq(char *p1, char *p2)
+wchareq(const char *p1, const char *p2)
 {
 	int			p1_len;
 
@@ -148,8 +148,18 @@ SB_lower_char(unsigned char c, pg_locale_t locale, bool locale_is_c)
 
 /* Generic for all cases not requiring inline case-folding */
 static inline int
-GenericMatchText(char *s, int slen, char *p, int plen)
+GenericMatchText(const char *s, int slen, const char *p, int plen, Oid collation)
 {
+	if (collation && !lc_ctype_is_c(collation))
+	{
+		pg_locale_t locale = pg_newlocale_from_collation(collation);
+
+		if (locale && !locale->deterministic)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("nondeterministic collations are not supported for LIKE")));
+	}
+
 	if (pg_database_encoding_max_length() == 1)
 		return SB_MatchText(s, slen, p, plen, 0, true);
 	else if (GetDatabaseEncoding() == PG_UTF8)
@@ -168,23 +178,27 @@ Generic_Text_IC_like(text *str, text *pat, Oid collation)
 	pg_locale_t locale = 0;
 	bool		locale_is_c = false;
 
+	if (!OidIsValid(collation))
+	{
+		/*
+		 * This typically means that the parser could not resolve a conflict
+		 * of implicit collations, so report it that way.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_COLLATION),
+				 errmsg("could not determine which collation to use for ILIKE"),
+				 errhint("Use the COLLATE clause to set the collation explicitly.")));
+	}
+
 	if (lc_ctype_is_c(collation))
 		locale_is_c = true;
-	else if (collation != DEFAULT_COLLATION_OID)
-	{
-		if (!OidIsValid(collation))
-		{
-			/*
-			 * This typically means that the parser could not resolve a
-			 * conflict of implicit collations, so report it that way.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_INDETERMINATE_COLLATION),
-					 errmsg("could not determine which collation to use for ILIKE"),
-					 errhint("Use the COLLATE clause to set the collation explicitly.")));
-		}
+	else
 		locale = pg_newlocale_from_collation(collation);
-	}
+
+	if (locale && !locale->deterministic)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("nondeterministic collations are not supported for ILIKE")));
 
 	/*
 	 * For efficiency reasons, in the single byte case we don't call lower()
@@ -196,7 +210,6 @@ Generic_Text_IC_like(text *str, text *pat, Oid collation)
 
 	if (pg_database_encoding_max_length() > 1 || (locale && locale->provider == COLLPROVIDER_ICU))
 	{
-		/* lower's result is never packed, so OK to use old macros here */
 		pat = DatumGetTextPP(DirectFunctionCall1Coll(lower, collation,
 													 PointerGetDatum(pat)));
 		p = VARDATA_ANY(pat);
@@ -240,7 +253,7 @@ namelike(PG_FUNCTION_ARGS)
 	p = VARDATA_ANY(pat);
 	plen = VARSIZE_ANY_EXHDR(pat);
 
-	result = (GenericMatchText(s, slen, p, plen) == LIKE_TRUE);
+	result = (GenericMatchText(s, slen, p, plen, PG_GET_COLLATION()) == LIKE_TRUE);
 
 	PG_RETURN_BOOL(result);
 }
@@ -261,7 +274,7 @@ namenlike(PG_FUNCTION_ARGS)
 	p = VARDATA_ANY(pat);
 	plen = VARSIZE_ANY_EXHDR(pat);
 
-	result = (GenericMatchText(s, slen, p, plen) != LIKE_TRUE);
+	result = (GenericMatchText(s, slen, p, plen, PG_GET_COLLATION()) != LIKE_TRUE);
 
 	PG_RETURN_BOOL(result);
 }
@@ -282,7 +295,7 @@ textlike(PG_FUNCTION_ARGS)
 	p = VARDATA_ANY(pat);
 	plen = VARSIZE_ANY_EXHDR(pat);
 
-	result = (GenericMatchText(s, slen, p, plen) == LIKE_TRUE);
+	result = (GenericMatchText(s, slen, p, plen, PG_GET_COLLATION()) == LIKE_TRUE);
 
 	PG_RETURN_BOOL(result);
 }
@@ -303,7 +316,7 @@ textnlike(PG_FUNCTION_ARGS)
 	p = VARDATA_ANY(pat);
 	plen = VARSIZE_ANY_EXHDR(pat);
 
-	result = (GenericMatchText(s, slen, p, plen) != LIKE_TRUE);
+	result = (GenericMatchText(s, slen, p, plen, PG_GET_COLLATION()) != LIKE_TRUE);
 
 	PG_RETURN_BOOL(result);
 }
