@@ -101,15 +101,20 @@ func (pg Postgres) getPgUserName() string {
 
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() error {
+	log.Info("Starting Postgres install")
 	config.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
+	log.Info("Finished Postgres install")
+	return nil
+}
 
+func (pg Postgres) Initialize() error {
+	log.Info("Starting Postgres initialize")
 	if err := pg.createFilesAndDirs(); err != nil {
 		return err
 	}
-
 	// First let initdb create its config and data files in the software/pg../conf location
 	if err := pg.runInitDB(); err != nil {
 		return err
@@ -147,6 +152,8 @@ func (pg Postgres) Install() error {
 	if !common.HasSudoAccess() {
 		pg.createCronJob()
 	}
+
+	log.Info("Finishing Postgres initialize")
 	return nil
 }
 
@@ -569,8 +576,8 @@ func (pg Postgres) runInitDB() error {
 func (pg Postgres) alterPassword() error {
 	// Reload hba conf
 	passwordCmd := fmt.Sprintf("ALTER USER %s PASSWORD '%s';",
-															viper.GetString("postgres.install.username"),
-															viper.GetString("postgres.install.password"))
+		viper.GetString("postgres.install.username"),
+		viper.GetString("postgres.install.password"))
 	psql := filepath.Join(pg.PgBin, "psql")
 	args := []string{
 		"-d", "postgres",
@@ -737,7 +744,7 @@ func (pg Postgres) createCronJob() {
 }
 
 func (pg Postgres) createFilesAndDirs() error {
-	f, err := common.Create(common.GetBaseInstall() + "/data/logs/postgres.log")
+	f, err := common.Create(pg.LogFile)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		log.Error("Failed to create postgres logfile: " + err.Error())
 		return err
