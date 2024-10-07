@@ -202,7 +202,7 @@ public class BackupTableYbc extends YbcTaskBase {
 
       // Poll create backup progress on yb-controller and handle result
       try {
-        pollTaskProgress(ybcClient, taskParams().taskID);
+        pollTaskProgress(ybcClient, taskParams().taskID, taskParams().nodeIp);
         handleBackupResult();
         ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
         taskParams().nodeRetriever.putNodeIPBackToPool(taskParams().nodeIp);
