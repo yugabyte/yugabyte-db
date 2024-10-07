@@ -664,10 +664,11 @@ Status TabletServer::RegisterServices() {
         RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(test_echo_service)));
   }
 
-  auto connect_to_pg = [this](const std::string& database_name) {
+  auto connect_to_pg = [this](const std::string& database_name,
+                              const std::optional<CoarseTimePoint>& deadline) {
     return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                   GetSharedMemoryPostgresAuthKey(),
-                                                  std::nullopt).Connect();
+                                                  deadline).Connect();
   };
   auto pg_auto_analyze_service =
       std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),

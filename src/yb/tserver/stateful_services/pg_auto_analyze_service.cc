@@ -54,6 +54,16 @@ DEFINE_RUNTIME_uint32(ysql_auto_analyze_threshold, 50,
 DEFINE_RUNTIME_double(ysql_auto_analyze_scale_factor, 0.1,
                       "A fraction of the table size to add to ysql_auto_analyze_threshold when "
                       "deciding whether to trigger an ANALYZE.");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_batch_size, 10,
+                      "The max number of tables the auto analyze service tries to analyze in a "
+                      "single ANALYZE statement.");
+DEFINE_test_flag(int32, simulate_analyze_deleted_table_secs, 0,
+                 "Delay triggering analyze to create a scenairo where we need to fall back to "
+                 "analyze each table separately because a table is deleted.");
+DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
+                 "Sort the analyze target tables' ids to generate deterministic ANALYZE statements "
+                 "for testing purpose.");
+
 DECLARE_bool(ysql_enable_auto_analyze_service);
 
 using namespace std::chrono_literals;
@@ -149,13 +159,15 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
 
   RETURN_NOT_OK(GetTablePGSchemaAndName(table_id_to_mutations_maps));
 
-  RETURN_NOT_OK(FetchUnknownReltuples(table_id_to_mutations_maps));
+  std::unordered_set<NamespaceId> deleted_databases;
+  RETURN_NOT_OK(FetchUnknownReltuples(table_id_to_mutations_maps, deleted_databases));
 
-  auto dbname_to_analyze_target_tables
+  auto namespace_id_to_analyze_target_tables
       = VERIFY_RESULT(DetermineTablesForAnalyze(table_id_to_mutations_maps));
 
-  auto [analyzed_tables, deleted_tables, deleted_databases]
-      = VERIFY_RESULT(DoAnalyzeOnCandidateTables(dbname_to_analyze_target_tables));
+  auto [analyzed_tables, deleted_tables]
+      = VERIFY_RESULT(DoAnalyzeOnCandidateTables(namespace_id_to_analyze_target_tables,
+                                                 deleted_databases));
 
   RETURN_NOT_OK(UpdateTableMutationsAfterAnalyze(analyzed_tables, table_id_to_mutations_maps));
 
@@ -241,25 +253,40 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
 // For each table we don't know its number of tuples, we need to fetch its reltuples from
 // pg_class catalog within the same database as this table.
 Status PgAutoAnalyzeService::FetchUnknownReltuples(
-    std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps) {
+    std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
+    std::unordered_set<NamespaceId>& deleted_databases) {
   VLOG_WITH_FUNC(2);
-  std::unordered_map<NamespaceName, std::set<std::pair<TableId, PgOid>>>
-      dbname_to_tables_with_unknown_reltuples;
+  std::unordered_map<NamespaceId, std::vector<std::pair<TableId, PgOid>>>
+      namespace_id_to_tables_with_unknown_reltuples;
   // Clean up dead entries from table_tuple_count_.
   std::erase_if(table_tuple_count_, [&table_id_to_mutations_maps](const auto& kv) {
     return !table_id_to_mutations_maps.contains(kv.first);
   });
   // Gather tables with unknown reltuples.
   for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
+    if (!table_id_to_name_.contains(table_id))
+      continue;
     auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
     auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     if (!table_tuple_count_.contains(table_id)) {
-      dbname_to_tables_with_unknown_reltuples[namespace_id_to_name_[namespace_id]].insert(
+      namespace_id_to_tables_with_unknown_reltuples[namespace_id].push_back(
           std::make_pair(table_id, table_oid));
     }
   }
-  for (const auto& [dbname, tables] : dbname_to_tables_with_unknown_reltuples) {
-    auto conn = VERIFY_RESULT(connect_to_pg_func_(dbname));
+  for (const auto& [namespace_id, tables] : namespace_id_to_tables_with_unknown_reltuples) {
+    // If the database is deleted. We need to clean up table entries belonging to
+    // this database from the YCQL service table.
+    // If the database is renamed, we need to refresh name cache.
+    // In either case, we need to let auto analyze proceed to later steps.
+    // In other cases, return the error status.
+    bool is_deleted_or_renamed = false;
+    auto conn_result = EstablishDBConnection(namespace_id, deleted_databases,
+                                             &is_deleted_or_renamed);
+    if (is_deleted_or_renamed)
+      continue;
+    if (!conn_result)
+      return conn_result.status();
+    auto& conn = *conn_result;
     for (const auto& [table_id, table_oid] : tables) {
       auto res =
         VERIFY_RESULT(conn.Fetch("SELECT reltuples FROM pg_class WHERE oid = "
@@ -277,12 +304,12 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
 }
 
 // ANALYZE is triggered for tables crossing their analyze thresholds.
-Result<std::unordered_map<NamespaceName, std::set<TableId>>>
+Result<std::unordered_map<NamespaceName, std::vector<TableId>>>
     PgAutoAnalyzeService::DetermineTablesForAnalyze(
         std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps) {
   VLOG_WITH_FUNC(2);
-  std::unordered_map<NamespaceName, std::set<TableId>>
-      dbname_to_analyze_target_tables;
+  std::unordered_map<NamespaceId, std::vector<TableId>>
+      namespace_id_to_analyze_target_tables;
   for (auto& [table_id, mutations] : table_id_to_mutations_maps) {
     if (!table_tuple_count_.contains(table_id))
       continue;
@@ -292,97 +319,119 @@ Result<std::unordered_map<NamespaceName, std::set<TableId>>>
     if (mutations >= analyze_threshold) {
       VLOG(5) << "Table with id " << table_id << " has " << mutations << " mutations "
               << "and reaches its analyze threshold " << analyze_threshold;
-      dbname_to_analyze_target_tables[namespace_id_to_name_[namespace_id]].insert(table_id);
+      namespace_id_to_analyze_target_tables[namespace_id].push_back(table_id);
     }
   }
 
-  return dbname_to_analyze_target_tables;
+  if (PREDICT_FALSE(FLAGS_TEST_sort_auto_analyze_target_table_ids)) {
+    for(auto& [namespace_id, tables_to_analyze] : namespace_id_to_analyze_target_tables) {
+      sort(tables_to_analyze.begin(), tables_to_analyze.end());
+    }
+  }
+
+  return namespace_id_to_analyze_target_tables;
 }
 
 // Trigger ANALYZE on tables database by database.
-Result<std::tuple<std::vector<TableId>, std::vector<TableId>, std::unordered_set<NamespaceId>>>
+Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
     PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
-        std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables) {
+        std::unordered_map<NamespaceId, std::vector<TableId>>&
+            namespace_id_to_analyze_target_tables,
+        std::unordered_set<NamespaceId>& deleted_databases) {
   VLOG_WITH_FUNC(2);
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_analyze_deleted_table_secs > 0)) {
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_analyze_deleted_table_secs));
+  }
   std::vector<TableId> analyzed_tables;
   std::vector<TableId> deleted_tables;
-  std::unordered_set<NamespaceId> deleted_databases;
-  for(const auto& [dbname, tables_to_analyze] : dbname_to_analyze_target_tables) {
+  for(const auto& [namespace_id, tables_to_analyze] : namespace_id_to_analyze_target_tables) {
+    // If a connection setup fails, check if the database is renamed or deleted.
+    // If the database is deleted. We need to clean up table entries belonging to
+    // this database from the YCQL service table.
+    // If the database is renamed, we need to refresh name cache so that tables in the renamed
+    // database can be analyzed in the next iteration of TriggerAnalyze.
+    const auto& dbname = namespace_id_to_name_[namespace_id];
     LOG(INFO) << "Trigger ANALYZE for tables within database: " << dbname;
-    // Connect to PG database.
-    auto conn_result = connect_to_pg_func_(dbname);
-    // If connection setup fails,  continue
-    // doing ANALYZEs on tables in other databases.
-    if (!conn_result) {
-      // Check if the nonexistent database is renamed or deleted.
-      // If the database is renamed, we need to refresh name cache so that tables in the renamed
-      // database can be analyzed in the next iteration of TriggerAnalyze.
-      auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(*tables_to_analyze.begin()));
-      master::GetNamespaceInfoResponsePB resp;
-      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
-                                                           &resp));
-      if (!resp.has_namespace_()) { // deleted
-        // The database is deleted. Need to clean up table entries belonging to
-        // this database from the YCQL service table.
-        deleted_databases.insert(namespace_id);
-        continue;
-      } else {
-        if (resp.namespace_().name() != dbname) { // renamed
-          VLOG(4) << "Database " << dbname << " was renamed to " << resp.namespace_().name();
-          refresh_name_cache_ = true;
-          continue;
-        }
-      }
+    bool is_deleted_or_renamed = false;
+    auto conn_result = EstablishDBConnection(namespace_id, deleted_databases,
+                                             &is_deleted_or_renamed);
+    // If a connection setup fails due to a deleted or renamed database,
+    // then continue doing ANALYZEs on tables in other databases.
+    if (is_deleted_or_renamed)
+      continue;
+    if (!conn_result)
       return conn_result.status();
-    }
     auto& conn = *conn_result;
     // Construct ANALYZE statement and RUN ANALYZE.
+    // Try to analyze all tables in batches to minimize the number of catalog version increments.
+    // More catalog version increments lead to a higher number of PG cache refreshes on all PG
+    // backends which introduces a large overhead.
+    // Once the incremental catalog cache refresh (#24498) is implemented, we can remove the
+    // requirement to batch multiple tables in the one ANALYZE statement.
+    // If an error occurs in a batched ANALYZE, then fall back to analyze each table separately.
     const std::string analyze_query = "ANALYZE ";
+    std::vector<TableId> batched_tables;
     for (auto& table_id : tables_to_analyze) {
-      // Each time run ANALYZE for one table instead of runnning one ANALYZE for all tables in one
-      // database to deal with the scenario where a table we are going to analyze is deleted by
-      // a user before or during its ANALYZE is kicked off.
-      auto table_name =
-          Format("\"$0\".\"$1\"",
-                 table_id_to_name_[table_id].has_pgschema_name() ?
-                 table_id_to_name_[table_id].pgschema_name() : "pg_catalog",
-                 table_id_to_name_[table_id].table_name());
-      VLOG(1) << "In YSQL database: " << dbname <<  ", run ANALYZE statement: "
-              << analyze_query << table_name;
-      auto s = conn.Execute(analyze_query + table_name);
-      // Gracefully handle the error status to allow other ANALYZE statements to proceed.
-      // A table might be deleted before or during its ANALYZE. Treat the deleted table
-      // as analyzed to clean up its mutation count.
-      // A table might be renamed. Clear our table name cache so that the renamed table
-      // can be analyzed in the next iteration of TriggerAnalyze.
-      if (!s.ok()) {
-        const auto& str = s.ToString();
-        if (str.find("does not exist") == std::string::npos) {
-          // Don't directly return status if an error status is generated from running analyze.
-          // Allow subsequent ANALYZEs to run.
-          LOG(WARNING) << "In YSQL database: " << dbname <<  ", failed ANALYZE statement: "
-                       << analyze_query << table_name << " with error: " << str;
+      batched_tables.push_back(table_id);
+      // FLAGS_ysql_auto_analyze_batch_size == 0 has the effect of batching all tables
+      // in one single ANALYZE statement.
+      if (batched_tables.size() == FLAGS_ysql_auto_analyze_batch_size
+          || table_id == tables_to_analyze.back()) {
+        auto table_names = TableNamesForAnalyzeCmd(batched_tables);
+        VLOG(1) << "In YSQL database: " << dbname
+                <<  ", run ANALYZE statement for tables in batch: "
+                << analyze_query << table_names;
+        auto s = conn.Execute(analyze_query + table_names);
+        if (s.ok()) {
+          analyzed_tables.insert(analyzed_tables.end(), batched_tables.begin(),
+                                 batched_tables.end());
         } else {
-          // Check if the table is deleted or renamed.
-          auto renamed = VERIFY_RESULT(conn.FetchRow<bool>(
-                            Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE oid = '$0')",
-                                   VERIFY_RESULT(GetPgsqlTableOid(table_id)))));
-          if (renamed) {
-            VLOG(4) << "Table " << table_name << "was renamed";
-            // Need to refresh name cache because the cached table name is outdated.
-            refresh_name_cache_ = true;
-          } else {
-            // Need to remove deleted table entries from the YCQL service table.
-            deleted_tables.push_back(table_id);
+          VLOG(1) << "Fall back to analyze each table separately due to " << s.ToString();
+          for (auto& table_id : batched_tables) {
+            // Each time run ANALYZE for one table instead of runnning one ANALYZE for batch tables
+            // to deal with the scenario where a table we are going to analyze is deleted by
+            // a user before or during its ANALYZE is kicked off.
+            auto table_name = TableNamesForAnalyzeCmd({ table_id });
+            VLOG(1) << "In YSQL database: " << dbname <<  ", run ANALYZE statement: "
+                    << analyze_query << table_name;
+            auto s = conn.Execute(analyze_query + table_name);
+            // Gracefully handle the error status to allow other ANALYZE statements to proceed.
+            // A table might be deleted before or during its ANALYZE. Treat the deleted table
+            // as analyzed to clean up its mutation count.
+            // A table might be renamed. Clear our table name cache so that the renamed table
+            // can be analyzed in the next iteration of TriggerAnalyze.
+            if (!s.ok()) {
+              const auto& str = s.ToString();
+              if (str.find("does not exist") == std::string::npos) {
+                // Don't directly return status if an error status is generated from running
+                // analyze. Allow subsequent ANALYZEs to run.
+                LOG(WARNING) << "In YSQL database: " << dbname <<  ", failed ANALYZE statement: "
+                             << analyze_query << table_name << " with error: " << str;
+              } else {
+                // Check if the table is deleted or renamed.
+                auto renamed = VERIFY_RESULT(conn.FetchRow<bool>(
+                                  Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE oid = '$0')",
+                                         VERIFY_RESULT(GetPgsqlTableOid(table_id)))));
+                if (renamed) {
+                  VLOG(4) << "Table " << table_name << "was renamed";
+                  // Need to refresh name cache because the cached table name is outdated.
+                  refresh_name_cache_ = true;
+                } else {
+                  // Need to remove deleted table entries from the YCQL service table.
+                  deleted_tables.push_back(table_id);
+                }
+              }
+            } else {
+              analyzed_tables.push_back(table_id);
+            }
           }
         }
-      } else {
-        analyzed_tables.push_back(table_id);
+        batched_tables.clear();
       }
     }
   }
 
-  return make_tuple(analyzed_tables, deleted_tables, deleted_databases);
+  return make_pair(analyzed_tables, deleted_tables);
 }
 
 // Update the table mutations by subtracting the mutations count we fetched
@@ -485,6 +534,58 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
       "Failed to clean up deleted entries from auto analyze table");
 
   return Status::OK();
+}
+
+Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
+    NamespaceId namespace_id, std::unordered_set<NamespaceId>& deleted_databases,
+    bool* is_deleted_or_renamed) {
+  // Connect to PG database.
+  const auto& dbname = namespace_id_to_name_[namespace_id];
+  auto conn_result = connect_to_pg_func_(dbname, std::nullopt);
+  // If connection setup fails,  continue
+  // doing ANALYZEs on tables in other databases.
+  if (!conn_result) {
+    // Check if the nonexistent database is renamed or deleted.
+    bool namespace_exists =
+        VERIFY_RESULT(client_future_.get()->NamespaceIdExists(namespace_id, YQL_DATABASE_PGSQL));
+    if (!namespace_exists) { // deleted
+      // The database is deleted. Need to clean up table entries belonging to
+      // this database from the YCQL service table.
+      VLOG(4) << "Database " << dbname << " was deleted";
+      deleted_databases.insert(namespace_id);
+      *is_deleted_or_renamed = true;
+    } else {
+      // If the database is renamed, we need to refresh name cache so that tables in the renamed
+      // database can be analyzed in the next iteration of TriggerAnalyze.
+      master::GetNamespaceInfoResponsePB resp;
+      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
+                                                           &resp));
+      if (resp.namespace_().name() != dbname) { // renamed
+        VLOG(4) << "Database " << dbname << " was renamed to " << resp.namespace_().name();
+        refresh_name_cache_ = true;
+        *is_deleted_or_renamed = true;
+      }
+    }
+  }
+
+  return conn_result;
+}
+
+// Construct tables' names list.
+std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids) {
+  std::string table_names = "";
+  for (auto& table_id : table_ids) {
+    if (table_names != "")
+      table_names += ", ";
+    auto table_name =
+        Format("\"$0\".\"$1\"",
+               table_id_to_name_[table_id].has_pgschema_name() ?
+               table_id_to_name_[table_id].pgschema_name() : "pg_catalog",
+               table_id_to_name_[table_id].table_name());
+    table_names += table_name;
+  }
+
+  return table_names;
 }
 
 Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
