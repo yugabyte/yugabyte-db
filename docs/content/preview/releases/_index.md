@@ -19,8 +19,6 @@ This section describes the release support policy, versioning, and feature avail
 
 -> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
 
--> For information on YugabyteDB Client releases, refer to [YugabyteDB Clients](yugabyte-clients/).
-
 ## Current releases
 
 <ul class="nav yb-pills">

@@ -3,18 +3,19 @@ title: YugabyteDB Client shells
 headerTitle: YugabyteDB Clients
 linkTitle: YugabyteDB Clients
 description: Use these shells to interact with YugabyteDB
-image: fa-light fa-terminal
 headcontent: Shells for interacting with, configuring, and managing YugabyteDB
-showRightNav: true
-type: indexpage
+image: fa-thin fa-terminal
+type: docs
 ---
 
-YugabyteDB ships with command line interface (CLI) shells for interacting with each YugabyteDB API:
+YugabyteDB ships with command line interface (CLI) shells for interacting with each YugabyteDB API.
 
-- [ysqlsh](../../api/ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../../api/ysql/).
-- [ycqlsh](../../api/ycqlsh/) - The CQL shell for interacting with YugabyteDB using [YCQL](../../api/ycql/).
+| Client | API | Description |
+| :--- | :--- | :--- |
+| [ysqlsh](../../api/ysqlsh/) | [YSQL](../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
+| [ycqlsh](../../api/ycqlsh/) | [YCQL](../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
-### Installation
+## Installation
 
 The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
@@ -84,25 +85,3 @@ docker pull yugabytedb/yugabyte-client:latest
 
   </div>
 </div>
-
-&nbsp;
-
----
-
-&nbsp;
-
-{{<index/block>}}
-
-  {{<index/item
-    title="ysqlsh reference"
-    body="CLI for interacting with YugabyteDB using YSQL."
-    href="../../api/ysqlsh/"
-    icon="fa-light fa-terminal">}}
-
-  {{<index/item
-    title="ycqlsh reference"
-    body="CLI for interacting with YugabyteDB using YCQL."
-    href="../../api/ycqlsh/"
-    icon="fa-light fa-terminal">}}
-
-{{</index/block>}}
