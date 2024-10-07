@@ -1163,7 +1163,7 @@
 [[stable_api]]
   name = "YCQL"
   weight = 11
-  identifier = "api-ycql"
+  identifier = "api-cassandra"
   url = "/stable/api/ycql/"
   [stable_api.params]
     classes = "separator"
