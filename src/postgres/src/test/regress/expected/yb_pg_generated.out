@@ -473,10 +473,7 @@ INSERT INTO gtest20b (a) VALUES (10);
 INSERT INTO gtest20b (a) VALUES (30);
 ALTER TABLE gtest20b ADD CONSTRAINT chk CHECK (b < 50) NOT VALID;
 ALTER TABLE gtest20b VALIDATE CONSTRAINT chk;  -- fails on existing row 
-ERROR:  ALTER TABLE VALIDATE CONSTRAINT not supported yet
-LINE 1: ALTER TABLE gtest20b VALIDATE CONSTRAINT chk;
-                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  check constraint "chk" of relation "gtest20b" is violated by some row
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) STORED NOT NULL);
 INSERT INTO gtest21a (a) VALUES (1);  -- ok
