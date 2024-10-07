@@ -19,6 +19,7 @@
 
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
+#include "yb/gutil/callback.h"
 #include "yb/util/backoff_waiter.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -2129,6 +2130,71 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRew
          4 | 4
          5 | 5
         (5 rows)
+      )#"));
+}
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedColumns)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT, c INT, d INT)"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO table_1 VALUES (1, 1, 1, 1), (2, 2, 2, 2)", 2));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE TABLE table_2 AS SELECT b, d FROM table_1", "SELECT 2"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX index_1 ON table_1 (b, d)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE MATERIALIZED VIEW matview AS SELECT b, d FROM table_1", "SELECT 2"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 RENAME COLUMN b TO b1", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 DROP COLUMN c", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE table_1 RENAME COLUMN d TO d1", "ALTER TABLE"));
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  // Verify that the restored index has the new column names.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte_new", "index_1"));
+  Synchronizer sync;
+  auto table_info = std::make_shared<client::YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(table_info->schema.columns()[0].name(), "b1");
+  ASSERT_EQ(table_info->schema.columns()[1].name(), "d1");
+  SetDbName("yugabyte_new");
+  // Verify that the index works correctly.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "EXPLAIN (COSTS OFF) SELECT b1, d1 FROM table_1 WHERE b1 = 1 AND d1 = 1",
+      R"#(
+                      QUERY PLAN
+      ------------------------------------------
+       Index Only Scan using index_1 on table_1
+         Index Cond: ((b1 = 1) AND (d1 = 1))
+      (2 rows)
+
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b1, d1 FROM table_1 WHERE b1 = 1 AND d1 = 1", R"#(
+         b1 | d1
+        ----+----
+          1 |  1
+        (1 row)
+      )#"));
+  // Lastly, also perform some sanity check on the other objects.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b, d FROM table_2 ORDER BY b", R"#(
+         b | d
+        ---+---
+         1 | 1
+         2 | 2
+        (2 rows)
+      )#"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT b, d FROM matview ORDER BY b", R"#(
+         b | d
+        ---+---
+         1 | 1
+         2 | 2
+        (2 rows)
       )#"));
 }
 }  // namespace tools
