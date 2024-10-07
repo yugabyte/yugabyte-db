@@ -145,11 +145,12 @@ After HA is operational, it is recommended that you enable certificate validatio
 
 1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/).
 
-    - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) certificate.
     - If YBA was set up to use automatically generated self-signed certificates and you installed YBA using YBA Installer, locate the CA certificate at `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on both the YBA active and standby instances. (If you configured a custom install root, replace `/opt/yugabyte` with the path you configured.)
     - If YBA was set up to use automatically-generated self-signed certificates and you installed YBA using Replicated, locate the CA certificate at `/var/lib/replicated/secrets/ca.crt` on the YBA active and standby instances.
+    - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) root certificate.
     - Add the CA certificates for both the active and standby instances to the YugabyteDB Anywhere trust store of the active instance. This allows a standby to connect to the active instance if the standby is promoted to active status.
-    - If you are using a custom certificate, you may need to concatenate the intermediate certificate with the root certificate to create a CA trust chain. To do this:
+
+        If you are using a custom certificate, you may need to concatenate the intermediate certificate with the root certificate to create a CA trust chain. To do this:
 
         ```sh
         cat rootCA.crt intermediate.crt > combinedCA.crt
@@ -160,7 +161,7 @@ After HA is operational, it is recommended that you enable certificate validatio
         You can test the combined certificate using the following command:
 
         ```sh
-        openssl verify -CAfile combinedCA.crt /opt/certs/yugabyte/node.ybriver-test-eu-west-2a-eifa-yb-tserver-0.ybriver-test-eu-west-2a-eifa-yb-tservers.stateful-system.svc.cluster.local.crt
+        openssl verify -CAfile combinedCA.crt /path/to/server_cert.pem
         ```
 
         If the command fails, check that the certificate chain is correct.
