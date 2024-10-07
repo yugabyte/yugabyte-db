@@ -47,7 +47,13 @@ func Install(version string) {
 	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
 		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", YbactlLogFile(), err))
 	}
-	createInstallDirs()
+	if err := createSoftwareInstallDirs(); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	if err := createDataInstallDirs(); err != nil {
+		log.Fatal(err.Error())
+	}
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
 	renameThirdPartyDependencies()
@@ -56,16 +62,37 @@ func Install(version string) {
 	setJDKEnvironmentVariable()
 }
 
-func createInstallDirs() {
+func createSoftwareInstallDirs() error {
 	createDirs := []string{
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
-		filepath.Join(GetBaseInstall(), "data"),
-		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
 		GetBaseInstall(),
 	}
+	if err := CreateDirs(createDirs); err != nil {
+		return err
+	}
+	// Remove the symlink if one exists
+	SetActiveInstallSymlink()
+	return nil
+}
 
+func createDataInstallDirs() error {
+	dirs := []string{
+		filepath.Join(GetBaseInstall(), "data"),
+		filepath.Join(GetBaseInstall(), "data/logs"),
+	}
+	return CreateDirs(dirs)
+}
+
+func createUpgradeDirs() error {
+	dirs := []string{
+		GetInstallerSoftwareDir(),
+	}
+	return CreateDirs(dirs)
+}
+
+func CreateDirs(createDirs []string) error {
 	for _, dir := range createDirs {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
@@ -83,29 +110,7 @@ func createInstallDirs() {
 			}
 		}
 	}
-
-	// Remove the symlink if one exists
-	SetActiveInstallSymlink()
-}
-
-func createUpgradeDirs() {
-	createDirs := []string{
-		GetInstallerSoftwareDir(),
-	}
-
-	for _, dir := range createDirs {
-		if err := MkdirAll(dir, DirMode); err != nil {
-			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
-		}
-		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
-				true)
-			if err != nil {
-				log.Fatal("failed to change ownership of " + dir + " to " +
-					viper.GetString("service_username") + ": " + err.Error())
-			}
-		}
-	}
+	return nil
 }
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
