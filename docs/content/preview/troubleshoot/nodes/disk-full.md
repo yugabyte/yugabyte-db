@@ -71,7 +71,7 @@ When dropping YSQL tables, ensure the YB-Master has enough disk space, as this i
 
 ### Disable database features that require more disk space
 
-The following features require more disk space. You can disable or turn these features off, if the features are not used by any of the applications, to reclaim space on the nodes.
+The following features require more disk space. You can disable or turn these features off to reclaim space on the nodes.
 
 - Time-to-live (TTL)
 - Point-in-time recovery (PITR)
