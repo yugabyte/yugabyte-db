@@ -11,19 +11,15 @@
 #include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
-#include "utils/memutils.h"
-
-#include "plpython.h"
-
 #include "plpy_cursorobject.h"
-
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
 #include "plpy_procedure.h"
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
-
+#include "plpython.h"
+#include "utils/memutils.h"
 
 static PyObject *PLy_cursor_query(const char *query);
 static void PLy_cursor_dealloc(PyObject *arg);
@@ -31,9 +27,7 @@ static PyObject *PLy_cursor_iternext(PyObject *self);
 static PyObject *PLy_cursor_fetch(PyObject *self, PyObject *args);
 static PyObject *PLy_cursor_close(PyObject *self, PyObject *unused);
 
-static char PLy_cursor_doc[] = {
-	"Wrapper around a PostgreSQL cursor"
-};
+static char PLy_cursor_doc[] = "Wrapper around a PostgreSQL cursor";
 
 static PyMethodDef PLy_cursor_methods[] = {
 	{"fetch", PLy_cursor_fetch, METH_VARARGS, NULL},
@@ -43,37 +37,14 @@ static PyMethodDef PLy_cursor_methods[] = {
 
 static PyTypeObject PLy_CursorType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
-	"PLyCursor",				/* tp_name */
-	sizeof(PLyCursorObject),	/* tp_size */
-	0,							/* tp_itemsize */
-
-	/*
-	 * methods
-	 */
-	PLy_cursor_dealloc,			/* tp_dealloc */
-	0,							/* tp_print */
-	0,							/* tp_getattr */
-	0,							/* tp_setattr */
-	0,							/* tp_compare */
-	0,							/* tp_repr */
-	0,							/* tp_as_number */
-	0,							/* tp_as_sequence */
-	0,							/* tp_as_mapping */
-	0,							/* tp_hash */
-	0,							/* tp_call */
-	0,							/* tp_str */
-	0,							/* tp_getattro */
-	0,							/* tp_setattro */
-	0,							/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_ITER,	/* tp_flags */
-	PLy_cursor_doc,				/* tp_doc */
-	0,							/* tp_traverse */
-	0,							/* tp_clear */
-	0,							/* tp_richcompare */
-	0,							/* tp_weaklistoffset */
-	PyObject_SelfIter,			/* tp_iter */
-	PLy_cursor_iternext,		/* tp_iternext */
-	PLy_cursor_methods,			/* tp_tpmethods */
+	.tp_name = "PLyCursor",
+	.tp_basicsize = sizeof(PLyCursorObject),
+	.tp_dealloc = PLy_cursor_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+	.tp_doc = PLy_cursor_doc,
+	.tp_iter = PyObject_SelfIter,
+	.tp_iternext = PLy_cursor_iternext,
+	.tp_methods = PLy_cursor_methods,
 };
 
 void
@@ -179,7 +150,7 @@ PLy_cursor_plan(PyObject *ob, PyObject *args)
 
 	if (args)
 	{
-		if (!PySequence_Check(args) || PyString_Check(args) || PyUnicode_Check(args))
+		if (!PySequence_Check(args) || PyUnicode_Check(args))
 		{
 			PLy_exception_set(PyExc_TypeError, "plpy.cursor takes a sequence as its second argument");
 			return NULL;
@@ -198,7 +169,7 @@ PLy_cursor_plan(PyObject *ob, PyObject *args)
 
 		if (!so)
 			PLy_elog(ERROR, "could not execute plan");
-		sv = PyString_AsString(so);
+		sv = PLyUnicode_AsString(so);
 		PLy_exception_set_plural(PyExc_TypeError,
 								 "Expected sequence of %d argument, got %d: %s",
 								 "Expected sequence of %d arguments, got %d: %s",
@@ -251,13 +222,11 @@ PLy_cursor_plan(PyObject *ob, PyObject *args)
 				plan->values[j] = PLy_output_convert(arg, elem, &isnull);
 				nulls[j] = isnull ? 'n' : ' ';
 			}
-			PG_CATCH();
+			PG_FINALLY();
 			{
 				Py_DECREF(elem);
-				PG_RE_THROW();
 			}
 			PG_END_TRY();
-			Py_DECREF(elem);
 		}
 
 		portal = SPI_cursor_open(NULL, plan->plan, plan->values, nulls,
@@ -380,7 +349,7 @@ PLy_cursor_iternext(PyObject *self)
 								  exec_ctx->curr_proc);
 
 			ret = PLy_input_from_tuple(&cursor->result, SPI_tuptable->vals[0],
-									   SPI_tuptable->tupdesc);
+									   SPI_tuptable->tupdesc, true);
 		}
 
 		SPI_freetuptable(SPI_tuptable);
@@ -441,7 +410,7 @@ PLy_cursor_fetch(PyObject *self, PyObject *args)
 		SPI_cursor_fetch(portal, true, count);
 
 		Py_DECREF(ret->status);
-		ret->status = PyInt_FromLong(SPI_OK_FETCH);
+		ret->status = PyLong_FromLong(SPI_OK_FETCH);
 
 		Py_DECREF(ret->nrows);
 		ret->nrows = PyLong_FromUnsignedLongLong(SPI_processed);
@@ -476,7 +445,8 @@ PLy_cursor_fetch(PyObject *self, PyObject *args)
 				{
 					PyObject   *row = PLy_input_from_tuple(&cursor->result,
 														   SPI_tuptable->vals[i],
-														   SPI_tuptable->tupdesc);
+														   SPI_tuptable->tupdesc,
+														   true);
 
 					PyList_SetItem(ret->rows, i, row);
 				}

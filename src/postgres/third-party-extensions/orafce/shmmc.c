@@ -7,12 +7,17 @@
 
 #include "postgres.h"
 #include "shmmc.h"
-#include "stdlib.h"
-#include "string.h"
 #include "orafce.h"
 
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
 
 #define LIST_ITEMS  512
 
@@ -248,9 +253,9 @@ ora_salloc(size_t size)
 }
 
 void
-ora_sfree(void* ptr)
+ora_sfree(void *ptr)
 {
-	int i;
+	int			i;
 
 /*
 	if (cycle++ % 100 == 0)
@@ -264,19 +269,21 @@ ora_sfree(void* ptr)
 */
 
 	for (i = 0; i < *list_c; i++)
+	{
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;
 			/* list[i].context = -1; */
-			memset(list[i].first_byte_ptr, '#', list[i].size);
+			memset(ptr, '#', list[i].size);
 			return;
 		}
+	}
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("corrupted pointer"),
 			 errdetail("Failed while reallocating memory block in shared memory."),
-			 errhint("Report this bug to autors.")));
+			 errhint("Please report this bug to the package authors.")));
 }
 
 
@@ -300,7 +307,7 @@ ora_srealloc(void *ptr, size_t size)
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			errmsg("corrupted pointer"),
 			errdetail("Failed while reallocating memory block in shared memory."),
-			errhint("Report this bug to autors.")));
+			errhint("Please report this bug to the package authors.")));
 
 
 	if (NULL != (result = ora_salloc(size)))

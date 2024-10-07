@@ -1,12 +1,14 @@
 /* src/interfaces/ecpg/pgtypeslib/numeric.c */
 
 #include "postgres_fe.h"
+
 #include <ctype.h>
 #include <float.h>
 #include <limits.h>
 
-#include "extern.h"
 #include "pgtypes_error.h"
+#include "pgtypes_numeric.h"
+#include "pgtypeslib_extern.h"
 
 #define Max(x, y)				((x) > (y) ? (x) : (y))
 #define Min(x, y)				((x) < (y) ? (x) : (y))
@@ -20,89 +22,6 @@
 						  free(buf); \
 		  } while (0)
 
-#include "pgtypes_numeric.h"
-
-#if 0
-/* ----------
- * apply_typmod() -
- *
- *	Do bounds checking and rounding according to the attributes
- *	typmod field.
- * ----------
- */
-static int
-apply_typmod(numeric *var, long typmod)
-{
-	int			precision;
-	int			scale;
-	int			maxweight;
-	int			i;
-
-	/* Do nothing if we have a default typmod (-1) */
-	if (typmod < (long) (VARHDRSZ))
-		return 0;
-
-	typmod -= VARHDRSZ;
-	precision = (typmod >> 16) & 0xffff;
-	scale = typmod & 0xffff;
-	maxweight = precision - scale;
-
-	/* Round to target scale */
-	i = scale + var->weight + 1;
-	if (i >= 0 && var->ndigits > i)
-	{
-		int			carry = (var->digits[i] > 4) ? 1 : 0;
-
-		var->ndigits = i;
-
-		while (carry)
-		{
-			carry += var->digits[--i];
-			var->digits[i] = carry % 10;
-			carry /= 10;
-		}
-
-		if (i < 0)
-		{
-			var->digits--;
-			var->ndigits++;
-			var->weight++;
-		}
-	}
-	else
-		var->ndigits = Max(0, Min(i, var->ndigits));
-
-	/*
-	 * Check for overflow - note we can't do this before rounding, because
-	 * rounding could raise the weight.  Also note that the var's weight could
-	 * be inflated by leading zeroes, which will be stripped before storage
-	 * but perhaps might not have been yet. In any case, we must recognize a
-	 * true zero, whose weight doesn't mean anything.
-	 */
-	if (var->weight >= maxweight)
-	{
-		/* Determine true weight; and check for all-zero result */
-		int			tweight = var->weight;
-
-		for (i = 0; i < var->ndigits; i++)
-		{
-			if (var->digits[i])
-				break;
-			tweight--;
-		}
-
-		if (tweight >= maxweight && i < var->ndigits)
-		{
-			errno = PGTYPES_NUM_OVERFLOW;
-			return -1;
-		}
-	}
-
-	var->rscale = scale;
-	var->dscale = scale;
-	return 0;
-}
-#endif
 
 /* ----------
  *	alloc_var() -
@@ -1389,7 +1308,6 @@ PGTYPESnumeric_cmp(numeric *var1, numeric *var2)
 
 	errno = PGTYPES_NUM_BAD_NUMERIC;
 	return INT_MAX;
-
 }
 
 int
@@ -1586,11 +1504,16 @@ PGTYPESnumeric_to_int(numeric *nv, int *ip)
 	if ((i = PGTYPESnumeric_to_long(nv, &l)) != 0)
 		return i;
 
-	if (l < -INT_MAX || l > INT_MAX)
+/* silence compilers that might complain about useless tests */
+#if SIZEOF_LONG > SIZEOF_INT
+
+	if (l < INT_MIN || l > INT_MAX)
 	{
 		errno = PGTYPES_NUM_OVERFLOW;
 		return -1;
 	}
+
+#endif
 
 	*ip = (int) l;
 	return 0;

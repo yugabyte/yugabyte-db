@@ -45,17 +45,23 @@ and pg_timezone_abbrevs views don't throw errors).  It's worth running it
 as a cross-check on proposed updates.
 
 When there has been a new release of Windows (probably including Service
-Packs), the list of matching timezones need to be updated. Run the
-script in src/tools/win32tzlist.pl on a Windows machine running this new
-release and apply any new timezones that it detects. Never remove any
-mappings in case they are removed in Windows, since we still need to
-match properly on the old version.
+Packs), findtimezone.c's mapping from Windows zones to IANA zones may
+need to be updated.  We have two approaches to doing this:
+1. Consult the CLDR project's windowsZones.xml file, and add any zones
+   listed there that we don't have.  Use their "territory=001" mapping
+   if there's more than one IANA zone listed.
+2. Run the script in src/tools/win32tzlist.pl on a Windows machine
+   running the new release, and add any new timezones that it detects.
+   (This is not a full substitute for #1, though, as win32tzlist.pl
+   can't tell you which IANA zone to map to.)
+In either case, never remove any zone names that have disappeared from
+Windows, since we still need to match properly on older versions.
 
 
 Time Zone code
 ==============
 
-The code in this directory is currently synced with tzcode release 2018g.
+The code in this directory is currently synced with tzcode release 2020d.
 There are many cosmetic (and not so cosmetic) differences from the
 original tzcode library, but diffs in the upstream version should usually
 be propagated to our version.  Here are some notes about that.
@@ -70,11 +76,15 @@ old-style function declarations to C89 style, but thank goodness they
 fixed that.)
 
 * We need the code to follow Postgres' portability conventions; this
-includes relying on configure's results rather than hand-hacked #defines,
-and not relying on <stdint.h> features that may not exist on old systems.
-(In particular this means using Postgres' definitions of the int32 and
-int64 typedefs, not int_fast32_t/int_fast64_t.  Likewise we use
-PG_INT32_MIN/MAX not INT32_MIN/MAX.)
+includes relying on configure's results rather than hand-hacked
+#defines (see private.h in particular).
+
+* Similarly, avoid relying on <stdint.h> features that may not exist on old
+systems.  In particular this means using Postgres' definitions of the int32
+and int64 typedefs, not int_fast32_t/int_fast64_t.  Likewise we use
+PG_INT32_MIN/MAX not INT32_MIN/MAX.  (Once we desupport all PG versions
+that don't require C99, it'd be practical to rely on <stdint.h> and remove
+this set of diffs; but that day is not yet.)
 
 * Since Postgres is typically built on a system that has its own copy
 of the <time.h> functions, we must avoid conflicting with those.  This
@@ -89,10 +99,7 @@ in some other files where we have variables named that.
 slightly modified the API of the former, in part because it now relies
 on our own pg_open_tzfile() rather than opening files for itself.
 
-* tzparse() is adjusted to avoid loading the TZDEFRULES zone unless
-really necessary, and to ignore any leap-second data it may supply.
-We also cache the result of loading the TZDEFRULES zone, so that
-that's not repeated more than once per process.
+* tzparse() is adjusted to never try to load the TZDEFRULES zone.
 
 * There's a fair amount of code we don't need and have removed,
 including all the nonstandard optional APIs.  We have also added
@@ -111,10 +118,14 @@ to first run the tzcode source files through a sed filter like this:
         -e 's/^([ \t]*)\*\*$/\1 */' \
         -e 's|^\*/| */|' \
         -e 's/\bregister[ \t]//g' \
+        -e 's/\bATTRIBUTE_PURE[ \t]//g' \
         -e 's/int_fast32_t/int32/g' \
         -e 's/int_fast64_t/int64/g' \
+        -e 's/intmax_t/int64/g' \
         -e 's/INT32_MIN/PG_INT32_MIN/g' \
         -e 's/INT32_MAX/PG_INT32_MAX/g' \
+        -e 's/INTMAX_MIN/PG_INT64_MIN/g' \
+        -e 's/INTMAX_MAX/PG_INT64_MAX/g' \
         -e 's/struct[ \t]+tm\b/struct pg_tm/g' \
         -e 's/\btime_t\b/pg_time_t/g' \
         -e 's/lineno/lineno_t/g' \
@@ -123,4 +134,7 @@ and then run them through pgindent.  (The first three sed patterns deal
 with conversion of their block comment style to something pgindent
 won't make a hash of; the remainder address other points noted above.)
 After that, the files can be diff'd directly against our corresponding
-files.
+files.  Also, it's typically helpful to diff against the previous tzcode
+release (after processing that the same way), and then try to apply the
+diff to our files.  This will take care of most of the changes
+mechanically.

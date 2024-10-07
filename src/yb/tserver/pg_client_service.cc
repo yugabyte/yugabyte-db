@@ -451,7 +451,10 @@ class PgClientServiceImpl::Impl {
       }
     }
     for (const auto& session : sessions) {
-      session->session().Shutdown();
+      session->session().StartShutdown();
+    }
+    for (const auto& session : sessions) {
+      session->session().CompleteShutdown();
     }
     sessions.clear();
     check_expired_sessions_.Shutdown();
@@ -1871,6 +1874,12 @@ class PgClientServiceImpl::Impl {
     }
     if (expired_sessions.empty()) {
       return;
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().StartShutdown();
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().CompleteShutdown();
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.

@@ -47,7 +47,6 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/var.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
@@ -64,7 +63,7 @@
 #include "access/yb_scan.h"
 #include "executor/ybcExpr.h"
 #include "executor/ybc_fdw.h"
-
+#include "optimizer/optimizer.h"
 #include "utils/resowner_private.h"
 
 /* -------------------------------------------------------------------------- */
@@ -90,7 +89,7 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
-	if (baserel->tuples == 0)
+	if (baserel->tuples < 0)
 		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
@@ -139,7 +138,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 													0, /* startup_cost */
 													0, /* total_cost */
 													NIL,  /* no pathkeys */
-													NULL, /* no outer rel either */
+													baserel->lateral_relids,
 													NULL, /* no extra plan */
 													NULL  /* no options yet */);
 
@@ -169,7 +168,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 												  startup_cost,
 												  total_cost,
 												  NIL,  /* no pathkeys */
-												  NULL, /* no outer rel either */
+												  baserel->lateral_relids,
 												  NULL, /* no extra plan */
 												  NULL  /* no options yet */ ));
 	}
@@ -277,7 +276,6 @@ ybcGetForeignPlan(PlannerInfo *root,
 				case TableOidAttributeNumber:
 					/* Nothing to do in YugaByte: Postgres will handle this. */
 					break;
-				case ObjectIdAttributeNumber:
 				case YBTupleIdAttributeNumber:
 				default: /* Regular column: attnum > 0.
 							NOTE: dropped columns may be included. */
@@ -353,9 +351,20 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
 		 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
 		 */
-		ListCell   *l;
-		foreach(l, estate->es_rowMarks) {
-			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+		for (int i = 0; estate->es_rowmarks && i < estate->es_range_table_size;
+			 i++)
+		{
+			ExecRowMark *erm = estate->es_rowmarks[i];
+			/*
+			 * YB_TODO: This block of code is broken on master (GH #20704). With
+			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
+			 * estate->es_rowmarks is an array with
+			 * potentially NULL elements (previously, it was a list). As a
+			 * temporary fix till #20704 is addressed, ignore any NULL element
+			 * in es_rowmarks.
+			 */
+			if (!erm)
+				continue;
 			// Do not propagate non-row-locking row marks.
 			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
 			{
@@ -364,7 +373,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				ybc_state->exec_params->docdb_wait_policy =
 					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
-			break;
 		}
 	}
 
@@ -411,10 +419,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * enabled if we needed to read more than that).  Set up a dummy
 		 * scan slot to hold as many attributes as there are pushed aggregates.
 		 */
-		TupleDesc tupdesc =
-			CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs),
-									false /* hasoid */);
-		ExecInitScanTupleSlot(estate, ss, tupdesc);
+		TupleDesc tupdesc =	CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs));
+		ExecInitScanTupleSlot(estate, ss, tupdesc, &TTSOpsVirtual);
 
 		/*
 		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a

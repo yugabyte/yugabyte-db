@@ -7,7 +7,7 @@
  * for debug printouts, because that's more flexible than printf().
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execdebug.h
@@ -86,10 +86,12 @@
 #define SO_nodeDisplay(l)				nodeDisplay(l)
 #define SO_printf(s)					printf(s)
 #define SO1_printf(s, p)				printf(s, p)
+#define SO2_printf(s, p1, p2)			printf(s, p1, p2)
 #else
 #define SO_nodeDisplay(l)
 #define SO_printf(s)
 #define SO1_printf(s, p)
+#define SO2_printf(s, p1, p2)
 #endif							/* EXEC_SORTDEBUG */
 
 /* ----------------

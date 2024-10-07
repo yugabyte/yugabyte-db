@@ -25,7 +25,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "nodes/relation.h"
+#include "nodes/pathnodes.h"
 
 bytea *
 ybvectoroptions(Datum reloptions, bool validate)

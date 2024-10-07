@@ -4,7 +4,7 @@
  * Postgres write-ahead log manager record pointer and
  * timeline number definitions
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogdefs.h
@@ -22,11 +22,25 @@ typedef uint64 XLogRecPtr;
 
 /*
  * Zero is used indicate an invalid pointer. Bootstrap skips the first possible
- * WAL segment, initializing the first WAL page at XLOG_SEG_SIZE, so no XLOG
+ * WAL segment, initializing the first WAL page at WAL segment size, so no XLOG
  * record can begin at zero.
  */
 #define InvalidXLogRecPtr	0
 #define XLogRecPtrIsInvalid(r)	((r) == InvalidXLogRecPtr)
+
+/*
+ * First LSN to use for "fake" LSNs.
+ *
+ * Values smaller than this can be used for special per-AM purposes.
+ */
+#define FirstNormalUnloggedLSN	((XLogRecPtr) 1000)
+
+/*
+ * Handy macro for printing XLogRecPtr in conventional format, e.g.,
+ *
+ * printf("%X/%X", LSN_FORMAT_ARGS(lsn));
+ */
+#define LSN_FORMAT_ARGS(lsn) (AssertVariableIsOfTypeMacro((lsn), XLogRecPtr), (uint32) ((lsn) >> 32)), ((uint32) (lsn))
 
 /*
  * XLogSegNo - physical log file sequence number.
@@ -49,21 +63,6 @@ typedef uint32 TimeLineID;
  * include origin.h in a bunch of xlog related places.
  */
 typedef uint16 RepOriginId;
-
-/*
- *	Because O_DIRECT bypasses the kernel buffers, and because we never
- *	read those buffers except during crash recovery or if wal_level != minimal,
- *	it is a win to use it in all cases where we sync on each write().  We could
- *	allow O_DIRECT with fsync(), but it is unclear if fsync() could process
- *	writes not buffered in the kernel.  Also, O_DIRECT is never enough to force
- *	data to the drives, it merely tries to bypass the kernel cache, so we still
- *	need O_SYNC/O_DSYNC.
- */
-#ifdef O_DIRECT
-#define PG_O_DIRECT				O_DIRECT
-#else
-#define PG_O_DIRECT				0
-#endif
 
 /*
  * This chunk of hackery attempts to determine which file sync methods

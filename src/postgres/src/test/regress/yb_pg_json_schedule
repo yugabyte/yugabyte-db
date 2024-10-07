@@ -4,9 +4,6 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This suite includes all tests on datatypes that are enabled for YugaByte.
 ####################################################################################################
-# Dependency.
-test: yb_dep_testjsonb
-
 test: yb_pg_json
 test: yb_pg_jsonb
 test: yb_pg_jsonpath

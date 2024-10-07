@@ -3,7 +3,7 @@
  * hash.c
  *	  Implementation of Margo Seltzer's Hashing package for postgres.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,15 +21,17 @@
 #include "access/hash.h"
 #include "access/hash_xlog.h"
 #include "access/relscan.h"
+#include "access/tableam.h"
+#include "access/xloginsert.h"
 #include "catalog/index.h"
+#include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "miscadmin.h"
 #include "optimizer/plancat.h"
+#include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/index_selfuncs.h"
 #include "utils/rel.h"
-#include "miscadmin.h"
-
 
 /* Working state for hashbuild and its callback */
 typedef struct
@@ -40,11 +42,11 @@ typedef struct
 } HashBuildState;
 
 static void hashbuildCallback(Relation index,
-				  HeapTuple htup,
-				  Datum *values,
-				  bool *isnull,
-				  bool tupleIsAlive,
-				  void *state);
+							  ItemPointer tid,
+							  Datum *values,
+							  bool *isnull,
+							  bool tupleIsAlive,
+							  void *state);
 
 
 /*
@@ -58,6 +60,7 @@ hashhandler(PG_FUNCTION_ARGS)
 
 	amroutine->amstrategies = HTMaxStrategyNumber;
 	amroutine->amsupport = HASHNProcs;
+	amroutine->amoptsprocnum = HASHOPTIONS_PROC;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = true;
@@ -71,6 +74,9 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->amusemaintenanceworkmem = false;
+	amroutine->amparallelvacuumoptions =
+		VACUUM_OPTION_PARALLEL_BULKDEL;
 	amroutine->amkeytype = INT4OID;
 
 	amroutine->ambuild = hashbuild;
@@ -82,7 +88,9 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->amcostestimate = hashcostestimate;
 	amroutine->amoptions = hashoptions;
 	amroutine->amproperty = NULL;
+	amroutine->ambuildphasename = NULL;
 	amroutine->amvalidate = hashvalidate;
+	amroutine->amadjustmembers = hashadjustmembers;
 	amroutine->ambeginscan = hashbeginscan;
 	amroutine->amrescan = hashrescan;
 	amroutine->amgettuple = hashgettuple;
@@ -159,8 +167,11 @@ hashbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	buildstate.heapRel = heap;
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-								   hashbuildCallback, (void *) &buildstate, NULL);
+	reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
+									   hashbuildCallback,
+									   (void *) &buildstate, NULL);
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_TOTAL,
+								 buildstate.indtuples);
 
 	if (buildstate.spool)
 	{
@@ -190,11 +201,11 @@ hashbuildempty(Relation index)
 }
 
 /*
- * Per-tuple callback from IndexBuildHeapScan
+ * Per-tuple callback for table_index_build_scan
  */
 static void
 hashbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tid,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -213,14 +224,13 @@ hashbuildCallback(Relation index,
 
 	/* Either spool the tuple for sorting, or just put it into the index */
 	if (buildstate->spool)
-		_h_spool(buildstate->spool, &htup->t_self,
-				 index_values, index_isnull);
+		_h_spool(buildstate->spool, tid, index_values, index_isnull);
 	else
 	{
 		/* form an index tuple and point it at the heap tuple */
 		itup = index_form_tuple(RelationGetDescr(index),
 								index_values, index_isnull);
-		itup->t_tid = htup->t_self;
+		itup->t_tid = *tid;
 		_hash_doinsert(index, itup, buildstate->heapRel);
 		pfree(itup);
 	}
@@ -238,6 +248,7 @@ bool
 hashinsert(Relation rel, Datum *values, bool *isnull,
 		   ItemPointer ht_ctid, Relation heapRel,
 		   IndexUniqueCheck checkUnique,
+		   bool indexUnchanged,
 		   IndexInfo *indexInfo)
 {
 	Datum		index_values[1];
@@ -333,7 +344,7 @@ hashgetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
 		/*
 		 * _hash_first and _hash_next handle eliminate dead index entries
-		 * whenever scan->ignored_killed_tuples is true.  Therefore, there's
+		 * whenever scan->ignore_killed_tuples is true.  Therefore, there's
 		 * nothing to do here except add the results to the TIDBitmap.
 		 */
 		tbm_add_tuples(tbm, &(currItem->heapTid), 1, true);
@@ -503,7 +514,7 @@ loop_top:
 		_hash_checkpage(rel, buf, LH_BUCKET_PAGE);
 
 		page = BufferGetPage(buf);
-		bucket_opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		bucket_opaque = HashPageGetOpaque(page);
 
 		/*
 		 * If the bucket contains tuples that are moved by split, then we need
@@ -705,7 +716,7 @@ hashbucketcleanup(Relation rel, Bucket cur_bucket, Buffer bucket_buf,
 		vacuum_delay_point();
 
 		page = BufferGetPage(buf);
-		opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		opaque = HashPageGetOpaque(page);
 
 		/* Scan each tuple in page */
 		maxoffno = PageGetMaxOffsetNumber(page);
@@ -806,7 +817,7 @@ hashbucketcleanup(Relation rel, Bucket cur_bucket, Buffer bucket_buf,
 				XLogRecPtr	recptr;
 
 				xlrec.clear_dead_marking = clear_dead_marking;
-				xlrec.is_primary_bucket_page = (buf == bucket_buf) ? true : false;
+				xlrec.is_primary_bucket_page = (buf == bucket_buf);
 
 				XLogBeginInsert();
 				XLogRegisterData((char *) &xlrec, SizeOfHashDelete);
@@ -872,7 +883,7 @@ hashbucketcleanup(Relation rel, Bucket cur_bucket, Buffer bucket_buf,
 		Page		page;
 
 		page = BufferGetPage(bucket_buf);
-		bucket_opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		bucket_opaque = HashPageGetOpaque(page);
 
 		/* No ereport(ERROR) until changes are logged */
 		START_CRIT_SECTION();

@@ -10,13 +10,19 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "stdlib.h"
-#include "time.h"
+#include <stdlib.h>
+#include <time.h>
 #include <math.h>
 #include <errno.h>
 
 #include "orafce.h"
 #include "builtins.h"
+
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
 
 PG_FUNCTION_INFO_V1(dbms_random_initialize);
 PG_FUNCTION_INFO_V1(dbms_random_normal);
@@ -83,7 +89,7 @@ dbms_random_initialize(PG_FUNCTION_ARGS)
 	int seed = PG_GETARG_INT32(0);
 
 	srand(seed);
-	
+
 	PG_RETURN_VOID();
 }
 
@@ -96,7 +102,7 @@ Datum
 dbms_random_normal(PG_FUNCTION_ARGS)
 {
 	float8 result;
-	
+
 	/* need random value from (0..1) */
 	result = ltqnorm(((double) rand() + 1) / ((double) RAND_MAX + 2));
 
@@ -131,7 +137,7 @@ Datum
 dbms_random_seed_int(PG_FUNCTION_ARGS)
 {
 	int seed = PG_GETARG_INT32(0);
-	
+
 	srand(seed);
 
 	PG_RETURN_VOID();
@@ -148,11 +154,11 @@ dbms_random_seed_varchar(PG_FUNCTION_ARGS)
 {
 	text *key = PG_GETARG_TEXT_P(0);
 	Datum seed;
-	
+
 	seed = hash_any((unsigned char *) VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
-	
+
 	srand((int) seed);
-					
+
 	PG_RETURN_VOID();
 }
 
@@ -172,15 +178,16 @@ random_string(const char *charset, size_t chrset_size, int len)
 {
 	StringInfo	str;
 	int	i;
-	
+
 	str = makeStringInfo();
 	for (i = 0; i < len; i++)
 	{
-		int pos = (int) ((double) rand() / ((double) RAND_MAX + 1) * chrset_size);
-		
+		double		r = (double) rand();
+		int pos = (int) floor((r / ((double) RAND_MAX + 1)) * chrset_size);
+
 		appendStringInfoChar(str, charset[pos]);
 	}
-	
+
 	return cstring_to_text(str->data);
 }
 
@@ -196,7 +203,7 @@ dbms_random_string(PG_FUNCTION_ARGS)
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
 	const char *upper_only = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *upper_alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVVBNM<>? ";
+	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVVBNM<>? \\~";
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
@@ -204,8 +211,13 @@ dbms_random_string(PG_FUNCTION_ARGS)
 				 errmsg("an argument is NULL")));
 
 	option = text_to_cstring(PG_GETARG_TEXT_P(0));
+	if (strlen(option) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("this first parameter value is more than 1 characters long")));
+
 	len = PG_GETARG_INT32(1);
-	
+
 	switch (option[0])
 	{
 		case 'a':
@@ -233,17 +245,14 @@ dbms_random_string(PG_FUNCTION_ARGS)
 			charset = printable;
 			chrset_size = strlen(printable);
 			break;
-			
+
+		/* Otherwise the returning string is in uppercase alpha characters. */
 		default:
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("unknown option '%s'", option),
-				 errhint("available option \"aAlLuUxXpP\"")));
-			/* be compiler a quiete */
-			charset = NULL;
-			chrset_size = 0;
+			charset = upper_only;
+			chrset_size = strlen(upper_only);
+			break;
 	}
-	
+
 	PG_RETURN_TEXT_P(random_string(charset, chrset_size, len));
 }
 
@@ -268,10 +277,10 @@ Datum
 dbms_random_value(PG_FUNCTION_ARGS)
 {
 	float8 result;
-	
+
 	/* result [0.0 - 1.0) */
 	result = (double) rand() / ((double) RAND_MAX + 1);
-	
+
 	PG_RETURN_FLOAT8(result);
 }
 

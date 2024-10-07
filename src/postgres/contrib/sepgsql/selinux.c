@@ -5,7 +5,7 @@
  * Interactions between userspace and selinux in kernelspace,
  * using libselinux api.
  *
- * Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -360,6 +360,9 @@ static struct
 				"lock", SEPG_DB_TABLE__LOCK
 			},
 			{
+				"truncate", SEPG_DB_TABLE__TRUNCATE
+			},
+			{
 				NULL, 0UL
 			},
 		}
@@ -612,7 +615,7 @@ static int	sepgsql_mode = SEPGSQL_MODE_INTERNAL;
 bool
 sepgsql_is_enabled(void)
 {
-	return (sepgsql_mode != SEPGSQL_MODE_DISABLED ? true : false);
+	return (sepgsql_mode != SEPGSQL_MODE_DISABLED);
 }
 
 /*
@@ -657,10 +660,8 @@ sepgsql_getenforce(void)
 /*
  * sepgsql_audit_log
  *
- * It generates a security audit record. In the default, it writes out
- * audit records into standard PG's logfile. It also allows to set up
- * external audit log receiver, such as auditd in Linux, using the
- * sepgsql_audit_hook.
+ * It generates a security audit record. It writes out audit records
+ * into standard PG's logfile.
  *
  * SELinux can control what should be audited and should not using
  * "auditdeny" and "auditallow" rules in the security policy. In the
@@ -675,6 +676,7 @@ sepgsql_getenforce(void)
  */
 void
 sepgsql_audit_log(bool denied,
+				  bool enforcing,
 				  const char *scontext,
 				  const char *tcontext,
 				  uint16 tclass,
@@ -702,7 +704,7 @@ sepgsql_audit_log(bool denied,
 			appendStringInfo(&buf, " %s", av_name);
 		}
 	}
-	appendStringInfo(&buf, " }");
+	appendStringInfoString(&buf, " }");
 
 	/*
 	 * Call external audit module, if loaded
@@ -711,6 +713,11 @@ sepgsql_audit_log(bool denied,
 					 scontext, tcontext, class_name);
 	if (audit_name)
 		appendStringInfo(&buf, " name=\"%s\"", audit_name);
+
+	if (enforcing)
+		appendStringInfoString(&buf, " permissive=0");
+	else
+		appendStringInfoString(&buf, " permissive=1");
 
 	ereport(LOG, (errmsg("SELinux: %s", buf.data)));
 }
@@ -767,8 +774,8 @@ sepgsql_compute_avd(const char *scontext,
 	 * Ask SELinux what is allowed set of permissions on a pair of the
 	 * security contexts and the given object class.
 	 */
-	if (security_compute_av_flags_raw((security_context_t) scontext,
-									  (security_context_t) tcontext,
+	if (security_compute_av_flags_raw(scontext,
+									  tcontext,
 									  tclass_ex, 0, &avd_ex) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -808,8 +815,6 @@ sepgsql_compute_avd(const char *scontext,
 		if (avd_ex.auditdeny & av_code_ex)
 			avd->auditdeny |= av_code;
 	}
-
-	return;
 }
 
 /*
@@ -839,7 +844,7 @@ sepgsql_compute_create(const char *scontext,
 					   uint16 tclass,
 					   const char *objname)
 {
-	security_context_t ncontext;
+	char	   *ncontext;
 	security_class_t tclass_ex;
 	const char *tclass_name;
 	char	   *result;
@@ -854,8 +859,8 @@ sepgsql_compute_create(const char *scontext,
 	 * Ask SELinux what is the default context for the given object class on a
 	 * pair of security contexts
 	 */
-	if (security_compute_create_name_raw((security_context_t) scontext,
-										 (security_context_t) tcontext,
+	if (security_compute_create_name_raw(scontext,
+										 tcontext,
 										 tclass_ex,
 										 objname,
 										 &ncontext) < 0)
@@ -873,13 +878,11 @@ sepgsql_compute_create(const char *scontext,
 	{
 		result = pstrdup(ncontext);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		freecon(ncontext);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	freecon(ncontext);
 
 	return result;
 }
@@ -895,7 +898,7 @@ sepgsql_compute_create(const char *scontext,
  * tcontext: security label of the object being referenced
  * tclass: class code (SEPG_CLASS_*) of the object being referenced
  * required: a mask of required permissions (SEPG_<class>__<perm>)
- * audit_name: a human readable object name for audit logs, or NULL.
+ * audit_name: a human-readable object name for audit logs, or NULL.
  * abort_on_violation: true, if error shall be raised on access violation
  */
 bool
@@ -910,6 +913,7 @@ sepgsql_check_perms(const char *scontext,
 	uint32		denied;
 	uint32		audited;
 	bool		result = true;
+	bool		enforcing;
 
 	sepgsql_compute_avd(scontext, tcontext, tclass, &avd);
 
@@ -921,9 +925,10 @@ sepgsql_check_perms(const char *scontext,
 		audited = (denied ? (denied & avd.auditdeny)
 				   : (required & avd.auditallow));
 
-	if (denied &&
-		sepgsql_getenforce() > 0 &&
-		(avd.flags & SELINUX_AVD_FLAGS_PERMISSIVE) == 0)
+	enforcing = sepgsql_getenforce() > 0 &&
+		(avd.flags & SELINUX_AVD_FLAGS_PERMISSIVE) == 0;
+
+	if (denied && enforcing)
 		result = false;
 
 	/*
@@ -933,6 +938,7 @@ sepgsql_check_perms(const char *scontext,
 	if (audited && sepgsql_mode != SEPGSQL_MODE_INTERNAL)
 	{
 		sepgsql_audit_log(denied,
+						  enforcing,
 						  scontext,
 						  tcontext,
 						  tclass,

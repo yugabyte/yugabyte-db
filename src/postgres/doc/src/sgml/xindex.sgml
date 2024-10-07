@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/xindex.sgml -->
 
 <sect1 id="xindex">
- <title>Interfacing Extensions To Indexes</title>
+ <title>Interfacing Extensions to Indexes</title>
 
  <indexterm zone="xindex">
   <primary>index</primary>
@@ -105,7 +105,7 @@
   </para>
 
    <table tocentry="1" id="xindex-btree-strat-table">
-    <title>B-tree Strategies</title>
+    <title>B-Tree Strategies</title>
     <tgroup cols="2">
      <thead>
       <row>
@@ -401,8 +401,15 @@
   </para>
 
   <para>
+   Additionally, some opclasses allow users to specify parameters which
+   control their behavior.  Each builtin index access method has an optional
+   <function>options</function> support function, which defines a set of
+   opclass-specific parameters.
+  </para>
+
+  <para>
    B-trees require a comparison support function,
-   and allow two additional support functions to be
+   and allow four additional support functions to be
    supplied at the operator class author's option, as shown in <xref
    linkend="xindex-btree-support-table"/>.
    The requirements for these support functions are explained further in
@@ -410,8 +417,10 @@
   </para>
 
    <table tocentry="1" id="xindex-btree-support-table">
-    <title>B-tree Support Functions</title>
+    <title>B-Tree Support Functions</title>
     <tgroup cols="2">
+     <colspec colname="col1" colwidth="3*"/>
+     <colspec colname="col2" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -441,19 +450,35 @@
        </entry>
        <entry>3</entry>
       </row>
+      <row>
+       <entry>
+        Determine if it is safe for indexes that use the operator
+        class to apply the btree deduplication optimization (optional)
+       </entry>
+       <entry>4</entry>
+      </row>
+      <row>
+       <entry>
+        Define options that are specific to this operator class
+        (optional)
+       </entry>
+       <entry>5</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
 
   <para>
-   Hash indexes require one support function, and allow a second one to be
-   supplied at the operator class author's option, as shown in <xref
+   Hash indexes require one support function, and allow two additional ones to
+   be supplied at the operator class author's option, as shown in <xref
    linkend="xindex-hash-support-table"/>.
   </para>
 
    <table tocentry="1" id="xindex-hash-support-table">
     <title>Hash Support Functions</title>
     <tgroup cols="2">
+     <colspec colname="col1" colwidth="3*"/>
+     <colspec colname="col2" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -474,12 +499,19 @@
        </entry>
        <entry>2</entry>
       </row>
+      <row>
+       <entry>
+        Define options that are specific to this operator class
+        (optional)
+       </entry>
+       <entry>3</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
 
   <para>
-   GiST indexes have nine support functions, two of which are optional,
+   GiST indexes have eleven support functions, six of which are optional,
    as shown in <xref linkend="xindex-gist-support-table"/>.
    (For more information see <xref linkend="gist"/>.)
   </para>
@@ -487,6 +519,9 @@
    <table tocentry="1" id="xindex-gist-support-table">
     <title>GiST Support Functions</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -509,13 +544,13 @@
       <row>
        <entry><function>compress</function></entry>
        <entry>compute a compressed representation of a key or value
-        to be indexed</entry>
+        to be indexed (optional)</entry>
        <entry>3</entry>
       </row>
       <row>
        <entry><function>decompress</function></entry>
        <entry>compute a decompressed representation of a
-        compressed key</entry>
+        compressed key (optional)</entry>
        <entry>4</entry>
       </row>
       <row>
@@ -531,7 +566,7 @@
        <entry>6</entry>
       </row>
       <row>
-       <entry><function>equal</function></entry>
+       <entry><function>same</function></entry>
        <entry>compare two keys and return true if they are equal</entry>
        <entry>7</entry>
       </row>
@@ -546,12 +581,24 @@
        index-only scans (optional)</entry>
        <entry>9</entry>
       </row>
+      <row>
+       <entry><function>options</function></entry>
+       <entry>define options that are specific to this operator class
+        (optional)</entry>
+       <entry>10</entry>
+      </row>
+      <row>
+       <entry><function>sortsupport</function></entry>
+       <entry>provide a sort comparator to be used in fast index builds
+        (optional)</entry>
+       <entry>11</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
 
   <para>
-   SP-GiST indexes require five support functions, as
+   SP-GiST indexes have six support functions, one of which is optional, as
    shown in <xref linkend="xindex-spgist-support-table"/>.
    (For more information see <xref linkend="spgist"/>.)
   </para>
@@ -559,6 +606,9 @@
    <table tocentry="1" id="xindex-spgist-support-table">
     <title>SP-GiST Support Functions</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -594,12 +644,18 @@
         query qualifier</entry>
        <entry>5</entry>
       </row>
+      <row>
+       <entry><function>options</function></entry>
+       <entry>define options that are specific to this operator class
+        (optional)</entry>
+       <entry>6</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
 
   <para>
-   GIN indexes have six support functions, three of which are optional,
+   GIN indexes have seven support functions, four of which are optional,
    as shown in <xref linkend="xindex-gin-support-table"/>.
    (For more information see <xref linkend="gin"/>.)
   </para>
@@ -607,6 +663,9 @@
    <table tocentry="1" id="xindex-gin-support-table">
     <title>GIN Support Functions</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -660,20 +719,31 @@
        </entry>
        <entry>6</entry>
       </row>
+      <row>
+       <entry><function>options</function></entry>
+       <entry>
+        define options that are specific to this operator class
+        (optional)
+       </entry>
+       <entry>7</entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
 
   <para>
-   BRIN indexes have four basic support functions, as shown in
-   <xref linkend="xindex-brin-support-table"/>; those basic functions
-   may require additional support functions to be provided.
+   BRIN indexes have five basic support functions, one of which is optional,
+   as shown in <xref linkend="xindex-brin-support-table"/>.  Some versions of
+   the basic functions require additional support functions to be provided.
    (For more information see <xref linkend="brin-extensibility"/>.)
   </para>
 
    <table tocentry="1" id="xindex-brin-support-table">
     <title>BRIN Support Functions</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="1*"/>
      <thead>
       <row>
        <entry>Function</entry>
@@ -706,6 +776,14 @@
         compute union of two summary tuples
        </entry>
        <entry>4</entry>
+      </row>
+      <row>
+       <entry><function>options</function></entry>
+       <entry>
+        define options that are specific to this operator class
+        (optional)
+       </entry>
+       <entry>5</entry>
       </row>
      </tbody>
     </tgroup>
@@ -980,7 +1058,8 @@ DEFAULT FOR TYPE int8 USING btree FAMILY integer_ops AS
   OPERATOR 5 > ,
   FUNCTION 1 btint8cmp(int8, int8) ,
   FUNCTION 2 btint8sortsupport(internal) ,
-  FUNCTION 3 in_range(int8, int8, int8, boolean, boolean) ;
+  FUNCTION 3 in_range(int8, int8, int8, boolean, boolean) ,
+  FUNCTION 4 btequalimage(oid) ;
 
 CREATE OPERATOR CLASS int4_ops
 DEFAULT FOR TYPE int4 USING btree FAMILY integer_ops AS
@@ -992,7 +1071,8 @@ DEFAULT FOR TYPE int4 USING btree FAMILY integer_ops AS
   OPERATOR 5 > ,
   FUNCTION 1 btint4cmp(int4, int4) ,
   FUNCTION 2 btint4sortsupport(internal) ,
-  FUNCTION 3 in_range(int4, int4, int4, boolean, boolean) ;
+  FUNCTION 3 in_range(int4, int4, int4, boolean, boolean) ,
+  FUNCTION 4 btequalimage(oid) ;
 
 CREATE OPERATOR CLASS int2_ops
 DEFAULT FOR TYPE int2 USING btree FAMILY integer_ops AS
@@ -1004,7 +1084,8 @@ DEFAULT FOR TYPE int2 USING btree FAMILY integer_ops AS
   OPERATOR 5 > ,
   FUNCTION 1 btint2cmp(int2, int2) ,
   FUNCTION 2 btint2sortsupport(internal) ,
-  FUNCTION 3 in_range(int2, int2, int2, boolean, boolean) ;
+  FUNCTION 3 in_range(int2, int2, int2, boolean, boolean) ,
+  FUNCTION 4 btequalimage(oid) ;
 
 ALTER OPERATOR FAMILY integer_ops USING btree ADD
   -- cross-type comparisons int8 vs int2
@@ -1242,7 +1323,7 @@ SELECT sum(x) OVER (ORDER BY x RANGE BETWEEN 5 PRECEDING AND 10 FOLLOWING)
   <title>Ordering Operators</title>
 
   <para>
-   Some index access methods (currently, only GiST) support the concept of
+   Some index access methods (currently, only GiST and SP-GiST) support the concept of
    <firstterm>ordering operators</firstterm>.  What we have been discussing so far
    are <firstterm>search operators</firstterm>.  A search operator is one for which
    the index can be searched to find all rows satisfying
@@ -1347,11 +1428,15 @@ CREATE OPERATOR CLASS polygon_ops
         STORAGE box;
 </programlisting>
 
-   At present, only the GiST, GIN and BRIN index methods support a
+   At present, only the GiST, SP-GiST, GIN and BRIN index methods support a
    <literal>STORAGE</literal> type that's different from the column data type.
    The GiST <function>compress</function> and <function>decompress</function> support
    routines must deal with data-type conversion when <literal>STORAGE</literal>
-   is used.  In GIN, the <literal>STORAGE</literal> type identifies the type of
+   is used.  SP-GiST likewise requires a <function>compress</function>
+   support function to convert to the storage type, when that is different;
+   if an SP-GiST opclass also supports retrieving data, the reverse
+   conversion must be handled by the <function>consistent</function> function.
+   In GIN, the <literal>STORAGE</literal> type identifies the type of
    the <quote>key</quote> values, which normally is different from the type
    of the indexed column &mdash; for example, an operator class for
    integer-array columns might have keys that are just integers.  The

@@ -142,7 +142,13 @@ typedef enum statementType
   CatCacheIdMisses_76,
   CatCacheIdMisses_77,
   CatCacheIdMisses_78,
-  CatCacheIdMisses_End = CatCacheIdMisses_78,
+  CatCacheIdMisses_79,
+  CatCacheIdMisses_80,
+  CatCacheIdMisses_81,
+  CatCacheIdMisses_82,
+  CatCacheIdMisses_83,
+  CatCacheIdMisses_84,
+  CatCacheIdMisses_End = CatCacheIdMisses_84,
   CatCacheTableMisses_Start,
   CatCacheTableMisses_0 = CatCacheTableMisses_Start,
   CatCacheTableMisses_1,
@@ -191,7 +197,10 @@ typedef enum statementType
   CatCacheTableMisses_44,
   CatCacheTableMisses_45,
   CatCacheTableMisses_46,
-  CatCacheTableMisses_End = CatCacheTableMisses_46,
+  CatCacheTableMisses_47,
+  CatCacheTableMisses_48,
+  CatCacheTableMisses_49,
+  CatCacheTableMisses_End = CatCacheTableMisses_49,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -244,6 +253,7 @@ void		_PG_init(void);
 /*
  * Variables used for storing the previous values of used hooks.
  */
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
@@ -252,6 +262,7 @@ static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 static void set_metric_names(void);
+static void ybpgm_shmem_request(void);
 static void ybpgm_startup_hook(void);
 static Size ybpgm_memsize(void);
 static bool isTopLevelStatement(void);
@@ -260,10 +271,10 @@ static void ybpgm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uin
                               bool execute_once);
 static void ybpgm_ExecutorFinish(QueryDesc *queryDesc);
 static void ybpgm_ExecutorEnd(QueryDesc *queryDesc);
-static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree,
                                  ProcessUtilityContext context,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
-                                 DestReceiver *dest, char *completionTag);
+                                 DestReceiver *dest, QueryCompletion *qc);
 static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
 static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
 
@@ -504,7 +515,7 @@ pullRpczEntries(void)
       rpcz[i].query_start_timestamp = beentry->st_activity_start_timestamp;
 
       rpcz[i].backend_type = (char *) palloc(40);
-      strcpy(rpcz[i].backend_type, pgstat_get_backend_desc(beentry->st_backendType));
+      strcpy(rpcz[i].backend_type, GetBackendTypeDesc(beentry->st_backendType));
 
       rpcz[i].backend_active = 0;
       rpcz[i].backend_status = (char *) palloc(30);
@@ -698,8 +709,6 @@ _PG_init(void)
   if (!process_shared_preload_libraries_in_progress)
     return;
 
-  RequestAddinShmemSpace(ybpgm_memsize());
-
   /*
    * Parameters that we expect to receive from the tserver process when it starts up postmaster.
    * We set the flags GUC_NO_SHOW_ALL, GUC_NO_RESET_ALL, GUC_NOT_IN_SAMPLE, GUC_DISALLOW_IN_FILE
@@ -753,6 +762,10 @@ _PG_init(void)
   /*
    * Set the value of the hooks.
    */
+  
+  prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = ybpgm_shmem_request;
+
   prev_shmem_startup_hook = shmem_startup_hook;
   shmem_startup_hook = ybpgm_startup_hook;
 
@@ -772,6 +785,20 @@ _PG_init(void)
   ProcessUtility_hook = ybpgm_ProcessUtility;
   static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start + 1,
 				"Wrong catalog cache number");
+}
+
+/*
+ * shmem_request hook: request additional shared resources.  We'll allocate or
+ * attach to the shared resources in ybpgm_startup_hook().
+ */
+static void
+ybpgm_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(ybpgm_memsize());
+	RequestNamedLWLockTranche("yb_pg_metrics", 1);
 }
 
 /*
@@ -818,7 +845,7 @@ ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
   {
     MemoryContext oldcxt;
     oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER);
+    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER, false);
     MemoryContextSwitchTo(oldcxt);
   }
 }
@@ -1011,10 +1038,10 @@ static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
  * Hook used for tracking "Other" statements.
  */
 static void
-ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree,
                      ProcessUtilityContext context,
                      ParamListInfo params, QueryEnvironment *queryEnv,
-                     DestReceiver *dest, char *completionTag)
+                     DestReceiver *dest, QueryCompletion *qc)
 {
   if (isTopLevelBlock() && !IsA(pstmt->utilityStmt, ExecuteStmt) &&
       !IsA(pstmt->utilityStmt, PrepareStmt) && !IsA(pstmt->utilityStmt, DeallocateStmt))
@@ -1036,13 +1063,13 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     PG_TRY();
     {
       if (prev_ProcessUtility)
-        prev_ProcessUtility(pstmt, queryString,
+        prev_ProcessUtility(pstmt, queryString, readOnlyTree,
                             context, params, queryEnv,
-                            dest, completionTag);
+                            dest, qc);
       else
-        standard_ProcessUtility(pstmt, queryString,
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree,
                                 context, params, queryEnv,
-                                dest, completionTag);
+                                dest, qc);
       DecBlockNestingLevel();
     }
     PG_CATCH();
@@ -1082,7 +1109,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
      * if non-DDL statement types executed prior to committing.
      */
     if (type == Commit) {
-      if (strcmp(completionTag, "ROLLBACK") != 0 &&
+      if (qc->commandTag != CMDTAG_ROLLBACK &&
           is_inside_transaction_block &&
           is_statement_executed)
       {
@@ -1097,13 +1124,13 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
   else
   {
     if (prev_ProcessUtility)
-      prev_ProcessUtility(pstmt, queryString,
+      prev_ProcessUtility(pstmt, queryString, readOnlyTree,
                           context, params, queryEnv,
-                          dest, completionTag);
+                          dest, qc);
     else
-      standard_ProcessUtility(pstmt, queryString,
+      standard_ProcessUtility(pstmt, queryString, readOnlyTree,
                               context, params, queryEnv,
-                              dest, completionTag);
+                              dest, qc);
   }
 }
 

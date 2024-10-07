@@ -17,8 +17,14 @@ CREATE DATABASE reset_analyze_test OWNER = yb_user1;
 ALTER DATABASE reset_analyze_test SET yb_enable_optimizer_statistics=ON;
 ALTER DATABASE reset_analyze_test SET yb_enable_base_scans_cost_model=ON;
 
+-- Grant permissions for this database.
+\c reset_analyze_test yugabyte
+GRANT ALL ON SCHEMA public TO yb_user1;
+GRANT ALL ON SCHEMA public TO yb_user2;
+GRANT ALL ON SCHEMA public TO yb_user3;
+
 -- Create tables owned by each user
-\c reset_analyze_test yb_user1
+\c - yb_user1
 CREATE SEQUENCE seq_u1;
 CREATE TABLE table_u1 (id int, c1 int, c2 int);
 INSERT INTO table_u1
@@ -101,11 +107,11 @@ CREATE OR REPLACE VIEW all_stats AS
          LEFT JOIN (
              SELECT
                  stxrelid,
-                 string_agg(stxndistinct::text, ', ' ORDER BY stxkind, stxkeys)
+                 string_agg(stxdndistinct::text, ', ' ORDER BY stxkind, stxkeys)
                      AS xn_distinct,
-                 string_agg(stxdependencies, ', ' ORDER BY stxkind, stxkeys)
+                 string_agg(stxddependencies, ', ' ORDER BY stxkind, stxkeys)
                      AS xdependencies
-             FROM pg_statistic_ext
+             FROM pg_statistic_ext e JOIN pg_statistic_ext_data d ON e.oid = d.stxoid
              GROUP BY stxrelid
          ) AS xstats ON stxrelid = attrelid;
 
@@ -156,7 +162,7 @@ CALL record_stats();
 -- reltuples of some system catalog tables and indexes may be collected during
 -- the template DB creation.  Clear them in the recorded stats to pretend they
 -- didn't exist.
-UPDATE x_stats SET (reltuples, ncolstats) = (0, 0) WHERE kind IN ('r', 'i') AND reltuples > 0;
+UPDATE x_stats SET (reltuples, ncolstats) = (-1, 0) WHERE kind IN ('r', 'i') AND reltuples >= 0;
 
 ANALYZE;
 SELECT yb_reset_analyze_statistics(null);

@@ -1,10 +1,12 @@
 # contrib/unaccent/Makefile
 
 MODULE_big = unaccent
-OBJS = unaccent.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	unaccent.o
 
 EXTENSION = unaccent
-DATA = unaccent--1.1.sql unaccent--1.0--1.1.sql unaccent--unpackaged--1.0.sql
+DATA = unaccent--1.1.sql unaccent--1.0--1.1.sql
 DATA_TSEARCH = unaccent.rules
 PGFILEDESC = "unaccent - text search dictionary that removes accents"
 
@@ -24,3 +26,22 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+update-unicode: $(srcdir)/unaccent.rules
+
+# Allow running this even without --with-python
+PYTHON ?= python
+
+$(srcdir)/unaccent.rules: generate_unaccent_rules.py ../../src/common/unicode/UnicodeData.txt Latin-ASCII.xml
+	$(PYTHON) $< --unicode-data-file $(word 2,$^) --latin-ascii-file $(word 3,$^) >$@
+
+# Only download it once; dependencies must match src/common/unicode/
+../../src/common/unicode/UnicodeData.txt: $(top_builddir)/src/Makefile.global
+	$(MAKE) -C $(@D) $(@F)
+
+# Dependency on Makefile.global is for CLDR_VERSION
+Latin-ASCII.xml: $(top_builddir)/src/Makefile.global
+	$(DOWNLOAD) https://raw.githubusercontent.com/unicode-org/cldr/release-$(subst .,-,$(CLDR_VERSION))/common/transforms/Latin-ASCII.xml
+
+distclean:
+	rm -f Latin-ASCII.xml

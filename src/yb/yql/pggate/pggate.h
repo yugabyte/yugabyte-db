@@ -136,7 +136,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState& session_stats);
+  Status InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -436,8 +436,6 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Result<bool> DmlHasSystemTargets(PgStatement *handle);
-
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
   Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
@@ -635,7 +633,8 @@ class PgApiImpl {
                    bool is_region_local,
                    PgStatement **handle);
 
-  Status InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
+  Status InitRandomState(
+      PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 

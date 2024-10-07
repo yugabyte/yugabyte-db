@@ -5,7 +5,7 @@
  *	  (pg_largeobject_metadata)
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_largeobject_metadata.h
@@ -29,7 +29,10 @@
  */
 CATALOG(pg_largeobject_metadata,2995,LargeObjectMetadataRelationId)
 {
-	Oid			lomowner;		/* OID of the largeobject owner */
+	Oid			oid;			/* oid */
+
+	Oid			lomowner BKI_LOOKUP(pg_authid); /* OID of the largeobject
+												 * owner */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		lomacl[1];		/* access permissions */
@@ -42,5 +45,7 @@ CATALOG(pg_largeobject_metadata,2995,LargeObjectMetadataRelationId)
  * ----------------
  */
 typedef FormData_pg_largeobject_metadata *Form_pg_largeobject_metadata;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_largeobject_metadata_oid_index, 2996, LargeObjectMetadataOidIndexId, on pg_largeobject_metadata using btree(oid oid_ops));
 
 #endif							/* PG_LARGEOBJECT_METADATA_H */

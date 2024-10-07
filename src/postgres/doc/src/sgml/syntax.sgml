@@ -189,6 +189,23 @@ UPDATE "my_table" SET "a" = 5;
     ampersands.  The length limitation still applies.
    </para>
 
+   <para>
+    Quoting an identifier also makes it case-sensitive, whereas
+    unquoted names are always folded to lower case.  For example, the
+    identifiers <literal>FOO</literal>, <literal>foo</literal>, and
+    <literal>"foo"</literal> are considered the same by
+    <productname>PostgreSQL</productname>, but
+    <literal>"Foo"</literal> and <literal>"FOO"</literal> are
+    different from these three and each other.  (The folding of
+    unquoted names to lower case in <productname>PostgreSQL</productname> is
+    incompatible with the SQL standard, which says that unquoted names
+    should be folded to upper case.  Thus, <literal>foo</literal>
+    should be equivalent to <literal>"FOO"</literal> not
+    <literal>"foo"</literal> according to the standard.  If you want
+    to write portable applications you are advised to always quote a
+    particular name or never quote it.)
+   </para>
+
    <indexterm>
      <primary>Unicode escape</primary>
      <secondary>in identifiers</secondary>
@@ -230,7 +247,8 @@ U&amp;"d!0061t!+000061" UESCAPE '!'
     The escape character can be any single character other than a
     hexadecimal digit, the plus sign, a single quote, a double quote,
     or a whitespace character.  Note that the escape character is
-    written in single quotes, not double quotes.
+    written in single quotes, not double quotes,
+    after <literal>UESCAPE</literal>.
    </para>
 
    <para>
@@ -239,32 +257,18 @@ U&amp;"d!0061t!+000061" UESCAPE '!'
    </para>
 
    <para>
-    The Unicode escape syntax works only when the server encoding is
-    <literal>UTF8</literal>.  When other server encodings are used, only code
-    points in the ASCII range (up to <literal>\007F</literal>) can be
-    specified.  Both the 4-digit and the 6-digit form can be used to
+    Either the 4-digit or the 6-digit escape form can be used to
     specify UTF-16 surrogate pairs to compose characters with code
     points larger than U+FFFF, although the availability of the
     6-digit form technically makes this unnecessary.  (Surrogate
-    pairs are not stored directly, but combined into a single
-    code point that is then encoded in UTF-8.)
+    pairs are not stored directly, but are combined into a single
+    code point.)
    </para>
 
    <para>
-    Quoting an identifier also makes it case-sensitive, whereas
-    unquoted names are always folded to lower case.  For example, the
-    identifiers <literal>FOO</literal>, <literal>foo</literal>, and
-    <literal>"foo"</literal> are considered the same by
-    <productname>PostgreSQL</productname>, but
-    <literal>"Foo"</literal> and <literal>"FOO"</literal> are
-    different from these three and each other.  (The folding of
-    unquoted names to lower case in <productname>PostgreSQL</productname> is
-    incompatible with the SQL standard, which says that unquoted names
-    should be folded to upper case.  Thus, <literal>foo</literal>
-    should be equivalent to <literal>"FOO"</literal> not
-    <literal>"foo"</literal> according to the standard.  If you want
-    to write portable applications you are advised to always quote a
-    particular name or never quote it.)
+    If the server encoding is not UTF-8, the Unicode code point identified
+    by one of these escape sequences is converted to the actual server
+    encoding; an error is reported if that's not possible.
    </para>
   </sect2>
 
@@ -333,7 +337,7 @@ SELECT 'foo'      'bar';
    </sect3>
 
    <sect3 id="sql-syntax-strings-escape">
-    <title>String Constants with C-style Escapes</title>
+    <title>String Constants with C-Style Escapes</title>
 
      <indexterm zone="sql-syntax-strings-escape">
       <primary>escape string syntax</primary>
@@ -392,7 +396,7 @@ SELECT 'foo'      'bar';
          <literal>\<replaceable>o</replaceable></literal>,
          <literal>\<replaceable>oo</replaceable></literal>,
          <literal>\<replaceable>ooo</replaceable></literal>
-         (<replaceable>o</replaceable> = 0 - 7)
+         (<replaceable>o</replaceable> = 0&ndash;7)
         </entry>
         <entry>octal byte value</entry>
        </row>
@@ -400,7 +404,7 @@ SELECT 'foo'      'bar';
         <entry>
          <literal>\x<replaceable>h</replaceable></literal>,
          <literal>\x<replaceable>hh</replaceable></literal>
-         (<replaceable>h</replaceable> = 0 - 9, A - F)
+         (<replaceable>h</replaceable> = 0&ndash;9, A&ndash;F)
         </entry>
         <entry>hexadecimal byte value</entry>
        </row>
@@ -408,7 +412,7 @@ SELECT 'foo'      'bar';
         <entry>
          <literal>\u<replaceable>xxxx</replaceable></literal>,
          <literal>\U<replaceable>xxxxxxxx</replaceable></literal>
-         (<replaceable>x</replaceable> = 0 - 9, A - F)
+         (<replaceable>x</replaceable> = 0&ndash;9, A&ndash;F)
         </entry>
         <entry>16 or 32-bit hexadecimal Unicode character value</entry>
        </row>
@@ -427,25 +431,11 @@ SELECT 'foo'      'bar';
     <para>
      It is your responsibility that the byte sequences you create,
      especially when using the octal or hexadecimal escapes, compose
-     valid characters in the server character set encoding.  When the
-     server encoding is UTF-8, then the Unicode escapes or the
+     valid characters in the server character set encoding.
+     A useful alternative is to use Unicode escapes or the
      alternative Unicode escape syntax, explained
-     in <xref linkend="sql-syntax-strings-uescape"/>, should be used
-     instead.  (The alternative would be doing the UTF-8 encoding by
-     hand and writing out the bytes, which would be very cumbersome.)
-    </para>
-
-    <para>
-     The Unicode escape syntax works fully only when the server
-     encoding is <literal>UTF8</literal>.  When other server encodings are
-     used, only code points in the ASCII range (up
-     to <literal>\u007F</literal>) can be specified.  Both the 4-digit and
-     the 8-digit form can be used to specify UTF-16 surrogate pairs to
-     compose characters with code points larger than U+FFFF, although
-     the availability of the 8-digit form technically makes this
-     unnecessary.  (When surrogate pairs are used when the server
-     encoding is <literal>UTF8</literal>, they are first combined into a
-     single code point that is then encoded in UTF-8.)
+     in <xref linkend="sql-syntax-strings-uescape"/>; then the server
+     will check that the character conversion is possible.
     </para>
 
     <caution>
@@ -524,16 +514,23 @@ U&amp;'d!0061t!+000061' UESCAPE '!'
     </para>
 
     <para>
-     The Unicode escape syntax works only when the server encoding is
-     <literal>UTF8</literal>.  When other server encodings are used, only
-     code points in the ASCII range (up to <literal>\007F</literal>)
-     can be specified.  Both the 4-digit and the 6-digit form can be
-     used to specify UTF-16 surrogate pairs to compose characters with
-     code points larger than U+FFFF, although the availability of the
-     6-digit form technically makes this unnecessary.  (When surrogate
-     pairs are used when the server encoding is <literal>UTF8</literal>, they
-     are first combined into a single code point that is then encoded
-     in UTF-8.)
+     To include the escape character in the string literally, write
+     it twice.
+    </para>
+
+    <para>
+     Either the 4-digit or the 6-digit escape form can be used to
+     specify UTF-16 surrogate pairs to compose characters with code
+     points larger than U+FFFF, although the availability of the
+     6-digit form technically makes this unnecessary.  (Surrogate
+     pairs are not stored directly, but are combined into a single
+     code point.)
+    </para>
+
+    <para>
+     If the server encoding is not UTF-8, the Unicode code point identified
+     by one of these escape sequences is converted to the actual server
+     encoding; an error is reported if that's not possible.
     </para>
 
     <para>
@@ -546,15 +543,10 @@ U&amp;'d!0061t!+000061' UESCAPE '!'
      parameter is set to off, this syntax will be rejected with an
      error message.
     </para>
-
-    <para>
-     To include the escape character in the string literally, write it
-     twice.
-    </para>
    </sect3>
 
    <sect3 id="sql-syntax-dollar-quoting">
-    <title>Dollar-quoted String Constants</title>
+    <title>Dollar-Quoted String Constants</title>
 
      <indexterm>
       <primary>dollar quoting</primary>
@@ -634,7 +626,7 @@ $function$
    </sect3>
 
    <sect3 id="sql-syntax-bit-strings">
-    <title>Bit-string Constants</title>
+    <title>Bit-String Constants</title>
 
     <indexterm zone="sql-syntax-bit-strings">
      <primary>bit string</primary>
@@ -844,7 +836,7 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
    <para>
     When working with non-SQL-standard operator names, you will usually
     need to separate adjacent operators with spaces to avoid ambiguity.
-    For example, if you have defined a left unary operator named <literal>@</literal>,
+    For example, if you have defined a prefix operator named <literal>@</literal>,
     you cannot write <literal>X*@Y</literal>; you must write
     <literal>X* @Y</literal> to ensure that
     <productname>PostgreSQL</productname> reads it as two operator names
@@ -985,33 +977,17 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
     Most operators have the same precedence and are left-associative.
     The precedence and associativity of the operators is hard-wired
     into the parser.
-   </para>
-
-   <para>
-    You will
-    sometimes need to add parentheses when using combinations of
-    binary and unary operators.  For instance:
-<programlisting>
-SELECT 5 ! - 6;
-</programlisting>
-   will be parsed as:
-<programlisting>
-SELECT 5 ! (- 6);
-</programlisting>
-    because the parser has no idea &mdash; until it is too late
-    &mdash; that <token>!</token> is defined as a postfix operator,
-    not an infix one.  To get the desired behavior in this case, you
-    must write:
-<programlisting>
-SELECT (5 !) - 6;
-</programlisting>
-    This is the price one pays for extensibility.
+    Add parentheses if you want an expression with multiple operators
+    to be parsed in some other way than what the precedence rules imply.
    </para>
 
    <table id="sql-precedence-table">
     <title>Operator Precedence (highest to lowest)</title>
 
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="1*"/>
+     <colspec colname="col3" colwidth="2*"/>
      <thead>
       <row>
        <entry>Operator/Element</entry>
@@ -1086,7 +1062,7 @@ SELECT (5 !) - 6;
        <entry><token>IS</token> <token>ISNULL</token> <token>NOTNULL</token></entry>
        <entry></entry>
        <entry><literal>IS TRUE</literal>, <literal>IS FALSE</literal>, <literal>IS
-       NULL</literal>, <literal>IS DISTINCT FROM</literal>, etc</entry>
+       NULL</literal>, <literal>IS DISTINCT FROM</literal>, etc.</entry>
       </row>
 
       <row>
@@ -1145,11 +1121,7 @@ SELECT 3 OPERATOR(pg_catalog.+) 4;
      cases, these changes will result in no behavioral change, or perhaps
      in <quote>no such operator</quote> failures which can be resolved by adding
      parentheses.  However there are corner cases in which a query might
-     change behavior without any parsing error being reported.  If you are
-     concerned about whether these changes have silently broken something,
-     you can test your application with the configuration
-     parameter <xref linkend="guc-operator-precedence-warning"/> turned on
-     to see if any warnings are logged.
+     change behavior without any parsing error being reported.
     </para>
    </note>
   </sect2>
@@ -1383,7 +1355,7 @@ CREATE FUNCTION dept(text) RETURNS dept
 </synopsis>
     (Here, the brackets <literal>[ ]</literal> are meant to appear literally.)
     Each <replaceable>subscript</replaceable> is itself an expression,
-    which must yield an integer value.
+    which will be rounded to the nearest integer value.
    </para>
 
    <para>
@@ -1468,11 +1440,10 @@ $1.somecolumn
    </indexterm>
 
    <para>
-    There are three possible syntaxes for an operator invocation:
+    There are two possible syntaxes for an operator invocation:
     <simplelist>
      <member><replaceable>expression</replaceable> <replaceable>operator</replaceable> <replaceable>expression</replaceable> (binary infix operator)</member>
      <member><replaceable>operator</replaceable> <replaceable>expression</replaceable> (unary prefix operator)</member>
-     <member><replaceable>expression</replaceable> <replaceable>operator</replaceable> (unary postfix operator)</member>
     </simplelist>
     where the <replaceable>operator</replaceable> token follows the syntax
     rules of <xref linkend="sql-syntax-operators"/>, or is one of the
@@ -2322,9 +2293,9 @@ SELECT ARRAY[]::integer[];
    bracketed) subquery. For example:
 <programlisting>
 SELECT ARRAY(SELECT oid FROM pg_proc WHERE proname LIKE 'bytea%');
-                                 array
------------------------------------------------------------------------
- {2011,1954,1948,1952,1951,1244,1950,2005,1949,1953,2006,31,2412,2413}
+                              array
+------------------------------------------------------------------
+ {2011,1954,1948,1952,1951,1244,1950,2005,1949,1953,2006,31,2412}
 (1 row)
 
 SELECT ARRAY(SELECT ARRAY[i, i*2] FROM generate_series(1,5) AS a(i));
@@ -2654,7 +2625,7 @@ LANGUAGE SQL IMMUTABLE STRICT;
      to functions in <productname>PostgreSQL</productname>.  An example is:
 <screen>
 SELECT concat_lower_or_upper('Hello', 'World', true);
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  HELLO WORLD
 (1 row)
@@ -2664,7 +2635,7 @@ SELECT concat_lower_or_upper('Hello', 'World', true);
      Another example is:
 <screen>
 SELECT concat_lower_or_upper('Hello', 'World');
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  hello world
 (1 row)
@@ -2690,7 +2661,7 @@ SELECT concat_lower_or_upper('Hello', 'World');
      For example:
 <screen>
 SELECT concat_lower_or_upper(a =&gt; 'Hello', b =&gt; 'World');
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  hello world
 (1 row)
@@ -2701,13 +2672,13 @@ SELECT concat_lower_or_upper(a =&gt; 'Hello', b =&gt; 'World');
      order, for example:
 <screen>
 SELECT concat_lower_or_upper(a =&gt; 'Hello', b =&gt; 'World', uppercase =&gt; true);
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  HELLO WORLD
 (1 row)
 
 SELECT concat_lower_or_upper(a =&gt; 'Hello', uppercase =&gt; true, b =&gt; 'World');
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  HELLO WORLD
 (1 row)
@@ -2718,7 +2689,7 @@ SELECT concat_lower_or_upper(a =&gt; 'Hello', uppercase =&gt; true, b =&gt; 'Wor
       An older syntax based on ":=" is supported for backward compatibility:
 <screen>
 SELECT concat_lower_or_upper(a := 'Hello', uppercase := true, b := 'World');
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  HELLO WORLD
 (1 row)
@@ -2740,7 +2711,7 @@ SELECT concat_lower_or_upper(a := 'Hello', uppercase := true, b := 'World');
     For example:
 <screen>
 SELECT concat_lower_or_upper('Hello', 'World', uppercase =&gt; true);
- concat_lower_or_upper 
+ concat_lower_or_upper
 -----------------------
  HELLO WORLD
 (1 row)

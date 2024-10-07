@@ -4,7 +4,7 @@
  *	  header file for Postgres hash AM implementation
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/hash_xlog.h
@@ -50,19 +50,6 @@
  */
 #define XLH_SPLIT_META_UPDATE_MASKS		(1<<0)
 #define XLH_SPLIT_META_UPDATE_SPLITPOINT		(1<<1)
-
-/*
- * This is what we need to know about a HASH index create.
- *
- * Backup block 0: metapage
- */
-typedef struct xl_hash_createidx
-{
-	double		num_tuples;
-	RegProcedure procid;
-	uint16		ffactor;
-}			xl_hash_createidx;
-#define SizeOfHashCreateIdx (offsetof(xl_hash_createidx, ffactor) + sizeof(uint16))
 
 /*
  * This is what we need to know about simple (without split) insert.
@@ -263,7 +250,7 @@ typedef struct xl_hash_init_bitmap_page
  */
 typedef struct xl_hash_vacuum_one_page
 {
-	RelFileNode hnode;
+	TransactionId latestRemovedXid;
 	int			ntuples;
 
 	/* TARGET OFFSET NUMBERS FOLLOW AT THE END */

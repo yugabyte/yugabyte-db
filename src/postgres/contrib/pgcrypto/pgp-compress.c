@@ -31,9 +31,8 @@
 
 #include "postgres.h"
 
-#include "px.h"
 #include "pgp.h"
-
+#include "px.h"
 
 /*
  * Compressed pkt writer
@@ -58,13 +57,13 @@ struct ZipStat
 static void *
 z_alloc(void *priv, unsigned n_items, unsigned item_len)
 {
-	return px_alloc(n_items * item_len);
+	return palloc(n_items * item_len);
 }
 
 static void
 z_free(void *priv, void *addr)
 {
-	px_free(addr);
+	pfree(addr);
 }
 
 static int
@@ -81,8 +80,7 @@ compress_init(PushFilter *next, void *init_arg, void **priv_p)
 	/*
 	 * init
 	 */
-	st = px_alloc(sizeof(*st));
-	memset(st, 0, sizeof(*st));
+	st = palloc0(sizeof(*st));
 	st->buf_len = ZIP_OUT_BUF;
 	st->stream.zalloc = z_alloc;
 	st->stream.zfree = z_free;
@@ -94,7 +92,7 @@ compress_init(PushFilter *next, void *init_arg, void **priv_p)
 		res = deflateInit(&st->stream, ctx->compress_level);
 	if (res != Z_OK)
 	{
-		px_free(st);
+		pfree(st);
 		return PXE_PGP_COMPRESSION_ERROR;
 	}
 	*priv_p = st;
@@ -115,13 +113,13 @@ compress_process(PushFilter *next, void *priv, const uint8 *data, int len)
 	/*
 	 * process data
 	 */
-	while (len > 0)
+	st->stream.next_in = unconstify(uint8 *, data);
+	st->stream.avail_in = len;
+	while (st->stream.avail_in > 0)
 	{
-		st->stream.next_in = (void *) data;
-		st->stream.avail_in = len;
 		st->stream.next_out = st->buf;
 		st->stream.avail_out = st->buf_len;
-		res = deflate(&st->stream, 0);
+		res = deflate(&st->stream, Z_NO_FLUSH);
 		if (res != Z_OK)
 			return PXE_PGP_COMPRESSION_ERROR;
 
@@ -132,7 +130,6 @@ compress_process(PushFilter *next, void *priv, const uint8 *data, int len)
 			if (res < 0)
 				return res;
 		}
-		len = st->stream.avail_in;
 	}
 
 	return 0;
@@ -155,6 +152,7 @@ compress_flush(PushFilter *next, void *priv)
 		zres = deflate(&st->stream, Z_FINISH);
 		if (zres != Z_STREAM_END && zres != Z_OK)
 			return PXE_PGP_COMPRESSION_ERROR;
+
 		n_out = st->buf_len - st->stream.avail_out;
 		if (n_out > 0)
 		{
@@ -175,7 +173,7 @@ compress_free(void *priv)
 
 	deflateEnd(&st->stream);
 	px_memset(st, 0, sizeof(*st));
-	px_free(st);
+	pfree(st);
 }
 
 static const PushFilterOps
@@ -213,8 +211,7 @@ decompress_init(void **priv_p, void *arg, PullFilter *src)
 		&& ctx->compress_algo != PGP_COMPR_ZIP)
 		return PXE_PGP_UNSUPPORTED_COMPR;
 
-	dec = px_alloc(sizeof(*dec));
-	memset(dec, 0, sizeof(*dec));
+	dec = palloc0(sizeof(*dec));
 	dec->buf_len = ZIP_OUT_BUF;
 	*priv_p = dec;
 
@@ -227,7 +224,7 @@ decompress_init(void **priv_p, void *arg, PullFilter *src)
 		res = inflateInit(&dec->stream);
 	if (res != Z_OK)
 	{
-		px_free(dec);
+		pfree(dec);
 		px_debug("decompress_init: inflateInit error");
 		return PXE_PGP_COMPRESSION_ERROR;
 	}
@@ -287,7 +284,28 @@ restart:
 
 	dec->buf_data = dec->buf_len - dec->stream.avail_out;
 	if (res == Z_STREAM_END)
+	{
+		uint8	   *tmp;
+
+		/*
+		 * A stream must be terminated by a normal packet.  If the last stream
+		 * packet in the source stream is a full packet, a normal empty packet
+		 * must follow.  Since the underlying packet reader doesn't know that
+		 * the compressed stream has been ended, we need to consume the
+		 * terminating packet here.  This read does not harm even if the
+		 * stream has already ended.
+		 */
+		res = pullf_read(src, 1, &tmp);
+
+		if (res < 0)
+			return res;
+		else if (res > 0)
+		{
+			px_debug("decompress_read: extra bytes after end of stream");
+			return PXE_PGP_CORRUPT_DATA;
+		}
 		dec->eof = 1;
+	}
 	goto restart;
 }
 
@@ -298,7 +316,7 @@ decompress_free(void *priv)
 
 	inflateEnd(&dec->stream);
 	px_memset(dec, 0, sizeof(*dec));
-	px_free(dec);
+	pfree(dec);
 }
 
 static const PullFilterOps

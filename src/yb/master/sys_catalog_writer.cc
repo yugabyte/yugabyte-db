@@ -162,6 +162,28 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
   return Status::OK();
 }
 
+Status SysCatalogWriter::DeleteYsqlTableRow(const Schema& schema,
+                                            const qlexpr::QLTableRow& row,
+                                            const TableId& table_id,
+                                            const uint32_t schema_version) {
+  PgsqlWriteRequestPB* pgsql_write = req_->add_pgsql_write_batch();
+  pgsql_write->set_client(YQL_CLIENT_PGSQL);
+  pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_DELETE);
+  pgsql_write->set_table_id(table_id);
+  pgsql_write->set_schema_version(schema_version);
+
+  RSTATUS_DCHECK_EQ(schema.num_hash_key_columns(), 0, InternalError, "Postgres sys catalog "
+                    "table is non-partitioned, so there should be no hash columns.");
+  for (size_t i = 0; i < schema.num_range_key_columns(); i++) {
+    const auto& value = row.GetValue(schema.column_id(i));
+    SCHECK(value, Corruption, "Range value of column id $0 missing for table $1",
+           schema.column_id(i), table_id);
+    pgsql_write->add_range_column_values()->mutable_value()->CopyFrom(*value);
+  }
+
+  return Status::OK();
+}
+
 Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {

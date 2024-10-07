@@ -4,7 +4,7 @@
  *	  fetch tuples from a GIN scan.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,6 +16,7 @@
 
 #include "access/gin_private.h"
 #include "access/relscan.h"
+#include "common/pg_prng.h"
 #include "miscadmin.h"
 #include "storage/predicate.h"
 #include "utils/datum.h"
@@ -264,24 +265,28 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 			/* Search forward to re-find idatum */
 			for (;;)
 			{
-				Datum		newDatum;
-				GinNullCategory newCategory;
-
 				if (moveRightIfItNeeded(btree, stack, snapshot) == false)
-					elog(ERROR, "lost saved point in index");	/* must not happen !!! */
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to re-find tuple within index \"%s\"",
+									RelationGetRelationName(btree->index))));
 
 				page = BufferGetPage(stack->buffer);
 				itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, stack->off));
 
-				if (gintuple_get_attrnum(btree->ginstate, itup) != attnum)
-					elog(ERROR, "lost saved point in index");	/* must not happen !!! */
-				newDatum = gintuple_get_key(btree->ginstate, itup,
-											&newCategory);
+				if (gintuple_get_attrnum(btree->ginstate, itup) == attnum)
+				{
+					Datum		newDatum;
+					GinNullCategory newCategory;
 
-				if (ginCompareEntries(btree->ginstate, attnum,
-									  newDatum, newCategory,
-									  idatum, icategory) == 0)
-					break;		/* Found! */
+					newDatum = gintuple_get_key(btree->ginstate, itup,
+												&newCategory);
+
+					if (ginCompareEntries(btree->ginstate, attnum,
+										  newDatum, newCategory,
+										  idatum, icategory) == 0)
+						break;	/* Found! */
+				}
 
 				stack->off++;
 			}
@@ -528,8 +533,20 @@ startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 	 * order, until the consistent function says that none of the remaining
 	 * entries can form a match, without any items from the required set. The
 	 * rest go to the additional set.
+	 *
+	 * Exclude-only scan keys are known to have no required entries.
 	 */
-	if (key->nentries > 1)
+	if (key->excludeOnly)
+	{
+		MemoryContextSwitchTo(so->keyCtx);
+
+		key->nrequired = 0;
+		key->nadditional = key->nentries;
+		key->additionalEntries = palloc(key->nadditional * sizeof(GinScanEntry));
+		for (i = 0; i < key->nadditional; i++)
+			key->additionalEntries[i] = key->scanEntry[i];
+	}
+	else if (key->nentries > 1)
 	{
 		MemoryContextSwitchTo(so->tempCtx);
 
@@ -771,7 +788,7 @@ entryLoadMoreItems(GinState *ginstate, GinScanEntry entry,
 	}
 }
 
-#define gin_rand() (((double) random()) / ((double) MAX_RANDOM_VALUE))
+#define gin_rand() pg_prng_double(&pg_global_prng_state)
 #define dropItem(e) ( gin_rand() > ((double)GinFuzzySearchLimit)/((double)((e)->predictNumberResult)) )
 
 /*
@@ -801,9 +818,8 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 		/* A bitmap result */
 		BlockNumber advancePastBlk = GinItemPointerGetBlockNumber(&advancePast);
 		OffsetNumber advancePastOff = GinItemPointerGetOffsetNumber(&advancePast);
-		bool		gotitem = false;
 
-		do
+		for (;;)
 		{
 			/*
 			 * If we've exhausted all items on this block, move to next block
@@ -852,7 +868,6 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 				 * estimate number of results on this page to support correct
 				 * reducing of result even if it's enabled.
 				 */
-				gotitem = true;
 				break;
 			}
 
@@ -865,7 +880,7 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 				/*
 				 * First, do a quick check against the last offset on the
 				 * page. If that's > advancePast, so are all the other
-				 * offsets.
+				 * offsets, so just go back to the top to get the next page.
 				 */
 				if (entry->matchResult->offsets[entry->matchResult->ntuples - 1] <= advancePastOff)
 				{
@@ -882,8 +897,11 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 						   entry->matchResult->blockno,
 						   entry->matchResult->offsets[entry->offset]);
 			entry->offset++;
-			gotitem = true;
-		} while (!gotitem || (entry->reduceResult == true && dropItem(entry)));
+
+			/* Done unless we need to reduce the result */
+			if (!entry->reduceResult || !dropItem(entry))
+				break;
+		}
 	}
 	else if (!BufferIsValid(entry->buffer))
 	{
@@ -891,7 +909,7 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 		 * A posting list from an entry tuple, or the last page of a posting
 		 * tree.
 		 */
-		do
+		for (;;)
 		{
 			if (entry->offset >= entry->nlist)
 			{
@@ -901,13 +919,20 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 			}
 
 			entry->curItem = entry->list[entry->offset++];
-		} while (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0);
-		/* XXX: shouldn't we apply the fuzzy search limit here? */
+
+			/* If we're not past advancePast, keep scanning */
+			if (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0)
+				continue;
+
+			/* Done unless we need to reduce the result */
+			if (!entry->reduceResult || !dropItem(entry))
+				break;
+		}
 	}
 	else
 	{
 		/* A posting tree */
-		do
+		for (;;)
 		{
 			/* If we've processed the current batch, load more items */
 			while (entry->offset >= entry->nlist)
@@ -923,8 +948,20 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 
 			entry->curItem = entry->list[entry->offset++];
 
-		} while (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0 ||
-				 (entry->reduceResult == true && dropItem(entry)));
+			/* If we're not past advancePast, keep scanning */
+			if (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0)
+				continue;
+
+			/* Done unless we need to reduce the result */
+			if (!entry->reduceResult || !dropItem(entry))
+				break;
+
+			/*
+			 * Advance advancePast (so that entryLoadMoreItems will load the
+			 * right data), and keep scanning
+			 */
+			advancePast = entry->curItem;
+		}
 	}
 }
 
@@ -1008,37 +1045,52 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 			minItem = entry->curItem;
 	}
 
-	if (allFinished)
+	if (allFinished && !key->excludeOnly)
 	{
 		/* all entries are finished */
 		key->isFinished = true;
 		return;
 	}
 
-	/*
-	 * Ok, we now know that there are no matches < minItem.
-	 *
-	 * If minItem is lossy, it means that there were no exact items on the
-	 * page among requiredEntries, because lossy pointers sort after exact
-	 * items. However, there might be exact items for the same page among
-	 * additionalEntries, so we mustn't advance past them.
-	 */
-	if (ItemPointerIsLossyPage(&minItem))
+	if (!key->excludeOnly)
 	{
-		if (GinItemPointerGetBlockNumber(&advancePast) <
-			GinItemPointerGetBlockNumber(&minItem))
+		/*
+		 * For a normal scan key, we now know there are no matches < minItem.
+		 *
+		 * If minItem is lossy, it means that there were no exact items on the
+		 * page among requiredEntries, because lossy pointers sort after exact
+		 * items. However, there might be exact items for the same page among
+		 * additionalEntries, so we mustn't advance past them.
+		 */
+		if (ItemPointerIsLossyPage(&minItem))
 		{
+			if (GinItemPointerGetBlockNumber(&advancePast) <
+				GinItemPointerGetBlockNumber(&minItem))
+			{
+				ItemPointerSet(&advancePast,
+							   GinItemPointerGetBlockNumber(&minItem),
+							   InvalidOffsetNumber);
+			}
+		}
+		else
+		{
+			Assert(GinItemPointerGetOffsetNumber(&minItem) > 0);
 			ItemPointerSet(&advancePast,
 						   GinItemPointerGetBlockNumber(&minItem),
-						   InvalidOffsetNumber);
+						   OffsetNumberPrev(GinItemPointerGetOffsetNumber(&minItem)));
 		}
 	}
 	else
 	{
-		Assert(GinItemPointerGetOffsetNumber(&minItem) > 0);
-		ItemPointerSet(&advancePast,
-					   GinItemPointerGetBlockNumber(&minItem),
-					   OffsetNumberPrev(GinItemPointerGetOffsetNumber(&minItem)));
+		/*
+		 * excludeOnly scan keys don't have any entries that are necessarily
+		 * present in matching items.  So, we consider the item just after
+		 * advancePast.
+		 */
+		Assert(key->nrequired == 0);
+		ItemPointerSet(&minItem,
+					   GinItemPointerGetBlockNumber(&advancePast),
+					   OffsetNumberNext(GinItemPointerGetOffsetNumber(&advancePast)));
 	}
 
 	/*
@@ -1265,6 +1317,20 @@ scanGetItem(IndexScanDesc scan, ItemPointerData advancePast,
 		for (i = 0; i < so->nkeys && match; i++)
 		{
 			GinScanKey	key = so->keys + i;
+
+			/*
+			 * If we're considering a lossy page, skip excludeOnly keys. They
+			 * can't exclude the whole page anyway.
+			 */
+			if (ItemPointerIsLossyPage(item) && key->excludeOnly)
+			{
+				/*
+				 * ginNewScanKey() should never mark the first key as
+				 * excludeOnly.
+				 */
+				Assert(i > 0);
+				continue;
+			}
 
 			/* Fetch the next item for this key that is > advancePast. */
 			keyGetItem(&so->ginstate, so->tempCtx, key, advancePast,
@@ -1736,11 +1802,14 @@ collectMatchesForHeapRow(IndexScanDesc scan, pendingPosition *pos)
 	}
 
 	/*
-	 * Now return "true" if all scan keys have at least one matching datum
+	 * All scan keys except excludeOnly require at least one entry to match.
+	 * excludeOnly keys are an exception, because their implied
+	 * GIN_CAT_EMPTY_QUERY scanEntry always matches.  So return "true" if all
+	 * non-excludeOnly scan keys have at least one match.
 	 */
 	for (i = 0; i < so->nkeys; i++)
 	{
-		if (pos->hasMatchKey[i] == false)
+		if (pos->hasMatchKey[i] == false && !so->keys[i].excludeOnly)
 			return false;
 	}
 

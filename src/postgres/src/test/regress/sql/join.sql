@@ -37,28 +37,34 @@ INSERT INTO J2_TBL VALUES (0, NULL);
 INSERT INTO J2_TBL VALUES (NULL, NULL);
 INSERT INTO J2_TBL VALUES (NULL, 0);
 
+-- useful in some tests below
+create temp table onerow();
+insert into onerow default values;
+analyze onerow;
+
+
 --
 -- CORRELATION NAMES
 -- Make sure that table/column aliases are supported
 -- before diving into more complex join syntax.
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL AS tx;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL tx;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL AS t1 (a, b, c);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e);
 
-SELECT '' AS "xxx", t1.a, t2.e
+SELECT t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
   WHERE t1.a = t2.d;
 
@@ -69,26 +75,26 @@ SELECT '' AS "xxx", t1.a, t2.e
 -- which degenerate into a standard unqualified inner join.
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL CROSS JOIN J2_TBL;
 
 -- ambiguous column
-SELECT '' AS "xxx", i, k, t
+SELECT i, k, t
   FROM J1_TBL CROSS JOIN J2_TBL;
 
 -- resolve previous ambiguity by specifying the table name
-SELECT '' AS "xxx", t1.i, k, t
+SELECT t1.i, k, t
   FROM J1_TBL t1 CROSS JOIN J2_TBL t2;
 
-SELECT '' AS "xxx", ii, tt, kk
+SELECT ii, tt, kk
   FROM (J1_TBL CROSS JOIN J2_TBL)
     AS tx (ii, jj, tt, ii2, kk);
 
-SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
+SELECT tx.ii, tx.jj, tx.kk
   FROM (J1_TBL t1 (a, b, c) CROSS JOIN J2_TBL t2 (d, e))
     AS tx (ii, jj, tt, ii2, kk);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b;
 
 
@@ -105,39 +111,50 @@ SELECT '' AS "xxx", *
 --
 
 -- Inner equi-join on specified column
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL INNER JOIN J2_TBL USING (i);
 
 -- Same as above, slightly different syntax
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL USING (i);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
   ORDER BY a, d;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
   ORDER BY b, t1.a;
 
+-- test join using aliases
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) WHERE J1_TBL.t = 'one';  -- ok
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';  -- ok
+SELECT * FROM (J1_TBL JOIN J2_TBL USING (i)) AS x WHERE J1_TBL.t = 'one';  -- error
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.i = 1;  -- ok
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.t = 'one';  -- error
+SELECT * FROM (J1_TBL JOIN J2_TBL USING (i) AS x) AS xx WHERE x.i = 1;  -- error (XXX could use better hint)
+SELECT * FROM J1_TBL a1 JOIN J2_TBL a2 USING (i) AS a1;  -- error
+SELECT x.* FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
+SELECT ROW(x.*) FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
+SELECT row_to_json(x.*) FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
 
 --
 -- NATURAL JOIN
 -- Inner equi-join on all columns with the same name
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL NATURAL JOIN J2_TBL;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a);
 
 -- mismatch number of columns
 -- currently, Postgres will fill in with underlying names
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a);
 
 
@@ -145,10 +162,10 @@ SELECT '' AS "xxx", *
 -- Inner joins (equi-joins)
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k);
 
 
@@ -156,7 +173,7 @@ SELECT '' AS "xxx", *
 -- Non-equi-joins
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k);
 
 
@@ -165,32 +182,32 @@ SELECT '' AS "xxx", *
 -- Note that OUTER is a noise word
 --
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL RIGHT JOIN J2_TBL USING (i);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL FULL JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1);
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1);
 
 --
@@ -297,6 +314,13 @@ NATURAL FULL JOIN
     (SELECT name, n as s3_n FROM t3) as s3
   ) ss2;
 
+-- Constants as join keys can also be problematic
+SELECT * FROM
+  (SELECT name, n as s1_n FROM t1) as s1
+FULL JOIN
+  (SELECT name, 2 as s2_n FROM t2) as s2
+ON (s1_n = s2_n);
+
 
 -- Test for propagation of nullability constraints into sub-joins
 
@@ -367,11 +391,11 @@ rollback;
 --
 explain (costs off)
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
 
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
 
 --
@@ -496,6 +520,28 @@ select * from t1 left join t2 on (t1.a = t2.a);
 
 select t1.x from t1 join t3 on (t1.a = t3.x);
 
+-- Test matching of locking clause with wrong alias
+
+select t1.*, t2.*, unnamed_join.* from
+  t1 join t2 on (t1.a = t2.a), t3 as unnamed_join
+  for update of unnamed_join;
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of unnamed_join;
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of foo;
+
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of foo;
+
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of bar;
+
 --
 -- regression test for 8.1 merge right join bug
 --
@@ -526,6 +572,7 @@ reset enable_nestloop;
 
 set work_mem to '64kB';
 set enable_mergejoin to off;
+set enable_memoize to off;
 
 explain (costs off)
 select count(*) from tenk1 a, tenk1 b
@@ -535,6 +582,7 @@ select count(*) from tenk1 a, tenk1 b
 
 reset work_mem;
 reset enable_mergejoin;
+reset enable_memoize;
 
 --
 -- regression test for 8.2 bug with improper re-ordering of left joins
@@ -687,6 +735,7 @@ explain (costs off)
 select a.idv, b.idv from tidv a, tidv b where a.idv = b.idv;
 
 set enable_mergejoin = 0;
+set enable_hashjoin = 0;
 
 explain (costs off)
 select a.idv, b.idv from tidv a, tidv b where a.idv = b.idv;
@@ -892,6 +941,33 @@ where
 order by 1,2;
 
 --
+-- variant where a PlaceHolderVar is needed at a join, but not above the join
+--
+
+explain (costs off)
+select * from
+  int4_tbl as i41,
+  lateral
+    (select 1 as x from
+      (select i41.f1 as lat,
+              i42.f1 as loc from
+         int8_tbl as i81, int4_tbl as i42) as ss1
+      right join int4_tbl as i43 on (i43.f1 > 1)
+      where ss1.loc = ss1.lat) as ss2
+where i41.f1 > 0;
+
+select * from
+  int4_tbl as i41,
+  lateral
+    (select 1 as x from
+      (select i41.f1 as lat,
+              i42.f1 as loc from
+         int8_tbl as i81, int4_tbl as i42) as ss1
+      right join int4_tbl as i43 on (i43.f1 > 1)
+      where ss1.loc = ss1.lat) as ss2
+where i41.f1 > 0;
+
+--
 -- test the corner cases FULL JOIN ON TRUE and FULL JOIN ON FALSE
 --
 select * from int4_tbl a full join int4_tbl b on true;
@@ -901,18 +977,21 @@ select * from int4_tbl a full join int4_tbl b on false;
 -- test for ability to use a cartesian join when necessary
 --
 
+create temp table q1 as select 1 as q1;
+create temp table q2 as select 0 as q2;
+analyze q1;
+analyze q2;
+
 explain (costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
-  int4(sin(1)) q1,
-  int4(sin(0)) q2
+  q1, q2
 where q1 = thousand or q2 = thousand;
 
 explain (costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
-  int4(sin(1)) q1,
-  int4(sin(0)) q2
+  q1, q2
 where thousand = (q1 + q2);
 
 --
@@ -933,8 +1012,8 @@ select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   tenk1 t1
   inner join int4_tbl i1
     left join (select v1.x2, v2.y1, 11 AS d1
-               from (values(1,0)) v1(x1,x2)
-               left join (values(3,1)) v2(y1,y2)
+               from (select 1,0 from onerow) v1(x1,x2)
+               left join (select 3,1 from onerow) v2(y1,y2)
                on v1.x1 = v2.y2) subq1
     on (i1.f1 = subq1.x2)
   on (t1.unique2 = subq1.d1)
@@ -946,8 +1025,8 @@ select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   tenk1 t1
   inner join int4_tbl i1
     left join (select v1.x2, v2.y1, 11 AS d1
-               from (values(1,0)) v1(x1,x2)
-               left join (values(3,1)) v2(y1,y2)
+               from (select 1,0 from onerow) v1(x1,x2)
+               left join (select 3,1 from onerow) v2(y1,y2)
                on v1.x1 = v2.y2) subq1
     on (i1.f1 = subq1.x2)
   on (t1.unique2 = subq1.d1)
@@ -972,6 +1051,153 @@ select ss1.d1 from
     on i8.q1 = i4.f1
   on t1.tenthous = ss1.d1
 where t1.unique1 < i4.f1;
+
+-- this variant is foldable by the remove-useless-RESULT-RTEs code
+
+explain (costs off)
+select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
+  tenk1 t1
+  inner join int4_tbl i1
+    left join (select v1.x2, v2.y1, 11 AS d1
+               from (values(1,0)) v1(x1,x2)
+               left join (values(3,1)) v2(y1,y2)
+               on v1.x1 = v2.y2) subq1
+    on (i1.f1 = subq1.x2)
+  on (t1.unique2 = subq1.d1)
+  left join tenk1 t2
+  on (subq1.y1 = t2.unique1)
+where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
+
+select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
+  tenk1 t1
+  inner join int4_tbl i1
+    left join (select v1.x2, v2.y1, 11 AS d1
+               from (values(1,0)) v1(x1,x2)
+               left join (values(3,1)) v2(y1,y2)
+               on v1.x1 = v2.y2) subq1
+    on (i1.f1 = subq1.x2)
+  on (t1.unique2 = subq1.d1)
+  left join tenk1 t2
+  on (subq1.y1 = t2.unique1)
+where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
+
+-- Here's a variant that we can't fold too aggressively, though,
+-- or we end up with noplace to evaluate the lateral PHV
+explain (verbose, costs off)
+select * from
+  (select 1 as x) ss1 left join (select 2 as y) ss2 on (true),
+  lateral (select ss2.y as z limit 1) ss3;
+select * from
+  (select 1 as x) ss1 left join (select 2 as y) ss2 on (true),
+  lateral (select ss2.y as z limit 1) ss3;
+
+-- Test proper handling of appendrel PHVs during useless-RTE removal
+explain (costs off)
+select * from
+  (select 0 as z) as t1
+  left join
+  (select true as a) as t2
+  on true,
+  lateral (select true as b
+           union all
+           select a as b) as t3
+where b;
+
+select * from
+  (select 0 as z) as t1
+  left join
+  (select true as a) as t2
+  on true,
+  lateral (select true as b
+           union all
+           select a as b) as t3
+where b;
+
+-- Test PHV in a semijoin qual, which confused useless-RTE removal (bug #17700)
+explain (verbose, costs off)
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+
+--
+-- test inlining of immutable functions
+--
+create function f_immutable_int4(i integer) returns integer as
+$$ begin return i; end; $$ language plpgsql immutable;
+
+-- check optimization of function scan with join
+explain (costs off)
+select unique1 from tenk1, (select * from f_immutable_int4(1) x) x
+where x = unique1;
+
+explain (verbose, costs off)
+select unique1, x.*
+from tenk1, (select *, random() from f_immutable_int4(1) x) x
+where x = unique1;
+
+explain (costs off)
+select unique1 from tenk1, f_immutable_int4(1) x where x = unique1;
+
+explain (costs off)
+select unique1 from tenk1, lateral f_immutable_int4(1) x where x = unique1;
+
+explain (costs off)
+select unique1 from tenk1, lateral f_immutable_int4(1) x where x in (select 17);
+
+explain (costs off)
+select unique1, x from tenk1 join f_immutable_int4(1) x on unique1 = x;
+
+explain (costs off)
+select unique1, x from tenk1 left join f_immutable_int4(1) x on unique1 = x;
+
+explain (costs off)
+select unique1, x from tenk1 right join f_immutable_int4(1) x on unique1 = x;
+
+explain (costs off)
+select unique1, x from tenk1 full join f_immutable_int4(1) x on unique1 = x;
+
+-- check that pullup of a const function allows further const-folding
+explain (costs off)
+select unique1 from tenk1, f_immutable_int4(1) x where x = 42;
+
+-- test inlining of immutable functions with PlaceHolderVars
+explain (costs off)
+select nt3.id
+from nt3 as nt3
+  left join
+    (select nt2.*, (nt2.b1 or i4 = 42) AS b3
+     from nt2 as nt2
+       left join
+         f_immutable_int4(0) i4
+         on i4 = nt2.nt1_id
+    ) as ss2
+    on ss2.id = nt3.nt2_id
+where nt3.id = 1 and ss2.b3;
+
+drop function f_immutable_int4(int);
+
+-- test inlining when function returns composite
+
+create function mki8(bigint, bigint) returns int8_tbl as
+$$select row($1,$2)::int8_tbl$$ language sql;
+
+create function mki4(int) returns int4_tbl as
+$$select row($1)::int4_tbl$$ language sql;
+
+explain (verbose, costs off)
+select * from mki8(1,2);
+select * from mki8(1,2);
+
+explain (verbose, costs off)
+select * from mki4(42);
+select * from mki4(42);
+
+drop function mki8(bigint, bigint);
+drop function mki4(int);
 
 --
 -- test extraction of restriction OR clauses from join OR clause
@@ -1518,6 +1744,38 @@ where ss.stringu2 !~* ss.case1;
 
 rollback;
 
+-- test case to expose miscomputation of required relid set for a PHV
+explain (verbose, costs off)
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+
+-- and check a related issue where we miscompute required relids for
+-- a PHV that's been translated to a child rel
+create temp table parttbl (a integer primary key) partition by range (a);
+create temp table parttbl1 partition of parttbl for values from (1) to (100);
+insert into parttbl values (11), (12);
+explain (costs off)
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+
 -- bug #8444: we've historically allowed duplicate aliases within aliased JOINs
 
 select * from
@@ -1654,13 +1912,10 @@ select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
   lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy);
-create temp table dual();
-insert into dual default values;
-analyze dual;
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
-  lateral (select x.q1,y.q1 from dual union all select x.q2,y.q2 from dual) v(vx,vy);
+  lateral (select x.q1,y.q1 from onerow union all select x.q2,y.q2 from onerow) v(vx,vy);
 
 explain (verbose, costs off)
 select * from
@@ -1744,6 +1999,14 @@ select * from
     select * from (select 3 as z offset 0) z where z.z = x.x
   ) zz on zz.z = y.y;
 
+-- check dummy rels with lateral references (bug #15694)
+explain (verbose, costs off)
+select * from int8_tbl i8 left join lateral
+  (select *, i8.q2 from int4_tbl where false) ss on true;
+explain (verbose, costs off)
+select * from int8_tbl i8 left join lateral
+  (select *, i8.q2 from int4_tbl i1, int4_tbl i2 where false) ss on true;
+
 -- check handling of nested appendrels inside LATERAL
 select * from
   ((select 2 as v) union all (select 3 as v)) as q1
@@ -1753,6 +2016,9 @@ select * from
    union all
    (select q1.v)
   ) as q2;
+
+-- check the number of columns specified
+SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
 
 -- check we don't try to do a unique-ified semijoin with LATERAL
 explain (verbose, costs off)
@@ -1842,6 +2108,35 @@ select t1.b, ss.phv from join_ut1 t1 left join lateral
 
 drop table join_pt1;
 drop table join_ut1;
+
+--
+-- test estimation behavior with multi-column foreign key and constant qual
+--
+
+begin;
+
+create table fkest (x integer, x10 integer, x10b integer, x100 integer);
+insert into fkest select x, x/10, x/10, x/100 from generate_series(1,1000) x;
+create unique index on fkest(x, x10, x100);
+analyze fkest;
+
+explain (costs off)
+select * from fkest f1
+  join fkest f2 on (f1.x = f2.x and f1.x10 = f2.x10b and f1.x100 = f2.x100)
+  join fkest f3 on f1.x = f3.x
+  where f1.x100 = 2;
+
+alter table fkest add constraint fk
+  foreign key (x, x10b, x100) references fkest (x, x10, x100);
+
+explain (costs off)
+select * from fkest f1
+  join fkest f2 on (f1.x = f2.x and f1.x10 = f2.x10b and f1.x100 = f2.x100)
+  join fkest f3 on f1.x = f3.x
+  where f1.x100 = 2;
+
+rollback;
+
 --
 -- test that foreign key join estimation performs sanely for outer joins
 --
@@ -1975,16 +2270,39 @@ set enable_nestloop to 0;
 set enable_hashjoin to 0;
 set enable_sort to 0;
 
--- create an index that will be preferred over the PK to perform the join
+-- create indexes that will be preferred over the PKs to perform the join
 create index j1_id1_idx on j1 (id1) where id1 % 1000 = 1;
+create index j2_id1_idx on j2 (id1) where id1 % 1000 = 1;
 
-explain (costs off) select * from j1 j1
-inner join j1 j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+-- need an additional row in j2, if we want j2_id1_idx to be preferred
+insert into j2 values(1,2);
+analyze j2;
+
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1;
 
-select * from j1 j1
-inner join j1 j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1;
+
+-- Exercise array keys mark/restore B-Tree code
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
+
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
+
+-- Exercise array keys "find extreme element" B-Tree code
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 >= any (array[1,5]);
+
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 >= any (array[1,5]);
 
 reset enable_nestloop;
 reset enable_hashjoin;
@@ -2015,473 +2333,3 @@ where exists (select 1 from j3
       and t1.unique1 < 1;
 
 drop table j3;
-
---
--- exercises for the hash join code
---
-
-begin;
-
-set local min_parallel_table_scan_size = 0;
-set local parallel_setup_cost = 0;
-
--- Extract bucket and batch counts from an explain analyze plan.  In
--- general we can't make assertions about how many batches (or
--- buckets) will be required because it can vary, but we can in some
--- special cases and we can check for growth.
-create or replace function find_hash(node json)
-returns json language plpgsql
-as
-$$
-declare
-  x json;
-  child json;
-begin
-  if node->>'Node Type' = 'Hash' then
-    return node;
-  else
-    for child in select json_array_elements(node->'Plans')
-    loop
-      x := find_hash(child);
-      if x is not null then
-        return x;
-      end if;
-    end loop;
-    return null;
-  end if;
-end;
-$$;
-create or replace function hash_join_batches(query text)
-returns table (original int, final int) language plpgsql
-as
-$$
-declare
-  whole_plan json;
-  hash_node json;
-begin
-  for whole_plan in
-    execute 'explain (analyze, format ''json'') ' || query
-  loop
-    hash_node := find_hash(json_extract_path(whole_plan, '0', 'Plan'));
-    original := hash_node->>'Original Hash Batches';
-    final := hash_node->>'Hash Batches';
-    return next;
-  end loop;
-end;
-$$;
-
--- Make a simple relation with well distributed keys and correctly
--- estimated size.
-create table simple as
-  select generate_series(1, 20000) AS id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-alter table simple set (parallel_workers = 2);
-analyze simple;
-
--- Make a relation whose size we will under-estimate.  We want stats
--- to say 1000 rows, but actually there are 20,000 rows.
-create table bigger_than_it_looks as
-  select generate_series(1, 20000) as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-alter table bigger_than_it_looks set (autovacuum_enabled = 'false');
-alter table bigger_than_it_looks set (parallel_workers = 2);
-analyze bigger_than_it_looks;
-update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
-
--- Make a relation whose size we underestimate and that also has a
--- kind of skew that breaks our batching scheme.  We want stats to say
--- 2 rows, but actually there are 20,000 rows with the same key.
-create table extremely_skewed (id int, t text);
-alter table extremely_skewed set (autovacuum_enabled = 'false');
-alter table extremely_skewed set (parallel_workers = 2);
-analyze extremely_skewed;
-insert into extremely_skewed
-  select 42 as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  from generate_series(1, 20000);
-update pg_class
-  set reltuples = 2, relpages = pg_relation_size('extremely_skewed') / 8192
-  where relname = 'extremely_skewed';
-
--- Make a relation with a couple of enormous tuples.
-create table wide as select generate_series(1, 2) as id, rpad('', 320000, 'x') as t;
-alter table wide set (parallel_workers = 2);
-
--- The "optimal" case: the hash table fits in memory; we plan for 1
--- batch, we stick to that number, and peak memory usage stays within
--- our work_mem budget
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '4MB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- The "good" case: batches required, but we plan the right number; we
--- plan for some number of batches, and we stick to that number, and
--- peak memory usage says within our work_mem budget
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-select count(*) from simple r join simple s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- The "bad" case: during execution we need to increase number of
--- batches; in this case we plan for 1 batch, and increase at least a
--- couple of times, and peak memory usage stays within our work_mem
--- budget
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-select count(*) from simple r join bigger_than_it_looks s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-select count(*) from simple r join bigger_than_it_looks s using (id);
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
-rollback to settings;
-
--- The "ugly" case: increasing the number of batches during execution
--- doesn't help, so stop trying to fit in work_mem and hope for the
--- best; in this case we plan for 1 batch, increases just once and
--- then stop increasing because that didn't help at all, so we blow
--- right through the work_mem budget and hope for the best...
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
-rollback to settings;
-
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '128kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-select count(*) from simple r join extremely_skewed s using (id);
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
-rollback to settings;
-
--- A couple of other hash join tests unrelated to work_mem management.
-
--- Check that EXPLAIN ANALYZE has data even if the leader doesn't participate
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local parallel_leader_participation = off;
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
-rollback to settings;
-
--- Exercise rescans.  We'll turn off parallel_leader_participation so
--- that we can check that instrumentation comes back correctly.
-
-create table join_foo as select generate_series(1, 3) as id, 'xxxxx'::text as t;
-alter table join_foo set (parallel_workers = 0);
-create table join_bar as select generate_series(1, 10000) as id, 'xxxxx'::text as t;
-alter table join_bar set (parallel_workers = 2);
-
--- multi-batch with rescan, parallel-oblivious
-savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
-rollback to settings;
-
--- single-batch with rescan, parallel-oblivious
-savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
-rollback to settings;
-
--- multi-batch with rescan, parallel-aware
-savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
-rollback to settings;
-
--- single-batch with rescan, parallel-aware
-savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
-rollback to settings;
-
--- A full outer join where every record is matched.
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-select  count(*) from simple r full outer join simple s using (id);
-rollback to settings;
-
--- parallelism not possible with parallel-oblivious outer hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-select  count(*) from simple r full outer join simple s using (id);
-rollback to settings;
-
--- An full outer join where every record is not matched.
-
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-rollback to settings;
-
--- parallelism not possible with parallel-oblivious outer hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-rollback to settings;
-
--- exercise special code paths for huge tuples (note use of non-strict
--- expression and left join required to get the detoasted tuple into
--- the hash table)
-
--- parallel with parallel-aware hash join (hits ExecParallelHashLoadTuple and
--- sts_puttuple oversized tuple cases because it's multi-batch)
-savepoint settings;
-set max_parallel_workers_per_gather = 2;
-set enable_parallel_hash = on;
-set work_mem = '128kB';
-explain (costs off)
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-select length(max(s.t))
-from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-$$);
-rollback to settings;
-
-rollback;

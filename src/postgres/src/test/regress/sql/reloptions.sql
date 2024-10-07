@@ -15,7 +15,7 @@ CREATE TABLE reloptions_test2(i INT) WITH (not_existing_option=2);
 CREATE TABLE reloptions_test2(i INT) WITH (not_existing_namespace.fillfactor=2);
 
 -- Fail while setting improper values
-CREATE TABLE reloptions_test2(i INT) WITH (fillfactor=30.5);
+CREATE TABLE reloptions_test2(i INT) WITH (fillfactor=-30.1);
 CREATE TABLE reloptions_test2(i INT) WITH (fillfactor='string');
 CREATE TABLE reloptions_test2(i INT) WITH (fillfactor=true);
 CREATE TABLE reloptions_test2(i INT) WITH (autovacuum_enabled=12);
@@ -52,10 +52,29 @@ SELECT reloptions FROM pg_class WHERE oid = 'reloptions_test'::regclass AND
 -- RESET fails if a value is specified
 ALTER TABLE reloptions_test RESET (fillfactor=12);
 
--- The OIDS option is not stored as reloption
+-- Test vacuum_truncate option
 DROP TABLE reloptions_test;
-CREATE TABLE reloptions_test(i INT) WITH (fillfactor=20, oids=true);
-SELECT reloptions, relhasoids FROM pg_class WHERE oid = 'reloptions_test'::regclass;
+
+CREATE TEMP TABLE reloptions_test(i INT NOT NULL, j text)
+	WITH (vacuum_truncate=false,
+	toast.vacuum_truncate=false,
+	autovacuum_enabled=false);
+SELECT reloptions FROM pg_class WHERE oid = 'reloptions_test'::regclass;
+INSERT INTO reloptions_test VALUES (1, NULL), (NULL, NULL);
+-- Do an aggressive vacuum to prevent page-skipping.
+VACUUM (FREEZE, DISABLE_PAGE_SKIPPING) reloptions_test;
+SELECT pg_relation_size('reloptions_test') > 0;
+
+SELECT reloptions FROM pg_class WHERE oid =
+	(SELECT reltoastrelid FROM pg_class
+	WHERE oid = 'reloptions_test'::regclass);
+
+ALTER TABLE reloptions_test RESET (vacuum_truncate);
+SELECT reloptions FROM pg_class WHERE oid = 'reloptions_test'::regclass;
+INSERT INTO reloptions_test VALUES (1, NULL), (NULL, NULL);
+-- Do an aggressive vacuum to prevent page-skipping.
+VACUUM (FREEZE, DISABLE_PAGE_SKIPPING) reloptions_test;
+SELECT pg_relation_size('reloptions_test') = 0;
 
 -- Test toast.* options
 DROP TABLE reloptions_test;

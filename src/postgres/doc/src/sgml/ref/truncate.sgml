@@ -124,6 +124,9 @@ TRUNCATE [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ 
    option can be used to automatically include all dependent tables &mdash;
    but be very careful when using this option, or else you might lose data you
    did not intend to!
+   Note in particular that when the table to be truncated is a partition,
+   siblings partitions are left untouched, but cascading occurs to all
+   referencing tables and all their partitions with no distinction.
   </para>
 
   <para>
@@ -157,8 +160,7 @@ TRUNCATE [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ 
    When <literal>RESTART IDENTITY</literal> is specified, the implied
    <command>ALTER SEQUENCE RESTART</command> operations are also done
    transactionally; that is, they will be rolled back if the surrounding
-   transaction does not commit.  This is unlike the normal behavior of
-   <command>ALTER SEQUENCE RESTART</command>.  Be aware that if any additional
+   transaction does not commit.  Be aware that if any additional
    sequence operations are done on the restarted sequences before the
    transaction rolls back, the effects of these operations on the sequences
    will be rolled back, but not their effects on <function>currval()</function>;
@@ -170,9 +172,9 @@ TRUNCATE [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ 
   </para>
 
   <para>
-   <command>TRUNCATE</command> is not currently supported for foreign tables.
-   This implies that if a specified table has any descendant tables that are
-   foreign, the command will fail.
+   <command>TRUNCATE</command> can be used for foreign tables if
+   supported by the foreign data wrapper, for instance,
+   see <xref linkend="postgres-fdw"/>.
   </para>
  </refsect1>
 

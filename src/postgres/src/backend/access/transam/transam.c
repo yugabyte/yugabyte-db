@@ -3,7 +3,7 @@
  * transam.c
  *	  postgres transaction (commit) log interface routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -216,33 +216,6 @@ TransactionIdDidAbort(TransactionId transactionId)
 	/*
 	 * It's not aborted.
 	 */
-	return false;
-}
-
-/*
- * TransactionIdIsKnownCompleted
- *		True iff transaction associated with the identifier is currently
- *		known to have either committed or aborted.
- *
- * This does NOT look into pg_xact but merely probes our local cache
- * (and so it's not named TransactionIdDidComplete, which would be the
- * appropriate name for a function that worked that way).  The intended
- * use is just to short-circuit TransactionIdIsInProgress calls when doing
- * repeated tqual.c checks for the same XID.  If this isn't extremely fast
- * then it will be counterproductive.
- *
- * Note:
- *		Assumes transaction identifier is valid.
- */
-bool
-TransactionIdIsKnownCompleted(TransactionId transactionId)
-{
-	if (TransactionIdEquals(transactionId, cachedFetchXid))
-	{
-		/* If it's in the cache at all, it must be completed. */
-		return true;
-	}
-
 	return false;
 }
 

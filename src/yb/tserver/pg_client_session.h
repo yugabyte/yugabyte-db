@@ -172,7 +172,8 @@ class PgClientSession {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
  private:
   struct SetupSessionResult {

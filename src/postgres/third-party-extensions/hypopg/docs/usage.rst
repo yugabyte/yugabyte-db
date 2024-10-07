@@ -182,9 +182,9 @@ Some other convenience functions and views are available:
 .. code-block:: psql
 
   SELECT * FROM hypopg_list_indexes ;
-   indexrelid |      indexname       | nspname | relname | amname
-  ------------+----------------------+---------+---------+--------
-        18284 | <18284>btree_hypo_id | public  | hypo    | btree
+   indexrelid |      index_name       | schema_name | table_name | am_name
+  ------------+-----------------------+-------------+------------+---------
+        18284 | <18284>btree_hypo_id  | public      | hypo       | btree
   (1 row)
 
 - **hypopg()**: function that lists all hypothetical indexes that have
@@ -193,20 +193,20 @@ Some other convenience functions and views are available:
 .. code-block:: psql
 
   SELECT * FROM hypopg() ;
-      indexname       | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
-----------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
- <18284>btree_hypo_id |      13543 |    18122 |       1 | f           | 1      | 0            | 1978     | <NULL>    | <NULL>   | <NULL>  |  403
-(1 row)
+        indexname       | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
+  ----------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
+   <18284>btree_hypo_id |      13543 |    18122 |       1 | f           | 1      | 0            | 1978     | <NULL>    | <NULL>   | <NULL>  |  403
+  (1 row)
 
 - **hypopg_get_indexdef(oid)**: function that lists the CREATE INDEX statement
   that would recreate a stored hypothetical index
 
 .. code-block:: psql
 
-  SELECT indexname, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes ;
-        indexname       |             hypopg_get_indexdef
-  ----------------------+----------------------------------------------
-   <18284>btree_hypo_id | CREATE INDEX ON public.hypo USING btree (id)
+  SELECT index_name, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes ;
+        index_name       |             hypopg_get_indexdef
+  -----------------------+----------------------------------------------
+   <18284>btree_hypo_id  | CREATE INDEX ON public.hypo USING btree (id)
   (1 row)
 
 - **hypopg_relation_size(oid)**: function that estimates how big a hypothetical
@@ -214,13 +214,179 @@ Some other convenience functions and views are available:
 
 .. code-block:: psql
 
-  SELECT indexname, pg_size_pretty(hypopg_relation_size(indexrelid))
+  SELECT index_name, pg_size_pretty(hypopg_relation_size(indexrelid))
     FROM hypopg_list_indexes ;
-        indexname       | pg_size_pretty
-  ----------------------+----------------
-   <18284>btree_hypo_id | 2544 kB
+        index_name       | pg_size_pretty
+  -----------------------+----------------
+   <18284>btree_hypo_id  | 2544 kB
   (1 row)
 
 - **hypopg_drop_index(oid)**: function that removes the given hypothetical
   index
 - **hypopg_reset()**: function that removes all hypothetical indexes
+
+Hypothetically hide existing indexes
+------------------------------------
+
+You can hide both existing and hypothetical indexes hypothetically.
+If you want to test it as described in the documentation,
+you should first use **hypopg_reset()** to clear the effects of any other hypothetical indexes.
+
+As a simple case, let's consider two indexes:
+
+.. code-block:: psql
+
+  SELECT hypopg_reset();
+  CREATE INDEX ON hypo(id);
+  CREATE INDEX ON hypo(id, val);
+
+.. code-block:: psql
+  :emphasize-lines: 4
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                                      QUERY PLAN
+  ----------------------------------------------------------------------------------
+  Index Only Scan using hypo_id_val_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
+  Index Cond: (id = 1)
+  (2 rows)
+
+The query plan is using the **hypo_id_val_idx** index now.
+
+- **hypopg_hide_index(oid)**: function that allows you to hide an index in the EXPLAIN output by using its OID.
+  It returns `true` if the index was successfully hidden, and `false` otherwise.
+
+.. code-block:: psql
+  :emphasize-lines: 10
+
+  SELECT hypopg_hide_index('hypo_id_val_idx'::REGCLASS);
+   hypopg_hide_index
+  -------------------
+  t
+  (1 row)
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                              QUERY PLAN
+  -------------------------------------------------------------------------
+  Index Scan using hypo_id_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
+  Index Cond: (id = 1)
+  (2 rows)
+
+As an example, let's assume that the query plan is currently using the **hypo_id_val_idx** index.
+To continue testing, use the **hypopg_hide_index(oid)** function to hide another index.
+
+.. code-block:: psql
+  :emphasize-lines: 10
+
+  SELECT hypopg_hide_index('hypo_id_idx'::REGCLASS);
+   hypopg_hide_index
+  -------------------
+  t
+  (1 row)
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                      QUERY PLAN
+  -------------------------------------------------------
+  Seq Scan on hypo  (cost=0.00..180.00 rows=1 width=13)
+  Filter: (id = 1)
+  (2 rows)
+
+- **hypopg_unhide_index(oid)**: function that restore a previously hidden index in the EXPLAIN output by using its OID.
+  It returns `true` if the index was successfully restored, and `false` otherwise.
+
+.. code-block:: psql
+  :emphasize-lines: 10
+
+  SELECT hypopg_unhide_index('hypo_id_idx'::regclass);
+   hypopg_unhide_index
+  -------------------
+  t
+  (1 row)
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                              QUERY PLAN
+  -------------------------------------------------------------------------
+  Index Scan using hypo_id_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
+  Index Cond: (id = 1)
+  (2 rows)
+
+- **hypopg_unhide_all_index()**: function that restore all hidden indexes and returns void.
+
+- **hypopg_hidden_indexes()**: function that returns a list of OIDs for all hidden indexes.
+
+.. code-block:: psql
+
+  SELECT * FROM hypopg_hidden_indexes();
+   indexid
+  ---------
+  526604
+  (1 rows)
+
+- **hypopg_hidden_indexes**: view that returns a formatted list of all hidden indexes.
+
+.. code-block:: psql
+
+  SELECT * FROM hypopg_hidden_indexes;
+    indexrelid |      index_name      | schema_name | table_name | am_name | is_hypo
+  -------------+----------------------+-------------+------------+---------+---------
+        526604 | hypo_id_val_idx      | public      | hypo       | btree   | f
+  (1 rows)
+
+.. note::
+
+  Hypothetical indexes can be hidden as well.
+
+.. code-block:: psql
+  :emphasize-lines: 10
+
+  SELECT hypopg_create_index('CREATE INDEX ON hypo(id)');
+      hypopg_create_index
+  ------------------------------
+  (12659,<12659>btree_hypo_id)
+  (1 row)
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                                      QUERY PLAN
+  ------------------------------------------------------------------------------------
+  Index Scan using "<12659>btree_hypo_id" on hypo  (cost=0.04..8.05 rows=1 width=13)
+  Index Cond: (id = 1)
+  (2 rows)
+
+Now that the hypothetical index is being used, we can try hiding it to see the change:
+
+.. code-block:: psql
+  :emphasize-lines: 10
+
+  SELECT hypopg_hide_index(12659);
+   hypopg_hide_index
+  -------------------
+  t
+  (1 row)
+
+  EXPLAIN SELECT * FROM hypo WHERE id = 1;
+                              QUERY PLAN
+  -------------------------------------------------------------------------
+  Index Scan using hypo_id_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
+  Index Cond: (id = 1)
+  (2 rows)
+
+  SELECT * FROM hypopg_hidden_indexes;
+    indexrelid |      index_name      | schema_name | table_name | am_name | is_hypo
+  -------------+----------------------+-------------+------------+---------+---------
+         12659 | <12659>btree_hypo_id | public      | hypo       | btree   | t
+        526604 | hypo_id_val_idx      | public      | hypo       | btree   | f
+  (2 rows)
+
+.. note::
+
+  If a hypothetical index has been hidden, it will be automatically unhidden
+  when it is deleted using **hypopg_drop_index(oid)** or **hypopg_reset()**.
+
+.. code-block:: psql
+
+  SELECT hypopg_drop_index(12659);
+
+  SELECT * FROM hypopg_hidden_indexes;
+    indexrelid |      index_name      | schema_name | table_name | am_name | is_hypo
+  -------------+----------------------+-------------+------------+---------+---------
+        526604 | hypo_id_val_idx      | public      | hypo       | btree   | f
+  (2 rows)

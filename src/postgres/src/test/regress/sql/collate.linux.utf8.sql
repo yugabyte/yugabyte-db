@@ -4,6 +4,14 @@
  * because other encodings don't support all the characters used.
  */
 
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       (SELECT count(*) FROM pg_collation WHERE collname IN ('de_DE', 'en_US', 'sv_SE', 'tr_TR') AND collencoding = pg_char_to_encoding('UTF8')) <> 4 OR
+       version() !~ 'linux-gnu'
+       AS skip_test \gset
+\if :skip_test
+\quit
+\endif
+
 SET client_encoding TO UTF8;
 
 CREATE SCHEMA collate_tests;
@@ -169,8 +177,16 @@ SELECT relname FROM pg_class WHERE relname ~* '^abc';
 -- to_char
 
 SET lc_time TO 'tr_TR';
+SELECT to_char(date '2010-02-01', 'DD TMMON YYYY');
+SELECT to_char(date '2010-02-01', 'DD TMMON YYYY' COLLATE "tr_TR");
 SELECT to_char(date '2010-04-01', 'DD TMMON YYYY');
 SELECT to_char(date '2010-04-01', 'DD TMMON YYYY' COLLATE "tr_TR");
+
+-- to_date
+
+SELECT to_date('01 ŞUB 2010', 'DD TMMON YYYY');
+SELECT to_date('01 Şub 2010', 'DD TMMON YYYY');
+SELECT to_date('1234567890ab 2010', 'TMMONTH YYYY'); -- fail
 
 
 -- backwards parsing
@@ -359,7 +375,6 @@ END
 $$;
 CREATE COLLATION test3 (lc_collate = 'en_US.utf8'); -- fail, need lc_ctype
 CREATE COLLATION testx (locale = 'nonsense'); -- fail
-CREATE COLLATION testy (locale = 'en_US.utf8', version = 'foo'); -- fail, no versions for libc
 
 CREATE COLLATION test4 FROM nonsense;
 CREATE COLLATION test5 FROM test0;
@@ -395,6 +410,10 @@ DROP ROLE regress_test_role;
 
 ALTER COLLATION "en_US" REFRESH VERSION;
 
+-- also test for database while we are here
+SELECT current_database() AS datname \gset
+ALTER DATABASE :"datname" REFRESH COLLATION VERSION;
+
 
 -- dependencies
 
@@ -428,5 +447,13 @@ drop type textrange_c;
 drop type textrange_en_us;
 
 
+-- nondeterministic collations
+-- (not supported with libc provider)
+
+CREATE COLLATION ctest_det (locale = 'en_US.utf8', deterministic = true);
+CREATE COLLATION ctest_nondet (locale = 'en_US.utf8', deterministic = false);
+
+
 -- cleanup
+SET client_min_messages TO warning;
 DROP SCHEMA collate_tests CASCADE;

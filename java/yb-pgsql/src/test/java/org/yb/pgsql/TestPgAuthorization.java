@@ -448,7 +448,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "ALTER ROLE su LOGIN",
-            "must be superuser to alter superusers"
+            "must be superuser to alter superuser roles or change superuser attribute"
         );
       });
 
@@ -3256,6 +3256,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       // Create role with password.
       statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute("SET password_encryption = 'md5'");
       statement.execute(
           String.format("CREATE ROLE pass_role LOGIN PASSWORD '%s'", passwordWithLen5000));
 

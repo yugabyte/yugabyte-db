@@ -137,13 +137,13 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "INSERT INTO test_table(id, b) VALUES(1, 3)",
-          "null value in column \"a\" violates not-null constraint"
+          "null value in column \"a\" of relation \"test_table\" violates not-null constraint"
       );
 
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD c int NOT NULL",
-          "column \"c\" contains null values"
+          "column \"c\" of relation \"test_table\" contains null values"
       );
     }
   }
@@ -203,7 +203,8 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD b int CHECK (b IS NOT NULL)",
-          "check constraint \"test_table_b_check\" is violated by some row"
+          ("check constraint \"test_table_b_check\" of relation \"test_table\" " +
+           "is violated by some row")
       );
     }
   }

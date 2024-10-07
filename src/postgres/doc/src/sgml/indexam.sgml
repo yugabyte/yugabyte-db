@@ -3,6 +3,14 @@
 <chapter id="indexam">
  <title>Index Access Method Interface Definition</title>
 
+ <indexterm>
+  <primary>Index Access Method</primary>
+ </indexterm>
+ <indexterm>
+  <primary>indexam</primary>
+  <secondary>Index Access Method</secondary>
+ </indexterm>
+
   <para>
    This chapter defines the interface between the core
    <productname>PostgreSQL</productname> system and <firstterm>index access
@@ -37,7 +45,8 @@
    extant versions of the same logical row; to an index, each tuple is
    an independent object that needs its own index entry.  Thus, an
    update of a row always creates all-new index entries for the row, even if
-   the key values did not change.  (HOT tuples are an exception to this
+   the key values did not change.  (<link linkend="storage-hot">HOT
+   tuples</link> are an exception to this
    statement; but indexes do not deal with those, either.)  Index entries for
    dead tuples are reclaimed (by vacuuming) when the dead tuples themselves
    are reclaimed.
@@ -50,8 +59,8 @@
    Each index access method is described by a row in the
    <link linkend="catalog-pg-am"><structname>pg_am</structname></link>
    system catalog.  The <structname>pg_am</structname> entry
-   specifies a name and a <firstterm>handler function</firstterm> for the access
-   method.  These entries can be created and deleted using the
+   specifies a name and a <firstterm>handler function</firstterm> for the index
+   access method.  These entries can be created and deleted using the
    <xref linkend="sql-create-access-method"/> and
    <xref linkend="sql-drop-access-method"/> SQL commands.
   </para>
@@ -88,6 +97,8 @@ typedef struct IndexAmRoutine
     uint16      amstrategies;
     /* total number of support functions that this AM uses */
     uint16      amsupport;
+    /* opclass options support function number or 0 */
+    uint16      amoptsprocnum;
     /* does AM support ORDER BY indexed column's value? */
     bool        amcanorder;
     /* does AM support ORDER BY result of an operator on indexed column? */
@@ -114,6 +125,10 @@ typedef struct IndexAmRoutine
     bool        amcanparallel;
     /* does AM support columns included with clause INCLUDE? */
     bool        amcaninclude;
+    /* does AM use maintenance_work_mem? */
+    bool        amusemaintenanceworkmem;
+    /* OR of parallel vacuum flags */
+    uint8       amparallelvacuumoptions;
     /* type of data stored in index, or InvalidOid if variable */
     Oid         amkeytype;
 
@@ -127,7 +142,9 @@ typedef struct IndexAmRoutine
     amcostestimate_function amcostestimate;
     amoptions_function amoptions;
     amproperty_function amproperty;     /* can be NULL */
+    ambuildphasename_function ambuildphasename;   /* can be NULL */
     amvalidate_function amvalidate;
+    amadjustmembers_function amadjustmembers; /* can be NULL */
     ambeginscan_function ambeginscan;
     amrescan_function amrescan;
     amgettuple_function amgettuple;     /* can be NULL */
@@ -181,7 +198,7 @@ typedef struct IndexAmRoutine
    implications.  The requirements of <structfield>amcanunique</structfield>
    are discussed in <xref linkend="index-unique-checks"/>.
    The <structfield>amcanmulticol</structfield> flag asserts that the
-   access method supports multicolumn indexes, while
+   access method supports multi-key-column indexes, while
    <structfield>amoptionalkey</structfield> asserts that it allows scans
    where no indexable restriction clause is given for the first index column.
    When <structfield>amcanmulticol</structfield> is false,
@@ -217,6 +234,19 @@ typedef struct IndexAmRoutine
    conditions.
   </para>
 
+  <para>
+   The <structfield>amcaninclude</structfield> flag indicates whether the
+   access method supports <quote>included</quote> columns, that is it can
+   store (without processing) additional columns beyond the key column(s).
+   The requirements of the preceding paragraph apply only to the key
+   columns.  In particular, the combination
+   of <structfield>amcanmulticol</structfield>=<literal>false</literal>
+   and <structfield>amcaninclude</structfield>=<literal>true</literal> is
+   sensible: it means that there can only be one key column, but there can
+   also be included column(s).  Also, included columns must be allowed to be
+   null, independently of <structfield>amoptionalkey</structfield>.
+  </para>
+
  </sect1>
 
  <sect1 id="index-functions">
@@ -238,7 +268,7 @@ ambuild (Relation heapRelation,
    but is empty.  It must be filled in with whatever fixed data the
    access method requires, plus entries for all tuples already existing
    in the table.  Ordinarily the <function>ambuild</function> function will call
-   <function>IndexBuildHeapScan()</function> to scan the table for existing tuples
+   <function>table_index_build_scan()</function> to scan the table for existing tuples
    and compute the keys that need to be inserted into the index.
    The function must return a palloc'd struct containing statistics about
    the new index.
@@ -264,6 +294,7 @@ aminsert (Relation indexRelation,
           ItemPointer heap_tid,
           Relation heapRelation,
           IndexUniqueCheck checkUnique,
+          bool indexUnchanged,
           IndexInfo *indexInfo);
 </programlisting>
    Insert a new tuple into an existing index.  The <literal>values</literal> and
@@ -277,6 +308,20 @@ aminsert (Relation indexRelation,
    Normally the access method only needs the <literal>heapRelation</literal>
    parameter when performing uniqueness checking (since then it will have to
    look into the heap to verify tuple liveness).
+  </para>
+
+  <para>
+   The <literal>indexUnchanged</literal> Boolean value gives a hint
+   about the nature of the tuple to be indexed.  When it is true,
+   the tuple is a duplicate of some existing tuple in the index.  The
+   new tuple is a logically unchanged successor MVCC tuple version.  This
+   happens when an <command>UPDATE</command> takes place that does not
+   modify any columns covered by the index, but nevertheless requires a
+   new version in the index.  The index AM may use this hint to decide
+   to apply bottom-up index deletion in parts of the index where many
+   versions of the same logical row accumulate.  Note that updating a
+   non-key column does not affect the value of
+   <literal>indexUnchanged</literal>.
   </para>
 
   <para>
@@ -294,7 +339,7 @@ aminsert (Relation indexRelation,
 
   <para>
    If the index AM wishes to cache data across successive index insertions
-   within a SQL statement, it can allocate space
+   within an SQL statement, it can allocate space
    in <literal>indexInfo-&gt;ii_Context</literal> and store a pointer to the
    data in <literal>indexInfo-&gt;ii_AmCache</literal> (which will be NULL
    initially).
@@ -352,7 +397,6 @@ amvacuumcleanup (IndexVacuumInfo *info,
   </para>
 
   <para>
-   As of <productname>PostgreSQL</productname> 8.4,
    <function>amvacuumcleanup</function> will also be called at completion of an
    <command>ANALYZE</command> operation.  In this case <literal>stats</literal> is always
    NULL and any return value will be ignored.  This case can be distinguished
@@ -368,10 +412,13 @@ amcanreturn (Relation indexRelation, int attno);
 </programlisting>
    Check whether the index can support <link
    linkend="indexes-index-only-scans"><firstterm>index-only scans</firstterm></link> on
-   the given column, by returning the indexed column values for an index entry
-   in the form of an <structname>IndexTuple</structname>.  The attribute number
-   is 1-based, i.e. the first column's attno is 1. Returns true if supported,
-   else false.  If the access method does not support index-only scans at all,
+   the given column, by returning the column's original indexed value.
+   The attribute number is 1-based, i.e., the first column's attno is 1.
+   Returns true if supported, else false.
+   This function should always return true for included columns
+   (if those are supported), since there's little point in an included
+   column that can't be retrieved.
+   If the access method does not support index-only scans at all,
    the <structfield>amcanreturn</structfield> field in its <structname>IndexAmRoutine</structname>
    struct can be set to NULL.
   </para>
@@ -447,7 +494,7 @@ amproperty (Oid index_oid, int attno,
    code, it's better to inspect <parameter>prop</parameter>.
    If the <structfield>amproperty</structfield> method returns <literal>true</literal> then
    it has determined the property test result: it must set <literal>*res</literal>
-   to the boolean value to return, or set <literal>*isnull</literal>
+   to the Boolean value to return, or set <literal>*isnull</literal>
    to <literal>true</literal> to return a NULL.  (Both of the referenced variables
    are initialized to <literal>false</literal> before the call.)
    If the <structfield>amproperty</structfield> method returns <literal>false</literal> then
@@ -461,9 +508,21 @@ amproperty (Oid index_oid, int attno,
    core code does not know how to do that and will return NULL.  It may
    also be advantageous to implement <literal>AMPROP_RETURNABLE</literal> testing,
    if that can be done more cheaply than by opening the index and calling
-   <structfield>amcanreturn</structfield>, which is the core code's default behavior.
+   <function>amcanreturn</function>, which is the core code's default behavior.
    The default behavior should be satisfactory for all other standard
    properties.
+  </para>
+
+  <para>
+<programlisting>
+char *
+ambuildphasename (int64 phasenum);
+</programlisting>
+   Return the textual name of the given build phase number.
+   The phase numbers are those reported during an index build via the
+   <function>pgstat_progress_update_param</function> interface.
+   The phase names are then exposed in the
+   <structname>pg_stat_progress_create_index</structname> view.
   </para>
 
   <para>
@@ -475,7 +534,48 @@ amvalidate (Oid opclassoid);
    the access method can reasonably do that.  For example, this might include
    testing that all required support functions are provided.
    The <function>amvalidate</function> function must return false if the opclass is
-   invalid.  Problems should be reported with <function>ereport</function> messages.
+   invalid.  Problems should be reported with <function>ereport</function>
+   messages, typically at <literal>INFO</literal> level.
+  </para>
+
+  <para>
+<programlisting>
+void
+amadjustmembers (Oid opfamilyoid,
+                 Oid opclassoid,
+                 List *operators,
+                 List *functions);
+</programlisting>
+   Validate proposed new operator and function members of an operator family,
+   so far as the access method can reasonably do that, and set their
+   dependency types if the default is not satisfactory.  This is called
+   during <command>CREATE OPERATOR CLASS</command> and during
+   <command>ALTER OPERATOR FAMILY ADD</command>; in the latter
+   case <parameter>opclassoid</parameter> is <literal>InvalidOid</literal>.
+   The <type>List</type> arguments are lists
+   of <structname>OpFamilyMember</structname> structs, as defined
+   in <filename>amapi.h</filename>.
+
+   Tests done by this function will typically be a subset of those
+   performed by <function>amvalidate</function>,
+   since <function>amadjustmembers</function> cannot assume that it is
+   seeing a complete set of members.  For example, it would be reasonable
+   to check the signature of a support function, but not to check whether
+   all required support functions are provided.  Any problems can be
+   reported by throwing an error.
+
+   The dependency-related fields of
+   the <structname>OpFamilyMember</structname> structs are initialized by
+   the core code to create hard dependencies on the opclass if this
+   is <command>CREATE OPERATOR CLASS</command>, or soft dependencies on the
+   opfamily if this is <command>ALTER OPERATOR FAMILY ADD</command>.
+   <function>amadjustmembers</function> can adjust these fields if some other
+   behavior is more appropriate.  For example, GIN, GiST, and SP-GiST
+   always set operator members to have soft dependencies on the opfamily,
+   since the connection between an operator and an opclass is relatively
+   weak in these index types; so it is reasonable to allow operator members
+   to be added and removed freely.  Optional support functions are typically
+   also given soft dependencies, so that they can be removed if necessary.
   </para>
 
 
@@ -530,7 +630,7 @@ amrescan (IndexScanDesc scan,
 
   <para>
 <programlisting>
-boolean
+bool
 amgettuple (IndexScanDesc scan,
             ScanDirection direction);
 </programlisting>
@@ -543,7 +643,7 @@ amgettuple (IndexScanDesc scan,
    will pass the caller's snapshot test.  On success, <function>amgettuple</function>
    must also set <literal>scan-&gt;xs_recheck</literal> to true or false.
    False means it is certain that the index entry matches the scan keys.
-   true means this is not certain, and the conditions represented by the
+   True means this is not certain, and the conditions represented by the
    scan keys must be rechecked against the heap tuple after fetching it.
    This provision supports <quote>lossy</quote> index operators.
    Note that rechecking will extend only to the scan conditions; a partial
@@ -553,10 +653,13 @@ amgettuple (IndexScanDesc scan,
 
   <para>
    If the index supports <link linkend="indexes-index-only-scans">index-only
-   scans</link> (i.e., <function>amcanreturn</function> returns true for it),
+   scans</link> (i.e., <function>amcanreturn</function> returns true for any
+   of its columns),
    then on success the AM must also check <literal>scan-&gt;xs_want_itup</literal>,
    and if that is true it must return the originally indexed data for the
-   index entry.  The data can be returned in the form of an
+   index entry.  Columns for which <function>amcanreturn</function> returns
+   false can be returned as nulls.
+   The data can be returned in the form of an
    <structname>IndexTuple</structname> pointer stored at <literal>scan-&gt;xs_itup</literal>,
    with tuple descriptor <literal>scan-&gt;xs_itupdesc</literal>; or in the form of
    a <structname>HeapTuple</structname> pointer stored at <literal>scan-&gt;xs_hitup</literal>,
@@ -720,7 +823,7 @@ amparallelrescan (IndexScanDesc scan);
    the TIDs of all the tuples it has been told about that match the
    <firstterm>scan keys</firstterm>.  The access method is <emphasis>not</emphasis> involved in
    actually fetching those tuples from the index's parent table, nor in
-   determining whether they pass the scan's time qualification test or other
+   determining whether they pass the scan's visibility test or other
    conditions.
   </para>
 
@@ -878,8 +981,10 @@ amparallelrescan (IndexScanDesc scan);
    <literal>RowExclusiveLock</literal> when updating the index (including plain
    <command>VACUUM</command>).  Since these lock types do not conflict, the access
    method is responsible for handling any fine-grained locking it might need.
-   An exclusive lock on the index as a whole will be taken only during index
-   creation, destruction, or <command>REINDEX</command>.
+   An <literal>ACCESS EXCLUSIVE</literal> lock on the index as a whole will be
+   taken only during index creation, destruction, or <command>REINDEX</command>
+   (<literal>SHARE UPDATE EXCLUSIVE</literal> is taken instead with
+   <literal>CONCURRENTLY</literal>).
   </para>
 
   <para>

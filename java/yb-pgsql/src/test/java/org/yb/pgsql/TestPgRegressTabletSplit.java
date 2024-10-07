@@ -52,7 +52,7 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_pg_conf", TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
     flags.put("yb_num_shards_per_tserver", Integer.toString(1));
     flags.put("db_write_buffer_size", Integer.toString(122880));
     flags.put("db_block_size_bytes", Integer.toString(2048));

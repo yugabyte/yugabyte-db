@@ -4,7 +4,7 @@
  *	  definition of the "foreign-data wrapper" system catalog (pg_foreign_data_wrapper)
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_foreign_data_wrapper.h
@@ -28,10 +28,14 @@
  */
 CATALOG(pg_foreign_data_wrapper,2328,ForeignDataWrapperRelationId)
 {
+	Oid			oid;			/* oid */
 	NameData	fdwname;		/* foreign-data wrapper name */
-	Oid			fdwowner;		/* FDW owner */
-	Oid			fdwhandler;		/* handler function, or 0 if none */
-	Oid			fdwvalidator;	/* option validation function, or 0 if none */
+	Oid			fdwowner BKI_LOOKUP(pg_authid); /* FDW owner */
+	Oid			fdwhandler BKI_LOOKUP_OPT(pg_proc); /* handler function, or 0
+													 * if none */
+	Oid			fdwvalidator BKI_LOOKUP_OPT(pg_proc);	/* option validation
+														 * function, or 0 if
+														 * none */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		fdwacl[1];		/* access permissions */
@@ -40,10 +44,15 @@ CATALOG(pg_foreign_data_wrapper,2328,ForeignDataWrapperRelationId)
 } FormData_pg_foreign_data_wrapper;
 
 /* ----------------
- *		Form_pg_fdw corresponds to a pointer to a tuple with
- *		the format of pg_fdw relation.
+ *		Form_pg_foreign_data_wrapper corresponds to a pointer to a tuple with
+ *		the format of pg_foreign_data_wrapper relation.
  * ----------------
  */
 typedef FormData_pg_foreign_data_wrapper *Form_pg_foreign_data_wrapper;
+
+DECLARE_TOAST(pg_foreign_data_wrapper, 4149, 4150);
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_foreign_data_wrapper_oid_index, 112, ForeignDataWrapperOidIndexId, on pg_foreign_data_wrapper using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_foreign_data_wrapper_name_index, 548, ForeignDataWrapperNameIndexId, on pg_foreign_data_wrapper using btree(fdwname name_ops));
 
 #endif							/* PG_FOREIGN_DATA_WRAPPER_H */
