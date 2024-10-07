@@ -47,19 +47,38 @@ func Install(version string) {
 	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
 		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", YbactlLogFile(), err))
 	}
+
 	if err := createSoftwareInstallDirs(); err != nil {
 		log.Fatal(err.Error())
 	}
 
-	if err := createDataInstallDirs(); err != nil {
-		log.Fatal(err.Error())
-	}
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
 	renameThirdPartyDependencies()
-
 	setupJDK()
 	setJDKEnvironmentVariable()
+}
+
+// Initialize creates does setup of the common data directories.
+func Initialize() error {
+	if err := createDataInstallDirs(); err != nil {
+		return err
+	}
+
+	// Generate certs if required.
+	var serverCertPath, serverKeyPath string
+	if len(viper.GetString("server_cert_path")) == 0 {
+		log.Info("Generating self-signed server certificates")
+		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
+		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
+			return err
+		}
+		InitViper()
+	}
+	return nil
 }
 
 func createSoftwareInstallDirs() error {
@@ -395,15 +414,6 @@ func FixConfigValues() {
 		InitViper()
 	}
 
-	var serverCertPath, serverKeyPath string
-	if len(viper.GetString("server_cert_path")) == 0 {
-		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
-		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
-		InitViper()
-	}
-
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
 		log.Info("Generating default password for postgres")
@@ -439,6 +449,10 @@ func GenerateSelfSignedCerts() (string, string) {
 	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
+	}
+	username := viper.GetString("service_username")
+	if err := Chown(certsDir, username, username, true); err != nil {
+		log.Fatal(fmt.Sprintf("Unable to chown dir %s", certsDir))
 	}
 	log.Debug("Created dir " + certsDir)
 

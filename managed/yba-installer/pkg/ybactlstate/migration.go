@@ -20,6 +20,7 @@ const ymlTypeFixMV = 4
 const promOomConfgMV = 5
 const promTLSCipherSuites = 6
 const ybaWait = 8
+const initialized = 9
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -220,6 +221,13 @@ func migrateYbaWait(state *State) error {
 	return nil
 }
 
+// migrateInitialized migrates the initialized flag - all previous installs
+// have been initialized so set to true
+func migrateInitialized(state *State) error {
+	state.Initialized = true
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -228,6 +236,7 @@ var migrations map[int]migrator = map[int]migrator{
 	promOomConfgMV:       migratePrometheusOOMConfig,
 	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
 	ybaWait:              migrateYbaWait,
+	initialized:          migrateInitialized,
 }
 
 func getMigrationHandler(toSchema int) migrator {

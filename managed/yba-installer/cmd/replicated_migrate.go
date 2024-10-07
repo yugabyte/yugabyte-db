@@ -156,6 +156,10 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 
 		// Lay out new YBA bits, don't start
 		common.Install(ybaCtl.Version())
+		if err := common.Initialize(); err != nil {
+			log.Fatal("error initializing common components: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {

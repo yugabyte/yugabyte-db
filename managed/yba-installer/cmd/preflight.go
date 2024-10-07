@@ -65,6 +65,8 @@ func init() {
 		"run preflight checks for upgrade")
 	preflightCmd.Flags().BoolVar(&migratePreflightChecks, "migrate", false,
 		"run preflight checks for replicted migration")
+	preflightCmd.Flags().BoolVar(&dataless, "without-data", false,
+		"Preflight checks for install without setting up the data directory")
 
 	rootCmd.AddCommand(preflightCmd)
 }
