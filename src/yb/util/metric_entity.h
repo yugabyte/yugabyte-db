@@ -194,7 +194,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   void Remove(const MetricPrototype* proto);
 
-  bool TEST_ContainMetricName(const std::string& metric_name) const;
+  bool TEST_ContainsMetricName(const std::string& metric_name) const;
 
   Result<std::string> TEST_GetAttributeFromMap(const std::string& key) const;
 
