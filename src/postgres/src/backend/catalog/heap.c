@@ -820,6 +820,7 @@ InsertPgAttributeTuples(Relation pg_attribute_rel,
 			/* insert the new tuples and update the indexes */
 			CatalogTuplesMultiInsertWithInfo(pg_attribute_rel, slot, slotCount,
 											 indstate, yb_shared_insert);
+			slotCount = 0;
 		}
 
 		natts++;
