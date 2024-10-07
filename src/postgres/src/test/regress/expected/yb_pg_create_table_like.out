@@ -137,12 +137,21 @@ SELECT * FROM test_like_gen_2;
 (1 row)
 
 CREATE TABLE test_like_gen_3 (LIKE test_like_gen_1 INCLUDING GENERATED);
-ERROR:  LIKE GENERATED not supported yet
-LINE 1: ...E test_like_gen_3 (LIKE test_like_gen_1 INCLUDING GENERATED)...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+\d test_like_gen_3
+                        Table "public.test_like_gen_3"
+ Column |  Type   | Collation | Nullable |              Default               
+--------+---------+-----------+----------+------------------------------------
+ a      | integer |           |          | 
+ b      | integer |           |          | generated always as (a * 2) stored
+
+INSERT INTO test_like_gen_3 (a) VALUES (1);
+SELECT * FROM test_like_gen_3;
+ a | b 
+---+---
+ 1 | 2
+(1 row)
+
 DROP TABLE test_like_gen_1, test_like_gen_2, test_like_gen_3;
-ERROR:  table "test_like_gen_3" does not exist
 -- also test generated column with a "forward" reference (bug #16342)
 CREATE TABLE test_like_4 (b int DEFAULT 42,
   c int GENERATED ALWAYS AS (a * 2) STORED,
@@ -160,15 +169,7 @@ Check constraints:
 CREATE TABLE test_like_4a (LIKE test_like_4);
 CREATE TABLE test_like_4b (LIKE test_like_4 INCLUDING DEFAULTS);
 CREATE TABLE test_like_4c (LIKE test_like_4 INCLUDING GENERATED);
-ERROR:  LIKE GENERATED not supported yet
-LINE 1: ...TE TABLE test_like_4c (LIKE test_like_4 INCLUDING GENERATED)...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE test_like_4d (LIKE test_like_4 INCLUDING DEFAULTS INCLUDING GENERATED);
-ERROR:  LIKE GENERATED not supported yet
-LINE 1: ...4d (LIKE test_like_4 INCLUDING DEFAULTS INCLUDING GENERATED)...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d test_like_4a
             Table "public.test_like_4a"
  Column |  Type   | Collation | Nullable | Default 
@@ -199,6 +200,36 @@ SELECT a, b, c FROM test_like_4b;
  11 | 42 |  
 (1 row)
 
+\d test_like_4c
+                         Table "public.test_like_4c"
+ Column |  Type   | Collation | Nullable |              Default               
+--------+---------+-----------+----------+------------------------------------
+ b      | integer |           |          | 
+ c      | integer |           |          | generated always as (a * 2) stored
+ a      | integer |           |          | 
+
+INSERT INTO test_like_4c (a) VALUES(11);
+SELECT a, b, c FROM test_like_4c;
+ a  | b | c  
+----+---+----
+ 11 |   | 22
+(1 row)
+
+\d test_like_4d
+                         Table "public.test_like_4d"
+ Column |  Type   | Collation | Nullable |              Default               
+--------+---------+-----------+----------+------------------------------------
+ b      | integer |           |          | 42
+ c      | integer |           |          | generated always as (a * 2) stored
+ a      | integer |           |          | 
+
+INSERT INTO test_like_4d (a) VALUES(11);
+SELECT a, b, c FROM test_like_4d;
+ a  | b  | c  
+----+----+----
+ 11 | 42 | 22
+(1 row)
+
 -- Test renumbering of Vars when combining LIKE with inheritance
 CREATE TABLE test_like_5 (x point, y point, z point);
 CREATE TABLE test_like_5x (p int CHECK (p > 0),
@@ -210,7 +241,6 @@ LINE 2:   INHERITS (test_like_5, test_like_5x);
           ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 DROP TABLE test_like_4, test_like_4a, test_like_4b, test_like_4c, test_like_4d;
-ERROR:  table "test_like_4c" does not exist
 DROP TABLE test_like_5, test_like_5x, test_like_5c;
 ERROR:  table "test_like_5c" does not exist
 CREATE TABLE inhg (x text, LIKE inhx INCLUDING INDEXES, y text); /* copies indexes */

@@ -61,6 +61,9 @@ CREATE TABLE test_like_gen_2 (LIKE test_like_gen_1);
 INSERT INTO test_like_gen_2 (a) VALUES (1);
 SELECT * FROM test_like_gen_2;
 CREATE TABLE test_like_gen_3 (LIKE test_like_gen_1 INCLUDING GENERATED);
+\d test_like_gen_3
+INSERT INTO test_like_gen_3 (a) VALUES (1);
+SELECT * FROM test_like_gen_3;
 DROP TABLE test_like_gen_1, test_like_gen_2, test_like_gen_3;
 
 -- also test generated column with a "forward" reference (bug #16342)
@@ -78,6 +81,12 @@ SELECT a, b, c FROM test_like_4a;
 \d test_like_4b
 INSERT INTO test_like_4b (a) VALUES(11);
 SELECT a, b, c FROM test_like_4b;
+\d test_like_4c
+INSERT INTO test_like_4c (a) VALUES(11);
+SELECT a, b, c FROM test_like_4c;
+\d test_like_4d
+INSERT INTO test_like_4d (a) VALUES(11);
+SELECT a, b, c FROM test_like_4d;
 
 -- Test renumbering of Vars when combining LIKE with inheritance
 CREATE TABLE test_like_5 (x point, y point, z point);
