@@ -2048,14 +2048,27 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+    auto comparator = !table->is_index() ?
+    [](const ColumnSchema& a, const ColumnSchema& b) {
       return ColumnSchema::CompKind(a, b) &&
              ColumnSchema::CompTypeInfo(a, b) &&
              ColumnSchema::CompName(a, b);
+    } :
+    // For indexes, we only compare the column type and kind.
+    [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b);
     };
-    // Schema::Equals() compares only column names & types. It does not compare the column ids.
+
+    // Schema::Equals() compares only the column name, type and kind for regular tables, and the
+    // column type and kind for indexes.
+    // Index columns are not expected to have the same column names as the original index.
+    // We also ensure that the number of columns is the same for both regular tables and indexes.
+    // Additionally, for indexes, we compare the column ids as we expect them to be
+    // preserved.
     if (!persisted_schema.Equals(schema, comparator)
-        || persisted_schema.column_ids().size() != column_ids.size()) {
+        || persisted_schema.column_ids().size() != column_ids.size()
+        || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
       const string msg = Format(
           "Invalid created $0 table '$1' in namespace id $2: schema={$3}, expected={$4}",
           TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
@@ -2105,7 +2118,9 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
-    // Update the table column ids if it's not equal to the stored ids.
+    // Update the table column ids if it's not equal to the stored ids. Note: this only
+    // applies to regular tables. We cannot reach here for indexes because their column ids have
+    // already been checked earlier.
     if (persisted_schema.column_ids() != column_ids) {
       if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
         LOG_WITH_FUNC(WARNING) << "Unexpected wrong column ids in "
