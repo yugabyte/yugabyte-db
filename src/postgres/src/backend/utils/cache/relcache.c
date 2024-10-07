@@ -2404,7 +2404,7 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		[YB_PFETCH_TABLE_PG_CLASS] =
 			(YbPFetchTableInfo){ RelationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {RELOID, RELNAMENSP}}},
 		[YB_PFETCH_TABLE_PG_COLLATION] =
-			(YbPFetchTableInfo){ CollationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {RELOID, RELNAMENSP}}},
+			(YbPFetchTableInfo){ CollationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {COLLOID, COLLNAMEENCNSP}}},
 		[YB_PFETCH_TABLE_PG_CONSTRAINT] =
 			(YbPFetchTableInfo){ ConstraintRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {CONSTROID, YBCONSTRAINTRELIDTYPIDNAME}}},
 		[YB_PFETCH_TABLE_PG_DATABASE] =
