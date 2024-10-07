@@ -995,14 +995,14 @@
 
 ########## Menus for stable
 
-[[stable]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [stable.params]
-    classes = "separator"
-    showSection = true
+# [[stable]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [stable.params]
+#     classes = "separator"
+#     showSection = true
 
 [[stable]]
   name = "YugabyteDB"
@@ -1010,6 +1010,7 @@
   identifier = "yugabytedb"
   url = "/stable/"
   [stable.params]
+    classes = "separator"
     showSection = true
 
 [[stable]]
@@ -1115,20 +1116,21 @@
 
 ########## Menus (in stable) for YB Anywhere section
 
-[[stable_yugabyte-platform]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [stable_yugabyte-platform.params]
-    classes = "separator"
-    showSection = true
+# [[stable_yugabyte-platform]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [stable_yugabyte-platform.params]
+#     classes = "separator"
+#     showSection = true
 
 [[stable_yugabyte-platform]]
   name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   [stable_yugabyte-platform.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 

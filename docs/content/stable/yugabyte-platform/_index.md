@@ -9,6 +9,8 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
+    params:
+      classes: separator
 type: indexpage
 breadcrumbDisable: true
 resourcesIntro: Quick Links
