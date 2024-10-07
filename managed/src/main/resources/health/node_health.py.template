@@ -2145,7 +2145,13 @@ def _timesyncd_get_clock_drift_ms():
     # to be correct. We will return 0 here and handle a not-synced system with other errors.
     return 0
 
+# return 1 if ntp service status is good, 0 otherwise.
+# A good status is both having timedatectl show the system clock is "in sync" and
+# having the specific ntp service (chrony, ntpd, or timesyncd) be running.
 def get_ntp_service_status():
+    # First we check if the clock is synced, and fail if its not
+    if get_timedatectl_sync() == 0:
+        return 0
     if chrony_exists():
         return 1 if is_service_running("chronyd.service") else 0
     elif ntp_exists():
@@ -2154,7 +2160,7 @@ def get_ntp_service_status():
         return 1 if ntp_running or ntpd_running else 0
     elif timesyncd_exists():
         return get_timedatectl_status()
-    logging.error("unknown time service: must be ntp(d) or chrony")
+    logging.error("unknown time service: must be ntp(d), chrony, or systemd-timesyncd")
     return 0
 
 def chrony_exists():
@@ -2172,12 +2178,15 @@ def timesyncd_exists():
     timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
     return "Error" not in timesyncd_out
 
-# Returns 1 if timesyncd is running and synced, 0 otherwise.
+# Returns 1 if timesyncd is running 0 otherwise.
 def get_timedatectl_status():
     # timesyncd is not running
     if not is_service_running("systemd-timesyncd.service"):
         return 0
+    return 1
 
+# Returns 1 if system clock is synchronized 0 otherwise.
+def get_timedatectl_sync():
     env = os.environ.copy()
     out = check_output("timedatectl status", env)
     if "System clock synchronized: yes" in out:
