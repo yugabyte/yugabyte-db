@@ -52,8 +52,9 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster_client.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/tools/admin-test-base.h"
 
@@ -1640,6 +1641,26 @@ TEST_F(AdminCliTest, TestUpdateSysCatalogEntry) {
   auto file_contents = ASSERT_RESULT(ReadFileToString(file_path));
   ASSERT_STR_NOT_CONTAINS(file_contents, old_cluster_uuid);
   ASSERT_STR_CONTAINS(file_contents, new_cluster_uuid);
+}
+
+TEST_F(AdminCliTest, TestRemoveTabletServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+  ASSERT_OK(cluster_->AddTabletServer(true));
+  auto added_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
+  ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), added_tserver));
+  added_tserver->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, added_tserver]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(added_tserver->uuid()));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not present or still alive"));
+  ASSERT_RESULT(CallAdmin("remove_tablet_server", added_tserver->uuid()));
+  auto find_tserver_result = ASSERT_RESULT(cluster_client.GetTabletServer(added_tserver->uuid()));
+  EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
 }  // namespace tools

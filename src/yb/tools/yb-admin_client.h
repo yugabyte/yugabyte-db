@@ -210,6 +210,8 @@ class ClusterAdminClient {
   // List all tablet servers known to master
   Status ListAllTabletServers(bool exclude_dead = false);
 
+  Status RemoveTabletServer(const std::string& uuid);
+
   // List all masters
   Status ListAllMasters();
 

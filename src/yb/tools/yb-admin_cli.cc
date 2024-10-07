@@ -916,6 +916,13 @@ Status list_all_tablet_servers_action(
   return Status::OK();
 }
 
+const auto remove_tablet_server_args = "<ts_uuid>";
+Status remove_tablet_server_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 1));
+  return client->RemoveTabletServer(args[0]);
+}
+
 const auto list_all_masters_args = "";
 Status list_all_masters_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2780,6 +2787,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(compact_table_by_id);
   REGISTER_COMMAND(compaction_status);
   REGISTER_COMMAND(list_all_tablet_servers);
+  REGISTER_COMMAND(remove_tablet_server);
   REGISTER_COMMAND(list_all_masters);
   REGISTER_COMMAND(change_master_config);
   REGISTER_COMMAND(dump_masters_state);

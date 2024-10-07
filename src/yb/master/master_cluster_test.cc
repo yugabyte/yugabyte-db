@@ -268,14 +268,8 @@ Status MasterClusterTest::WaitForMasterLeaderToMarkTabletServerDead(
     const std::string& uuid, const MasterClusterClient& client, MonoDelta timeout) {
   return WaitFor(
       [&client, &uuid]() -> Result<bool> {
-        auto tserver_resp = VERIFY_RESULT(client.ListTabletServers());
-        auto tserver = std::find_if(
-            tserver_resp.servers().begin(), tserver_resp.servers().end(),
-            [&uuid](const auto& server) { return server.instance_id().permanent_uuid() == uuid; });
-        if (tserver == tserver_resp.servers().end()) {
-          return false;
-        }
-        return !tserver->alive();
+        auto tserver = VERIFY_RESULT(client.GetTabletServer(uuid));
+        return tserver && !tserver->alive();
       },
       timeout, "Tserver not present or still alive");
 }

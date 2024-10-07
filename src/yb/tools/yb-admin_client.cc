@@ -1390,6 +1390,14 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::RemoveTabletServer(const std::string& uuid) {
+  master::RemoveTabletServerRequestPB req;
+  req.set_permanent_uuid(uuid);
+  RETURN_NOT_OK(
+      InvokeRpc(&master::MasterClusterProxy::RemoveTabletServer, *master_cluster_proxy_, req));
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
