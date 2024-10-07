@@ -792,6 +792,13 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
   return info;
 }
 
+Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id) {
+  YBTableInfo info;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  return info;
+}
+
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 dockv::PartitionSchema* partition_schema) {
@@ -1620,7 +1627,12 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      replica_identities->emplace(VERIFY_RESULT(GetPgsqlTableOid(entry.first)), entry.second);
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first));
+
+      const auto pg_table_id = table_info.pg_table_id;
+      auto table_oid = VERIFY_RESULT(
+          (!pg_table_id.empty()) ? GetPgsqlTableOid(pg_table_id) : GetPgsqlTableOid(entry.first));
+      replica_identities->emplace(table_oid, entry.second);
     }
   }
 
