@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -209,6 +211,151 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("2", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
+  }
+
+  @Test
+  public void testRemoveDBFromXClusterConfig() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getDefaultUserIntent("source-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe sourceUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(sourceUniverse);
+    initYCQL(sourceUniverse);
+
+    userIntent = getDefaultUserIntent("target-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe targetUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(targetUniverse);
+    initYCQL(targetUniverse);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+    log.info("Customer config here: {}", customerConfig.toString());
+
+    Db db1 = Db.create("test_xcluster_db", false);
+    Table table1Db1 = Table.create("test_table_1", DEFAULT_TABLE_COLUMNS, db1);
+    Table table2Db1 = Table.create("test_table_2", DEFAULT_TABLE_COLUMNS, db1);
+    Db db2 = Db.create("test_xcluster_db_2", false);
+    Table table1Db2 = Table.create("test_table_1", DEFAULT_TABLE_COLUMNS, db2);
+    Table table2Db2 = Table.create("test_table_2", DEFAULT_TABLE_COLUMNS, db2);
+
+    createTestSet(
+        sourceUniverse,
+        Arrays.asList(db1, db2),
+        Arrays.asList(table1Db1, table2Db1, table1Db2, table2Db2));
+    createTestSet(
+        targetUniverse,
+        Arrays.asList(db1, db2),
+        Arrays.asList(table1Db1, table2Db1, table1Db2, table2Db2));
+
+    Set<String> db1TableIds = new HashSet<>();
+    Set<String> db2TableIds = new HashSet<>();
+    // Get the table info for the source universe and create xCluster config.
+    List<TableInfoForm.TableInfoResp> resp =
+        tableHandler.listTables(
+            customer.getUuid(), sourceUniverse.getUniverseUUID(), false, false, true, true);
+    XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "xCluster-config-with-different-table-status";
+    formData.tables = new HashSet<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (Arrays.asList(db1.name, db2.name).contains(tableInfo.keySpace)) {
+        if (tableInfo.keySpace.equals(db1.name)) {
+          db1TableIds.add(tableInfo.tableID);
+        } else if (tableInfo.keySpace.equals(db2.name)) {
+          db2TableIds.add(tableInfo.tableID);
+        }
+        formData.tables.add(tableInfo.tableID);
+      }
+    }
+    formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+    formData.bootstrapParams.tables = formData.tables;
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createXClusterConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID xClusterConfigUuid = UUID.fromString(json.get("resourceUUID").asText());
+
+    // Verify the table status on xCluster config.
+    Result getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    XClusterConfig xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+
+    assertEquals(4, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    // Set the status of db2 tables to Failed and unset replicationSetupDone.
+    xClusterConfig = XClusterConfig.getOrBadRequest(xClusterConfigUuid);
+    Set<XClusterTableConfig> existingTableConfigs = xClusterConfig.getTableDetails();
+    for (XClusterTableConfig table : existingTableConfigs) {
+      if (db2TableIds.contains(table.getTableId())) {
+        table.setStatus(XClusterTableConfig.Status.Failed);
+        table.setReplicationSetupDone(false);
+        table.update();
+      }
+    }
+
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+    assertEquals(4, xClusterConfig.getTableIds().size());
+    Set<XClusterTableConfig> runningTables =
+        xClusterConfig.getTableDetailsWithStatus(XClusterTableConfig.Status.Running);
+    assertEquals(2, runningTables.size());
+    Set<XClusterTableConfig> failedTables =
+        xClusterConfig.getTableDetailsWithStatus(XClusterTableConfig.Status.Failed);
+    assertEquals(2, failedTables.size());
+
+    // Allow user to drop failed DB from xCluster config.
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables = new HashSet<String>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db1.name)) {
+        editFormData.tables.add(tableInfo.tableID);
+      }
+    }
+    editFormData.bootstrapParams = formData.bootstrapParams;
+    editFormData.bootstrapParams.tables = editFormData.tables;
+    result = editXClusterConfig(editFormData, xClusterConfigUuid);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+    assertEquals(2, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    editFormData.tables = new HashSet<String>();
+    // Set status to Paused so that we can make the controller believe that an
+    // edit operation is performed.
+    editFormData.status = "Paused";
+    result = assertPlatformException(() -> editXClusterConfig(editFormData, xClusterConfigUuid));
+    assertBadRequest(
+        result,
+        "The operation to remove tables from replication config will remove all the "
+            + "tables in replication which is not allowed; if you want to delete "
+            + "replication for all of them, please delete the replication config");
   }
 
   @Test
