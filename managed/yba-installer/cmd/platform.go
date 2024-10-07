@@ -550,6 +550,14 @@ func (plat Platform) Upgrade() error {
 	return err
 }
 
+// Helper function to update the data/software directories ownership to yugabyte user
+func changeAllPermissions(user string) error {
+	if err := common.Chown(common.GetBaseInstall()+"/software", user, user, true); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (plat Platform) MigrateFromReplicated() error {
 	config.GenerateTemplate(plat)
 
