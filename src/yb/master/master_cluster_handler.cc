@@ -103,7 +103,9 @@ Status MasterClusterHandler::SetClusterConfig(
   // Bump the config version, to indicate an update.
   l.mutable_data()->pb.set_version(config.version() + 1);
 
-  LOG(INFO) << "Updating cluster config to " << config.version() + 1;
+  LOG(INFO) << Format(
+      "Updating cluster config to version $0, new config: $1", config.version() + 1,
+      config.ShortDebugString());
 
   RETURN_NOT_OK(catalog_manager_->sys_catalog()->Upsert(epoch.leader_term, cluster_config.get()));
 
@@ -178,6 +180,14 @@ Status MasterClusterHandler::SetPreferredZones(
   return Status::OK();
 }
 
+Status MasterClusterHandler::RemoveTabletServer(
+    const RemoveTabletServerRequestPB* req, RemoveTabletServerResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  auto blacklist = VERIFY_RESULT(catalog_manager_->BlacklistSetFromPB());
+  auto tables = catalog_manager_->GetTables(GetTablesMode::kAll, PrimaryTablesOnly::kTrue);
+  return ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch);
+}
+
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
     GetLoadMovePercentResponsePB* resp, bool blacklist_leader) {
   auto l = catalog_manager_->ClusterConfig()->LockForRead();
@@ -232,4 +242,5 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
 
   return Status::OK();
 }
+
 }  // namespace yb::master

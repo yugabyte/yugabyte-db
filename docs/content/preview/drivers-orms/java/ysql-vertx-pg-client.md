@@ -3,7 +3,8 @@ title: Vert.x PG Client for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using Vert.x PG driver
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: java-driver-4-vertx-pg-client

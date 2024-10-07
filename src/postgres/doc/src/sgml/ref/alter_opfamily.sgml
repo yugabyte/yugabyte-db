@@ -37,7 +37,7 @@ ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="
     RENAME TO <replaceable>new_name</replaceable>
 
 ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
-    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 
 ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
     SET SCHEMA <replaceable>new_schema</replaceable>
@@ -141,7 +141,7 @@ ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="
      <para>
       In an <literal>OPERATOR</literal> clause,
       the operand data type(s) of the operator, or <literal>NONE</literal> to
-      signify a left-unary or right-unary operator.  Unlike the comparable
+      signify a prefix operator.  Unlike the comparable
       syntax in <command>CREATE OPERATOR CLASS</command>, the operand data types
       must always be specified.
      </para>
@@ -153,9 +153,10 @@ ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="
       and hash functions it is not necessary to specify <replaceable
       class="parameter">op_type</replaceable> since the function's input
       data type(s) are always the correct ones to use.  For B-tree sort
-      support functions and all functions in GiST, SP-GiST and GIN operator
-      classes, it is necessary to specify the operand data type(s) the function
-      is to be used with.
+      support functions, B-Tree equal image functions, and all
+      functions in GiST, SP-GiST and GIN operator classes, it is
+      necessary to specify the operand data type(s) the function is to
+      be used with.
      </para>
 
      <para>
@@ -268,7 +269,7 @@ ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="
   </para>
 
   <para>
-   The operators should not be defined by SQL functions.  A SQL function
+   The operators should not be defined by SQL functions.  An SQL function
    is likely to be inlined into the calling query, which will prevent
    the optimizer from recognizing that the query matches an index.
   </para>

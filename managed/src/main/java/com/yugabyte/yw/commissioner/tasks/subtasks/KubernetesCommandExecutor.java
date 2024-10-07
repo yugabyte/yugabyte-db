@@ -243,6 +243,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public boolean usePreviousGflagsChecksum = false;
     public boolean createNamespacedService = false;
     public Set<String> deleteServiceNames;
+    // Only set false for create universe case initially
+    public boolean masterJoinExistingCluster = true;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -1137,6 +1139,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       masterGFlags.put(
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
+    }
+    if (taskParams().masterJoinExistingCluster) {
+      masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (!masterGFlags.isEmpty()) {
       gflagOverrides.put("master", masterGFlags);

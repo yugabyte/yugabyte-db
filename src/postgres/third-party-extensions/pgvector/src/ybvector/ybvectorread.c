@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 
 #include "pgstat.h"
+#include "pg_yb_utils.h"
 #include "utils/memutils.h"
 
 /*
@@ -54,7 +55,11 @@ static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
 		so->yb_scan_desc->handle, BYTEAOID, InvalidOid /* collation_id */,
 		so->query_vector, false);
 
-	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_handle);
+	int vec_attno = scan->indexRelation->rd_att->natts;
+	if (YBIsCoveredByMainTable(scan->indexRelation))
+		vec_attno = scan->indexRelation->rd_index->indkey.values[0];
+
+	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_attno, vec_handle);
 	YBCPgDmlANNSetPrefetchSize(so->yb_scan_desc->handle, so->limit);
 }
 

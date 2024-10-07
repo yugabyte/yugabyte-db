@@ -1,7 +1,7 @@
 /* ----------
  *	DTrace probes for PostgreSQL backend
  *
- *	Copyright (c) 2006-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2006-2022, PostgreSQL Global Development Group
  *
  *	src/backend/utils/probes.d
  * ----------
@@ -9,10 +9,10 @@
 
 
 /*
- * Typedefs used in PostgreSQL.
+ * Typedefs used in PostgreSQL probes.
  *
  * NOTE: Do not use system-provided typedefs (e.g. uintptr_t, uint32_t, etc)
- * in probe definitions, as they cause compilation errors on macOS 10.5.
+ * in probe definitions, as they cause compilation errors on macOS.
  */
 #define LocalTransactionId unsigned int
 #define LWLockMode int
@@ -20,7 +20,7 @@
 #define BlockNumber unsigned int
 #define Oid unsigned int
 #define ForkNumber int
-#define bool char
+#define bool unsigned char
 
 provider postgresql {
 

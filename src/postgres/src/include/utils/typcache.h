@@ -6,7 +6,7 @@
  * The type cache exists to speed lookup of certain information about data
  * types that is not directly available from a type's pg_type row.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/typcache.h
@@ -33,6 +33,8 @@ typedef struct TypeCacheEntry
 	/* typeId is the hash lookup key and MUST BE FIRST */
 	Oid			type_id;		/* OID of the data type */
 
+	uint32		type_id_hash;	/* hashed value of the OID */
+
 	/* some subsidiary information copied from the pg_type row */
 	int16		typlen;
 	bool		typbyval;
@@ -40,7 +42,9 @@ typedef struct TypeCacheEntry
 	char		typstorage;
 	char		typtype;
 	Oid			typrelid;
+	Oid			typsubscript;
 	Oid			typelem;
+	Oid			typcollation;
 
 	/*
 	 * Information obtained from opfamily entries
@@ -98,6 +102,11 @@ typedef struct TypeCacheEntry
 	FmgrInfo	rng_subdiff_finfo;	/* difference function, if any */
 
 	/*
+	 * Fields computed when TYPECACHE_MULTIRANGE_INFO is required.
+	 */
+	struct TypeCacheEntry *rngtype; /* multirange's range underlying type */
+
+	/*
 	 * Domain's base type and typmod if it's a domain type.  Zeroes if not
 	 * domain, or if information hasn't been requested.
 	 */
@@ -124,22 +133,23 @@ typedef struct TypeCacheEntry
 } TypeCacheEntry;
 
 /* Bit flags to indicate which fields a given caller needs to have set */
-#define TYPECACHE_EQ_OPR			0x0001
-#define TYPECACHE_LT_OPR			0x0002
-#define TYPECACHE_GT_OPR			0x0004
-#define TYPECACHE_CMP_PROC			0x0008
-#define TYPECACHE_HASH_PROC			0x0010
-#define TYPECACHE_EQ_OPR_FINFO		0x0020
-#define TYPECACHE_CMP_PROC_FINFO	0x0040
-#define TYPECACHE_HASH_PROC_FINFO	0x0080
-#define TYPECACHE_TUPDESC			0x0100
-#define TYPECACHE_BTREE_OPFAMILY	0x0200
-#define TYPECACHE_HASH_OPFAMILY		0x0400
-#define TYPECACHE_RANGE_INFO		0x0800
-#define TYPECACHE_DOMAIN_BASE_INFO			0x1000
-#define TYPECACHE_DOMAIN_CONSTR_INFO		0x2000
-#define TYPECACHE_HASH_EXTENDED_PROC		0x4000
-#define TYPECACHE_HASH_EXTENDED_PROC_FINFO	0x8000
+#define TYPECACHE_EQ_OPR			0x00001
+#define TYPECACHE_LT_OPR			0x00002
+#define TYPECACHE_GT_OPR			0x00004
+#define TYPECACHE_CMP_PROC			0x00008
+#define TYPECACHE_HASH_PROC			0x00010
+#define TYPECACHE_EQ_OPR_FINFO		0x00020
+#define TYPECACHE_CMP_PROC_FINFO	0x00040
+#define TYPECACHE_HASH_PROC_FINFO	0x00080
+#define TYPECACHE_TUPDESC			0x00100
+#define TYPECACHE_BTREE_OPFAMILY	0x00200
+#define TYPECACHE_HASH_OPFAMILY		0x00400
+#define TYPECACHE_RANGE_INFO		0x00800
+#define TYPECACHE_DOMAIN_BASE_INFO			0x01000
+#define TYPECACHE_DOMAIN_CONSTR_INFO		0x02000
+#define TYPECACHE_HASH_EXTENDED_PROC		0x04000
+#define TYPECACHE_HASH_EXTENDED_PROC_FINFO	0x08000
+#define TYPECACHE_MULTIRANGE_INFO			0x10000
 
 /* This value will not equal any valid tupledesc identifier, nor 0 */
 #define INVALID_TUPLEDESC_IDENTIFIER ((uint64) 1)
@@ -167,7 +177,7 @@ typedef struct SharedRecordTypmodRegistry SharedRecordTypmodRegistry;
 extern TypeCacheEntry *lookup_type_cache(Oid type_id, int flags);
 
 extern void InitDomainConstraintRef(Oid type_id, DomainConstraintRef *ref,
-						MemoryContext refctx, bool need_exprstate);
+									MemoryContext refctx, bool need_exprstate);
 
 extern void UpdateDomainConstraintRef(DomainConstraintRef *ref);
 
@@ -176,12 +186,12 @@ extern bool DomainHasConstraints(Oid type_id);
 extern TupleDesc lookup_rowtype_tupdesc(Oid type_id, int32 typmod);
 
 extern TupleDesc lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod,
-							   bool noError);
+												bool noError);
 
 extern TupleDesc lookup_rowtype_tupdesc_copy(Oid type_id, int32 typmod);
 
 extern TupleDesc lookup_rowtype_tupdesc_domain(Oid type_id, int32 typmod,
-							  bool noError);
+											   bool noError);
 
 extern void assign_record_type_typmod(TupleDesc tupDesc);
 
@@ -192,7 +202,7 @@ extern int	compare_values_of_enum(TypeCacheEntry *tcache, Oid arg1, Oid arg2);
 extern size_t SharedRecordTypmodRegistryEstimate(void);
 
 extern void SharedRecordTypmodRegistryInit(SharedRecordTypmodRegistry *,
-							   dsm_segment *segment, dsa_area *area);
+										   dsm_segment *segment, dsa_area *area);
 
 extern void SharedRecordTypmodRegistryAttach(SharedRecordTypmodRegistry *);
 

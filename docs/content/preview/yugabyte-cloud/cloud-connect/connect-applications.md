@@ -3,6 +3,8 @@ title: Connect applications
 linkTitle: Connect applications
 description: Connect applications to YugabyteDB Aeon clusters
 headcontent: Get the database connection parameters for your application
+aliases:
+  - /preview/yugabyte-cloud/cloud-examples/
 menu:
   preview_yugabyte-cloud:
     identifier: connect-applications
@@ -102,7 +104,7 @@ The connection string includes parameters for TLS settings (`ssl`, `sslmode`, an
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
-If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../cloud-examples/hasura-cloud/).
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Aeon, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../../../integrations/hasura/hasura-cloud/).
 
   {{% /tab %}}
 

@@ -42,6 +42,10 @@ class MasterClusterHandler {
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  Status RemoveTabletServer(
+      const RemoveTabletServerRequestPB* req, RemoveTabletServerResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
   // ============================================================================
   // Helper methods called by the methods which implement RPCs.
   // ============================================================================

@@ -236,9 +236,16 @@ def make_commit(
     logging.info(f"Created an automatic commit for {dep.name}")
 
 
-def sync_inline_thirdparty() -> None:
+def sync_inline_thirdparty(deps_to_sync: List[str] = []) -> None:
     config = read_yaml(INLINE_THIRDPARTY_CONFIG_PATH)
     validate_config(config)
+    if deps_to_sync:
+        all_dep_names = {dep.name for dep in config.dependencies}
+        invalid_deps = [dep for dep in deps_to_sync if dep not in all_dep_names]
+        if invalid_deps:
+            raise ValueError(
+                f"The following specified dependencies do not exist: {', '.join(invalid_deps)}")
+        config.dependencies = [dep for dep in config.dependencies if dep.name in deps_to_sync]
     if not git_util.is_git_clean(common_util.YB_SRC_ROOT):
         raise RuntimeError(f"Local changes exist, cannot update inline third-party dependencies.")
     clone_and_copy_subtrees(config.dependencies)

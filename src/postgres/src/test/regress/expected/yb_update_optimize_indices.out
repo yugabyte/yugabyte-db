@@ -847,9 +847,20 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 =
 
 -- Alterate representations of a circle
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '(1, 2), 3'::circle WHERE h = 1;
-ERROR:  invalid input syntax for type circle: "(1, 2), 3"
-LINE 1: ...FF) UPDATE geometric_types_table SET v1 = 1, v8 = '(1, 2), 3...
-                                                             ^
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Update on geometric_types_table (actual rows=0 loops=1)
+   ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '((1, 2), 3)'::circle WHERE h = 1;
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
@@ -994,6 +1005,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2:3] 
 -- Test for type modifiers
 -- REAL has 6 decimal digits of precision, NUMERIC has type modifiers 'precision' and 'scale'.
 -- Precision is the total number of digits, scale is the number of digits after the decimal point.
+SET extra_float_digits TO 0;
 CREATE TABLE numeric_table (h INT PRIMARY KEY, v1 REAL, v2 NUMERIC(4, 2), v3 NUMERIC(10, 4), v4 FLOAT4);
 CREATE INDEX NONCONCURRENTLY ON numeric_table (v1) INCLUDE (v2, v3, v4);
 INSERT INTO numeric_table VALUES (1, 1.234567, 12.34, 1.234567, 1.23456789012);
@@ -1040,9 +1052,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
 -- Casting from infinity to infinity should not cause a change in representation.
 -- Note that NUMERIC does not support infinity prior to PG 14.
 INSERT INTO numeric_table VALUES (2, 'inf', 'Infinity', '-Infinity', '-inf');
-ERROR:  invalid input syntax for type numeric: "Infinity"
-LINE 1: INSERT INTO numeric_table VALUES (2, 'inf', 'Infinity', '-In...
-                                                    ^
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 4, scale 2 cannot hold an infinite value.
 INSERT INTO numeric_table VALUES (2, 'inf', 0, 0, '-inf');
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 'inf'::real + 1, v4 = '-Infinity'::float4 + 1 WHERE h = 2;
                                      QUERY PLAN
@@ -1536,3 +1547,4 @@ DROP TABLE numeric_table;
 DROP TABLE array_types_table;
 DROP TABLE geometric_types_table;
 DROP TABLE json_types_table;
+RESET extra_float_digits;

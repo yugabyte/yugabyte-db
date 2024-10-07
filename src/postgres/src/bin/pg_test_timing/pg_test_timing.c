@@ -6,19 +6,21 @@
 
 #include "postgres_fe.h"
 
+#include <limits.h>
+
 #include "getopt_long.h"
 #include "portability/instr_time.h"
 
 static const char *progname;
 
-static int32 test_duration = 3;
+static unsigned int test_duration = 3;
 
 static void handle_args(int argc, char *argv[]);
-static uint64 test_timing(int32);
+static uint64 test_timing(unsigned int duration);
 static void output(uint64 loop_count);
 
 /* record duration in powers of 2 microseconds */
-int64		histogram[32];
+long long int histogram[32];
 
 int
 main(int argc, char *argv[])
@@ -47,6 +49,8 @@ handle_args(int argc, char *argv[])
 
 	int			option;			/* Command line option */
 	int			optindex = 0;	/* used by getopt_long */
+	unsigned long optval;		/* used for option parsing */
+	char	   *endptr;
 
 	if (argc > 1)
 	{
@@ -68,7 +72,25 @@ handle_args(int argc, char *argv[])
 		switch (option)
 		{
 			case 'd':
-				test_duration = atoi(optarg);
+				errno = 0;
+				optval = strtoul(optarg, &endptr, 10);
+
+				if (endptr == optarg || *endptr != '\0' ||
+					errno != 0 || optval != (unsigned int) optval)
+				{
+					fprintf(stderr, _("%s: invalid argument for option %s\n"),
+							progname, "--duration");
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+
+				test_duration = (unsigned int) optval;
+				if (test_duration == 0)
+				{
+					fprintf(stderr, _("%s: %s must be in range %u..%u\n"),
+							progname, "--duration", 1, UINT_MAX);
+					exit(1);
+				}
 				break;
 
 			default:
@@ -89,26 +111,15 @@ handle_args(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (test_duration > 0)
-	{
-		printf(ngettext("Testing timing overhead for %d second.\n",
-						"Testing timing overhead for %d seconds.\n",
-						test_duration),
-			   test_duration);
-	}
-	else
-	{
-		fprintf(stderr,
-				_("%s: duration must be a positive integer (duration is \"%d\")\n"),
-				progname, test_duration);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
-		exit(1);
-	}
+
+	printf(ngettext("Testing timing overhead for %u second.\n",
+					"Testing timing overhead for %u seconds.\n",
+					test_duration),
+		   test_duration);
 }
 
 static uint64
-test_timing(int32 duration)
+test_timing(unsigned int duration)
 {
 	uint64		total_time;
 	int64		time_elapsed = 0;
@@ -190,14 +201,8 @@ output(uint64 loop_count)
 		   Max(10, len3), header3);
 
 	for (i = 0; i <= max_bit; i++)
-	{
-		char		buf[100];
-
-		/* lame hack to work around INT64_FORMAT deficiencies */
-		snprintf(buf, sizeof(buf), INT64_FORMAT, histogram[i]);
-		printf("%*ld    %*.5f %*s\n",
+		printf("%*ld    %*.5f %*lld\n",
 			   Max(6, len1), 1l << i,
 			   Max(10, len2) - 1, (double) histogram[i] * 100 / loop_count,
-			   Max(10, len3), buf);
-	}
+			   Max(10, len3), histogram[i]);
 }

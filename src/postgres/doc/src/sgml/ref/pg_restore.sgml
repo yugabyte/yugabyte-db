@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pg_restore.sgml -->
+<!--
+doc/src/sgml/ref/pg_restore.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="app-pgrestore">
  <indexterm zone="app-pgrestore">
@@ -6,7 +9,7 @@
  </indexterm>
 
  <refmeta>
-  <refentrytitle>pg_restore</refentrytitle>
+  <refentrytitle><application>pg_restore</application></refentrytitle>
   <manvolnum>1</manvolnum>
   <refmiscinfo>Application</refmiscinfo>
  </refmeta>
@@ -153,7 +156,10 @@
        <para>
         Connect to database <replaceable
         class="parameter">dbname</replaceable> and restore directly
-        into the database.
+        into the database.  The <replaceable>dbname</replaceable> can
+        be a <link linkend="libpq-connstring">connection string</link>.
+        If so, connection string parameters will override any conflicting
+        command line options.
        </para>
       </listitem>
      </varlistentry>
@@ -176,8 +182,8 @@
       <listitem>
        <para>
         Specify output file for generated script, or for the listing
-        when used with <option>-l</option>. Default is the standard
-        output.
+        when used with <option>-l</option>. Use <literal>-</literal>
+        for <systemitem>stdout</systemitem>.
        </para>
       </listitem>
      </varlistentry>
@@ -243,12 +249,14 @@
       <term><option>--jobs=<replaceable class="parameter">number-of-jobs</replaceable></option></term>
       <listitem>
        <para>
-        Run the most time-consuming parts
-        of <application>pg_restore</application> &mdash; those which load data,
-        create indexes, or create constraints &mdash; using multiple
-        concurrent jobs.  This option can dramatically reduce the time
+        Run the most time-consuming steps
+        of <application>pg_restore</application> &mdash; those that load data,
+        create indexes, or create constraints &mdash; concurrently, using up
+        to <replaceable class="parameter">number-of-jobs</replaceable>
+        concurrent sessions.  This option can dramatically reduce the time
         to restore a large database to a server running on a
-        multiprocessor machine.
+        multiprocessor machine.  This option is ignored when emitting a script
+        rather than connecting directly to a database server.
        </para>
 
        <para>
@@ -271,8 +279,7 @@
         Only the custom and directory archive formats are supported
         with this option.
         The input must be a regular file or directory (not, for example, a
-        pipe).  This option is ignored when emitting a script rather
-        than connecting directly to a database server.  Also, multiple
+        pipe or standard input).  Also, multiple
         jobs cannot be used together with the
         option <option>--single-transaction</option>.
        </para>
@@ -479,7 +486,12 @@
       <term><option>--verbose</option></term>
       <listitem>
        <para>
-        Specifies verbose mode.
+        Specifies verbose mode.  This will cause
+        <application>pg_restore</application> to output detailed object
+        comments and start/stop times to the output file, and progress
+        messages to standard error.
+        Repeating the option causes additional debug-level messages
+        to appear on standard error.
        </para>
       </listitem>
      </varlistentry>
@@ -526,9 +538,9 @@
         This option is relevant only when performing a data-only restore.
         It instructs <application>pg_restore</application> to execute commands
         to temporarily disable triggers on the target tables while
-        the data is reloaded.  Use this if you have referential
+        the data is restored.  Use this if you have referential
         integrity checks or other triggers on the tables that you
-        do not want to invoke during data reload.
+        do not want to invoke during data restore.
        </para>
 
        <para>
@@ -568,7 +580,7 @@
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
-        Use conditional commands (i.e. add an <literal>IF EXISTS</literal>
+        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
         clause) to drop database objects.  This option is not valid
         unless <option>--clean</option> is also specified.
        </para>
@@ -633,6 +645,17 @@
        <para>
         Do not output commands to restore subscriptions, even if the archive
         contains them.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-table-access-method</option></term>
+      <listitem>
+       <para>
+        Do not output commands to select table access methods.
+        With this option, all objects will be created with whichever
+        access method is the default during restore.
        </para>
       </listitem>
      </varlistentry>
@@ -822,6 +845,17 @@
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
 
   <para>
@@ -935,7 +969,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </para>
 
   <para>
-   To reload the dump into a new database called <literal>newdb</literal>:
+   To restore the dump into a new database called <literal>newdb</literal>:
 
 <screen>
 <prompt>$</prompt> <userinput>createdb -T template0 newdb</userinput>

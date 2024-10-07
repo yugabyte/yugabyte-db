@@ -251,10 +251,10 @@ enforce, and it assists with some other issues as explained below.)  The
 implementation of this is that GetSnapshotData takes the ProcArrayLock in
 shared mode (so that multiple backends can take snapshots in parallel),
 but ProcArrayEndTransaction must take the ProcArrayLock in exclusive mode
-while clearing MyPgXact->xid at transaction end (either commit or abort).
-(To reduce context switching, when multiple transactions commit nearly
-simultaneously, we have one backend take ProcArrayLock and clear the XIDs
-of multiple processes at once.)
+while clearing the ProcGlobal->xids[] entry at transaction end (either
+commit or abort). (To reduce context switching, when multiple transactions
+commit nearly simultaneously, we have one backend take ProcArrayLock and
+clear the XIDs of multiple processes at once.)
 
 ProcArrayEndTransaction also holds the lock while advancing the shared
 latestCompletedXid variable.  This allows GetSnapshotData to use
@@ -278,12 +278,12 @@ present in the ProcArray, or not running anymore.  (This guarantee doesn't
 apply to subtransaction XIDs, because of the possibility that there's not
 room for them in the subxid array; instead we guarantee that they are
 present or the overflow flag is set.)  If a backend released XidGenLock
-before storing its XID into MyPgXact, then it would be possible for another
-backend to allocate and commit a later XID, causing latestCompletedXid to
-pass the first backend's XID, before that value became visible in the
-ProcArray.  That would break GetOldestXmin, as discussed below.
+before storing its XID into ProcGlobal->xids[], then it would be possible for
+another backend to allocate and commit a later XID, causing latestCompletedXid
+to pass the first backend's XID, before that value became visible in the
+ProcArray.  That would break ComputeXidHorizons, as discussed below.
 
-We allow GetNewTransactionId to store the XID into MyPgXact->xid (or the
+We allow GetNewTransactionId to store the XID into ProcGlobal->xids[] (or the
 subxid array) without taking ProcArrayLock.  This was once necessary to
 avoid deadlock; while that is no longer the case, it's still beneficial for
 performance.  We are thereby relying on fetch/store of an XID to be atomic,
@@ -293,42 +293,50 @@ once, rather than assume they can read it multiple times and get the same
 answer each time.  (Use volatile-qualified pointers when doing this, to
 ensure that the C compiler does exactly what you tell it to.)
 
-Another important activity that uses the shared ProcArray is GetOldestXmin,
-which must determine a lower bound for the oldest xmin of any active MVCC
-snapshot, system-wide.  Each individual backend advertises the smallest
-xmin of its own snapshots in MyPgXact->xmin, or zero if it currently has no
-live snapshots (eg, if it's between transactions or hasn't yet set a
-snapshot for a new transaction).  GetOldestXmin takes the MIN() of the
-valid xmin fields.  It does this with only shared lock on ProcArrayLock,
-which means there is a potential race condition against other backends
-doing GetSnapshotData concurrently: we must be certain that a concurrent
-backend that is about to set its xmin does not compute an xmin less than
-what GetOldestXmin returns.  We ensure that by including all the active
-XIDs into the MIN() calculation, along with the valid xmins.  The rule that
-transactions can't exit without taking exclusive ProcArrayLock ensures that
-concurrent holders of shared ProcArrayLock will compute the same minimum of
-currently-active XIDs: no xact, in particular not the oldest, can exit
-while we hold shared ProcArrayLock.  So GetOldestXmin's view of the minimum
-active XID will be the same as that of any concurrent GetSnapshotData, and
-so it can't produce an overestimate.  If there is no active transaction at
-all, GetOldestXmin returns latestCompletedXid + 1, which is a lower bound
-for the xmin that might be computed by concurrent or later GetSnapshotData
-calls.  (We know that no XID less than this could be about to appear in
-the ProcArray, because of the XidGenLock interlock discussed above.)
+Another important activity that uses the shared ProcArray is
+ComputeXidHorizons, which must determine a lower bound for the oldest xmin
+of any active MVCC snapshot, system-wide.  Each individual backend
+advertises the smallest xmin of its own snapshots in MyProc->xmin, or zero
+if it currently has no live snapshots (eg, if it's between transactions or
+hasn't yet set a snapshot for a new transaction).  ComputeXidHorizons takes
+the MIN() of the valid xmin fields.  It does this with only shared lock on
+ProcArrayLock, which means there is a potential race condition against other
+backends doing GetSnapshotData concurrently: we must be certain that a
+concurrent backend that is about to set its xmin does not compute an xmin
+less than what ComputeXidHorizons determines.  We ensure that by including
+all the active XIDs into the MIN() calculation, along with the valid xmins.
+The rule that transactions can't exit without taking exclusive ProcArrayLock
+ensures that concurrent holders of shared ProcArrayLock will compute the
+same minimum of currently-active XIDs: no xact, in particular not the
+oldest, can exit while we hold shared ProcArrayLock.  So
+ComputeXidHorizons's view of the minimum active XID will be the same as that
+of any concurrent GetSnapshotData, and so it can't produce an overestimate.
+If there is no active transaction at all, ComputeXidHorizons uses
+latestCompletedXid + 1, which is a lower bound for the xmin that might
+be computed by concurrent or later GetSnapshotData calls.  (We know that no
+XID less than this could be about to appear in the ProcArray, because of the
+XidGenLock interlock discussed above.)
 
-GetSnapshotData also performs an oldest-xmin calculation (which had better
-match GetOldestXmin's) and stores that into RecentGlobalXmin, which is used
-for some tuple age cutoff checks where a fresh call of GetOldestXmin seems
-too expensive.  Note that while it is certain that two concurrent
-executions of GetSnapshotData will compute the same xmin for their own
-snapshots, as argued above, it is not certain that they will arrive at the
-same estimate of RecentGlobalXmin.  This is because we allow XID-less
-transactions to clear their MyPgXact->xmin asynchronously (without taking
-ProcArrayLock), so one execution might see what had been the oldest xmin,
-and another not.  This is OK since RecentGlobalXmin need only be a valid
-lower bound.  As noted above, we are already assuming that fetch/store
-of the xid fields is atomic, so assuming it for xmin as well is no extra
-risk.
+As GetSnapshotData is performance critical, it does not perform an accurate
+oldest-xmin calculation (it used to, until v14). The contents of a snapshot
+only depend on the xids of other backends, not their xmin. As backend's xmin
+changes much more often than its xid, having GetSnapshotData look at xmins
+can lead to a lot of unnecessary cacheline ping-pong.  Instead
+GetSnapshotData updates approximate thresholds (one that guarantees that all
+deleted rows older than it can be removed, another determining that deleted
+rows newer than it can not be removed). GlobalVisTest* uses those threshold
+to make invisibility decision, falling back to ComputeXidHorizons if
+necessary.
+
+Note that while it is certain that two concurrent executions of
+GetSnapshotData will compute the same xmin for their own snapshots, there is
+no such guarantee for the horizons computed by ComputeXidHorizons.  This is
+because we allow XID-less transactions to clear their MyProc->xmin
+asynchronously (without taking ProcArrayLock), so one execution might see
+what had been the oldest xmin, and another not.  This is OK since the
+thresholds need only be a valid lower bound.  As noted above, we are already
+assuming that fetch/store of the xid fields is atomic, so assuming it for
+xmin as well is no extra risk.
 
 
 pg_xact and pg_subtrans
@@ -374,12 +382,13 @@ Top-level transactions do not have a parent, so they leave their pg_subtrans
 entries set to the default value of zero (InvalidTransactionId).
 
 pg_subtrans is used to check whether the transaction in question is still
-running --- the main Xid of a transaction is recorded in the PGXACT struct,
-but since we allow arbitrary nesting of subtransactions, we can't fit all Xids
-in shared memory, so we have to store them on disk.  Note, however, that for
-each transaction we keep a "cache" of Xids that are known to be part of the
-transaction tree, so we can skip looking at pg_subtrans unless we know the
-cache has been overflowed.  See storage/ipc/procarray.c for the gory details.
+running --- the main Xid of a transaction is recorded in ProcGlobal->xids[],
+with a copy in PGPROC->xid, but since we allow arbitrary nesting of
+subtransactions, we can't fit all Xids in shared memory, so we have to store
+them on disk.  Note, however, that for each transaction we keep a "cache" of
+Xids that are known to be part of the transaction tree, so we can skip looking
+at pg_subtrans unless we know the cache has been overflowed.  See
+storage/ipc/procarray.c for the gory details.
 
 slru.c is the supporting mechanism for both pg_xact and pg_subtrans.  It
 implements the LRU policy for in-memory buffer pages.  The high-level routines
@@ -530,7 +539,7 @@ void XLogResetInsertion(void)
     construction workspace.  This is only needed if you have already called
     XLogBeginInsert(), but decide to not insert the record after all.
 
-void XLogEnsureRecordSpace(int max_block_id, int nrdatas)
+void XLogEnsureRecordSpace(int max_block_id, int ndatas)
 
     Normally, the WAL record construction buffers have the following limits:
 
@@ -626,12 +635,11 @@ be reconstructed later following a crash and the action is simply a way
 of optimising for performance. When a hint is written we use
 MarkBufferDirtyHint() to mark the block dirty.
 
-If the buffer is clean and checksums are in use then
-MarkBufferDirtyHint() inserts an XLOG_FPI record to ensure that we
-take a full page image that includes the hint. We do this to avoid
-a partial page write, when we write the dirtied page. WAL is not
-written during recovery, so we simply skip dirtying blocks because
-of hints when in recovery.
+If the buffer is clean and checksums are in use then MarkBufferDirtyHint()
+inserts an XLOG_FPI_FOR_HINT record to ensure that we take a full page image
+that includes the hint. We do this to avoid a partial page write, when we
+write the dirtied page. WAL is not written during recovery, so we simply skip
+dirtying blocks because of hints when in recovery.
 
 If you do decide to optimise away a WAL record, then any calls to
 MarkBufferDirty() must be replaced by MarkBufferDirtyHint(),
@@ -715,6 +723,38 @@ we must panic and abort recovery.  The DBA will have to manually clean up
 (for instance, free up some disk space or fix directory permissions) and
 then restart recovery.  This is part of the reason for not writing a WAL
 entry until we've successfully done the original action.
+
+
+Skipping WAL for New RelFileNode
+--------------------------------
+
+Under wal_level=minimal, if a change modifies a relfilenode that ROLLBACK
+would unlink, in-tree access methods write no WAL for that change.  Code that
+writes WAL without calling RelationNeedsWAL() must check for this case.  This
+skipping is mandatory.  If a WAL-writing change preceded a WAL-skipping change
+for the same block, REDO could overwrite the WAL-skipping change.  If a
+WAL-writing change followed a WAL-skipping change for the same block, a
+related problem would arise.  When a WAL record contains no full-page image,
+REDO expects the page to match its contents from just before record insertion.
+A WAL-skipping change may not reach disk at all, violating REDO's expectation
+under full_page_writes=off.  For any access method, CommitTransaction() writes
+and fsyncs affected blocks before recording the commit.
+
+Prefer to do the same in future access methods.  However, two other approaches
+can work.  First, an access method can irreversibly transition a given fork
+from WAL-skipping to WAL-writing by calling FlushRelationBuffers() and
+smgrimmedsync().  Second, an access method can opt to write WAL
+unconditionally for permanent relations.  Under these approaches, the access
+method callbacks must not call functions that react to RelationNeedsWAL().
+
+This applies only to WAL records whose replay would modify bytes stored in the
+new relfilenode.  It does not apply to other records about the relfilenode,
+such as XLOG_SMGR_CREATE.  Because it operates at the level of individual
+relfilenodes, RelationNeedsWAL() can differ for tightly-coupled relations.
+Consider "CREATE TABLE t (); BEGIN; ALTER TABLE t ADD c text; ..." in which
+ALTER TABLE adds a TOAST relation.  The TOAST relation will skip WAL, while
+the table owning it will not.  ALTER TABLE SET TABLESPACE will cause a table
+to skip WAL, but that won't affect its indexes.
 
 
 Asynchronous Commit
@@ -820,13 +860,12 @@ Changes to a temp table are not WAL-logged, hence could reach disk in
 advance of T1's commit, but we don't care since temp table contents don't
 survive crashes anyway.
 
-Database writes made via any of the paths we have introduced to avoid WAL
-overhead for bulk updates are also safe.  In these cases it's entirely
-possible for the data to reach disk before T1's commit, because T1 will
-fsync it down to disk without any sort of interlock, as soon as it finishes
-the bulk update.  However, all these paths are designed to write data that
-no other transaction can see until after T1 commits.  The situation is thus
-not different from ordinary WAL-logged updates.
+Database writes that skip WAL for new relfilenodes are also safe.  In these
+cases it's entirely possible for the data to reach disk before T1's commit,
+because T1 will fsync it down to disk without any sort of interlock.  However,
+all these paths are designed to write data that no other transaction can see
+until after T1 commits.  The situation is thus not different from ordinary
+WAL-logged updates.
 
 Transaction Emulation during Recovery
 -------------------------------------

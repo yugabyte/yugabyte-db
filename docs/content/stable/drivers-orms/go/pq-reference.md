@@ -3,7 +3,8 @@ title: PQ Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PQ Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: Go Drivers

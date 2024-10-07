@@ -77,7 +77,7 @@ Provide information about CDC service in YugabyteDB.
 | :---- | :---- | :---- |
 | cdcsdk_change_event_count | `long` | The number of records sent by the CDC Service. |
 | cdcsdk_traffic_sent | `long` | Total traffic sent, in bytes. |
-| cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
+| cdcsdk_sent_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
 | cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
 ## Connector metrics

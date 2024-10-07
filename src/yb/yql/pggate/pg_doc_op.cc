@@ -1353,13 +1353,9 @@ Status PgDocReadOp::SetRequestPrefetchLimit() {
       if (target.has_column_id()) {
         auto column_id = target.column_id();
         if (column_id < 0) {
-            if (column_id == static_cast<int>(PgSystemAttrNum::kObjectId)) {
-              row_width += GetTypeInfo(DataType::UINT32)->size;
-            } else {
-              // System columns are usually variable length which we are
-              // estimating with the size of a Binary DataType for now.
-              row_width += GetTypeInfo(DataType::BINARY)->size;
-            }
+            // System columns are usually variable length which we are
+            // estimating with the size of a Binary DataType for now.
+            row_width += GetTypeInfo(DataType::BINARY)->size;
             continue;
         }
         const ColumnSchema &col_schema =

@@ -1390,6 +1390,14 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::RemoveTabletServer(const std::string& uuid) {
+  master::RemoveTabletServerRequestPB req;
+  req.set_permanent_uuid(uuid);
+  RETURN_NOT_OK(
+      InvokeRpc(&master::MasterClusterProxy::RemoveTabletServer, *master_cluster_proxy_, req));
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
@@ -2315,6 +2323,66 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
   }
 
   cout << "YSQL successfully upgraded to the latest version" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::StartYsqlMajorVersionUpgradeInitdb() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::StartYsqlMajorVersionUpgradeInitdbRequestPB req;
+  master::StartYsqlMajorVersionUpgradeInitdbResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->StartYsqlMajorVersionUpgradeInitdb(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  } else {
+    std::cout << "ysql major version catalog upgrade started\n";
+  }
+  return Status::OK();
+}
+
+Result<master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB>
+ClusterAdminClient::IsYsqlMajorVersionUpgradeInitdbDone() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::IsYsqlMajorVersionUpgradeInitdbDoneRequestPB req;
+  master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->IsYsqlMajorVersionUpgradeInitdbDone(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+Status ClusterAdminClient::WaitForYsqlMajorVersionUpgradeInitdb() {
+  for (;;) {
+    auto result = IsYsqlMajorVersionUpgradeInitdbDone();
+    if (!result.ok()) {
+      cout << "Failed to check if ysql major version upgrade initdb is done: " << result.status()
+           << std::endl;
+    } else if (result->done()) {
+      if (result->has_initdb_error()) {
+        return StatusFromPB(result->initdb_error().status());
+      } else {
+        std::cout << "ysql major version catalog upgrade completed successful\n";
+        return Status::OK();
+      }
+    }
+
+    std::this_thread::sleep_for(1s);
+  }
+}
+
+Status ClusterAdminClient::RollbackYsqlMajorVersionUpgrade() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::RollbackYsqlMajorVersionUpgradeRequestPB req;
+  master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy_->RollbackYsqlMajorVersionUpgrade(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  } else {
+    std::cout << "Rollback successful\n";
+  }
   return Status::OK();
 }
 

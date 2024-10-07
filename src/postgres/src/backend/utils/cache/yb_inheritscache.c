@@ -31,6 +31,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_inherits_d.h"
 #include "catalog/pg_inherits.h"
+#include "common/hashfn.h"
 #include "storage/lockdefs.h"
 #include "utils/fmgroids.h"
 #include "utils/hsearch.h"
@@ -48,7 +49,7 @@ FindChildren(Oid parentOid, List **childTuples)
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 	*childTuples = NIL;
 
-	Relation relation = heap_open(InheritsRelationId, AccessShareLock);
+	Relation relation = table_open(InheritsRelationId, AccessShareLock);
 	ScanKeyData key[1];
 	ScanKeyInit(&key[0],
 				Anum_pg_inherits_inhparent,
@@ -70,7 +71,7 @@ FindChildren(Oid parentOid, List **childTuples)
 	}
 
 	systable_endscan(scan);
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 	MemoryContextSwitchTo(oldcxt);
 }
 
@@ -112,7 +113,7 @@ YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
 static Oid
 YbGetParentRelid(Oid relid)
 {
-	Relation relation = heap_open(InheritsRelationId, AccessShareLock);
+	Relation relation = table_open(InheritsRelationId, AccessShareLock);
 	ScanKeyData key[2];
 
 	/*
@@ -139,7 +140,7 @@ YbGetParentRelid(Oid relid)
 		break;
 	}
 	systable_endscan(scan);
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 
 	return result;
 }
@@ -226,7 +227,7 @@ void
 YbPreloadPgInheritsCache()
 {
 	Assert(YbPgInheritsCache);
-	Relation relation = heap_open(InheritsRelationId, AccessShareLock);
+	Relation relation = table_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
 	SysScanDesc scan = ybc_systable_begin_default_scan(
@@ -258,7 +259,7 @@ YbPreloadPgInheritsCache()
 		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 }
 
 YbPgInheritsCacheEntry

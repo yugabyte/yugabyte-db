@@ -6,6 +6,7 @@ import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.APPLY_SECRET;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_UPGRADE;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.POD_INFO;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
@@ -363,6 +364,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.InstallingThirdPartySoftware,
           TaskType.WaitForServer,
           TaskType.WaitForMasterLeader,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForDuration,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -387,6 +390,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
@@ -406,7 +411,25 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-        1, namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+        1,
+        namespaceTasks,
+        parallelTasks,
+        parallelTasks,
+        0,
+        1,
+        1,
+        3,
+        1,
+        parallelTasks,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1);
   }
 
   private void assertTaskSequence(

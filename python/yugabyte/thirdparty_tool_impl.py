@@ -125,6 +125,11 @@ def parse_args() -> argparse.Namespace:
             inline_thirdparty.INLINE_THIRDPARTY_SRC_DIR,
             inline_thirdparty.INLINE_THIRDPARTY_CONFIG_PATH
         ))
+    parser.add_argument(
+        '--inline-thirdparty-deps',
+        nargs='+',
+        help='Names of inline third-party dependencies to sync. If not specified, all dependencies '
+             'will be synced.')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)

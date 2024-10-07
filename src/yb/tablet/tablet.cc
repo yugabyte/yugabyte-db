@@ -5257,5 +5257,34 @@ void ScopedReadOperation::Reset() {
   }
 }
 
+Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::string& dir) {
+  std::vector<std::string> files;
+  auto env = Env::Default();
+  auto status = env->GetChildren(dir, ExcludeDots::kTrue, &files);
+  if (!status.ok()) {
+    return STATUS_FORMAT(IllegalState, "Unable to get files in dir $0: $1", dir, status.ToString());
+  }
+
+  google::protobuf::RepeatedPtrField<tablet::FilePB> result;
+  result.Reserve(narrow_cast<int>(files.size()));
+  for (const auto& file : files) {
+    auto full_path = JoinPathSegments(dir, file);
+    if (VERIFY_RESULT(env->IsDirectory(full_path))) {
+      auto sub_files = VERIFY_RESULT(ListFiles(full_path));
+      for (auto& subfile : sub_files) {
+        subfile.set_name(JoinPathSegments(file, subfile.name()));
+        *result.Add() = std::move(subfile);
+      }
+      continue;
+    }
+    auto file_pb = result.Add();
+    file_pb->set_name(file);
+    file_pb->set_size_bytes(VERIFY_RESULT(env->GetFileSize(full_path)));
+    file_pb->set_inode(VERIFY_RESULT(env->GetFileINode(full_path)));
+  }
+
+  return result;
+}
+
 }  // namespace tablet
 }  // namespace yb

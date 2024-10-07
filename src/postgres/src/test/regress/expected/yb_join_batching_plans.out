@@ -183,11 +183,14 @@ EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND 
          Join Filter: ((t11.x = t12.y) AND (t10.r2 = t12.c2) AND (t10.r4 = t12.c4))
          ->  Nested Loop
                ->  Seq Scan on t11
-               ->  Index Only Scan using i_t on t10
-                     Index Cond: ((r1 = t11.c1) AND (r3 = t11.c3))
+               ->  Memoize
+                     Cache Key: t11.c1, t11.c3
+                     Cache Mode: logical
+                     ->  Index Only Scan using i_t on t10
+                           Index Cond: ((r1 = t11.c1) AND (r3 = t11.c3))
          ->  Materialize
                ->  Seq Scan on t12
-(10 rows)
+(13 rows)
 
 DROP TABLE t10;
 DROP TABLE t11;
@@ -598,17 +601,17 @@ create table tab2_p3 partition of tab2 for values from (20) to (maxvalue);
 create index i_tab2_r2 on tab2 (r2 asc);
 SET yb_bnl_batch_size = 1024;
 explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
-                          QUERY PLAN
---------------------------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Nested Loop
-   Join Filter: (tab1.r1 = tab2_p1.r2)
+   Join Filter: (tab1.r1 = tab2.r2)
    ->  Seq Scan on tab1
    ->  Materialize
          ->  Append
-               ->  Index Scan using tab2_p1_r2_idx on tab2_p1
-               ->  Index Scan using tab2_p2_r2_idx on tab2_p2
-               ->  Index Scan using tab2_p3_r2_idx on tab2_p3
-               ->  Index Scan using tab2_p0_r2_idx on tab2_p0
+               ->  Index Scan using tab2_p1_r2_idx on tab2_p1 tab2_1
+               ->  Index Scan using tab2_p2_r2_idx on tab2_p2 tab2_2
+               ->  Index Scan using tab2_p3_r2_idx on tab2_p3 tab2_3
+               ->  Index Scan using tab2_p0_r2_idx on tab2_p0 tab2_4
 (9 rows)
 
 drop table tab2;

@@ -4,10 +4,12 @@
 
 BEGIN;
 
-SELECT *
-   INTO TABLE xacttest
-   FROM aggtest;
-
+CREATE TABLE xacttest (a smallint, b real);
+INSERT INTO xacttest VALUES
+  (56, 7.8),
+  (100, 99.097),
+  (0, 0.09561),
+  (42, 324.78);
 INSERT INTO xacttest (a, b) VALUES (777, 777.777);
 
 END;
@@ -20,10 +22,10 @@ BEGIN;
 
 CREATE TABLE disappear (a int4);
 
-DELETE FROM aggtest;
+DELETE FROM xacttest;
 
 -- should be empty
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
 
 ABORT;
 
@@ -31,7 +33,7 @@ ABORT;
 SELECT oid FROM pg_class WHERE relname = 'disappear';
 
 -- should have members again
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
 
 
 -- Read-only tests
@@ -419,6 +421,84 @@ DROP FUNCTION create_temp_tab();
 DROP FUNCTION invert(x float8);
 
 
+-- Tests for AND CHAIN
+
+CREATE TABLE abc (a int);
+
+-- set nondefault value so we have something to override below
+SET default_transaction_read_only = on;
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES (1);
+INSERT INTO abc VALUES (2);
+COMMIT AND CHAIN;  -- TBLOCK_END
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES ('error');
+INSERT INTO abc VALUES (3);  -- check it's really aborted
+COMMIT AND CHAIN;  -- TBLOCK_ABORT_END
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES (4);
+COMMIT;
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+SAVEPOINT x;
+INSERT INTO abc VALUES ('error');
+COMMIT AND CHAIN;  -- TBLOCK_ABORT_PENDING
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES (5);
+COMMIT;
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+SAVEPOINT x;
+COMMIT AND CHAIN;  -- TBLOCK_SUBCOMMIT
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+COMMIT;
+
+-- different mix of options just for fun
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE, NOT DEFERRABLE;
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES (6);
+ROLLBACK AND CHAIN;  -- TBLOCK_ABORT_PENDING
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+INSERT INTO abc VALUES ('error');
+ROLLBACK AND CHAIN;  -- TBLOCK_ABORT_END
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+ROLLBACK;
+
+-- not allowed outside a transaction block
+COMMIT AND CHAIN;  -- error
+ROLLBACK AND CHAIN;  -- error
+
+SELECT * FROM abc ORDER BY 1;
+
+RESET default_transaction_read_only;
+
+DROP TABLE abc;
+
+
 -- Test assorted behaviors around the implicit transaction block created
 -- when multiple SQL commands are sent in a single Query message.  These
 -- tests rely on the fact that psql will not break SQL commands apart at a
@@ -426,7 +506,7 @@ DROP FUNCTION invert(x float8);
 
 create temp table i_table (f1 int);
 
--- psql will show only the last result in a multi-statement Query
+-- psql will show all results of a multi-statement Query
 SELECT 1\; SELECT 2\; SELECT 3;
 
 -- this implicitly commits:
@@ -471,6 +551,49 @@ SELECT 2\; RELEASE SAVEPOINT sp\; SELECT 3;
 
 -- but this is OK, because the BEGIN converts it to a regular xact
 SELECT 1\; BEGIN\; SAVEPOINT sp\; ROLLBACK TO SAVEPOINT sp\; COMMIT;
+
+
+-- Tests for AND CHAIN in implicit transaction blocks
+
+SET TRANSACTION READ ONLY\; COMMIT AND CHAIN;  -- error
+SHOW transaction_read_only;
+
+SET TRANSACTION READ ONLY\; ROLLBACK AND CHAIN;  -- error
+SHOW transaction_read_only;
+
+CREATE TABLE abc (a int);
+
+-- COMMIT/ROLLBACK + COMMIT/ROLLBACK AND CHAIN
+INSERT INTO abc VALUES (7)\; COMMIT\; INSERT INTO abc VALUES (8)\; COMMIT AND CHAIN;  -- 7 commit, 8 error
+INSERT INTO abc VALUES (9)\; ROLLBACK\; INSERT INTO abc VALUES (10)\; ROLLBACK AND CHAIN;  -- 9 rollback, 10 error
+
+-- COMMIT/ROLLBACK AND CHAIN + COMMIT/ROLLBACK
+INSERT INTO abc VALUES (11)\; COMMIT AND CHAIN\; INSERT INTO abc VALUES (12)\; COMMIT;  -- 11 error, 12 not reached
+INSERT INTO abc VALUES (13)\; ROLLBACK AND CHAIN\; INSERT INTO abc VALUES (14)\; ROLLBACK;  -- 13 error, 14 not reached
+
+-- START TRANSACTION + COMMIT/ROLLBACK AND CHAIN
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (15)\; COMMIT AND CHAIN;  -- 15 ok
+SHOW transaction_isolation;  -- transaction is active at this point
+COMMIT;
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (16)\; ROLLBACK AND CHAIN;  -- 16 ok
+SHOW transaction_isolation;  -- transaction is active at this point
+ROLLBACK;
+
+SET default_transaction_isolation = 'read committed';
+
+-- START TRANSACTION + COMMIT/ROLLBACK + COMMIT/ROLLBACK AND CHAIN
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (17)\; COMMIT\; INSERT INTO abc VALUES (18)\; COMMIT AND CHAIN;  -- 17 commit, 18 error
+SHOW transaction_isolation;  -- out of transaction block
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (19)\; ROLLBACK\; INSERT INTO abc VALUES (20)\; ROLLBACK AND CHAIN;  -- 19 rollback, 20 error
+SHOW transaction_isolation;  -- out of transaction block
+
+RESET default_transaction_isolation;
+
+SELECT * FROM abc ORDER BY 1;
+
+DROP TABLE abc;
 
 
 -- Test for successful cleanup of an aborted transaction at session exit.

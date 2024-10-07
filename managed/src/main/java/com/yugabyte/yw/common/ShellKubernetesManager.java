@@ -516,7 +516,8 @@ public class ShellKubernetesManager extends KubernetesManager {
     return deserialize(response.getMessage(), PersistentVolumeClaimList.class).getItems();
   }
 
-  private boolean checkStatefulSetStatus(
+  @Override
+  public boolean checkStatefulSetStatus(
       Map<String, String> config, String namespace, String labelSelector, int replicaCount) {
     List<String> commandList =
         ImmutableList.of(
@@ -544,22 +545,51 @@ public class ShellKubernetesManager extends KubernetesManager {
             "get",
             "statefulset",
             statefulSetNames[0],
-            "-o=jsonpath={.status.availableReplicas} {.status.replicas}");
+            "-o=jsonpath=replicas={.status.replicas}|readyReplicas={.status.readyReplicas}|availableReplicas={.status.availableReplicas}");
     response =
         execCommand(config, commandList, false)
             .processErrors("Unable to get StatefulSet status for " + statefulSetNames[0]);
 
-    // 2 values in output
-    String[] replicaCounts = response.getMessage().trim().split(" ");
-    boolean isReady = false;
-    if (replicaCounts.length == 2) {
-      int availableReplicas = Integer.parseInt(replicaCounts[0]);
-      int totalReplicas = Integer.parseInt(replicaCounts[1]);
-      if (availableReplicas == totalReplicas && totalReplicas == replicaCount) {
-        isReady = true;
+    Map<String, Integer> parsedValues = parseKubectlOutput(response.getMessage());
+
+    // Access values from the map
+    int replicas = parsedValues.get("replicas");
+    int readyReplicas = parsedValues.get("readyReplicas");
+    int availableReplicas = parsedValues.get("availableReplicas");
+
+    if (replicas <= 0 || replicas == availableReplicas || replicas == readyReplicas) {
+      // Either no replicas or all replicas are available/ready
+      return true;
+    }
+    return false;
+  }
+
+  private static Map<String, Integer> parseKubectlOutput(String response) {
+    // Create a map to store the parsed key-value pairs as integers
+    Map<String, Integer> resultMap = new HashMap<>();
+
+    resultMap.put("replicas", -1);
+    resultMap.put("readyReplicas", -1);
+    resultMap.put("availableReplicas", -1);
+
+    String[] fields = response.split("\\|");
+
+    for (String field : fields) {
+      // Split each field by '=' to separate key and value
+      String[] keyValue = field.split("=", 2);
+
+      // Check if we have both key and value
+      if (keyValue.length == 2 && !keyValue[1].isEmpty()) {
+        try {
+          // Parse the value as an integer and store it in the map
+          resultMap.put(keyValue[0], Integer.parseInt(keyValue[1]));
+        } catch (NumberFormatException e) {
+          // If parsing fails, keep the default value of -1
+          resultMap.put(keyValue[0], -1);
+        }
       }
     }
-    return isReady;
+    return resultMap;
   }
 
   @Override

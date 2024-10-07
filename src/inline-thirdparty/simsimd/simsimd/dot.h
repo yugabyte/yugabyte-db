@@ -82,7 +82,11 @@ SIMSIMD_PUBLIC void simsimd_dot_f16_neon(simsimd_f16_t const* a, simsimd_f16_t c
 SIMSIMD_PUBLIC void simsimd_dot_f16c_neon(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n, simsimd_distance_t* results);
 SIMSIMD_PUBLIC void simsimd_vdot_f16c_neon(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n, simsimd_distance_t* results);
 
-SIMSIMD_PUBLIC void simsimd_dot_i8_serial(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n, simsimd_distance_t* result);
+SIMSIMD_PUBLIC void simsimd_dot_i8_neon(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n, simsimd_distance_t* result);
+
+SIMSIMD_PUBLIC void simsimd_dot_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t* result);
+SIMSIMD_PUBLIC void simsimd_dot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t* results);
+SIMSIMD_PUBLIC void simsimd_vdot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t* results);
 
 /*  SIMD-powered backends for Arm SVE, mostly using 32-bit arithmetic over variable-length platform-defined word sizes.
  *  Designed for Arm Graviton 3, Microsoft Cobalt, as well as Nvidia Grace and newer Ampere Altra CPUs.
@@ -131,7 +135,7 @@ SIMSIMD_PUBLIC void simsimd_dot_f32_skylake(simsimd_f32_t const* a, simsimd_f32_
 SIMSIMD_PUBLIC void simsimd_dot_f32c_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n, simsimd_distance_t* result);
 SIMSIMD_PUBLIC void simsimd_vdot_f32c_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n, simsimd_distance_t* result);
 
-SIMSIMD_PUBLIC void simsimd_dot_i8_ice(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n, simsimd_distance_t*);
+SIMSIMD_PUBLIC void simsimd_dot_i8_ice(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n, simsimd_distance_t* result);
 
 SIMSIMD_PUBLIC void simsimd_dot_bf16_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t* result);
 SIMSIMD_PUBLIC void simsimd_dot_bf16c_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, simsimd_distance_t* result);
@@ -197,13 +201,13 @@ SIMSIMD_MAKE_DOT(serial, f32, f32, SIMSIMD_DEREFERENCE)          // simsimd_dot_
 SIMSIMD_MAKE_COMPLEX_DOT(serial, f32, f32, SIMSIMD_DEREFERENCE)  // simsimd_dot_f32c_serial
 SIMSIMD_MAKE_COMPLEX_VDOT(serial, f32, f32, SIMSIMD_DEREFERENCE) // simsimd_vdot_f32c_serial
 
-SIMSIMD_MAKE_DOT(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16)          // simsimd_dot_f16_serial
-SIMSIMD_MAKE_COMPLEX_DOT(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16)  // simsimd_dot_f16c_serial
-SIMSIMD_MAKE_COMPLEX_VDOT(serial, f16, f32, SIMSIMD_UNCOMPRESS_F16) // simsimd_vdot_f16c_serial
+SIMSIMD_MAKE_DOT(serial, f16, f32, SIMSIMD_F16_TO_F32)          // simsimd_dot_f16_serial
+SIMSIMD_MAKE_COMPLEX_DOT(serial, f16, f32, SIMSIMD_F16_TO_F32)  // simsimd_dot_f16c_serial
+SIMSIMD_MAKE_COMPLEX_VDOT(serial, f16, f32, SIMSIMD_F16_TO_F32) // simsimd_vdot_f16c_serial
 
-SIMSIMD_MAKE_DOT(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16)          // simsimd_dot_bf16_serial
-SIMSIMD_MAKE_COMPLEX_DOT(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16)  // simsimd_dot_bf16c_serial
-SIMSIMD_MAKE_COMPLEX_VDOT(serial, bf16, f32, SIMSIMD_UNCOMPRESS_BF16) // simsimd_vdot_bf16c_serial
+SIMSIMD_MAKE_DOT(serial, bf16, f32, SIMSIMD_BF16_TO_F32)          // simsimd_dot_bf16_serial
+SIMSIMD_MAKE_COMPLEX_DOT(serial, bf16, f32, SIMSIMD_BF16_TO_F32)  // simsimd_dot_bf16c_serial
+SIMSIMD_MAKE_COMPLEX_VDOT(serial, bf16, f32, SIMSIMD_BF16_TO_F32) // simsimd_vdot_bf16c_serial
 
 SIMSIMD_MAKE_DOT(serial, i8, i64, SIMSIMD_DEREFERENCE) // simsimd_dot_i8_serial
 
@@ -211,21 +215,24 @@ SIMSIMD_MAKE_DOT(accurate, f32, f64, SIMSIMD_DEREFERENCE)          // simsimd_do
 SIMSIMD_MAKE_COMPLEX_DOT(accurate, f32, f64, SIMSIMD_DEREFERENCE)  // simsimd_dot_f32c_accurate
 SIMSIMD_MAKE_COMPLEX_VDOT(accurate, f32, f64, SIMSIMD_DEREFERENCE) // simsimd_vdot_f32c_accurate
 
-SIMSIMD_MAKE_DOT(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16)          // simsimd_dot_f16_accurate
-SIMSIMD_MAKE_COMPLEX_DOT(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16)  // simsimd_dot_f16c_accurate
-SIMSIMD_MAKE_COMPLEX_VDOT(accurate, f16, f64, SIMSIMD_UNCOMPRESS_F16) // simsimd_vdot_f16c_accurate
+SIMSIMD_MAKE_DOT(accurate, f16, f64, SIMSIMD_F16_TO_F32)          // simsimd_dot_f16_accurate
+SIMSIMD_MAKE_COMPLEX_DOT(accurate, f16, f64, SIMSIMD_F16_TO_F32)  // simsimd_dot_f16c_accurate
+SIMSIMD_MAKE_COMPLEX_VDOT(accurate, f16, f64, SIMSIMD_F16_TO_F32) // simsimd_vdot_f16c_accurate
 
-SIMSIMD_MAKE_DOT(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16)          // simsimd_dot_bf16_accurate
-SIMSIMD_MAKE_COMPLEX_DOT(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16)  // simsimd_dot_bf16c_accurate
-SIMSIMD_MAKE_COMPLEX_VDOT(accurate, bf16, f64, SIMSIMD_UNCOMPRESS_BF16) // simsimd_vdot_bf16c_accurate
+SIMSIMD_MAKE_DOT(accurate, bf16, f64, SIMSIMD_BF16_TO_F32)          // simsimd_dot_bf16_accurate
+SIMSIMD_MAKE_COMPLEX_DOT(accurate, bf16, f64, SIMSIMD_BF16_TO_F32)  // simsimd_dot_bf16c_accurate
+SIMSIMD_MAKE_COMPLEX_VDOT(accurate, bf16, f64, SIMSIMD_BF16_TO_F32) // simsimd_vdot_bf16c_accurate
 
 #if SIMSIMD_TARGET_ARM
 #if SIMSIMD_TARGET_NEON
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd"))), apply_to = function)
 
-SIMSIMD_INTERNAL float32x4_t simsimd_partial_load_f32x4_neon(simsimd_f32_t const* a, simsimd_size_t n) {
+#endif
+
+SIMSIMD_INTERNAL float32x4_t _simsimd_partial_load_f32x4_neon(simsimd_f32_t const* a, simsimd_size_t n) {
     union {
         float32x4_t vec;
         simsimd_f32_t scalars[4];
@@ -323,12 +330,17 @@ SIMSIMD_PUBLIC void simsimd_vdot_f32c_neon(simsimd_f32_t const* a, simsimd_f32_t
     results[1] = ab_imag;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+dotprod")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+dotprod"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_i8_neon(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
                                         simsimd_distance_t* result) {
@@ -360,17 +372,22 @@ SIMSIMD_PUBLIC void simsimd_dot_i8_neon(simsimd_i8_t const* a, simsimd_i8_t cons
     *result = ab;
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif
 
 #if SIMSIMD_TARGET_NEON_F16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+simd+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+simd+fp16"))), apply_to = function)
 
-SIMSIMD_INTERNAL float16x4_t simsimd_partial_load_f16x4_neon(simsimd_f16_t const* a, simsimd_size_t n) {
-    // In case the software emulation for `f16` scalars is enabled, the `simsimd_uncompress_f16`
+#endif
+
+SIMSIMD_INTERNAL float16x4_t _simsimd_partial_load_f16x4_neon(simsimd_f16_t const* a, simsimd_size_t n) {
+    // In case the software emulation for `f16` scalars is enabled, the `simsimd_f16_to_f32`
     // function will run. It is extremely slow, so even for the tail, let's combine serial
     // loads and stores with vectorized math.
     union {
@@ -393,8 +410,8 @@ SIMSIMD_PUBLIC void simsimd_dot_f16_neon(simsimd_f16_t const* a, simsimd_f16_t c
 
 simsimd_dot_f16_neon_cycle:
     if (n < 4) {
-        a_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(a, n));
-        b_vec = vcvt_f32_f16(simsimd_partial_load_f16x4_neon(b, n));
+        a_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(a, n));
+        b_vec = vcvt_f32_f16(_simsimd_partial_load_f16x4_neon(b, n));
         n = 0;
     } else {
         a_vec = vcvt_f32_f16(vld1_f16((simsimd_f16_for_arm_simd_t const*)a));
@@ -477,16 +494,21 @@ SIMSIMD_PUBLIC void simsimd_vdot_f16c_neon(simsimd_f16_t const* a, simsimd_f16_t
     results[1] += vaddvq_f32(ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_F16
 
 #if SIMSIMD_TARGET_NEON_BF16
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.6-a+simd+bf16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.6-a+simd+bf16"))), apply_to = function)
 
-SIMSIMD_INTERNAL bfloat16x8_t simsimd_partial_load_bf16x8_neon(simsimd_bf16_t const* a, simsimd_size_t n) {
+#endif
+
+SIMSIMD_INTERNAL bfloat16x8_t _simsimd_partial_load_bf16x8_neon(simsimd_bf16_t const* a, simsimd_size_t n) {
     union {
         bfloat16x8_t vec;
         simsimd_bf16_t scalars[8];
@@ -501,29 +523,27 @@ SIMSIMD_INTERNAL bfloat16x8_t simsimd_partial_load_bf16x8_neon(simsimd_bf16_t co
 
 SIMSIMD_PUBLIC void simsimd_dot_bf16_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                           simsimd_distance_t* result) {
-
-    float32x4_t ab_high_vec = vdupq_n_f32(0), ab_low_vec = vdupq_n_f32(0);
+    float32x4_t ab_vec = vdupq_n_f32(0);
     bfloat16x8_t a_vec, b_vec;
 
 simsimd_dot_bf16_neon_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_bf16x8_neon(a, n);
-        b_vec = simsimd_partial_load_bf16x8_neon(b, n);
+        a_vec = _simsimd_partial_load_bf16x8_neon(a, n);
+        b_vec = _simsimd_partial_load_bf16x8_neon(b, n);
         n = 0;
     } else {
         a_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)a);
         b_vec = vld1q_bf16((simsimd_bf16_for_arm_simd_t const*)b);
         a += 8, b += 8, n -= 8;
     }
-    ab_high_vec = vbfmlaltq_f32(ab_high_vec, a_vec, b_vec);
-    ab_low_vec = vbfmlalbq_f32(ab_low_vec, a_vec, b_vec);
+    ab_vec = vbfdotq_f32(ab_vec, a_vec, b_vec);
     if (n)
         goto simsimd_dot_bf16_neon_cycle;
 
-    *result = vaddvq_f32(ab_high_vec) + vaddvq_f32(ab_low_vec);
+    *result = vaddvq_f32(ab_vec);
 }
 
-SIMSIMD_PUBLIC void simsimd_dot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n, //
+SIMSIMD_PUBLIC void simsimd_dot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                            simsimd_distance_t* results) {
 
     // A nicer approach is to use `bf16` arithmetic for the dot product, but that requires
@@ -593,7 +613,9 @@ SIMSIMD_PUBLIC void simsimd_vdot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf1
     results[1] += vaddvq_f32(ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_NEON_BF16
 
@@ -601,7 +623,10 @@ SIMSIMD_PUBLIC void simsimd_vdot_bf16c_neon(simsimd_bf16_t const* a, simsimd_bf1
 
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+sve"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_f32_sve(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                         simsimd_distance_t* result) {
@@ -723,12 +748,17 @@ SIMSIMD_PUBLIC void simsimd_vdot_f64c_sve(simsimd_f64_t const* a, simsimd_f64_t 
     results[1] = svaddv_f64(svptrue_b64(), ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve+fp16")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("arch=armv8.2-a+sve+fp16"))), apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_f16_sve(simsimd_f16_t const* a_enum, simsimd_f16_t const* b_enum, simsimd_size_t n,
                                         simsimd_distance_t* result) {
@@ -793,7 +823,9 @@ SIMSIMD_PUBLIC void simsimd_vdot_f16c_sve(simsimd_f16_t const* a, simsimd_f16_t 
     results[1] = svaddv_f16(svptrue_b16(), ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SVE
 #endif // SIMSIMD_TARGET_ARM
@@ -802,9 +834,12 @@ SIMSIMD_PUBLIC void simsimd_vdot_f16c_sve(simsimd_f16_t const* a, simsimd_f16_t 
 #if SIMSIMD_TARGET_HASWELL
 #pragma GCC push_options
 #pragma GCC target("avx2", "f16c", "fma")
+#ifdef __clang__
 #pragma clang attribute push(__attribute__((target("avx2,f16c,fma"))), apply_to = function)
 
-SIMSIMD_INTERNAL simsimd_f64_t _mm256_reduce_add_ps_dbl(__m256 vec) {
+#endif
+
+SIMSIMD_INTERNAL simsimd_f64_t _simsimd_reduce_f32x8_haswell(__m256 vec) {
     // Convert the lower and higher 128-bit lanes of the input vector to double precision
     __m128 low_f32 = _mm256_castps256_ps128(vec);
     __m128 high_f32 = _mm256_extractf128_ps(vec, 1);
@@ -839,7 +874,7 @@ SIMSIMD_PUBLIC void simsimd_dot_f32_haswell(simsimd_f32_t const* a, simsimd_f32_
         __m256 b_vec = _mm256_loadu_ps(b + i);
         ab_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_vec);
     }
-    simsimd_f64_t ab = _mm256_reduce_add_ps_dbl(ab_vec);
+    simsimd_f64_t ab = _simsimd_reduce_f32x8_haswell(ab_vec);
     for (; i < n; ++i)
         ab += a[i] * b[i];
     *results = ab;
@@ -874,7 +909,7 @@ SIMSIMD_PUBLIC void simsimd_dot_f32c_haswell(simsimd_f32_t const* a, simsimd_f32
     // To multiply a floating-point value by -1, we can use the `XOR` instruction to flip the sign bit.
     // This way we can avoid the shuffling and the need for separate real and imaginary parts.
     // For the imaginary part of the product, we would need to swap the real and imaginary parts of
-    // one of the vectors.
+    // one of the vectors. Moreover, `XOR` can be placed after the primary loop.
     // Both operations are quite cheap, and the throughput doubles from 2.5 GB/s to 5 GB/s.
     __m256 ab_real_vec = _mm256_setzero_ps();
     __m256 ab_imag_vec = _mm256_setzero_ps();
@@ -893,15 +928,17 @@ SIMSIMD_PUBLIC void simsimd_dot_f32c_haswell(simsimd_f32_t const* a, simsimd_f32
     for (; i + 8 <= n; i += 8) {
         __m256 a_vec = _mm256_loadu_ps(a + i);
         __m256 b_vec = _mm256_loadu_ps(b + i);
-        __m256 b_flipped_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(b_vec), sign_flip_vec));
         __m256 b_swapped_vec = _mm256_castsi256_ps(_mm256_shuffle_epi8(_mm256_castps_si256(b_vec), swap_adjacent_vec));
-        ab_real_vec = _mm256_fmadd_ps(a_vec, b_flipped_vec, ab_real_vec);
+        ab_real_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_real_vec);
         ab_imag_vec = _mm256_fmadd_ps(a_vec, b_swapped_vec, ab_imag_vec);
     }
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_real_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(ab_real_vec), sign_flip_vec));
+
     // Reduce horizontal sums:
-    simsimd_distance_t ab_real = _mm256_reduce_add_ps_dbl(ab_real_vec);
-    simsimd_distance_t ab_imag = _mm256_reduce_add_ps_dbl(ab_imag_vec);
+    simsimd_distance_t ab_real = _simsimd_reduce_f32x8_haswell(ab_real_vec);
+    simsimd_distance_t ab_imag = _simsimd_reduce_f32x8_haswell(ab_imag_vec);
 
     // Handle the tail:
     for (; i + 2 <= n; i += 2) {
@@ -934,14 +971,16 @@ SIMSIMD_PUBLIC void simsimd_vdot_f32c_haswell(simsimd_f32_t const* a, simsimd_f3
         __m256 a_vec = _mm256_loadu_ps(a + i);
         __m256 b_vec = _mm256_loadu_ps(b + i);
         ab_real_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_real_vec);
-        a_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(a_vec), sign_flip_vec));
         b_vec = _mm256_castsi256_ps(_mm256_shuffle_epi8(_mm256_castps_si256(b_vec), swap_adjacent_vec));
         ab_imag_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_imag_vec);
     }
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_imag_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(ab_imag_vec), sign_flip_vec));
+
     // Reduce horizontal sums:
-    simsimd_distance_t ab_real = _mm256_reduce_add_ps_dbl(ab_real_vec);
-    simsimd_distance_t ab_imag = _mm256_reduce_add_ps_dbl(ab_imag_vec);
+    simsimd_distance_t ab_real = _simsimd_reduce_f32x8_haswell(ab_real_vec);
+    simsimd_distance_t ab_imag = _simsimd_reduce_f32x8_haswell(ab_imag_vec);
 
     // Handle the tail:
     for (; i + 2 <= n; i += 2) {
@@ -953,8 +992,8 @@ SIMSIMD_PUBLIC void simsimd_vdot_f32c_haswell(simsimd_f32_t const* a, simsimd_f3
     results[1] = ab_imag;
 }
 
-SIMSIMD_INTERNAL __m256 simsimd_partial_load_f16x8_haswell(simsimd_f16_t const* a, simsimd_size_t n) {
-    // In case the software emulation for `f16` scalars is enabled, the `simsimd_uncompress_f16`
+SIMSIMD_INTERNAL __m256 _simsimd_partial_load_f16x8_haswell(simsimd_f16_t const* a, simsimd_size_t n) {
+    // In case the software emulation for `f16` scalars is enabled, the `simsimd_f16_to_f32`
     // function will run. It is extremely slow, so even for the tail, let's combine serial
     // loads and stores with vectorized math.
     union {
@@ -976,8 +1015,8 @@ SIMSIMD_PUBLIC void simsimd_dot_f16_haswell(simsimd_f16_t const* a, simsimd_f16_
 
 simsimd_dot_f16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_f16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_f16x8_haswell(b, n);
+        a_vec = _simsimd_partial_load_f16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_f16x8_haswell(b, n);
         n = 0;
     } else {
         a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
@@ -988,7 +1027,7 @@ simsimd_dot_f16_haswell_cycle:
     if (n)
         goto simsimd_dot_f16_haswell_cycle;
 
-    *result = _mm256_reduce_add_ps_dbl(ab_vec);
+    *result = _simsimd_reduce_f32x8_haswell(ab_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_dot_f16c_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
@@ -1017,18 +1056,20 @@ SIMSIMD_PUBLIC void simsimd_dot_f16c_haswell(simsimd_f16_t const* a, simsimd_f16
     while (n >= 8) {
         __m256 a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
         __m256 b_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)b));
-        __m256 b_flipped_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(b_vec), sign_flip_vec));
         __m256 b_swapped_vec = _mm256_castsi256_ps(_mm256_shuffle_epi8(_mm256_castps_si256(b_vec), swap_adjacent_vec));
-        ab_real_vec = _mm256_fmadd_ps(a_vec, b_flipped_vec, ab_real_vec);
+        ab_real_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_real_vec);
         ab_imag_vec = _mm256_fmadd_ps(a_vec, b_swapped_vec, ab_imag_vec);
 
         n -= 8, a += 8, b += 8;
     }
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_real_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(ab_real_vec), sign_flip_vec));
+
     // Reduce horizontal sums and aggregate with the tail:
     simsimd_dot_f16c_serial(a, b, n, results);
-    results[0] += _mm256_reduce_add_ps_dbl(ab_real_vec);
-    results[1] += _mm256_reduce_add_ps_dbl(ab_imag_vec);
+    results[0] += _simsimd_reduce_f32x8_haswell(ab_real_vec);
+    results[1] += _simsimd_reduce_f32x8_haswell(ab_imag_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_vdot_f16c_haswell(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
@@ -1052,17 +1093,19 @@ SIMSIMD_PUBLIC void simsimd_vdot_f16c_haswell(simsimd_f16_t const* a, simsimd_f1
         __m256 a_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)a));
         __m256 b_vec = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const*)b));
         ab_real_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_real_vec);
-        a_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(a_vec), sign_flip_vec));
         b_vec = _mm256_castsi256_ps(_mm256_shuffle_epi8(_mm256_castps_si256(b_vec), swap_adjacent_vec));
         ab_imag_vec = _mm256_fmadd_ps(a_vec, b_vec, ab_imag_vec);
 
         n -= 8, a += 8, b += 8;
     }
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_imag_vec = _mm256_castsi256_ps(_mm256_xor_si256(_mm256_castps_si256(ab_imag_vec), sign_flip_vec));
+
     // Reduce horizontal sums and aggregate with the tail:
     simsimd_dot_f16c_serial(a, b, n, results);
-    results[0] = _mm256_reduce_add_ps_dbl(ab_real_vec);
-    results[1] = _mm256_reduce_add_ps_dbl(ab_imag_vec);
+    results[0] += _simsimd_reduce_f32x8_haswell(ab_real_vec);
+    results[1] += _simsimd_reduce_f32x8_haswell(ab_imag_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_dot_i8_haswell(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
@@ -1100,13 +1143,13 @@ SIMSIMD_PUBLIC void simsimd_dot_i8_haswell(simsimd_i8_t const* a, simsimd_i8_t c
     *result = ab;
 }
 
-SIMSIMD_INTERNAL __m256 simsimd_bf16x8_to_f32x8_haswell(__m128i a) {
+SIMSIMD_INTERNAL __m256 _simsimd_bf16x8_to_f32x8_haswell(__m128i a) {
     // Upcasting from `bf16` to `f32` is done by shifting the `bf16` values by 16 bits to the left, like:
     return _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(a), 16));
 }
 
-SIMSIMD_INTERNAL __m128i simsimd_partial_load_bf16x8_haswell(simsimd_bf16_t const* a, simsimd_size_t n) {
-    // In case the software emulation for `bf16` scalars is enabled, the `simsimd_uncompress_bf16`
+SIMSIMD_INTERNAL __m128i _simsimd_partial_load_bf16x8_haswell(simsimd_bf16_t const* a, simsimd_size_t n) {
+    // In case the software emulation for `bf16` scalars is enabled, the `simsimd_bf16_to_f32`
     // function will run. It is extremely slow, so even for the tail, let's combine serial
     // loads and stores with vectorized math.
     union {
@@ -1128,29 +1171,41 @@ SIMSIMD_PUBLIC void simsimd_dot_bf16_haswell(simsimd_bf16_t const* a, simsimd_bf
 
 simsimd_dot_bf16_haswell_cycle:
     if (n < 8) {
-        a_vec = simsimd_partial_load_bf16x8_haswell(a, n);
-        b_vec = simsimd_partial_load_bf16x8_haswell(b, n);
+        a_vec = _simsimd_partial_load_bf16x8_haswell(a, n);
+        b_vec = _simsimd_partial_load_bf16x8_haswell(b, n);
         n = 0;
     } else {
         a_vec = _mm_loadu_si128((__m128i const*)a);
         b_vec = _mm_loadu_si128((__m128i const*)b);
         a += 8, b += 8, n -= 8;
     }
-    ab_vec = _mm256_fmadd_ps(simsimd_bf16x8_to_f32x8_haswell(a_vec), simsimd_bf16x8_to_f32x8_haswell(b_vec), ab_vec);
+    ab_vec = _mm256_fmadd_ps(_simsimd_bf16x8_to_f32x8_haswell(a_vec), _simsimd_bf16x8_to_f32x8_haswell(b_vec), ab_vec);
     if (n)
         goto simsimd_dot_bf16_haswell_cycle;
 
-    *result = _mm256_reduce_add_ps_dbl(ab_vec);
+    *result = _simsimd_reduce_f32x8_haswell(ab_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_HASWELL
 
 #if SIMSIMD_TARGET_SKYLAKE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "avx512bw", "bmi2")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,avx512bw,bmi2"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "avx512bw", "bmi2")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,avx512bw,bmi2"))), apply_to = function)
+
+#endif
+
+SIMSIMD_INTERNAL simsimd_f64_t _simsimd_reduce_f32x16_skylake(__m512 a) {
+    __m512 x = _mm512_add_ps(a, _mm512_shuffle_f32x4(a, a, _MM_SHUFFLE(0, 0, 3, 2)));
+    __m128 r = _mm512_castps512_ps128(_mm512_add_ps(x, _mm512_shuffle_f32x4(x, x, _MM_SHUFFLE(0, 0, 0, 1))));
+    r = _mm_hadd_ps(r, r);
+    return _mm_cvtss_f32(_mm_hadd_ps(r, r));
+}
 
 SIMSIMD_PUBLIC void simsimd_dot_f32_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                             simsimd_distance_t* result) {
@@ -1172,7 +1227,7 @@ simsimd_dot_f32_skylake_cycle:
     if (n)
         goto simsimd_dot_f32_skylake_cycle;
 
-    *result = _mm512_reduce_add_ps(ab_vec);
+    *result = _simsimd_reduce_f32x16_skylake(ab_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_dot_f64_skylake(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n,
@@ -1200,11 +1255,10 @@ simsimd_dot_f64_skylake_cycle:
 
 SIMSIMD_PUBLIC void simsimd_dot_f32c_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                              simsimd_distance_t* results) {
-
     __m512 ab_real_vec = _mm512_setzero();
     __m512 ab_imag_vec = _mm512_setzero();
     __m512 a_vec;
-    __m512i b_vec;
+    __m512 b_vec;
 
     // We take into account, that FMS is the same as FMA with a negative multiplier.
     // To multiply a floating-point value by -1, we can use the `XOR` instruction to flip the sign bit.
@@ -1222,27 +1276,29 @@ simsimd_dot_f32c_skylake_cycle:
     if (n < 16) {
         __mmask16 mask = (__mmask16)_bzhi_u32(0xFFFFFFFF, n);
         a_vec = _mm512_maskz_loadu_ps(mask, a);
-        b_vec = _mm512_castps_si512(_mm512_maskz_loadu_ps(mask, b));
+        b_vec = _mm512_maskz_loadu_ps(mask, b);
         n = 0;
     } else {
         a_vec = _mm512_loadu_ps(a);
-        b_vec = _mm512_castps_si512(_mm512_loadu_ps(b));
+        b_vec = _mm512_loadu_ps(b);
         a += 16, b += 16, n -= 16;
     }
-    ab_real_vec = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_xor_si512(b_vec, sign_flip_vec)), a_vec, ab_real_vec);
-    ab_imag_vec =
-        _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_shuffle_epi8(b_vec, swap_adjacent_vec)), a_vec, ab_imag_vec);
+    ab_real_vec = _mm512_fmadd_ps(b_vec, a_vec, ab_real_vec);
+    ab_imag_vec = _mm512_fmadd_ps(
+        _mm512_castsi512_ps(_mm512_shuffle_epi8(_mm512_castps_si512(b_vec), swap_adjacent_vec)), a_vec, ab_imag_vec);
     if (n)
         goto simsimd_dot_f32c_skylake_cycle;
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_real_vec = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(ab_real_vec), sign_flip_vec));
+
     // Reduce horizontal sums:
-    results[0] = _mm512_reduce_add_ps(ab_real_vec);
-    results[1] = _mm512_reduce_add_ps(ab_imag_vec);
+    results[0] = _simsimd_reduce_f32x16_skylake(ab_real_vec);
+    results[1] = _simsimd_reduce_f32x16_skylake(ab_imag_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_vdot_f32c_skylake(simsimd_f32_t const* a, simsimd_f32_t const* b, simsimd_size_t n,
                                               simsimd_distance_t* results) {
-
     __m512 ab_real_vec = _mm512_setzero();
     __m512 ab_imag_vec = _mm512_setzero();
     __m512 a_vec;
@@ -1272,24 +1328,25 @@ simsimd_vdot_f32c_skylake_cycle:
         a += 16, b += 16, n -= 16;
     }
     ab_real_vec = _mm512_fmadd_ps(a_vec, b_vec, ab_real_vec);
-    a_vec = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(a_vec), sign_flip_vec));
     b_vec = _mm512_castsi512_ps(_mm512_shuffle_epi8(_mm512_castps_si512(b_vec), swap_adjacent_vec));
     ab_imag_vec = _mm512_fmadd_ps(a_vec, b_vec, ab_imag_vec);
     if (n)
         goto simsimd_vdot_f32c_skylake_cycle;
 
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_imag_vec = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(ab_imag_vec), sign_flip_vec));
+
     // Reduce horizontal sums:
-    results[0] = _mm512_reduce_add_ps(ab_real_vec);
-    results[1] = _mm512_reduce_add_ps(ab_imag_vec);
+    results[0] = _simsimd_reduce_f32x16_skylake(ab_real_vec);
+    results[1] = _simsimd_reduce_f32x16_skylake(ab_imag_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_dot_f64c_skylake(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n,
                                              simsimd_distance_t* results) {
-
     __m512d ab_real_vec = _mm512_setzero_pd();
     __m512d ab_imag_vec = _mm512_setzero_pd();
     __m512d a_vec;
-    __m512i b_vec;
+    __m512d b_vec;
 
     // We take into account, that FMS is the same as FMA with a negative multiplier.
     // To multiply a floating-point value by -1, we can use the `XOR` instruction to flip the sign bit.
@@ -1310,18 +1367,21 @@ simsimd_dot_f64c_skylake_cycle:
     if (n < 8) {
         __mmask8 mask = (__mmask8)_bzhi_u32(0xFFFFFFFF, n);
         a_vec = _mm512_maskz_loadu_pd(mask, a);
-        b_vec = _mm512_castpd_si512(_mm512_maskz_loadu_pd(mask, b));
+        b_vec = _mm512_maskz_loadu_pd(mask, b);
         n = 0;
     } else {
         a_vec = _mm512_loadu_pd(a);
-        b_vec = _mm512_castpd_si512(_mm512_loadu_pd(b));
+        b_vec = _mm512_loadu_pd(b);
         a += 8, b += 8, n -= 8;
     }
-    ab_real_vec = _mm512_fmadd_pd(_mm512_castsi512_pd(_mm512_xor_si512(b_vec, sign_flip_vec)), a_vec, ab_real_vec);
-    ab_imag_vec =
-        _mm512_fmadd_pd(_mm512_castsi512_pd(_mm512_shuffle_epi8(b_vec, swap_adjacent_vec)), a_vec, ab_imag_vec);
+    ab_real_vec = _mm512_fmadd_pd(b_vec, a_vec, ab_real_vec);
+    ab_imag_vec = _mm512_fmadd_pd(
+        _mm512_castsi512_pd(_mm512_shuffle_epi8(_mm512_castpd_si512(b_vec), swap_adjacent_vec)), a_vec, ab_imag_vec);
     if (n)
         goto simsimd_dot_f64c_skylake_cycle;
+
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_real_vec = _mm512_castsi512_pd(_mm512_xor_si512(_mm512_castpd_si512(ab_real_vec), sign_flip_vec));
 
     // Reduce horizontal sums:
     results[0] = _mm512_reduce_add_pd(ab_real_vec);
@@ -1330,7 +1390,6 @@ simsimd_dot_f64c_skylake_cycle:
 
 SIMSIMD_PUBLIC void simsimd_vdot_f64c_skylake(simsimd_f64_t const* a, simsimd_f64_t const* b, simsimd_size_t n,
                                               simsimd_distance_t* results) {
-
     __m512d ab_real_vec = _mm512_setzero_pd();
     __m512d ab_imag_vec = _mm512_setzero_pd();
     __m512d a_vec;
@@ -1363,25 +1422,33 @@ simsimd_vdot_f64c_skylake_cycle:
         a += 8, b += 8, n -= 8;
     }
     ab_real_vec = _mm512_fmadd_pd(a_vec, b_vec, ab_real_vec);
-    a_vec = _mm512_castsi512_pd(_mm512_xor_si512(_mm512_castpd_si512(a_vec), sign_flip_vec));
     b_vec = _mm512_castsi512_pd(_mm512_shuffle_epi8(_mm512_castpd_si512(b_vec), swap_adjacent_vec));
     ab_imag_vec = _mm512_fmadd_pd(a_vec, b_vec, ab_imag_vec);
     if (n)
         goto simsimd_vdot_f64c_skylake_cycle;
+
+    // Flip the sign bit in every second scalar before accumulation:
+    ab_imag_vec = _mm512_castsi512_pd(_mm512_xor_si512(_mm512_castpd_si512(ab_imag_vec), sign_flip_vec));
 
     // Reduce horizontal sums:
     results[0] = _mm512_reduce_add_pd(ab_real_vec);
     results[1] = _mm512_reduce_add_pd(ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SKYLAKE
 
 #if SIMSIMD_TARGET_GENOA
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512bf16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512bf16"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_bf16_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                            simsimd_distance_t* result) {
@@ -1403,12 +1470,11 @@ simsimd_dot_bf16_genoa_cycle:
     if (n)
         goto simsimd_dot_bf16_genoa_cycle;
 
-    *result = _mm512_reduce_add_ps(ab_vec);
+    *result = _simsimd_reduce_f32x16_skylake(ab_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_dot_bf16c_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                             simsimd_distance_t* results) {
-
     __m512 ab_real_vec = _mm512_setzero_ps();
     __m512 ab_imag_vec = _mm512_setzero_ps();
     __m512i a_vec;
@@ -1445,13 +1511,12 @@ simsimd_dot_bf16c_genoa_cycle:
         goto simsimd_dot_bf16c_genoa_cycle;
 
     // Reduce horizontal sums:
-    results[0] = _mm512_reduce_add_ps(ab_real_vec);
-    results[1] = _mm512_reduce_add_ps(ab_imag_vec);
+    results[0] = _simsimd_reduce_f32x16_skylake(ab_real_vec);
+    results[1] = _simsimd_reduce_f32x16_skylake(ab_imag_vec);
 }
 
 SIMSIMD_PUBLIC void simsimd_vdot_bf16c_genoa(simsimd_bf16_t const* a, simsimd_bf16_t const* b, simsimd_size_t n,
                                              simsimd_distance_t* results) {
-
     __m512 ab_real_vec = _mm512_setzero_ps();
     __m512 ab_imag_vec = _mm512_setzero_ps();
     __m512i a_vec;
@@ -1489,18 +1554,24 @@ simsimd_dot_bf16c_genoa_cycle:
         goto simsimd_dot_bf16c_genoa_cycle;
 
     // Reduce horizontal sums:
-    results[0] = _mm512_reduce_add_ps(ab_real_vec);
-    results[1] = _mm512_reduce_add_ps(ab_imag_vec);
+    results[0] = _simsimd_reduce_f32x16_skylake(ab_real_vec);
+    results[1] = _simsimd_reduce_f32x16_skylake(ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_GENOA
 
 #if SIMSIMD_TARGET_SAPPHIRE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512fp16")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512fp16"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512fp16")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512fp16"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_f16_sapphire(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                              simsimd_distance_t* result) {
@@ -1527,7 +1598,6 @@ simsimd_dot_f16_sapphire_cycle:
 
 SIMSIMD_PUBLIC void simsimd_dot_f16c_sapphire(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                               simsimd_distance_t* results) {
-
     __m512h ab_real_vec = _mm512_setzero_ph();
     __m512h ab_imag_vec = _mm512_setzero_ph();
     __m512i a_vec;
@@ -1573,7 +1643,6 @@ simsimd_dot_f16c_sapphire_cycle:
 
 SIMSIMD_PUBLIC void simsimd_vdot_f16c_sapphire(simsimd_f16_t const* a, simsimd_f16_t const* b, simsimd_size_t n,
                                                simsimd_distance_t* results) {
-
     __m512h ab_real_vec = _mm512_setzero_ph();
     __m512h ab_imag_vec = _mm512_setzero_ph();
     __m512i a_vec;
@@ -1615,14 +1684,20 @@ simsimd_dot_f16c_sapphire_cycle:
     results[1] = _mm512_reduce_add_ph(ab_imag_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_SAPPHIRE
 
 #if SIMSIMD_TARGET_ICE
 #pragma GCC push_options
-#pragma GCC target("avx512f", "avx512vl", "bmi2", "avx512bw", "avx512vnni")
-#pragma clang attribute push(__attribute__((target("avx512f,avx512vl,bmi2,avx512bw,avx512vnni"))), apply_to = function)
+#pragma GCC target("avx2", "avx512f", "avx512vl", "bmi2", "avx512bw", "avx512vnni")
+#ifdef __clang__
+#pragma clang attribute push(__attribute__((target("avx2,avx512f,avx512vl,bmi2,avx512bw,avx512vnni"))),                \
+                             apply_to = function)
+
+#endif
 
 SIMSIMD_PUBLIC void simsimd_dot_i8_ice(simsimd_i8_t const* a, simsimd_i8_t const* b, simsimd_size_t n,
                                        simsimd_distance_t* result) {
@@ -1652,7 +1727,9 @@ simsimd_dot_i8_ice_cycle:
     *result = _mm512_reduce_add_epi32(ab_i32s_vec);
 }
 
+#ifdef __clang__
 #pragma clang attribute pop
+#endif
 #pragma GCC pop_options
 #endif // SIMSIMD_TARGET_ICE
 #endif // SIMSIMD_TARGET_X86
@@ -1664,7 +1741,7 @@ simsimd_dot_i8_ice_cycle:
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

@@ -164,7 +164,7 @@ bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
   // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (yb::std_util::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
+  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "Must be less than consensus_max_batch_size_bytes "
         << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
@@ -227,11 +227,16 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup
                         "stream.");
 TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_update_optimization_infra, false,
-                               "Enables optimizations of YSQL UPDATE queries. This includes "
-                               "(but not limited to) skipping redundant secondary index updates "
-                               "and redundant constraint checks.");
-TAG_FLAG(ysql_yb_update_optimization_infra, advanced);
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted, false, true,
+                            "Enables optimizations of YSQL UPDATE queries. This includes "
+                            "(but not limited to) skipping redundant secondary index updates "
+                            "and redundant constraint checks.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
+                       "Enables the comparison of old and new values of columns specified in the "
+                       "SET clause of YSQL UPDATE queries to skip redundant secondary index "
+                       "updates and redundant constraint checks.");
+TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
 
 namespace yb {
 

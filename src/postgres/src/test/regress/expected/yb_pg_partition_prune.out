@@ -1428,7 +1428,7 @@ drop table lp, rlp, mc3p, mc2p, boolpart, rp, like_op_noprune, lparted_by_int2, 
 -- Test Partition pruning for HASH partitioning
 --
 -- Use hand-rolled hash functions and operator classes to get predictable
--- result on different matchines.  See the definitions of
+-- result on different machines.  See the definitions of
 -- part_part_test_int4_ops and part_test_text_ops in insert.sql.
 --
 create or replace function part_hashint4_noop(value int4, seed int8)
@@ -2970,6 +2970,39 @@ where s.a = 1 and s.b = 1 and s.c = (select 1);
  1 | 1 | 1
 (1 row)
 
+prepare q (int, int) as
+select *
+from (
+      select * from p
+      union all
+      select * from q1
+      union all
+      select 1, 1, 1
+     ) s(a, b, c)
+where s.a = $1 and s.b = $2 and s.c = (select 1);
+set plan_cache_mode to force_generic_plan;
+explain (costs off) execute q (1, 1);
+                          QUERY PLAN
+---------------------------------------------------------------
+ Append
+   InitPlan 1 (returns $0)
+     ->  Result
+   Subplans Removed: 1
+   ->  Seq Scan on p1
+         Filter: ((a = $1) AND (b = $2) AND (c = $0))
+   ->  Seq Scan on q111
+         Filter: ((a = $1) AND (b = $2) AND (c = $0))
+   ->  Result
+         One-Time Filter: ((1 = $1) AND (1 = $2) AND (1 = $0))
+(10 rows)
+
+execute q (1, 1);
+ a | b | c
+---+---+---
+ 1 | 1 | 1
+(1 row)
+
+reset plan_cache_mode;
 drop table p, q;
 -- Ensure run-time pruning works correctly when we match a partitioned table
 -- on the first level but find no matching partitions on the second level.

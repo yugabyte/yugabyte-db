@@ -3,7 +3,7 @@
  * view.c
  *	  use rewrite rules to construct views
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,7 +14,7 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
+#include "access/relation.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "commands/defrem.h"
@@ -26,8 +26,8 @@
 #include "parser/analyze.h"
 #include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
-#include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteHandler.h"
+#include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSupport.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -39,26 +39,7 @@
 #include "catalog/catalog.h"
 #include "pg_yb_utils.h"
 
-
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
-
-/*---------------------------------------------------------------------
- * Validator for "check_option" reloption on views. The allowed values
- * are "local" and "cascaded".
- */
-void
-validateWithCheckOption(const char *value)
-{
-	if (value == NULL ||
-		(strcmp(value, "local") != 0 &&
-		 strcmp(value, "cascaded") != 0))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid value for \"check_option\" option"),
-				 errdetail("Valid values are \"local\" and \"cascaded\".")));
-	}
-}
 
 /*---------------------------------------------------------------------
  * DefineVirtualRelation
@@ -115,11 +96,6 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		}
 	}
 
-	if (attrList == NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("view must have at least one column")));
-
 	/*
 	 * Look up, check permissions on, and lock the creation namespace; also
 	 * check for a preexisting view with the same name.  This will also set
@@ -135,7 +111,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	if (IsYugaByteEnabled() &&
 		!IsYsqlUpgrade &&
 		!IsBootstrapProcessingMode() &&
-		YbIsSystemNamespaceByName(relation->schemaname))
+		YbIsCatalogNamespaceByName(relation->schemaname))
 	{
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("system views cannot be created outside of YSQL upgrade")));
@@ -185,6 +161,10 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		 * Note that we must do this before updating the query for the view,
 		 * since the rules system requires that the correct view columns be in
 		 * place when defining the new rules.
+		 *
+		 * Also note that ALTER TABLE doesn't run parse transformation on
+		 * AT_AddColumnToView commands.  The ColumnDef we supply must be ready
+		 * to execute as-is.
 		 */
 		if (list_length(attrList) > rel->rd_att->natts)
 		{
@@ -313,7 +293,6 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot drop columns from view")));
-	/* we can ignore tdhasoid */
 
 	for (i = 0; i < olddesc->natts; i++)
 	{
@@ -331,8 +310,14 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("cannot change name of view column \"%s\" to \"%s\"",
 							NameStr(oldattr->attname),
-							NameStr(newattr->attname))));
-		/* XXX would it be safe to allow atttypmod to change?  Not sure */
+							NameStr(newattr->attname)),
+					 errhint("Use ALTER VIEW ... RENAME COLUMN ... to change name of view column instead.")));
+
+		/*
+		 * We cannot allow type, typmod, or collation to change, since these
+		 * properties may be embedded in Vars of other views/rules referencing
+		 * this one.  Other column attributes can be ignored.
+		 */
 		if (newattr->atttypid != oldattr->atttypid ||
 			newattr->atttypmod != oldattr->atttypmod)
 			ereport(ERROR,
@@ -343,7 +328,18 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 													 oldattr->atttypmod),
 							format_type_with_typemod(newattr->atttypid,
 													 newattr->atttypmod))));
-		/* We can ignore the remaining attributes of an attribute... */
+
+		/*
+		 * At this point, attcollations should be both valid or both invalid,
+		 * so applying get_collation_name unconditionally should be fine.
+		 */
+		if (newattr->attcollation != oldattr->attcollation)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot change collation of view column \"%s\" from \"%s\" to \"%s\"",
+							NameStr(oldattr->attname),
+							get_collation_name(oldattr->attcollation),
+							get_collation_name(newattr->attcollation))));
 	}
 
 	/*
@@ -387,7 +383,7 @@ DefineViewRules(Oid viewOid, Query *viewParse, bool replace)
  * by 2...
  *
  * These extra RT entries are not actually used in the query,
- * except for run-time permission checking.
+ * except for run-time locking and permission checking.
  *---------------------------------------------------------------
  */
 static Query *
@@ -395,6 +391,7 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
 {
 	Relation	viewRel;
 	List	   *new_rt;
+	ParseNamespaceItem *nsitem;
 	RangeTblEntry *rt_entry1,
 			   *rt_entry2;
 	ParseState *pstate;
@@ -419,12 +416,17 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
 	 * Create the 2 new range table entries and form the new range table...
 	 * OLD first, then NEW....
 	 */
-	rt_entry1 = addRangeTableEntryForRelation(pstate, viewRel,
-											  makeAlias("old", NIL),
-											  false, false);
-	rt_entry2 = addRangeTableEntryForRelation(pstate, viewRel,
-											  makeAlias("new", NIL),
-											  false, false);
+	nsitem = addRangeTableEntryForRelation(pstate, viewRel,
+										   AccessShareLock,
+										   makeAlias("old", NIL),
+										   false, false);
+	rt_entry1 = nsitem->p_rte;
+	nsitem = addRangeTableEntryForRelation(pstate, viewRel,
+										   AccessShareLock,
+										   makeAlias("new", NIL),
+										   false, false);
+	rt_entry2 = nsitem->p_rte;
+
 	/* Must override addRangeTableEntry's default access-check flags */
 	rt_entry1->requiredPerms = 0;
 	rt_entry2->requiredPerms = 0;
@@ -461,16 +463,13 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	/*
 	 * Run parse analysis to convert the raw parse tree to a Query.  Note this
 	 * also acquires sufficient locks on the source table(s).
-	 *
-	 * Since parse analysis scribbles on its input, copy the raw parse tree;
-	 * this ensures we don't corrupt a prepared statement, for example.
 	 */
 	rawstmt = makeNode(RawStmt);
-	rawstmt->stmt = (Node *) copyObject(stmt->query);
+	rawstmt->stmt = stmt->query;
 	rawstmt->stmt_location = stmt_location;
 	rawstmt->stmt_len = stmt_len;
 
-	viewParse = parse_analyze(rawstmt, queryString, NULL, 0, NULL);
+	viewParse = parse_analyze_fixedparams(rawstmt, queryString, NULL, 0, NULL);
 
 	/*
 	 * The grammar should ensure that the result is a single SELECT Query.
@@ -556,7 +555,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 			if (te->resjunk)
 				continue;
 			te->resname = pstrdup(strVal(lfirst(alist_item)));
-			alist_item = lnext(alist_item);
+			alist_item = lnext(stmt->aliases, alist_item);
 			if (alist_item == NULL)
 				break;			/* done assigning aliases */
 		}

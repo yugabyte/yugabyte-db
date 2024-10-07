@@ -3,7 +3,8 @@ title: Verify migration for YSQL
 headerTitle: Verify migration
 linkTitle: Verify migration
 description: Verify if the migration was successful
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: verify-migration-ysql

@@ -15,11 +15,16 @@
 #include <algorithm>
 #include <atomic>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/client/session.h"
 #include "yb/client/table_info.h"
@@ -226,8 +231,10 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
-  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
+  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
+    return pgapi->InitSession(session_stats, is_binary_upgrade);
+  });
 }
 
 // ql_value is modified in-place.
@@ -441,6 +448,14 @@ Status YBCGetTableKeyRangesImpl(
   return Status::OK();
 }
 
+inline YBCPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
+  return {
+      .ybc_status = YBCStatusOK(),
+      .error_info = {.is_initialized = false,
+                     .pg_wait_policy = 0,
+                     .conflicting_table_id = kInvalidOid}};
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -565,8 +580,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
+  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -1256,10 +1271,6 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols) {
-  return ExtractValueFromResult(pgapi->DmlHasSystemTargets(handle), has_system_cols);
-}
-
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
   return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
@@ -1354,8 +1365,8 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
   return ToYBCStatus(pgapi->DmlAssignColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector) {
-  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vector));
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector) {
+  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vec_att_no, vector));
 }
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size) {
@@ -1404,8 +1415,9 @@ YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
-YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
-  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state));
+YBCStatus YBCPgInitRandomState(
+    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
+  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state_s0, rand_state_s1));
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
@@ -1875,15 +1887,20 @@ YBCStatus YBCAddForeignKeyReferenceIntent(
   });
 }
 
-YBCStatus YBCAddExplicitRowLockIntent(
-    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
-    YBCPgOid database_oid, const PgExplicitRowLockParams *params, bool is_region_local) {
-  return ToYBCStatus(pgapi->AddExplicitRowLockIntent(
-      {database_oid, table_relfilenode_oid}, YbctidAsSlice(ybctid), *params, is_region_local));
+YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid, YBCPgOid database_oid,
+    const PgExplicitRowLockParams *params, bool is_region_local) {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
+      PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
+      is_region_local, result.error_info));
+  return result;
 }
 
-YBCStatus YBCFlushExplicitRowLockIntents() {
-  return ToYBCStatus(pgapi->FlushExplicitRowLockIntents());
+YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
+  return result;
 }
 
 bool YBCIsInitDbModeEnvVarSet() {

@@ -138,7 +138,7 @@ inline const char* DecodeEntryThreeSharedParts(
     }
   }
 
-  if (PREDICT_FALSE(yb::std_util::cmp_less(
+  if (PREDICT_FALSE(std::cmp_less(
           limit - p, *non_shared_1_size + *non_shared_2_size + *value_size))) {
     return nullptr;
   }

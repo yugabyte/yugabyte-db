@@ -42,8 +42,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE regress_addr_user REVOKE DELETE ON TABLES FROM
 CREATE TRANSFORM FOR int LANGUAGE SQL (
 	FROM SQL WITH FUNCTION prsd_lextype(internal),
 	TO SQL WITH FUNCTION int4recv(internal));
+-- suppress warning that depends on wal_level
+SET client_min_messages = 'ERROR';
 CREATE PUBLICATION addr_pub FOR TABLE addr_nsp.gentable;
-CREATE SUBSCRIPTION addr_sub CONNECTION '' PUBLICATION bar WITH (connect = false, slot_name = NONE);
+CREATE PUBLICATION addr_pub_schema FOR TABLES IN SCHEMA addr_nsp;
+RESET client_min_messages;
+CREATE SUBSCRIPTION regress_addr_sub CONNECTION '' PUBLICATION bar WITH (connect = false, slot_name = NONE);
 WARNING:  tables were not subscribed, you will have to run ALTER SUBSCRIPTION ... REFRESH PUBLICATION to subscribe the tables
 CREATE STATISTICS addr_nsp.gentable_stat ON a, b FROM addr_nsp.gentable;
 -- test some error cases
@@ -101,7 +105,7 @@ BEGIN
 		('text search template'), ('text search configuration'),
 		('policy'), ('user mapping'), ('default acl'), ('transform'),
 		('operator of access method'), ('function of access method'),
-		('publication relation')
+		('publication namespace'), ('publication relation')
 	LOOP
 		FOR names IN VALUES ('{eins}'), ('{addr_nsp, zwei}'), ('{eins, zwei, drei}')
 		LOOP
@@ -281,10 +285,10 @@ WARNING:  error for policy,{eins,zwei,drei},{}: schema "eins" does not exist
 WARNING:  error for policy,{eins,zwei,drei},{integer}: schema "eins" does not exist
 WARNING:  error for user mapping,{eins},{}: argument list length must be exactly 1
 WARNING:  error for user mapping,{eins},{integer}: user mapping for user "eins" on server "integer" does not exist
-WARNING:  error for user mapping,{addr_nsp,zwei},{}: argument list length must be exactly 1
-WARNING:  error for user mapping,{addr_nsp,zwei},{integer}: user mapping for user "addr_nsp" on server "integer" does not exist
-WARNING:  error for user mapping,{eins,zwei,drei},{}: argument list length must be exactly 1
-WARNING:  error for user mapping,{eins,zwei,drei},{integer}: user mapping for user "eins" on server "integer" does not exist
+WARNING:  error for user mapping,{addr_nsp,zwei},{}: name list length must be exactly 1
+WARNING:  error for user mapping,{addr_nsp,zwei},{integer}: name list length must be exactly 1
+WARNING:  error for user mapping,{eins,zwei,drei},{}: name list length must be exactly 1
+WARNING:  error for user mapping,{eins,zwei,drei},{integer}: name list length must be exactly 1
 WARNING:  error for default acl,{eins},{}: argument list length must be exactly 1
 WARNING:  error for default acl,{eins},{integer}: unrecognized default ACL object type "i"
 WARNING:  error for default acl,{addr_nsp,zwei},{}: argument list length must be exactly 1
@@ -309,6 +313,12 @@ WARNING:  error for function of access method,{addr_nsp,zwei},{}: name list leng
 WARNING:  error for function of access method,{addr_nsp,zwei},{integer}: name list length must be at least 3
 WARNING:  error for function of access method,{eins,zwei,drei},{}: argument list length must be exactly 2
 WARNING:  error for function of access method,{eins,zwei,drei},{integer}: argument list length must be exactly 2
+WARNING:  error for publication namespace,{eins},{}: argument list length must be exactly 1
+WARNING:  error for publication namespace,{eins},{integer}: schema "eins" does not exist
+WARNING:  error for publication namespace,{addr_nsp,zwei},{}: name list length must be exactly 1
+WARNING:  error for publication namespace,{addr_nsp,zwei},{integer}: name list length must be exactly 1
+WARNING:  error for publication namespace,{eins,zwei,drei},{}: name list length must be exactly 1
+WARNING:  error for publication namespace,{eins,zwei,drei},{integer}: name list length must be exactly 1
 WARNING:  error for publication relation,{eins},{}: argument list length must be exactly 1
 WARNING:  error for publication relation,{eins},{integer}: relation "eins" does not exist
 WARNING:  error for publication relation,{addr_nsp,zwei},{}: argument list length must be exactly 1
@@ -394,7 +404,7 @@ WITH objects (type, name, args) AS (VALUES
 				('collation', '{default}', '{}'),
 				('table constraint', '{addr_nsp, gentable, a_chk}', '{}'),
 				('domain constraint', '{addr_nsp.gendomain}', '{domconstr}'),
-				('conversion', '{pg_catalog, ascii_to_mic}', '{}'),
+				('conversion', '{pg_catalog, koi8_r_to_mic}', '{}'),
 				('default value', '{addr_nsp, gentable, b}', '{}'),
 				('language', '{plpgsql}', '{}'),
 				-- large object
@@ -424,8 +434,9 @@ WITH objects (type, name, args) AS (VALUES
 				('transform', '{int}', '{sql}'),
 				('access method', '{btree}', '{}'),
 				('publication', '{addr_pub}', '{}'),
+				('publication namespace', '{addr_nsp}', '{addr_pub_schema}'),
 				('publication relation', '{addr_nsp, gentable}', '{addr_pub}'),
-				('subscription', '{addr_sub}', '{}'),
+				('subscription', '{regress_addr_sub}', '{}'),
 				('statistics object', '{addr_nsp, gentable_stat}', '{}')
         )
 SELECT (pg_identify_object(addr1.classid, addr1.objid, addr1.objsubid)).*,
@@ -468,7 +479,7 @@ SELECT (pg_identify_object(addr1.classid, addr1.objid, addr1.objsubid)).*,
  cast                      |            |                   | (bigint AS integer)                                                  | t
  table constraint          | addr_nsp   |                   | a_chk on addr_nsp.gentable                                           | t
  domain constraint         | addr_nsp   |                   | domconstr on addr_nsp.gendomain                                      | t
- conversion                | pg_catalog | ascii_to_mic      | pg_catalog.ascii_to_mic                                              | t
+ conversion                | pg_catalog | koi8_r_to_mic     | pg_catalog.koi8_r_to_mic                                             | t
  language                  |            | plpgsql           | plpgsql                                                              | t
  schema                    |            | addr_nsp          | addr_nsp                                                             | t
  operator class            | pg_catalog | int4_ops          | pg_catalog.int4_ops USING btree                                      | t
@@ -484,20 +495,139 @@ SELECT (pg_identify_object(addr1.classid, addr1.objid, addr1.objsubid)).*,
  text search parser        | addr_nsp   | addr_ts_prs       | addr_nsp.addr_ts_prs                                                 | t
  text search configuration | addr_nsp   | addr_ts_conf      | addr_nsp.addr_ts_conf                                                | t
  text search template      | addr_nsp   | addr_ts_temp      | addr_nsp.addr_ts_temp                                                | t
- subscription              |            | addr_sub          | addr_sub                                                             | t
+ subscription              |            | regress_addr_sub  | regress_addr_sub                                                     | t
  publication               |            | addr_pub          | addr_pub                                                             | t
  publication relation      |            |                   | addr_nsp.gentable in publication addr_pub                            | t
-(49 rows)
+ publication namespace     |            |                   | addr_nsp in publication addr_pub_schema                              | t
+(50 rows)
 
 ---
 --- Cleanup resources
 ---
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP FOREIGN DATA WRAPPER addr_fdw CASCADE;
 NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to server addr_fserv
+drop cascades to foreign table genftable
+drop cascades to server integer
+drop cascades to user mapping for regress_addr_user on server integer
 DROP PUBLICATION addr_pub;
-DROP SUBSCRIPTION addr_sub;
+DROP PUBLICATION addr_pub_schema;
+DROP SUBSCRIPTION regress_addr_sub;
 DROP SCHEMA addr_nsp CASCADE;
 NOTICE:  drop cascades to 14 other objects
+DETAIL:  drop cascades to text search dictionary addr_ts_dict
+drop cascades to text search configuration addr_ts_conf
+drop cascades to text search template addr_ts_temp
+drop cascades to text search parser addr_ts_prs
+drop cascades to table gentable
+drop cascades to table parttable
+drop cascades to view genview
+drop cascades to materialized view genmatview
+drop cascades to type gencomptype
+drop cascades to type genenum
+drop cascades to function genaggr(integer)
+drop cascades to type gendomain
+drop cascades to function trig()
+drop cascades to function proc(integer)
 DROP OWNED BY regress_addr_user;
 DROP USER regress_addr_user;
+--
+-- Checks for invalid objects
+--
+-- Make sure that NULL handling is correct.
+\pset null 'NULL'
+-- Temporarily disable fancy output, so as future additions never create
+-- a large amount of diffs.
+\a\t
+-- Keep this list in the same order as getObjectIdentityParts()
+-- in objectaddress.c.
+WITH objects (classid, objid, objsubid) AS (VALUES
+    ('pg_class'::regclass, 0, 0), -- no relation
+    ('pg_class'::regclass, 'pg_class'::regclass, 100), -- no column for relation
+    ('pg_proc'::regclass, 0, 0), -- no function
+    ('pg_type'::regclass, 0, 0), -- no type
+    ('pg_cast'::regclass, 0, 0), -- no cast
+    ('pg_collation'::regclass, 0, 0), -- no collation
+    ('pg_constraint'::regclass, 0, 0), -- no constraint
+    ('pg_conversion'::regclass, 0, 0), -- no conversion
+    ('pg_attrdef'::regclass, 0, 0), -- no default attribute
+    ('pg_language'::regclass, 0, 0), -- no language
+    ('pg_largeobject'::regclass, 0, 0), -- no large object, no error
+    ('pg_operator'::regclass, 0, 0), -- no operator
+    ('pg_opclass'::regclass, 0, 0), -- no opclass, no need to check for no access method
+    ('pg_opfamily'::regclass, 0, 0), -- no opfamily
+    ('pg_am'::regclass, 0, 0), -- no access method
+    ('pg_amop'::regclass, 0, 0), -- no AM operator
+    ('pg_amproc'::regclass, 0, 0), -- no AM proc
+    ('pg_rewrite'::regclass, 0, 0), -- no rewrite
+    ('pg_trigger'::regclass, 0, 0), -- no trigger
+    ('pg_namespace'::regclass, 0, 0), -- no schema
+    ('pg_statistic_ext'::regclass, 0, 0), -- no statistics
+    ('pg_ts_parser'::regclass, 0, 0), -- no TS parser
+    ('pg_ts_dict'::regclass, 0, 0), -- no TS dictionary
+    ('pg_ts_template'::regclass, 0, 0), -- no TS template
+    ('pg_ts_config'::regclass, 0, 0), -- no TS configuration
+    ('pg_authid'::regclass, 0, 0), -- no role
+    ('pg_database'::regclass, 0, 0), -- no database
+    ('pg_tablespace'::regclass, 0, 0), -- no tablespace
+    ('pg_foreign_data_wrapper'::regclass, 0, 0), -- no FDW
+    ('pg_foreign_server'::regclass, 0, 0), -- no server
+    ('pg_user_mapping'::regclass, 0, 0), -- no user mapping
+    ('pg_default_acl'::regclass, 0, 0), -- no default ACL
+    ('pg_extension'::regclass, 0, 0), -- no extension
+    ('pg_event_trigger'::regclass, 0, 0), -- no event trigger
+    ('pg_policy'::regclass, 0, 0), -- no policy
+    ('pg_publication'::regclass, 0, 0), -- no publication
+    ('pg_publication_rel'::regclass, 0, 0), -- no publication relation
+    ('pg_subscription'::regclass, 0, 0), -- no subscription
+    ('pg_transform'::regclass, 0, 0) -- no transformation
+  )
+SELECT ROW(pg_identify_object(objects.classid, objects.objid, objects.objsubid))
+         AS ident,
+       ROW(pg_identify_object_as_address(objects.classid, objects.objid, objects.objsubid))
+         AS addr,
+       pg_describe_object(objects.classid, objects.objid, objects.objsubid)
+         AS descr
+FROM objects
+ORDER BY objects.classid, objects.objid, objects.objsubid;
+("(""default acl"",,,)")|("(""default acl"",,)")|NULL
+("(tablespace,,,)")|("(tablespace,,)")|NULL
+("(type,,,)")|("(type,,)")|NULL
+("(routine,,,)")|("(routine,,)")|NULL
+("(relation,,,)")|("(relation,,)")|NULL
+("(""table column"",,,)")|("(""table column"",,)")|NULL
+("(role,,,)")|("(role,,)")|NULL
+("(database,,,)")|("(database,,)")|NULL
+("(server,,,)")|("(server,,)")|NULL
+("(""user mapping"",,,)")|("(""user mapping"",,)")|NULL
+("(""foreign-data wrapper"",,,)")|("(""foreign-data wrapper"",,)")|NULL
+("(""access method"",,,)")|("(""access method"",,)")|NULL
+("(""operator of access method"",,,)")|("(""operator of access method"",,)")|NULL
+("(""function of access method"",,,)")|("(""function of access method"",,)")|NULL
+("(""default value"",,,)")|("(""default value"",,)")|NULL
+("(cast,,,)")|("(cast,,)")|NULL
+("(constraint,,,)")|("(constraint,,)")|NULL
+("(conversion,,,)")|("(conversion,,)")|NULL
+("(language,,,)")|("(language,,)")|NULL
+("(""large object"",,,)")|("(""large object"",,)")|NULL
+("(schema,,,)")|("(schema,,)")|NULL
+("(""operator class"",,,)")|("(""operator class"",,)")|NULL
+("(operator,,,)")|("(operator,,)")|NULL
+("(rule,,,)")|("(rule,,)")|NULL
+("(trigger,,,)")|("(trigger,,)")|NULL
+("(""operator family"",,,)")|("(""operator family"",,)")|NULL
+("(extension,,,)")|("(extension,,)")|NULL
+("(policy,,,)")|("(policy,,)")|NULL
+("(""statistics object"",,,)")|("(""statistics object"",,)")|NULL
+("(collation,,,)")|("(collation,,)")|NULL
+("(""event trigger"",,,)")|("(""event trigger"",,)")|NULL
+("(transform,,,)")|("(transform,,)")|NULL
+("(""text search dictionary"",,,)")|("(""text search dictionary"",,)")|NULL
+("(""text search parser"",,,)")|("(""text search parser"",,)")|NULL
+("(""text search configuration"",,,)")|("(""text search configuration"",,)")|NULL
+("(""text search template"",,,)")|("(""text search template"",,)")|NULL
+("(subscription,,,)")|("(subscription,,)")|NULL
+("(publication,,,)")|("(publication,,)")|NULL
+("(""publication relation"",,,)")|("(""publication relation"",,)")|NULL
+-- restore normal output mode
+\a\t

@@ -11,24 +11,20 @@
  */
 #include "postgres_fe.h"
 
-#include "common/string.h"
-#include "dumputils.h"
-#include "fe_utils/connect.h"
-#include "fe_utils/string_utils.h"
-#include "parallel.h"
-#include "pg_backup_archiver.h"
-#include "pg_backup_db.h"
-#include "pg_backup_utils.h"
-
 #include <unistd.h>
 #include <ctype.h>
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
 
-
-/* translator: this is a module name */
-static const char *modulename = gettext_noop("archiver (db)");
+#include "common/connect.h"
+#include "common/string.h"
+#include "dumputils.h"
+#include "fe_utils/string_utils.h"
+#include "parallel.h"
+#include "pg_backup_archiver.h"
+#include "pg_backup_db.h"
+#include "pg_backup_utils.h"
 
 static void _check_database_version(ArchiveHandle *AH);
 static void notice_processor(void *arg, const char *message);
@@ -43,7 +39,7 @@ _check_database_version(ArchiveHandle *AH)
 	remoteversion_str = PQparameterStatus(AH->connection, "server_version");
 	remoteversion = PQserverVersion(AH->connection);
 	if (remoteversion == 0 || !remoteversion_str)
-		exit_horribly(modulename, "could not get server_version from libpq\n");
+		pg_fatal("could not get server_version from libpq");
 
 	AH->public.remoteVersionStr = pg_strdup(remoteversion_str);
 	AH->public.remoteVersion = remoteversion;
@@ -54,24 +50,20 @@ _check_database_version(ArchiveHandle *AH)
 		&& (remoteversion < AH->public.minRemoteVersion ||
 			remoteversion > AH->public.maxRemoteVersion))
 	{
-		write_msg(NULL, "server version: %s; %s version: %s\n",
-				  remoteversion_str, progname, PG_VERSION);
-		exit_horribly(NULL, "aborting because of server version mismatch\n");
+		pg_log_error("aborting because of server version mismatch");
+		pg_log_error_detail("server version: %s; %s version: %s",
+							remoteversion_str, progname, PG_VERSION);
+		exit(1);
 	}
 
 	/*
-	 * When running against 9.0 or later, check if we are in recovery mode,
-	 * which means we are on a hot standby.
+	 * Check if server is in recovery mode, which means we are on a hot
+	 * standby.
 	 */
-	if (remoteversion >= 90000)
-	{
-		res = ExecuteSqlQueryForSingleRow((Archive *) AH, "SELECT pg_catalog.pg_is_in_recovery()");
-
-		AH->public.isStandby = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
-		PQclear(res);
-	}
-	else
-		AH->public.isStandby = false;
+	res = ExecuteSqlQueryForSingleRow((Archive *) AH,
+									  "SELECT pg_catalog.pg_is_in_recovery()");
+	AH->public.isStandby = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+	PQclear(res);
 }
 
 /*
@@ -125,7 +117,7 @@ ConnectDatabase(Archive *AHX,
 	bool		new_pass;
 
 	if (AH->connection)
-		exit_horribly(modulename, "already connected to a database\n");
+		pg_fatal("already connected to a database");
 
 	/* Never prompt for a password during a reconnection */
 	prompt_password = isReconnect ? TRI_NO : cparams->promptPassword;
@@ -175,7 +167,7 @@ ConnectDatabase(Archive *AHX,
 		AH->connection = PQconnectdbParams(keywords, values, true);
 
 		if (!AH->connection)
-			exit_horribly(modulename, "failed to connect to database\n");
+			pg_fatal("could not connect to database");
 
 		if (PQstatus(AH->connection) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(AH->connection) &&
@@ -192,13 +184,11 @@ ConnectDatabase(Archive *AHX,
 	if (PQstatus(AH->connection) == CONNECTION_BAD)
 	{
 		if (isReconnect)
-			exit_horribly(modulename, "reconnection to database \"%s\" failed: %s",
-						  PQdb(AH->connection) ? PQdb(AH->connection) : "",
-						  PQerrorMessage(AH->connection));
+			pg_fatal("reconnection failed: %s",
+					 PQerrorMessage(AH->connection));
 		else
-			exit_horribly(modulename, "connection to database \"%s\" failed: %s",
-						  PQdb(AH->connection) ? PQdb(AH->connection) : "",
-						  PQerrorMessage(AH->connection));
+			pg_fatal("%s",
+					 PQerrorMessage(AH->connection));
 	}
 
 	/* Start strict; later phases may override this. */
@@ -246,7 +236,7 @@ DisconnectDatabase(Archive *AHX)
 		/*
 		 * If we have an active query, send a cancel before closing, ignoring
 		 * any errors.  This is of no use for a normal exit, but might be
-		 * helpful during exit_horribly().
+		 * helpful during pg_fatal().
 		 */
 		if (PQtransactionStatus(AH->connection) == PQTRANS_ACTIVE)
 			(void) PQcancel(AH->connCancel, errbuf, sizeof(errbuf));
@@ -272,16 +262,17 @@ GetConnection(Archive *AHX)
 static void
 notice_processor(void *arg, const char *message)
 {
-	write_msg(NULL, "%s", message);
+	pg_log_info("%s", message);
 }
 
-/* Like exit_horribly(), but with a complaint about a particular query. */
+/* Like pg_fatal(), but with a complaint about a particular query. */
 static void
-die_on_query_failure(ArchiveHandle *AH, const char *modulename, const char *query)
+die_on_query_failure(ArchiveHandle *AH, const char *query)
 {
-	write_msg(modulename, "query failed: %s",
-			  PQerrorMessage(AH->connection));
-	exit_horribly(modulename, "query was: %s\n", query);
+	pg_log_error("query failed: %s",
+				 PQerrorMessage(AH->connection));
+	pg_log_error_detail("Query was: %s", query);
+	exit(1);
 }
 
 void
@@ -292,7 +283,7 @@ ExecuteSqlStatement(Archive *AHX, const char *query)
 
 	res = PQexec(AH->connection, query);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		die_on_query_failure(AH, modulename, query);
+		die_on_query_failure(AH, query);
 	PQclear(res);
 }
 
@@ -304,7 +295,7 @@ ExecuteSqlQuery(Archive *AHX, const char *query, ExecStatusType status)
 
 	res = PQexec(AH->connection, query);
 	if (PQresultStatus(res) != status)
-		die_on_query_failure(AH, modulename, query);
+		die_on_query_failure(AH, query);
 	return res;
 }
 
@@ -322,11 +313,10 @@ ExecuteSqlQueryForSingleRow(Archive *fout, const char *query)
 	/* Expecting a single result only */
 	ntups = PQntuples(res);
 	if (ntups != 1)
-		exit_horribly(NULL,
-					  ngettext("query returned %d row instead of one: %s\n",
-							   "query returned %d rows instead of one: %s\n",
-							   ntups),
-					  ntups, query);
+		pg_fatal(ngettext("query returned %d row instead of one: %s",
+						  "query returned %d rows instead of one: %s",
+						  ntups),
+				 ntups, query);
 
 	return res;
 }
@@ -359,7 +349,7 @@ ExecuteSqlCommand(ArchiveHandle *AH, const char *qry, const char *desc)
 			break;
 		default:
 			/* trouble */
-			warn_or_exit_horribly(AH, modulename, "%s: %s    Command was: %s\n",
+			warn_or_exit_horribly(AH, "%s: %sCommand was: %s",
 								  desc, PQerrorMessage(conn), qry);
 			break;
 	}
@@ -468,8 +458,8 @@ ExecuteSqlCommandBuf(Archive *AHX, const char *buf, size_t bufLen)
 		 */
 		if (AH->pgCopyIn &&
 			PQputCopyData(AH->connection, buf, bufLen) <= 0)
-			exit_horribly(modulename, "error returned by PQputCopyData: %s",
-						  PQerrorMessage(AH->connection));
+			pg_fatal("error returned by PQputCopyData: %s",
+					 PQerrorMessage(AH->connection));
 	}
 	else if (AH->outputKind == OUTPUT_OTHERDATA)
 	{
@@ -517,20 +507,20 @@ EndDBCopyMode(Archive *AHX, const char *tocEntryTag)
 		PGresult   *res;
 
 		if (PQputCopyEnd(AH->connection, NULL) <= 0)
-			exit_horribly(modulename, "error returned by PQputCopyEnd: %s",
-						  PQerrorMessage(AH->connection));
+			pg_fatal("error returned by PQputCopyEnd: %s",
+					 PQerrorMessage(AH->connection));
 
 		/* Check command status and return to normal libpq state */
 		res = PQgetResult(AH->connection);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
-			warn_or_exit_horribly(AH, modulename, "COPY failed for table \"%s\": %s",
+			warn_or_exit_horribly(AH, "COPY failed for table \"%s\": %s",
 								  tocEntryTag, PQerrorMessage(AH->connection));
 		PQclear(res);
 
 		/* Do this to ensure we've pumped libpq back to idle state */
 		if (PQgetResult(AH->connection) != NULL)
-			write_msg(NULL, "WARNING: unexpected extra results during COPY of table \"%s\"\n",
-					  tocEntryTag);
+			pg_log_warning("unexpected extra results during COPY of table \"%s\"",
+						   tocEntryTag);
 
 		AH->pgCopyIn = false;
 	}

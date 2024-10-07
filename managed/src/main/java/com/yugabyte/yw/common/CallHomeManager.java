@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseResp;
@@ -25,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.slf4j.Logger;
@@ -36,7 +36,6 @@ public class CallHomeManager {
   ConfigHelper configHelper;
 
   @Inject private RuntimeConfGetter confGetter;
-  @Inject private Commissioner commissioner;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
@@ -81,17 +80,18 @@ public class CallHomeManager {
     if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
       JsonNode payload = collectDiagnostics(c, callhomeLevel);
-      LOG.trace(
-          "Sending collected diagnostics to "
-              + YB_CALLHOME_URL
-              + " with payload "
-              + payload.toPrettyString());
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(
+            "Sending collected diagnostics to {} with payload {}",
+            YB_CALLHOME_URL,
+            payload.toPrettyString());
+      }
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
       headers.put(
           "X-AUTH-TOKEN", Base64.getEncoder().encodeToString(c.getUuid().toString().getBytes()));
       JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
-      LOG.info("Response: " + response.toString());
+      LOG.info("Response: {}", response);
     }
   }
 
@@ -137,9 +137,9 @@ public class CallHomeManager {
 
     for (CustomerTask ct : customerTasks) {
       if (ct == null) continue;
-      TaskInfo taskInfo = TaskInfo.get(ct.getTaskUUID());
-      if (taskInfo == null) continue;
-
+      Optional<TaskInfo> optional = TaskInfo.maybeGet(ct.getTaskUUID());
+      if (!optional.isPresent()) continue;
+      TaskInfo taskInfo = optional.get();
       ObjectNode ctInfo = Json.newObject();
       ctInfo.put("task_name", Objects.toString(taskInfo.getTaskType()));
       ctInfo.put("target_type", Objects.toString(ct.getTargetType()));

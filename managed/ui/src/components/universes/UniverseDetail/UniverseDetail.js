@@ -91,10 +91,13 @@ import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-dis
 
 import './UniverseDetail.scss';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
+  'gr6','i3','i3en','i4g','i4i','im4gn',
+  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) || 
+    instanceType?.split?.('.')[0].includes('d');
 };
 
 class UniverseDetail extends Component {
@@ -781,11 +784,6 @@ class UniverseDetail extends Component {
       }
     } = currentUniverse;
 
-    const isEphemeralAwsStorage =
-      nodeDetailsSet.find?.((node) => {
-        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
-      }) !== undefined;
-
     /**
      * Handle the backup state toggle.
      * i.e open the confirmation model if backup is to be disabled.
@@ -1431,7 +1429,6 @@ class UniverseDetail extends Component {
                   */}
 
                   {isPausableUniverse(currentUniverse?.data) &&
-                    !isEphemeralAwsStorage &&
                     (featureFlags.test['pausedUniverse'] ||
                       featureFlags.released['pausedUniverse']) && (
                       <RbacValidator

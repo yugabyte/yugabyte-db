@@ -28,10 +28,12 @@ namespace yb::vectorindex {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
+  using SearchResult = std::vector<VertexWithDistance<DistanceResult>>;
+
   virtual ~VectorIndexReaderIf() = default;
 
-  virtual std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) const = 0;
+  virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
+  virtual SearchResult Search(const Vector& query_vector, size_t max_num_results) const = 0;
 };
 
 template<IndexableVectorType Vector>
@@ -43,6 +45,9 @@ class VectorIndexWriterIf {
   virtual Status Reserve(size_t num_vectors) = 0;
 
   virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
+
+  // Saves the current state of the vector index to a file.
+  virtual Status SaveToFile(const std::string& file_path) const = 0;
 
   // Returns the vector with the given id, an empty vector if such VertexId does not exist, or
   // a non-OK status if an error occurred.
@@ -56,8 +61,7 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   using VectorType = Vector;
   using DistanceResultType = DistanceResult;
 
-  // TODO(lsm) Implement storing and loading data to file.
-  // virtual Status AttachToFile(const std::string& output_path) = 0;
+  virtual Status AttachToFile(const std::string& output_path) = 0;
 
   virtual ~VectorIndexIf() = default;
 };
@@ -69,7 +73,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>()>;
 
 template<class Index>
-  auto CreateIndexFactory(const HNSWOptions& options) {
+auto CreateIndexFactory(const HNSWOptions& options) {
   return [options]() {
     return std::make_shared<Index>(options);
   };

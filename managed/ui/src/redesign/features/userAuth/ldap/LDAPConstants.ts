@@ -30,6 +30,7 @@ export interface LDAPFormProps {
   ldap_service_account_password: string;
   ldap_group_use_query: boolean;
   ldap_group_search_filter: string;
+  ldap_group_use_role_mapping: string;
 }
 
 export const TLSVersions = [

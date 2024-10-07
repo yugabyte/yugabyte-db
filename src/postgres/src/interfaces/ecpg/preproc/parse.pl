@@ -1,9 +1,9 @@
 #!/usr/bin/perl
 # src/interfaces/ecpg/preproc/parse.pl
-# parser generater for ecpg version 2
+# parser generator for ecpg version 2
 # call with backend parser as stdin
 #
-# Copyright (c) 2007-2018, PostgreSQL Global Development Group
+# Copyright (c) 2007-2022, PostgreSQL Global Development Group
 #
 # Written by Mike Aubury <mike.aubury@aubit.com>
 #            Michael Meskes <meskes@postgresql.org>
@@ -22,6 +22,7 @@ $path = "." unless $path;
 my $copymode              = 0;
 my $brace_indent          = 0;
 my $yaccmode              = 0;
+my $in_rule               = 0;
 my $header_included       = 0;
 my $feature_not_supported = 0;
 my $tokenmode             = 0;
@@ -37,6 +38,7 @@ my %replace_token = (
 	'BCONST' => 'ecpg_bconst',
 	'FCONST' => 'ecpg_fconst',
 	'Sconst' => 'ecpg_sconst',
+	'XCONST' => 'ecpg_xconst',
 	'IDENT'  => 'ecpg_ident',
 	'PARAM'  => 'ecpg_param',);
 
@@ -57,17 +59,23 @@ my %replace_string = (
 # ECPG-only replace_types are defined in ecpg-replace_types
 my %replace_types = (
 	'PrepareStmt'      => '<prep>',
+	'ExecuteStmt'      => '<exec>',
 	'opt_array_bounds' => '<index>',
 
 	# "ignore" means: do not create type and rules for this non-term-id
-	'stmtblock'          => 'ignore',
-	'stmtmulti'          => 'ignore',
-	'CreateAsStmt'       => 'ignore',
-	'DeallocateStmt'     => 'ignore',
-	'ColId'              => 'ignore',
-	'type_function_name' => 'ignore',
-	'ColLabel'           => 'ignore',
-	'Sconst'             => 'ignore',);
+	'parse_toplevel'      => 'ignore',
+	'stmtmulti'           => 'ignore',
+	'CreateAsStmt'        => 'ignore',
+	'DeallocateStmt'      => 'ignore',
+	'ColId'               => 'ignore',
+	'type_function_name'  => 'ignore',
+	'ColLabel'            => 'ignore',
+	'Sconst'              => 'ignore',
+	'opt_distinct_clause' => 'ignore',
+	'PLpgSQL_Expr'        => 'ignore',
+	'PLAssignStmt'        => 'ignore',
+	'plassign_target'     => 'ignore',
+	'plassign_equals'     => 'ignore',);
 
 # these replace_line commands excise certain keywords from the core keyword
 # lists.  Be sure to account for these in ColLabel and related productions.
@@ -101,11 +109,13 @@ my %replace_line = (
 	  'RETURNING target_list opt_ecpg_into',
 	'ExecuteStmtEXECUTEnameexecute_param_clause' =>
 	  'EXECUTE prepared_name execute_param_clause execute_rest',
-	'ExecuteStmtCREATEOptTempTABLEcreate_as_targetASEXECUTEnameexecute_param_clause'
-	  => 'CREATE OptTemp TABLE create_as_target AS EXECUTE prepared_name execute_param_clause',
+	'ExecuteStmtCREATEOptTempTABLEcreate_as_targetASEXECUTEnameexecute_param_clauseopt_with_data'
+	  => 'CREATE OptTemp TABLE create_as_target AS EXECUTE prepared_name execute_param_clause opt_with_data execute_rest',
+	'ExecuteStmtCREATEOptTempTABLEIF_PNOTEXISTScreate_as_targetASEXECUTEnameexecute_param_clauseopt_with_data'
+	  => 'CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS EXECUTE prepared_name execute_param_clause opt_with_data execute_rest',
 	'PrepareStmtPREPAREnameprep_type_clauseASPreparableStmt' =>
 	  'PREPARE prepared_name prep_type_clause AS PreparableStmt',
-	'var_nameColId' => 'ECPGColId',);
+	'var_nameColId' => 'ECPGColId');
 
 preload_addons();
 
@@ -214,8 +224,8 @@ sub main
 				if ($a eq 'IDENT' && $prior eq '%nonassoc')
 				{
 
-					# add two more tokens to the list
-					$str = $str . "\n%nonassoc CSTRING\n%nonassoc UIDENT";
+					# add more tokens to the list
+					$str = $str . "\n%nonassoc CSTRING";
 				}
 				$prior = $a;
 			}
@@ -288,6 +298,7 @@ sub main
 				@fields  = ();
 				$infield = 0;
 				$line    = '';
+				$in_rule = 0;
 				next;
 			}
 
@@ -365,6 +376,9 @@ sub main
 				$line    = '';
 				@fields  = ();
 				$infield = 1;
+				die "unterminated rule at grammar line $.\n"
+				  if $in_rule;
+				$in_rule = 1;
 				next;
 			}
 			elsif ($copymode)
@@ -415,6 +429,8 @@ sub main
 			}
 		}
 	}
+	die "unterminated rule at end of grammar\n"
+	  if $in_rule;
 	return;
 }
 

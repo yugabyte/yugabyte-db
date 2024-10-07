@@ -1164,6 +1164,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.parallelism",
+          ScopeType.UNIVERSE,
+          "Number of threads to use for RPC requests",
+          "Number of threads to use for RPC requests",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Duration> nodesAreSafeToTakeDownCheckTimeout =
       new ConfKeyInfo<>(
           "yb.checks.nodes_safe_to_take_down.timeout",

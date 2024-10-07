@@ -4,7 +4,8 @@ headerTitle: Phonetic search
 linkTitle: Phonetic search
 headcontent: Learn how to do phonetic matching in YSQL
 description: Learn how to do phonetic matching in YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   preview:
     identifier: phonetic-matching-ysql

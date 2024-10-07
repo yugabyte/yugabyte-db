@@ -176,7 +176,7 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
       << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
-bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
+bool MetricEntity::TEST_ContainsMetricName(const std::string& metric_name) const {
   std::lock_guard l(lock_);
   for (const MetricMap::value_type& val : metric_map_) {
     if (val.first->name() == metric_name) {

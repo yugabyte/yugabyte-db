@@ -3,7 +3,7 @@
  * int8.c
  *	  Internal 64-bit integer operations
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -14,7 +14,6 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <float.h>				/* for _isnan */
 #include <limits.h>
 #include <math.h>
 #include <inttypes.h>
@@ -22,11 +21,12 @@
 #include "common/int.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
-#include "utils/int8.h"
+#include "nodes/nodeFuncs.h"
+#include "nodes/supportnodes.h"
+#include "optimizer/optimizer.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
-
-#define MAXINT8LEN		25
 
 typedef struct
 {
@@ -46,98 +46,14 @@ typedef struct
  * Formatting and conversion routines.
  *---------------------------------------------------------*/
 
-/*
- * scanint8 --- try to parse a string into an int8.
- *
- * If errorOK is false, ereport a useful error message if the string is bad.
- * If errorOK is true, just return "false" for bad input.
- */
-bool
-scanint8(const char *str, bool errorOK, int64 *result)
-{
-	const char *ptr = str;
-	int64		tmp = 0;
-	bool		neg = false;
-
-	/*
-	 * Do our own scan, rather than relying on sscanf which might be broken
-	 * for long long.
-	 *
-	 * As INT64_MIN can't be stored as a positive 64 bit integer, accumulate
-	 * value as a negative number.
-	 */
-
-	/* skip leading spaces */
-	while (*ptr && isspace((unsigned char) *ptr))
-		ptr++;
-
-	/* handle sign */
-	if (*ptr == '-')
-	{
-		ptr++;
-		neg = true;
-	}
-	else if (*ptr == '+')
-		ptr++;
-
-	/* require at least one digit */
-	if (unlikely(!isdigit((unsigned char) *ptr)))
-		goto invalid_syntax;
-
-	/* process digits */
-	while (*ptr && isdigit((unsigned char) *ptr))
-	{
-		int8		digit = (*ptr++ - '0');
-
-		if (unlikely(pg_mul_s64_overflow(tmp, 10, &tmp)) ||
-			unlikely(pg_sub_s64_overflow(tmp, digit, &tmp)))
-			goto out_of_range;
-	}
-
-	/* allow trailing whitespace, but not other trailing chars */
-	while (*ptr != '\0' && isspace((unsigned char) *ptr))
-		ptr++;
-
-	if (unlikely(*ptr != '\0'))
-		goto invalid_syntax;
-
-	if (!neg)
-	{
-		if (unlikely(tmp == PG_INT64_MIN))
-			goto out_of_range;
-		tmp = -tmp;
-	}
-
-	*result = tmp;
-	return true;
-
-out_of_range:
-	if (!errorOK)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("value \"%s\" is out of range for type %s",
-						str, "bigint")));
-	return false;
-
-invalid_syntax:
-	if (!errorOK)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for integer: \"%s\"",
-						str)));
-	return false;
-}
-
 /* int8in()
  */
 Datum
 int8in(PG_FUNCTION_ARGS)
 {
-	char	   *str = PG_GETARG_CSTRING(0);
-	int64		result;
+	char	   *num = PG_GETARG_CSTRING(0);
 
-	(void) scanint8(str, false, &result);
-	PG_RETURN_INT64(result);
+	PG_RETURN_INT64(pg_strtoint64(num));
 }
 
 
@@ -149,9 +65,16 @@ int8out(PG_FUNCTION_ARGS)
 	int64		val = PG_GETARG_INT64(0);
 	char		buf[MAXINT8LEN + 1];
 	char	   *result;
+	int			len;
 
-	pg_lltoa(val, buf);
-	result = pstrdup(buf);
+	len = pg_lltoa(val, buf) + 1;
+
+	/*
+	 * Since the length is already known, we do a manual palloc() and memcpy()
+	 * to avoid the strlen() call that would otherwise be done in pstrdup().
+	 */
+	result = palloc(len);
+	memcpy(result, buf, len);
 	PG_RETURN_CSTRING(result);
 }
 
@@ -667,6 +590,133 @@ int8mod(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(arg1 % arg2);
 }
 
+/*
+ * Greatest Common Divisor
+ *
+ * Returns the largest positive integer that exactly divides both inputs.
+ * Special cases:
+ *   - gcd(x, 0) = gcd(0, x) = abs(x)
+ *   		because 0 is divisible by anything
+ *   - gcd(0, 0) = 0
+ *   		complies with the previous definition and is a common convention
+ *
+ * Special care must be taken if either input is INT64_MIN ---
+ * gcd(0, INT64_MIN), gcd(INT64_MIN, 0) and gcd(INT64_MIN, INT64_MIN) are
+ * all equal to abs(INT64_MIN), which cannot be represented as a 64-bit signed
+ * integer.
+ */
+static int64
+int8gcd_internal(int64 arg1, int64 arg2)
+{
+	int64		swap;
+	int64		a1,
+				a2;
+
+	/*
+	 * Put the greater absolute value in arg1.
+	 *
+	 * This would happen automatically in the loop below, but avoids an
+	 * expensive modulo operation, and simplifies the special-case handling
+	 * for INT64_MIN below.
+	 *
+	 * We do this in negative space in order to handle INT64_MIN.
+	 */
+	a1 = (arg1 < 0) ? arg1 : -arg1;
+	a2 = (arg2 < 0) ? arg2 : -arg2;
+	if (a1 > a2)
+	{
+		swap = arg1;
+		arg1 = arg2;
+		arg2 = swap;
+	}
+
+	/* Special care needs to be taken with INT64_MIN.  See comments above. */
+	if (arg1 == PG_INT64_MIN)
+	{
+		if (arg2 == 0 || arg2 == PG_INT64_MIN)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("bigint out of range")));
+
+		/*
+		 * Some machines throw a floating-point exception for INT64_MIN % -1,
+		 * which is a bit silly since the correct answer is perfectly
+		 * well-defined, namely zero.  Guard against this and just return the
+		 * result, gcd(INT64_MIN, -1) = 1.
+		 */
+		if (arg2 == -1)
+			return 1;
+	}
+
+	/* Use the Euclidean algorithm to find the GCD */
+	while (arg2 != 0)
+	{
+		swap = arg2;
+		arg2 = arg1 % arg2;
+		arg1 = swap;
+	}
+
+	/*
+	 * Make sure the result is positive. (We know we don't have INT64_MIN
+	 * anymore).
+	 */
+	if (arg1 < 0)
+		arg1 = -arg1;
+
+	return arg1;
+}
+
+Datum
+int8gcd(PG_FUNCTION_ARGS)
+{
+	int64		arg1 = PG_GETARG_INT64(0);
+	int64		arg2 = PG_GETARG_INT64(1);
+	int64		result;
+
+	result = int8gcd_internal(arg1, arg2);
+
+	PG_RETURN_INT64(result);
+}
+
+/*
+ * Least Common Multiple
+ */
+Datum
+int8lcm(PG_FUNCTION_ARGS)
+{
+	int64		arg1 = PG_GETARG_INT64(0);
+	int64		arg2 = PG_GETARG_INT64(1);
+	int64		gcd;
+	int64		result;
+
+	/*
+	 * Handle lcm(x, 0) = lcm(0, x) = 0 as a special case.  This prevents a
+	 * division-by-zero error below when x is zero, and an overflow error from
+	 * the GCD computation when x = INT64_MIN.
+	 */
+	if (arg1 == 0 || arg2 == 0)
+		PG_RETURN_INT64(0);
+
+	/* lcm(x, y) = abs(x / gcd(x, y) * y) */
+	gcd = int8gcd_internal(arg1, arg2);
+	arg1 = arg1 / gcd;
+
+	if (unlikely(pg_mul_s64_overflow(arg1, arg2, &result)))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("bigint out of range")));
+
+	/* If the result is INT64_MIN, it cannot be represented. */
+	if (unlikely(result == PG_INT64_MIN))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("bigint out of range")));
+
+	if (result < 0)
+		result = -result;
+
+	PG_RETURN_INT64(result);
+}
 
 Datum
 int8inc(PG_FUNCTION_ARGS)
@@ -769,6 +819,49 @@ Datum
 int8dec_any(PG_FUNCTION_ARGS)
 {
 	return int8dec(fcinfo);
+}
+
+/*
+ * int8inc_support
+ *		prosupport function for int8inc() and int8inc_any()
+ */
+Datum
+int8inc_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+
+	if (IsA(rawreq, SupportRequestWFuncMonotonic))
+	{
+		SupportRequestWFuncMonotonic *req = (SupportRequestWFuncMonotonic *) rawreq;
+		MonotonicFunction monotonic = MONOTONICFUNC_NONE;
+		int			frameOptions = req->window_clause->frameOptions;
+
+		/* No ORDER BY clause then all rows are peers */
+		if (req->window_clause->orderClause == NIL)
+			monotonic = MONOTONICFUNC_BOTH;
+		else
+		{
+			/*
+			 * Otherwise take into account the frame options.  When the frame
+			 * bound is the start of the window then the resulting value can
+			 * never decrease, therefore is monotonically increasing
+			 */
+			if (frameOptions & FRAMEOPTION_START_UNBOUNDED_PRECEDING)
+				monotonic |= MONOTONICFUNC_INCREASING;
+
+			/*
+			 * Likewise, if the frame bound is the end of the window then the
+			 * resulting value can never decrease.
+			 */
+			if (frameOptions & FRAMEOPTION_END_UNBOUNDED_FOLLOWING)
+				monotonic |= MONOTONICFUNC_DECREASING;
+		}
+
+		req->monotonic = monotonic;
+		PG_RETURN_POINTER(req);
+	}
+
+	PG_RETURN_POINTER(NULL);
 }
 
 
@@ -1215,15 +1308,8 @@ dtoi8(PG_FUNCTION_ARGS)
 	 */
 	num = rint(num);
 
-	/*
-	 * Range check.  We must be careful here that the boundary values are
-	 * expressed exactly in the float domain.  We expect PG_INT64_MIN to be an
-	 * exact power of 2, so it will be represented exactly; but PG_INT64_MAX
-	 * isn't, and might get rounded off, so avoid using it.
-	 */
-	if (unlikely(num < (float8) PG_INT64_MIN ||
-				 num >= -((float8) PG_INT64_MIN) ||
-				 isnan(num)))
+	/* Range check */
+	if (unlikely(isnan(num) || !FLOAT8_FITS_IN_INT64(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("bigint out of range")));
@@ -1257,15 +1343,8 @@ ftoi8(PG_FUNCTION_ARGS)
 	 */
 	num = rint(num);
 
-	/*
-	 * Range check.  We must be careful here that the boundary values are
-	 * expressed exactly in the float domain.  We expect PG_INT64_MIN to be an
-	 * exact power of 2, so it will be represented exactly; but PG_INT64_MAX
-	 * isn't, and might get rounded off, so avoid using it.
-	 */
-	if (unlikely(num < (float4) PG_INT64_MIN ||
-				 num >= -((float4) PG_INT64_MIN) ||
-				 isnan(num)))
+	/* Range check */
+	if (unlikely(isnan(num) || !FLOAT4_FITS_IN_INT64(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("bigint out of range")));
@@ -1374,4 +1453,74 @@ generate_series_step_int8(PG_FUNCTION_ARGS)
 	else
 		/* do when there is no more left */
 		SRF_RETURN_DONE(funcctx);
+}
+
+/*
+ * Planner support function for generate_series(int8, int8 [, int8])
+ */
+Datum
+generate_series_int8_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+	Node	   *ret = NULL;
+
+	if (IsA(rawreq, SupportRequestRows))
+	{
+		/* Try to estimate the number of rows returned */
+		SupportRequestRows *req = (SupportRequestRows *) rawreq;
+
+		if (is_funcclause(req->node))	/* be paranoid */
+		{
+			List	   *args = ((FuncExpr *) req->node)->args;
+			Node	   *arg1,
+					   *arg2,
+					   *arg3;
+
+			/* We can use estimated argument values here */
+			arg1 = estimate_expression_value(req->root, linitial(args));
+			arg2 = estimate_expression_value(req->root, lsecond(args));
+			if (list_length(args) >= 3)
+				arg3 = estimate_expression_value(req->root, lthird(args));
+			else
+				arg3 = NULL;
+
+			/*
+			 * If any argument is constant NULL, we can safely assume that
+			 * zero rows are returned.  Otherwise, if they're all non-NULL
+			 * constants, we can calculate the number of rows that will be
+			 * returned.  Use double arithmetic to avoid overflow hazards.
+			 */
+			if ((IsA(arg1, Const) &&
+				 ((Const *) arg1)->constisnull) ||
+				(IsA(arg2, Const) &&
+				 ((Const *) arg2)->constisnull) ||
+				(arg3 != NULL && IsA(arg3, Const) &&
+				 ((Const *) arg3)->constisnull))
+			{
+				req->rows = 0;
+				ret = (Node *) req;
+			}
+			else if (IsA(arg1, Const) &&
+					 IsA(arg2, Const) &&
+					 (arg3 == NULL || IsA(arg3, Const)))
+			{
+				double		start,
+							finish,
+							step;
+
+				start = DatumGetInt64(((Const *) arg1)->constvalue);
+				finish = DatumGetInt64(((Const *) arg2)->constvalue);
+				step = arg3 ? DatumGetInt64(((Const *) arg3)->constvalue) : 1;
+
+				/* This equation works for either sign of step */
+				if (step != 0)
+				{
+					req->rows = floor((finish - start + step) / step);
+					ret = (Node *) req;
+				}
+			}
+		}
+	}
+
+	PG_RETURN_POINTER(ret);
 }

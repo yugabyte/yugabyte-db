@@ -3,7 +3,7 @@
  * blutils.c
  *		Bloom index utilities.
  *
- * Portions Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1990-1993, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,17 +15,16 @@
 
 #include "access/amapi.h"
 #include "access/generic_xlog.h"
+#include "access/reloptions.h"
+#include "bloom.h"
 #include "catalog/index.h"
-#include "storage/lmgr.h"
+#include "commands/vacuum.h"
 #include "miscadmin.h"
 #include "storage/bufmgr.h"
-#include "storage/indexfsm.h"
-#include "utils/memutils.h"
-#include "access/reloptions.h"
 #include "storage/freespace.h"
 #include "storage/indexfsm.h"
-
-#include "bloom.h"
+#include "storage/lmgr.h"
+#include "utils/memutils.h"
 
 /* Signature dealing macros - note i is assumed to be of type int */
 #define GETWORD(x,i) ( *( (BloomSignatureWord *)(x) + ( (i) / SIGNWORDBITS ) ) )
@@ -60,7 +59,8 @@ _PG_init(void)
 	/* Option for length of signature */
 	add_int_reloption(bl_relopt_kind, "length",
 					  "Length of signature in bits",
-					  DEFAULT_BLOOM_LENGTH, 1, MAX_BLOOM_LENGTH);
+					  DEFAULT_BLOOM_LENGTH, 1, MAX_BLOOM_LENGTH,
+					  AccessExclusiveLock);
 	bl_relopt_tab[0].optname = "length";
 	bl_relopt_tab[0].opttype = RELOPT_TYPE_INT;
 	bl_relopt_tab[0].offset = offsetof(BloomOptions, bloomLength);
@@ -71,7 +71,8 @@ _PG_init(void)
 		snprintf(buf, sizeof(buf), "col%d", i + 1);
 		add_int_reloption(bl_relopt_kind, buf,
 						  "Number of bits generated for each index column",
-						  DEFAULT_BLOOM_BITS, 1, MAX_BLOOM_BITS);
+						  DEFAULT_BLOOM_BITS, 1, MAX_BLOOM_BITS,
+						  AccessExclusiveLock);
 		bl_relopt_tab[i + 1].optname = MemoryContextStrdup(TopMemoryContext,
 														   buf);
 		bl_relopt_tab[i + 1].opttype = RELOPT_TYPE_INT;
@@ -108,6 +109,7 @@ blhandler(PG_FUNCTION_ARGS)
 
 	amroutine->amstrategies = BLOOM_NSTRATEGIES;
 	amroutine->amsupport = BLOOM_NPROC;
+	amroutine->amoptsprocnum = BLOOM_OPTIONS_PROC;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = false;
@@ -121,6 +123,9 @@ blhandler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = false;
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->amusemaintenanceworkmem = false;
+	amroutine->amparallelvacuumoptions =
+		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_CLEANUP;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = blbuild;
@@ -132,7 +137,9 @@ blhandler(PG_FUNCTION_ARGS)
 	amroutine->amcostestimate = blcostestimate;
 	amroutine->amoptions = bloptions;
 	amroutine->amproperty = NULL;
+	amroutine->ambuildphasename = NULL;
 	amroutine->amvalidate = blvalidate;
+	amroutine->amadjustmembers = NULL;
 	amroutine->ambeginscan = blbeginscan;
 	amroutine->amrescan = blrescan;
 	amroutine->amgettuple = NULL;
@@ -163,6 +170,7 @@ initBloomState(BloomState *state, Relation index)
 		fmgr_info_copy(&(state->hashFn[i]),
 					   index_getprocinfo(index, i + 1, BLOOM_HASH_PROC),
 					   GetCurrentMemoryContext());
+		state->collations[i] = index->rd_indcollation[i];
 	}
 
 	/* Initialize amcache if needed with options from metapage */
@@ -267,7 +275,7 @@ signValue(BloomState *state, BloomSignatureWord *sign, Datum value, int attno)
 	 * different columns will be mapped into different bits because of step
 	 * above
 	 */
-	hashVal = DatumGetInt32(FunctionCall1(&state->hashFn[attno], value));
+	hashVal = DatumGetInt32(FunctionCall1Coll(&state->hashFn[attno], state->collations[attno], value));
 	mySrand(hashVal ^ myRand());
 
 	for (j = 0; j < state->opts.bitSize[attno]; j++)
@@ -339,7 +347,7 @@ BloomPageAddItem(BloomState *state, Page page, BloomTuple *tuple)
 /*
  * Allocate a new page (either by recycling, or by extending the index file)
  * The returned buffer is already pinned and exclusive-locked
- * Caller is responsible for initializing the page by calling BloomInitBuffer
+ * Caller is responsible for initializing the page by calling BloomInitPage
  */
 Buffer
 BloomNewBuffer(Relation index)
@@ -403,7 +411,6 @@ BloomInitPage(Page page, uint16 flags)
 	PageInit(page, BLCKSZ, sizeof(BloomPageOpaqueData));
 
 	opaque = BloomPageGetOpaque(page);
-	memset(opaque, 0, sizeof(BloomPageOpaqueData));
 	opaque->flags = flags;
 	opaque->bloom_page_id = BLOOM_PAGE_ID;
 }
@@ -473,18 +480,18 @@ BloomInitMetapage(Relation index)
 bytea *
 bloptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	int			numoptions;
 	BloomOptions *rdopts;
 
 	/* Parse the user-given reloptions */
-	options = parseRelOptions(reloptions, validate, bl_relopt_kind, &numoptions);
-	rdopts = allocateReloptStruct(sizeof(BloomOptions), options, numoptions);
-	fillRelOptions((void *) rdopts, sizeof(BloomOptions), options, numoptions,
-				   validate, bl_relopt_tab, lengthof(bl_relopt_tab));
+	rdopts = (BloomOptions *) build_reloptions(reloptions, validate,
+											   bl_relopt_kind,
+											   sizeof(BloomOptions),
+											   bl_relopt_tab,
+											   lengthof(bl_relopt_tab));
 
 	/* Convert signature length from # of bits to # to words, rounding up */
-	rdopts->bloomLength = (rdopts->bloomLength + SIGNWORDBITS - 1) / SIGNWORDBITS;
+	if (rdopts)
+		rdopts->bloomLength = (rdopts->bloomLength + SIGNWORDBITS - 1) / SIGNWORDBITS;
 
 	return (bytea *) rdopts;
 }

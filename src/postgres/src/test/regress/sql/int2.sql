@@ -2,22 +2,10 @@
 -- INT2
 --
 
-CREATE TABLE INT2_TBL(f1 int2);
-
-INSERT INTO INT2_TBL(f1) VALUES ('0   ');
-
-INSERT INTO INT2_TBL(f1) VALUES ('  1234 ');
-
-INSERT INTO INT2_TBL(f1) VALUES ('    -1234');
+-- int2_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
 
 INSERT INTO INT2_TBL(f1) VALUES ('34.5');
-
--- largest and smallest values
-INSERT INTO INT2_TBL(f1) VALUES ('32767');
-
-INSERT INTO INT2_TBL(f1) VALUES ('-32767');
-
--- bad input values -- should give errors
 INSERT INTO INT2_TBL(f1) VALUES ('100000');
 INSERT INTO INT2_TBL(f1) VALUES ('asdf');
 INSERT INTO INT2_TBL(f1) VALUES ('    ');
@@ -27,62 +15,66 @@ INSERT INTO INT2_TBL(f1) VALUES ('123 dt');
 INSERT INTO INT2_TBL(f1) VALUES ('');
 
 
-SELECT '' AS five, * FROM INT2_TBL;
+SELECT * FROM INT2_TBL;
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0';
+SELECT * FROM INT2_TBL AS f(a, b);
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0';
+SELECT * FROM (TABLE int2_tbl) AS s (a, b);
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0';
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int4 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0';
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int2 '0';
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int4 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int4 '0';
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int2 '0';
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int4 '0';
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0';
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int4 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0';
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int2 '0';
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0';
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int4 '0';
+
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0';
+
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0';
 
 -- positive odds
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1';
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1';
 
 -- any evens
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0';
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0';
 
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
 WHERE abs(f1) < 16384;
 
-SELECT '' AS five, i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
 WHERE f1 < 32766;
 
-SELECT '' AS five, i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
 WHERE f1 > -32767;
 
-SELECT '' AS five, i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i;
 
-SELECT '' AS five, i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i;
+SELECT i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i;
 
 -- corner cases
 SELECT (-1::int2<<15)::text;

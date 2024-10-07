@@ -29,7 +29,7 @@
  * No new entries ever get pushed into a -2-labeled child, either.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -630,9 +630,10 @@ spg_text_leaf_consistent(PG_FUNCTION_ARGS)
 			 * query (prefix) string, so we don't need to check it again.
 			 */
 			res = (level >= queryLen) ||
-				DatumGetBool(DirectFunctionCall2(text_starts_with,
-												 out->leafValue,
-												 PointerGetDatum(query)));
+				DatumGetBool(DirectFunctionCall2Coll(text_starts_with,
+													 PG_GET_COLLATION(),
+													 out->leafValue,
+													 PointerGetDatum(query)));
 
 			if (!res)			/* no need to consider remaining conditions */
 				break;

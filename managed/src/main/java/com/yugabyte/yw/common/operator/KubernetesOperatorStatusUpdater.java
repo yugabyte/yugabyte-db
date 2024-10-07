@@ -93,8 +93,11 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
    * Update Restore Job Status
    */
   @Override
-  public void updateRestoreJobStatus(String message, UUID taskUUID) {
+  public void updateRestoreJobStatus(String message, UUID taskUUID, Universe universe) {
     try {
+      if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
+        log.debug("Not updating restore status: Universe is not operator controlled");
+      }
       log.info("Update Restore Job Status called for task {} ", taskUUID);
       try (final KubernetesClient kubernetesClient =
           new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {

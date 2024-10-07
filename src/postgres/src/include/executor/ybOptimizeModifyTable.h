@@ -26,11 +26,12 @@
 
 #pragma once
 
+#include "nodes/execnodes.h"
 #include "nodes/plannodes.h"
 
 extern void YbComputeModifiedColumnsAndSkippableEntities(
-	ModifyTableState *mtstate, EState *estate, HeapTuple oldtuple,
-	HeapTuple newtuple, Bitmapset **updatedCols,
+	ModifyTableState *mtstate, ResultRelInfo *resultRelInfo, EState *estate,
+	HeapTuple oldtuple, HeapTuple newtuple, Bitmapset **updatedCols,
 	bool beforeRowUpdateTriggerFired);
 
 extern bool YbIsPrimaryKeyUpdated(Relation rel, const Bitmapset *updated_cols);

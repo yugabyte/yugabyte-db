@@ -33,6 +33,8 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/rpc/poller.h"
 
 #include "yb/server/clock.h"
@@ -394,7 +396,10 @@ class TransactionParticipant::Impl
                                              db_.key_bounds,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
-                                             rocksdb::kDefaultQueryId);
+                                             rocksdb::kDefaultQueryId,
+                                             /* file_filter = */ nullptr,
+                                             /* iterate_upper_bound = */ nullptr,
+                                             rocksdb::CacheRestartBlockKeys::kFalse);
     for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
       ++result.num_intents;
       // Count number of transaction, by counting metadata records.

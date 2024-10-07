@@ -42,6 +42,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
@@ -915,6 +916,13 @@ Status list_all_tablet_servers_action(
   return Status::OK();
 }
 
+const auto remove_tablet_server_args = "<ts_uuid>";
+Status remove_tablet_server_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 1));
+  return client->RemoveTabletServer(args[0]);
+}
+
 const auto list_all_masters_args = "";
 Status list_all_masters_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -1194,6 +1202,27 @@ Status upgrade_ysql_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 
   RETURN_NOT_OK_PREPEND(
       client->UpgradeYsql(use_single_connection), "Unable to upgrade YSQL cluster");
+  return Status::OK();
+}
+
+// Takes a long time to run. Set `timeout_ms` to at least 5 minutes when calling.
+const auto ysql_major_version_catalog_upgrade_args = "";
+Status ysql_major_version_catalog_upgrade_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->StartYsqlMajorVersionUpgradeInitdb(), "Unable to run ysql major version upgrade");
+  RETURN_NOT_OK(client->WaitForYsqlMajorVersionUpgradeInitdb());
+  return Status::OK();
+}
+
+// May take a while to run. Set `timeout_ms` to at least 5 minutes when calling.
+const auto rollback_ysql_major_version_upgrade_args = "";
+Status rollback_ysql_major_version_upgrade_action(const ClusterAdminCli::CLIArguments& args,
+                                                  ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(client->RollbackYsqlMajorVersionUpgrade(),
+                        "Unable to roll back ysql major version upgrade");
   return Status::OK();
 }
 
@@ -2758,6 +2787,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(compact_table_by_id);
   REGISTER_COMMAND(compaction_status);
   REGISTER_COMMAND(list_all_tablet_servers);
+  REGISTER_COMMAND(remove_tablet_server);
   REGISTER_COMMAND(list_all_masters);
   REGISTER_COMMAND(change_master_config);
   REGISTER_COMMAND(dump_masters_state);
@@ -2859,6 +2889,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
+
+  // PG11 -> PG15 upgrade commands
+  REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
+  REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
 
   // SysCatalog util commands
   REGISTER_COMMAND(dump_sys_catalog_entries);

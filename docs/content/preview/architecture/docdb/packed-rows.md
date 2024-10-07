@@ -14,7 +14,7 @@ type: docs
 
 Originally DocDB used to store individual column data of a row as multiple key-value pairs. Although this has advantages when single columns are looked up, it also meant multiple lookups for multiple columns and also led to increase in storage space. To overcome this, DocDB uses Packed rows, which means that an entire row is stored as a single key-value pair.
 
-The packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0, and for the YCQL API is {{<badge/tp>}}.
+The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
 
 ## Overview
 
@@ -62,4 +62,4 @@ The packed row feature for the YSQL API works across all features, including bac
 
 * {{<issue 21131>}} Packed row is enabled by default for YSQL in universes created in v2.20.0 and later. However, if you upgrade a universe to v2.20 from an earlier version, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first.
 
-The packed row feature for the YCQL API is {{<badge/tp>}}. There are no known limitations.
+The packed row feature for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.

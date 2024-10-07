@@ -23,7 +23,7 @@
  * for example).
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_description.h
@@ -45,7 +45,7 @@
  *		typedef struct FormData_pg_description
  * ----------------
  */
-CATALOG(pg_description,2609,DescriptionRelationId) BKI_WITHOUT_OIDS
+CATALOG(pg_description,2609,DescriptionRelationId)
 {
 	Oid			objoid;			/* OID of object itself */
 	Oid			classoid;		/* OID of table containing object */
@@ -62,5 +62,12 @@ CATALOG(pg_description,2609,DescriptionRelationId) BKI_WITHOUT_OIDS
  * ----------------
  */
 typedef FormData_pg_description * Form_pg_description;
+
+DECLARE_TOAST(pg_description, 2834, 2835);
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_description_o_c_o_index, 2675, DescriptionObjIndexId, on pg_description using btree(objoid oid_ops, classoid oid_ops, objsubid int4_ops));
+
+/* We do not use BKI_LOOKUP here because it causes problems for genbki.pl */
+DECLARE_FOREIGN_KEY((classoid), pg_class, (oid));
 
 #endif							/* PG_DESCRIPTION_H */

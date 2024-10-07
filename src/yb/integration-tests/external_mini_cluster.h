@@ -504,6 +504,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // to get any effect of that change.
   void RemoveExtraFlagOnTServers(const std::string& flag);
 
+  // Adds the given flag to the extra flags on all servers. Also dynamically sets the flag on the
+  // running processes. Non runtime flags would still require a restart.
+  Status AddAndSetExtraFlag(const std::string& flag, const std::string& value);
+
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
   uint16_t AllocateFreePort();

@@ -84,7 +84,6 @@ public class TabletServerController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     JsonNode tabletServersAPIResp;
-    YBClient client = null;
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
 
@@ -95,7 +94,6 @@ public class TabletServerController extends AuthenticatedController {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
-    JsonNode response;
     // Query master leader tablet servers endpoint
     try {
       final int tserverPort = universe.getUniverseDetails().communicationPorts.tserverHttpPort;
@@ -105,21 +103,21 @@ public class TabletServerController extends AuthenticatedController {
       tabletServersAPIResp = apiHelper.getRequest(masterLeaderUrl);
 
       if (tabletServersAPIResp != null && tabletServersAPIResp.size() > 0) {
-        client = ybService.getClient(masterAddresses, certificate);
-        Iterator<Entry<String, JsonNode>> iter = tabletServersAPIResp.fields();
-        while (iter.hasNext()) {
-          Entry<String, JsonNode> entry = iter.next();
+        try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
           ListTabletServersResponse listTServerResp = client.listTabletServers();
-          JsonNode tserverObject = entry.getValue();
-          for (ServerInfo tserver : listTServerResp.getTabletServersList()) {
-            String objectKey = tserver.getHost() + SEPARATOR + tserverPort;
-            JsonNode tserverNode = tserverObject.get(objectKey);
-            if (tserverNode != null) {
-              ((ObjectNode) tserverNode).put("uuid", tserver.getUuid());
+          Iterator<Entry<String, JsonNode>> iter = tabletServersAPIResp.fields();
+          while (iter.hasNext()) {
+            Entry<String, JsonNode> entry = iter.next();
+            JsonNode tserverObject = entry.getValue();
+            for (ServerInfo tserver : listTServerResp.getTabletServersList()) {
+              String objectKey = tserver.getHost() + SEPARATOR + tserverPort;
+              JsonNode tserverNode = tserverObject.get(objectKey);
+              if (tserverNode != null) {
+                ((ObjectNode) tserverNode).put("uuid", tserver.getUuid());
+              }
             }
           }
         }
-        ybService.closeClient(client, masterAddresses);
       }
       return PlatformResults.withRawData(tabletServersAPIResp);
     } catch (Exception e) {

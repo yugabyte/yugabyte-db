@@ -5,9 +5,14 @@
 -- Make gist2 over gisthandler. In fact, it would be a synonym to gist.
 CREATE ACCESS METHOD gist2 TYPE INDEX HANDLER gisthandler;
 
+-- Verify return type checks for handlers
+CREATE ACCESS METHOD bogus TYPE INDEX HANDLER int4in;
+CREATE ACCESS METHOD bogus TYPE INDEX HANDLER heap_tableam_handler;
+
+
+-- Try to create gist2 index on fast_emp4000: fail because opclass doesn't exist
 CREATE INDEX grect2ind2 ON fast_emp4000 USING gist2 (home_base); -- YB: Should fail because gist is unsupported on YB tables
 CREATE TEMP TABLE fast_emp4000 AS SELECT * FROM fast_emp4000; -- YB: workaround using temp table
--- Try to create gist2 index on fast_emp4000: fail because opclass doesn't exist
 CREATE INDEX grect2ind2 ON fast_emp4000 USING gist2 (home_base);
 
 -- Make operator class for boxes using gist2
@@ -25,8 +30,6 @@ CREATE OPERATOR CLASS box_ops DEFAULT
 	OPERATOR 10	<<|,
 	OPERATOR 11	|>>,
 	OPERATOR 12	|&>,
-	OPERATOR 13	~,
-	OPERATOR 14	@,
 	FUNCTION 1	gist_box_consistent(internal, box, smallint, oid, internal),
 	FUNCTION 2	gist_box_union(internal, internal),
 	-- don't need compress, decompress, or fetch functions
@@ -38,7 +41,7 @@ CREATE OPERATOR CLASS box_ops DEFAULT
 CREATE INDEX grect2ind2 ON fast_emp4000 USING gist2 (home_base);
 
 -- Now check the results from plain indexscan; temporarily drop existing
--- index grect2ind to ensure it doesn't capture the plan.
+-- index grect2ind to ensure it doesn't capture the plan
 -- BEGIN; -- YB: Commented out because DDL in txn is unsupported
 DROP INDEX grect2ind; -- YB: fails because CREATE INDEX grect2ind is not yet ported in yb_pg_create_index
 SET enable_seqscan = OFF;
@@ -47,10 +50,10 @@ SET enable_bitmapscan = OFF;
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
+    WHERE home_base <@ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
 SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
+    WHERE home_base <@ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
 
 EXPLAIN (COSTS OFF)

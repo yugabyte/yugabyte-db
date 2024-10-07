@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
@@ -1055,8 +1056,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("127.0.0.1/32"),
                 new PgOutputMessageTupleColumnValue("<(0,0),1>"),
                 new PgOutputMessageTupleColumnValue("2024-02-01"),
-                new PgOutputMessageTupleColumnValue("1.20100000000000007"),
-                new PgOutputMessageTupleColumnValue("3.14000000000000012"),
+                new PgOutputMessageTupleColumnValue("1.201"),
+                new PgOutputMessageTupleColumnValue("3.14"),
                 new PgOutputMessageTupleColumnValue("127.0.0.1"),
                 new PgOutputMessageTupleColumnValue("42"),
                 new PgOutputMessageTupleColumnValue("{\"key\": \"value\"}"),
@@ -1150,9 +1151,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
     // 2 Relation (t1 & t2) + 3 records/txn (B+I+C) * 2 txns (performed on t1 & t2
-    // respectively) + 2 records/txn (B+C) * 1 txn (performed on t3) + 4 records/txn
-    // (B+I1+I2+C) * 1 multi-shard txn.
-    result.addAll(receiveMessage(stream, 14));
+    // respectively) + 4 records/txn (B+I1+I2+C) * 1 multi-shard txn.
+    // Note that empty transactions are skipped by pgoutput.
+    result.addAll(receiveMessage(stream, 12));
     for (PgOutputMessage res : result) {
       LOG.info("Row = {}", res);
     }
@@ -1180,10 +1181,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
-
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
-        add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,

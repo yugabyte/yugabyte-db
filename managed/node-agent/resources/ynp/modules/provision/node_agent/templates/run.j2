@@ -192,7 +192,7 @@ airgap_flag="--airgap"
 airgap_flag=""
 {% endif %}
 
-installer_dir="{{ ynp_dir }}/../../bin"
+installer_dir="{{ yb_home_dir }}/.install"
 su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
 -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
 --instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} \
@@ -299,6 +299,8 @@ function cleanup() {
     if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
         rm "{{ tmp_directory }}/add_node_to_provider.json"
     fi
+
+    rm -rf "{{ yb_home_dir }}/.install"
 }
 
 trap cleanup EXIT

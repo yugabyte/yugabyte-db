@@ -47,7 +47,7 @@ SET datestyle = 'MDY';
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
 SAVEPOINT first_sp;
-SET vacuum_cost_delay TO 80;
+SET vacuum_cost_delay TO 80.1;
 SHOW vacuum_cost_delay;
 SET datestyle = 'German, DMY';
 SHOW datestyle;
@@ -56,7 +56,7 @@ ROLLBACK TO first_sp;
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
 SAVEPOINT second_sp;
-SET vacuum_cost_delay TO 90;
+SET vacuum_cost_delay TO '900us';
 SET datestyle = 'SQL, YMD';
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
@@ -143,6 +143,32 @@ SELECT '2006-08-13 12:34:56'::timestamptz;
 RESET datestyle;
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
+
+-- Test some simple error cases
+SET seq_page_cost TO 'NaN';
+SET vacuum_cost_delay TO '10s';
+SET no_such_variable TO 42;
+
+-- Test "custom" GUCs created on the fly (which aren't really an
+-- intended feature, but many people use them).
+SHOW custom.my_guc;  -- error, not known yet
+SET custom.my_guc = 42;
+SHOW custom.my_guc;
+RESET custom.my_guc;  -- this makes it go to empty, not become unknown again
+SHOW custom.my_guc;
+SET custom.my.qualified.guc = 'foo';
+SHOW custom.my.qualified.guc;
+SET custom."bad-guc" = 42;  -- disallowed because -c cannot set this name
+SHOW custom."bad-guc";
+SET special."weird name" = 'foo';  -- could be allowed, but we choose not to
+SHOW special."weird name";
+
+-- Check what happens when you try to set a "custom" GUC within the
+-- namespace of an extension.
+SET plpgsql.extra_foo_warnings = true;  -- allowed if plpgsql is not loaded yet
+LOAD 'plpgsql';  -- this will throw a warning and delete the variable
+SET plpgsql.extra_foo_warnings = true;  -- now, it's an error
+SHOW plpgsql.extra_foo_warnings;
 
 --
 -- Test DISCARD TEMP
@@ -289,13 +315,49 @@ select func_with_bad_set();
 
 reset check_function_bodies;
 
--- test SET unrecognized parameter
-SET foo = false;  -- no such setting
+set default_with_oids to f;
+-- Should not allow to set it to true.
+set default_with_oids to t;
 
--- test setting a parameter with a registered prefix (plpgsql)
-SET plpgsql.extra_foo_warnings = false;  -- no such setting
-SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+-- Test GUC categories and flag patterns
+SELECT pg_settings_get_flags(NULL);
+SELECT pg_settings_get_flags('does_not_exist');
+CREATE TABLE tab_settings_flags AS SELECT name, category,
+    'EXPLAIN'          = ANY(flags) AS explain,
+    'NO_RESET_ALL'     = ANY(flags) AS no_reset_all,
+    'NO_SHOW_ALL'      = ANY(flags) AS no_show_all,
+    'NOT_IN_SAMPLE'    = ANY(flags) AS not_in_sample,
+    'RUNTIME_COMPUTED' = ANY(flags) AS runtime_computed
+  FROM pg_show_all_settings() AS psas,
+    pg_settings_get_flags(psas.name) AS flags;
 
--- cleanup
-RESET foo;
-RESET plpgsql.extra_foo_warnings;
+-- Developer GUCs should be flagged with GUC_NOT_IN_SAMPLE:
+SELECT name FROM tab_settings_flags
+  WHERE category = 'Developer Options' AND NOT not_in_sample
+  ORDER BY 1;
+-- Most query-tuning GUCs are flagged as valid for EXPLAIN.
+-- default_statistics_target is an exception.
+SELECT name FROM tab_settings_flags
+  WHERE category ~ '^Query Tuning' AND NOT explain
+  ORDER BY 1;
+-- Runtime-computed GUCs should be part of the preset category.
+SELECT name FROM tab_settings_flags
+  WHERE NOT category = 'Preset Options' AND runtime_computed
+  ORDER BY 1;
+-- Preset GUCs are flagged as NOT_IN_SAMPLE.
+SELECT name FROM tab_settings_flags
+  WHERE category = 'Preset Options' AND NOT not_in_sample
+  ORDER BY 1;
+-- NO_SHOW_ALL implies NO_RESET_ALL, and vice-versa.
+SELECT name FROM tab_settings_flags
+  WHERE no_show_all AND NOT no_reset_all
+  ORDER BY 1;
+-- Exceptions are transaction_*.
+SELECT name FROM tab_settings_flags
+  WHERE NOT no_show_all AND no_reset_all
+  ORDER BY 1;
+-- NO_SHOW_ALL implies NOT_IN_SAMPLE.
+SELECT name FROM tab_settings_flags
+  WHERE no_show_all AND NOT not_in_sample
+  ORDER BY 1;
+DROP TABLE tab_settings_flags;

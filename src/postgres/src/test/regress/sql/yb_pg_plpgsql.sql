@@ -1245,24 +1245,22 @@ insert into PSlot values ('PS.base.c6', 'PF0_1', '', 'WS.003.3b');
 --
 -- This patchfield will be renamed later into PF0_2 - so its
 -- slots references in pfname should follow
--- TODO(jason): the below `PF0_2` are renamed from the original `PF0_X` because
--- of issue #1611
 --
-insert into PField values ('PF0_2', 'Phonelines basement');
+insert into PField values ('PF0_X', 'Phonelines basement');
 
-insert into PSlot values ('PS.base.ta1', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.ta2', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.ta3', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.ta4', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.ta5', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.ta6', 'PF0_2', '', '');
+insert into PSlot values ('PS.base.ta1', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.ta2', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.ta3', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.ta4', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.ta5', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.ta6', 'PF0_X', '', '');
 
-insert into PSlot values ('PS.base.tb1', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.tb2', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.tb3', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.tb4', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.tb5', 'PF0_2', '', '');
-insert into PSlot values ('PS.base.tb6', 'PF0_2', '', '');
+insert into PSlot values ('PS.base.tb1', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.tb2', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.tb3', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.tb4', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.tb5', 'PF0_X', '', '');
+insert into PSlot values ('PS.base.tb6', 'PF0_X', '', '');
 
 insert into PField values ('PF1_1', 'Wallslots first floor');
 
@@ -1345,8 +1343,7 @@ insert into PSlot values ('PS.first.tb6', 'PF1_2', '', '');
 --
 -- Fix the wrong name for patchfield PF0_2
 --
--- TODO(jason): uncomment after resolving #1611
---update PField set name = 'PF0_2' where name = 'PF0_X';
+update PField set name = 'PF0_2' where name = 'PF0_X';
 
 select * from PSlot order by slotname;
 select * from WSlot order by slotname;
@@ -1484,7 +1481,8 @@ create function test_found()
   end;' language plpgsql;
 
 select test_found();
-select * from found_test_tbl order by a;
+-- YB note: add ordering.
+select * from found_test_tbl order by ((a % 98) + 0.5 * (a / 100));
 
 --
 -- Test set-returning functions for PL/pgSQL
@@ -1494,25 +1492,27 @@ create function test_table_func_rec() returns setof found_test_tbl as '
 DECLARE
 	rec RECORD;
 BEGIN
-	FOR rec IN select * from found_test_tbl order by a LOOP
+	FOR rec IN select * from found_test_tbl LOOP
 		RETURN NEXT rec;
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
 
-select * from test_table_func_rec();
+-- YB note: add ordering.
+select * from test_table_func_rec() order by ((a % 98) + 0.5 * (a / 100));
 
 create function test_table_func_row() returns setof found_test_tbl as '
 DECLARE
 	row found_test_tbl%ROWTYPE;
 BEGIN
-	FOR row IN select * from found_test_tbl order by a LOOP
+	FOR row IN select * from found_test_tbl LOOP
 		RETURN NEXT row;
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
 
-select * from test_table_func_row();
+-- YB note: add ordering.
+select * from test_table_func_row() order by ((a % 98) + 0.5 * (a / 100));
 
 create function test_ret_set_scalar(int,int) returns setof int as '
 DECLARE
@@ -1560,6 +1560,122 @@ END;' language plpgsql;
 
 SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
 SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text);
+
+--
+-- Test some simple polymorphism cases.
+--
+
+create function f1(x anyelement) returns anyelement as $$
+begin
+  return x + 1;
+end$$ language plpgsql;
+
+select f1(42) as int, f1(4.5) as num;
+select f1(point(3,4));  -- fail for lack of + operator
+
+drop function f1(x anyelement);
+
+create function f1(x anyelement) returns anyarray as $$
+begin
+  return array[x + 1, x + 2];
+end$$ language plpgsql;
+
+select f1(42) as int, f1(4.5) as num;
+
+drop function f1(x anyelement);
+
+create function f1(x anyarray) returns anyelement as $$
+begin
+  return x[1];
+end$$ language plpgsql;
+
+select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
+
+select f1(stavalues1) from pg_statistic;  -- fail, can't infer element type
+
+drop function f1(x anyarray);
+
+create function f1(x anyarray) returns anyarray as $$
+begin
+  return x;
+end$$ language plpgsql;
+
+select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
+
+select f1(stavalues1) from pg_statistic;  -- fail, can't infer element type
+
+drop function f1(x anyarray);
+
+-- fail, can't infer type:
+create function f1(x anyelement) returns anyrange as $$
+begin
+  return array[x + 1, x + 2];
+end$$ language plpgsql;
+
+create function f1(x anyrange) returns anyarray as $$
+begin
+  return array[lower(x), upper(x)];
+end$$ language plpgsql;
+
+select f1(int4range(42, 49)) as int, f1(float8range(4.5, 7.8)) as num;
+
+drop function f1(x anyrange);
+
+create function f1(x anycompatible, y anycompatible) returns anycompatiblearray as $$
+begin
+  return array[x, y];
+end$$ language plpgsql;
+
+select f1(2, 4) as int, f1(2, 4.5) as num;
+
+drop function f1(x anycompatible, y anycompatible);
+
+create function f1(x anycompatiblerange, y anycompatible, z anycompatible) returns anycompatiblearray as $$
+begin
+  return array[lower(x), upper(x), y, z];
+end$$ language plpgsql;
+
+select f1(int4range(42, 49), 11, 2::smallint) as int, f1(float8range(4.5, 7.8), 7.8, 11::real) as num;
+
+select f1(int4range(42, 49), 11, 4.5) as fail;  -- range type doesn't fit
+
+drop function f1(x anycompatiblerange, y anycompatible, z anycompatible);
+
+-- fail, can't infer type:
+create function f1(x anycompatible) returns anycompatiblerange as $$
+begin
+  return array[x + 1, x + 2];
+end$$ language plpgsql;
+
+create function f1(x anycompatiblerange, y anycompatiblearray) returns anycompatiblerange as $$
+begin
+  return x;
+end$$ language plpgsql;
+
+select f1(int4range(42, 49), array[11]) as int, f1(float8range(4.5, 7.8), array[7]) as num;
+
+drop function f1(x anycompatiblerange, y anycompatiblearray);
+
+create function f1(a anyelement, b anyarray,
+                   c anycompatible, d anycompatible,
+                   OUT x anyarray, OUT y anycompatiblearray)
+as $$
+begin
+  x := a || b;
+  y := array[c, d];
+end$$ language plpgsql;
+
+select x, pg_typeof(x), y, pg_typeof(y)
+  from f1(11, array[1, 2], 42, 34.5);
+select x, pg_typeof(x), y, pg_typeof(y)
+  from f1(11, array[1, 2], point(1,2), point(3,4));
+select x, pg_typeof(x), y, pg_typeof(y)
+  from f1(11, '{1,2}', point(1,2), '(3,4)');
+select x, pg_typeof(x), y, pg_typeof(y)
+  from f1(11, array[1, 2.2], 42, 34.5);  -- fail
+
+drop function f1(a anyelement, b anyarray,
+                 c anycompatible, d anycompatible);
 
 --
 -- Test handling of OUT parameters, including polymorphic cases.
@@ -1642,6 +1758,18 @@ select * from duplic('foo'::text);
 
 drop function duplic(anyelement);
 
+create function duplic(in i anycompatiblerange, out j anycompatible, out k anycompatiblearray) as $$
+begin
+  j := lower(i);
+  k := array[lower(i),upper(i)];
+  return;
+end$$ language plpgsql;
+
+select * from duplic(int4range(42,49));
+select * from duplic(textrange('aaa', 'bbb'));
+
+drop function duplic(anycompatiblerange);
+
 --
 -- test PERFORM
 --
@@ -1683,10 +1811,16 @@ BEGIN
 END;' language plpgsql;
 
 SELECT perform_test_func();
+-- YB note: add ordering.
 SELECT * FROM perform_test ORDER BY a;
 
 drop table perform_test;
 
+/*
+ * TODO(jason): the following test section was moved to src/pl/plpgsql/src by
+ * upstream PG 6726d8d476b424633ebdc7068da3f5a6e6da10af.  Since YB does not yet
+ * support tests there, leave it here for now.
+ */
 --
 -- Test error trapping
 --
@@ -1877,9 +2011,8 @@ end$$ language plpgsql stable;
 
 insert into users values('user1');
 
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select sp_id_user('user1');
--- select sp_id_user('userx');
+select sp_id_user('user1');
+select sp_id_user('userx');
 
 create function sp_add_user(a_login text) returns int as $$
 declare my_id_user int;
@@ -1896,217 +2029,239 @@ begin
   RETURN my_id_user;
 end$$ language plpgsql;
 
--- TODO:(dmitry) Uncomment when issue #1541 will be resolved
--- select sp_add_user('user1');
--- select sp_add_user('user2');
--- select sp_add_user('user2');
--- select sp_add_user('user3');
--- select sp_add_user('user3');
+select sp_add_user('user1');
+select sp_add_user('user2');
+select sp_add_user('user2');
+select sp_add_user('user3');
+select sp_add_user('user3');
 
 drop function sp_add_user(text);
 drop function sp_id_user(text);
 
--- TODO:(dmitry) Uncomment when issue #1681 will be resolved
 --
 -- tests for refcursors
 --
--- create table rc_test (a int, b int);
--- copy rc_test from stdin;
--- 5	10
--- 50	100
--- 500	1000
--- \.
+create table rc_test (a int, b int);
+copy rc_test from stdin;
+5	10
+50	100
+500	1000
+\.
 
--- create function return_unnamed_refcursor() returns refcursor as $$
--- declare
---     rc refcursor;
--- begin
---     open rc for select a from rc_test;
---     return rc;
--- end
--- $$ language plpgsql;
+create function return_unnamed_refcursor() returns refcursor as $$
+declare
+    rc refcursor;
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
 
--- create function use_refcursor(rc refcursor) returns int as $$
--- declare
---     rc refcursor;
---     x record;
--- begin
---     rc := return_unnamed_refcursor();
---     fetch next from rc into x;
---     return x.a;
--- end
--- $$ language plpgsql;
+create function use_refcursor(rc refcursor) returns int as $$
+declare
+    rc refcursor;
+    x record;
+begin
+    rc := return_unnamed_refcursor();
+    fetch next from rc into x;
+    return x.a;
+end
+$$ language plpgsql;
 
--- select use_refcursor(return_unnamed_refcursor());
+select use_refcursor(return_unnamed_refcursor());
 
--- create function return_refcursor(rc refcursor) returns refcursor as $$
--- begin
---     open rc for select a from rc_test;
---     return rc;
--- end
--- $$ language plpgsql;
+create function return_refcursor(rc refcursor) returns refcursor as $$
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
 
--- create function refcursor_test1(refcursor) returns refcursor as $$
--- begin
---     perform return_refcursor($1);
---     return $1;
--- end
--- $$ language plpgsql;
+create function refcursor_test1(refcursor) returns refcursor as $$
+begin
+    perform return_refcursor($1);
+    return $1;
+end
+$$ language plpgsql;
 
--- begin;
+begin;
 
--- select refcursor_test1('test1');
--- fetch next in test1;
+select refcursor_test1('test1');
+fetch next in test1;
 
--- select refcursor_test1('test2');
--- fetch all from test2;
+select refcursor_test1('test2');
+fetch all from test2;
 
--- commit;
+commit;
 
 -- should fail
--- fetch next from test1;
+fetch next from test1;
 
--- create function refcursor_test2(int, int) returns boolean as $$
--- declare
---     c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
---     nonsense record;
--- begin
---     open c1($1, $2);
---     fetch c1 into nonsense;
---     close c1;
---     if found then
---         return true;
---     else
---         return false;
---     end if;
--- end
--- $$ language plpgsql;
+create function refcursor_test2(int, int) returns boolean as $$
+declare
+    c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
+    nonsense record;
+begin
+    open c1($1, $2);
+    fetch c1 into nonsense;
+    close c1;
+    if found then
+        return true;
+    else
+        return false;
+    end if;
+end
+$$ language plpgsql;
 
--- select refcursor_test2(20000, 20000) as "Should be false",
---        refcursor_test2(20, 20) as "Should be true";
+select refcursor_test2(20000, 20000) as "Should be false",
+       refcursor_test2(20, 20) as "Should be true";
+
+-- should fail
+create function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor;
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+
+select constant_refcursor();
+
+-- but it's okay like this
+create or replace function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor := 'my_cursor_name';
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+
+select constant_refcursor();
 
 --
 -- tests for cursors with named parameter arguments
 --
--- create function namedparmcursor_test1(int, int) returns boolean as $$
--- declare
---     c1 cursor (param1 int, param12 int) for select * from rc_test where a > param1 and b > param12;
---     nonsense record;
--- begin
---     open c1(param12 := $2, param1 := $1);
---     fetch c1 into nonsense;
---     close c1;
---     if found then
---         return true;
---     else
---         return false;
---     end if;
--- end
--- $$ language plpgsql;
+create function namedparmcursor_test1(int, int) returns boolean as $$
+declare
+    c1 cursor (param1 int, param12 int) for select * from rc_test where a > param1 and b > param12;
+    nonsense record;
+begin
+    open c1(param12 := $2, param1 := $1);
+    fetch c1 into nonsense;
+    close c1;
+    if found then
+        return true;
+    else
+        return false;
+    end if;
+end
+$$ language plpgsql;
 
--- select namedparmcursor_test1(20000, 20000) as "Should be false",
---        namedparmcursor_test1(20, 20) as "Should be true";
+select namedparmcursor_test1(20000, 20000) as "Should be false",
+       namedparmcursor_test1(20, 20) as "Should be true";
 
 -- mixing named and positional argument notations
--- create function namedparmcursor_test2(int, int) returns boolean as $$
--- declare
---     c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
---     nonsense record;
--- begin
---     open c1(param1 := $1, $2);
---     fetch c1 into nonsense;
---     close c1;
---     if found then
---         return true;
---     else
---         return false;
---     end if;
--- end
--- $$ language plpgsql;
--- select namedparmcursor_test2(20, 20);
+create function namedparmcursor_test2(int, int) returns boolean as $$
+declare
+    c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
+    nonsense record;
+begin
+    open c1(param1 := $1, $2);
+    fetch c1 into nonsense;
+    close c1;
+    if found then
+        return true;
+    else
+        return false;
+    end if;
+end
+$$ language plpgsql;
+select namedparmcursor_test2(20, 20);
 
 -- mixing named and positional: param2 is given twice, once in named notation
 -- and second time in positional notation. Should throw an error at parse time
--- create function namedparmcursor_test3() returns void as $$
--- declare
---     c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
--- begin
---     open c1(param2 := 20, 21);
--- end
--- $$ language plpgsql;
+create function namedparmcursor_test3() returns void as $$
+declare
+    c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
+begin
+    open c1(param2 := 20, 21);
+end
+$$ language plpgsql;
 
 -- mixing named and positional: same as previous test, but param1 is duplicated
--- create function namedparmcursor_test4() returns void as $$
--- declare
---     c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
--- begin
---     open c1(20, param1 := 21);
--- end
--- $$ language plpgsql;
+create function namedparmcursor_test4() returns void as $$
+declare
+    c1 cursor (param1 int, param2 int) for select * from rc_test where a > param1 and b > param2;
+begin
+    open c1(20, param1 := 21);
+end
+$$ language plpgsql;
 
 -- duplicate named parameter, should throw an error at parse time
--- create function namedparmcursor_test5() returns void as $$
--- declare
---   c1 cursor (p1 int, p2 int) for
---     select * from tenk1 where thousand = p1 and tenthous = p2;
--- begin
---   open c1 (p2 := 77, p2 := 42);
--- end
--- $$ language plpgsql;
+create function namedparmcursor_test5() returns void as $$
+declare
+  c1 cursor (p1 int, p2 int) for
+    select * from tenk1 where thousand = p1 and tenthous = p2;
+begin
+  open c1 (p2 := 77, p2 := 42);
+end
+$$ language plpgsql;
 
 -- not enough parameters, should throw an error at parse time
--- create function namedparmcursor_test6() returns void as $$
--- declare
---   c1 cursor (p1 int, p2 int) for
---     select * from tenk1 where thousand = p1 and tenthous = p2;
--- begin
---   open c1 (p2 := 77);
--- end
--- $$ language plpgsql;
+create function namedparmcursor_test6() returns void as $$
+declare
+  c1 cursor (p1 int, p2 int) for
+    select * from tenk1 where thousand = p1 and tenthous = p2;
+begin
+  open c1 (p2 := 77);
+end
+$$ language plpgsql;
 
 -- division by zero runtime error, the context given in the error message
 -- should be sensible
--- create function namedparmcursor_test7() returns void as $$
--- declare
---   c1 cursor (p1 int, p2 int) for
---     select * from tenk1 where thousand = p1 and tenthous = p2;
--- begin
---   open c1 (p2 := 77, p1 := 42/0);
--- end $$ language plpgsql;
--- select namedparmcursor_test7();
+create function namedparmcursor_test7() returns void as $$
+declare
+  c1 cursor (p1 int, p2 int) for
+    select * from tenk1 where thousand = p1 and tenthous = p2;
+begin
+  open c1 (p2 := 77, p1 := 42/0);
+end $$ language plpgsql;
+select namedparmcursor_test7();
 
 -- check that line comments work correctly within the argument list (there
 -- is some special handling of this case in the code: the newline after the
 -- comment must be preserved when the argument-evaluating query is
 -- constructed, otherwise the comment effectively comments out the next
 -- argument, too)
--- create function namedparmcursor_test8() returns int4 as $$
--- declare
---   c1 cursor (p1 int, p2 int) for
---     select count(*) from tenk1 where thousand = p1 and tenthous = p2;
---   n int4;
--- begin
---   open c1 (77 -- test
---   , 42);
---   fetch c1 into n;
---   return n;
--- end $$ language plpgsql;
--- select namedparmcursor_test8();
+create function namedparmcursor_test8() returns int4 as $$
+declare
+  c1 cursor (p1 int, p2 int) for
+    select count(*) from tenk1 where thousand = p1 and tenthous = p2;
+  n int4;
+begin
+  open c1 (77 -- test
+  , 42);
+  fetch c1 into n;
+  return n;
+end $$ language plpgsql;
+select namedparmcursor_test8();
 
 -- cursor parameter name can match plpgsql variable or unreserved keyword
--- create function namedparmcursor_test9(p1 int) returns int4 as $$
--- declare
---   c1 cursor (p1 int, p2 int, debug int) for
---     select count(*) from tenk1 where thousand = p1 and tenthous = p2
---       and four = debug;
---   p2 int4 := 1006;
---   n int4;
--- begin
---   open c1 (p1 := p1, p2 := p2, debug := 2);
---   fetch c1 into n;
---   return n;
--- end $$ language plpgsql;
--- select namedparmcursor_test9(6);
+create function namedparmcursor_test9(p1 int) returns int4 as $$
+declare
+  c1 cursor (p1 int, p2 int, debug int) for
+    select count(*) from tenk1 where thousand = p1 and tenthous = p2
+      and four = debug;
+  p2 int4 := 1006;
+  n int4;
+begin
+  open c1 (p1 := p1, p2 := p2, debug := 2);
+  fetch c1 into n;
+  return n;
+end $$ language plpgsql;
+select namedparmcursor_test9(6);
 
 --
 -- tests for "raise" processing
@@ -2379,6 +2534,7 @@ end$$ language plpgsql;
 
 select stricttest();
 
+-- YB note: add ordering.
 select * from foo order by f1;
 
 create or replace function stricttest() returns void as $$
@@ -2452,6 +2608,19 @@ declare
 x record;
 p1 int := 2;
 p3 text := 'foo';
+begin
+  -- no rows
+  select * from foo where f1 = p1 and f1::text = p3 into strict x;
+  raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
+end$$ language plpgsql;
+
+select stricttest();
+
+create or replace function stricttest() returns void as $$
+declare
+x record;
+p1 int := 2;
+p3 text := $a$'Valame Dios!' dijo Sancho; 'no le dije yo a vuestra merced que mirase bien lo que hacia?'$a$;
 begin
   -- no rows
   select * from foo where f1 = p1 and f1::text = p3 into strict x;
@@ -2740,7 +2909,8 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+-- YB note: add ordering.
+select * from sc_test() ORDER BY (sign(sc_test) - abs(sc_test));
 
 create or replace function sc_test() returns setof integer as $$
 declare
@@ -2774,14 +2944,16 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+-- YB note: add ordering.
+select * from sc_test() ORDER BY (sign(sc_test) - abs(sc_test));
 
 create or replace function sc_test() returns setof integer as $$
 declare
   c refcursor;
   x integer;
 begin
-  open c scroll for execute 'select f1 from int4_tbl';
+  -- YB note: add ordering.
+  open c scroll for execute 'select f1 from int4_tbl ORDER BY (sign(f1) - abs(f1)) DESC';
   fetch last from c into x;
   while found loop
     return next x;
@@ -2808,47 +2980,6 @@ begin
   close c;
 end;
 $$ language plpgsql;
-
-select * from sc_test();
-
-create or replace function sc_test() returns setof integer as $$
-declare
-  c cursor for select * from generate_series(1, 10);
-  x integer;
-begin
-  open c;
-  loop
-      move relative 2 in c;
-      if not found then
-          exit;
-      end if;
-      fetch next from c into x;
-      if found then
-          return next x;
-      end if;
-  end loop;
-  close c;
-end;
-$$ language plpgsql;
-
-select * from sc_test();
-
-create or replace function sc_test() returns setof integer as $$
-declare
-  c cursor for select * from generate_series(1, 10);
-  x integer;
-begin
-  open c;
-  move forward all in c;
-  fetch backward from c into x;
-  if found then
-    return next x;
-  end if;
-  close c;
-end;
-$$ language plpgsql;
-
-select * from sc_test();
 
 drop function sc_test();
 
@@ -2977,12 +3108,12 @@ select forc01();
 
 -- try updating the cursor's current row
 
-create table forc_test as
+create temp table forc_test as
   select n as i, n as j from generate_series(1,10) n;
 
 create or replace function forc01() returns void as $$
 declare
-  c cursor for select * from forc_test order by i;
+  c cursor for select * from forc_test;
 begin
   for r in c loop
     raise notice '%, %', r.i, r.j;
@@ -2990,30 +3121,6 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-
-select forc01();
-
-select * from forc_test order by i;
-
--- same, with a cursor whose portal name doesn't match variable name
-create or replace function forc01() returns void as $$
-declare
-  c refcursor := 'fooled_ya';
-  r record;
-begin
-  open c for select * from forc_test order by i;
-  loop
-    fetch c into r;
-    exit when not found;
-    raise notice '%, %', r.i, r.j;
-    update forc_test set i = i * 100, j = r.j * 2 where current of c;
-  end loop;
-end;
-$$ language plpgsql;
-
-select forc01();
-
-select * from forc_test order by i;
 
 drop function forc01();
 
@@ -3051,8 +3158,9 @@ insert into tabwithcols values(10,20,30,40),(50,60,70,80);
 create or replace function returnqueryf()
 returns setof tabwithcols as $$
 begin
+  -- YB note: add ordering.
   return query select * from tabwithcols order by a;
-  return query execute 'select * from tabwithcols' order by a;
+  return query execute 'select * from tabwithcols order by a';
 end;
 $$ language plpgsql;
 
@@ -3533,10 +3641,9 @@ select * from tftest(10);
 
 drop function tftest(int);
 
-create or replace function rttest()
+create function rttest()
 returns setof int as $$
 declare rc int;
-  rca int[];
 begin
   return query values(10),(20);
   get diagnostics rc = row_count;
@@ -3545,16 +3652,37 @@ begin
   get diagnostics rc = row_count;
   raise notice '% %', found, rc;
   return query execute 'values(10),(20)';
-  -- just for fun, let's use array elements as targets
-  get diagnostics rca[1] = row_count;
-  raise notice '% %', found, rca[1];
+  get diagnostics rc = row_count;
+  raise notice '% %', found, rc;
   return query execute 'select * from (values(10),(20)) f(a) where false';
-  get diagnostics rca[2] = row_count;
-  raise notice '% %', found, rca[2];
+  get diagnostics rc = row_count;
+  raise notice '% %', found, rc;
 end;
 $$ language plpgsql;
 
 select * from rttest();
+
+-- check some error cases, too
+
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query select 10 into no_such_table;
+end;
+$$ language plpgsql;
+
+select * from rttest();
+
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query execute 'select 10 into no_such_table';
+end;
+$$ language plpgsql;
+
+select * from rttest();
+
+select * from no_such_table;
 
 drop function rttest();
 
@@ -3814,22 +3942,42 @@ end;
 $outer$;
 
 -- Check variable scoping -- a var is not available in its own or prior
--- default expressions.
+-- default expressions, but it is available in later ones.
 
-create function scope_test() returns int as $$
+do $$
+declare x int := x + 1;  -- error
+begin
+  raise notice 'x = %', x;
+end;
+$$;
+
+do $$
+declare y int := x + 1;  -- error
+        x int := 42;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+
+do $$
+declare x int := 42;
+        y int := x + 1;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+
+do $$
 declare x int := 42;
 begin
   declare y int := x + 1;
           x int := x + 2;
+          z int := x * 10;
   begin
-    return x * 100 + y;
+    raise notice 'x = %, y = %, z = %', x, y, z;
   end;
 end;
-$$ language plpgsql;
-
-select scope_test();
-
-drop function scope_test();
+$$;
 
 -- Check handling of conflicts between plpgsql vars and table columns.
 
@@ -3898,6 +4046,20 @@ end
 $$ language plpgsql;
 
 select unreserved_test();
+
+create or replace function unreserved_test() returns int as $$
+declare
+  comment int := 21;
+begin
+  comment := comment * 2;
+  comment on function unreserved_test() is 'this is a test';
+  return comment;
+end
+$$ language plpgsql;
+
+select unreserved_test();
+
+select obj_description('unreserved_test()'::regprocedure, 'pg_proc');
 
 drop function unreserved_test();
 
@@ -4497,7 +4659,6 @@ ANALYZE transition_table_status;
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
-CHECKPOINT;
 
 -- behave reasonably if someone tries to modify a transition table
 CREATE FUNCTION transition_table_level2_bad_usage_func()
@@ -4673,6 +4834,11 @@ BEGIN
   GET DIAGNOSTICS x = ROW_COUNT;
   RETURN;
 END; $$ LANGUAGE plpgsql;
+
+/*
+ * TODO(jason): the following section belongs in src/pl/plpgsql/src, but YB
+ * does not yet support running tests there, so that's why it is here.
+ */
 -- inner COMMIT with output arguments
 
 CREATE PROCEDURE test_proc7c(x int, INOUT a int, INOUT b numeric)

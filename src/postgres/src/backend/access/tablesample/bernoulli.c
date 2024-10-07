@@ -13,7 +13,7 @@
  * cutoff value computed from the selection probability by BeginSampleScan.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,16 +24,12 @@
 
 #include "postgres.h"
 
-#ifdef _MSC_VER
-#include <float.h>				/* for _isnan */
-#endif
 #include <math.h>
 
-#include "access/hash.h"
 #include "access/tsmapi.h"
 #include "catalog/pg_type.h"
-#include "optimizer/clauses.h"
-#include "optimizer/cost.h"
+#include "common/hashfn.h"
+#include "optimizer/optimizer.h"
 #include "utils/builtins.h"
 
 
@@ -47,19 +43,19 @@ typedef struct
 
 
 static void bernoulli_samplescangetsamplesize(PlannerInfo *root,
-								  RelOptInfo *baserel,
-								  List *paramexprs,
-								  BlockNumber *pages,
-								  double *tuples);
+											  RelOptInfo *baserel,
+											  List *paramexprs,
+											  BlockNumber *pages,
+											  double *tuples);
 static void bernoulli_initsamplescan(SampleScanState *node,
-						 int eflags);
+									 int eflags);
 static void bernoulli_beginsamplescan(SampleScanState *node,
-						  Datum *params,
-						  int nparams,
-						  uint32 seed);
+									  Datum *params,
+									  int nparams,
+									  uint32 seed);
 static OffsetNumber bernoulli_nextsampletuple(SampleScanState *node,
-						  BlockNumber blockno,
-						  OffsetNumber maxoffset);
+											  BlockNumber blockno,
+											  OffsetNumber maxoffset);
 
 
 /*

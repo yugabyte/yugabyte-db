@@ -416,6 +416,16 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  PauseXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.PauseXClusterUniverses.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.DrConfig),
+
+  ResumeXClusterUniverses(
+      com.yugabyte.yw.commissioner.tasks.ResumeXClusterUniverses.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -937,6 +947,8 @@ public enum TaskType {
   CreateAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions.class),
 
   ManageAlertDefinitions(com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions.class),
+
+  MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
 

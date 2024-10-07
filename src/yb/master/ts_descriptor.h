@@ -311,7 +311,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   std::string ToString() const override;
 
   // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
-  bool IsRemoved() const {
+  bool IsReplaced() const {
     return LockForRead()->pb.state() == SysTServerEntryPB::REPLACED;
   }
 
@@ -328,6 +328,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Is the ts in a read-only placement.
   bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
+
+  Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
  private:
   mutable rw_spinlock mutex_;

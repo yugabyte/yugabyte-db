@@ -73,8 +73,6 @@ EXPLAIN (COSTS OFF) SELECT partvalue FROM range_partitioned WHERE yb_is_local_ta
 SET enable_seqscan=true;
 
 -- Update test.
--- TODO (deepthi): The following query must invoke the fast path for update as it affects only
--- one partition. Fix constraint exclusion to also consider yb_is_local_table.
 EXPLAIN (COSTS OFF) UPDATE range_partitioned SET partvalue = 5 WHERE yb_is_local_table(tableoid);
 EXPLAIN (COSTS OFF) UPDATE list_partitioned SET partkey = 5 WHERE yb_is_local_table(tableoid);
 EXPLAIN (COSTS OFF) UPDATE hash_partitioned SET partkey = 5 WHERE yb_is_local_table(tableoid);

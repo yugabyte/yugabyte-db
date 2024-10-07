@@ -238,7 +238,34 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster, null);
+      // Params for master_join_existing_universe gflag update
+      Runnable nonRestartMasterGflagUpgrade = null;
+      if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+          primaryCluster.userIntent.ybSoftwareVersion)) {
+        KubernetesGflagsUpgradeCommonParams gflagsParams =
+            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster);
+        nonRestartMasterGflagUpgrade =
+            () ->
+                upgradePodsNonRestart(
+                    universe.getName(),
+                    // Use generated placement since gflagsParams placement will not have masters
+                    // populated.
+                    placement,
+                    gflagsParams.getMasterAddresses(),
+                    ServerType.MASTER,
+                    gflagsParams.getYbSoftwareVersion(),
+                    gflagsParams.getUniverseOverrides(),
+                    gflagsParams.getAzOverrides(),
+                    gflagsParams.isNewNamingStyle(),
+                    false /* isReadOnlyCluster */,
+                    // Use taskParams here since updated universe details are not available
+                    // during subtasks creation.
+                    taskParams().isEnableYbc(),
+                    taskParams().getYbcSoftwareVersion());
+      }
+
+      createConfigureUniverseTasks(
+          primaryCluster, null /* masterNodes */, nonRestartMasterGflagUpgrade);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {

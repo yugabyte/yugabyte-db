@@ -9,7 +9,7 @@
  *		but it should be possible to use much of the control logic just
  *		as presented here.
  *
- * Copyright (c) 2013-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/worker.c
@@ -24,14 +24,13 @@
 #include "storage/procarray.h"
 #include "storage/shm_mq.h"
 #include "storage/shm_toc.h"
-#include "utils/resowner.h"
+#include "tcop/tcopprot.h"
 
 #include "test_shm_mq.h"
 
-static void handle_sigterm(SIGNAL_ARGS);
 static void attach_to_queues(dsm_segment *seg, shm_toc *toc,
-				 int myworkernumber, shm_mq_handle **inqhp,
-				 shm_mq_handle **outqhp);
+							 int myworkernumber, shm_mq_handle **inqhp,
+							 shm_mq_handle **outqhp);
 static void copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh);
 
 /*
@@ -59,23 +58,25 @@ test_shm_mq_main(Datum main_arg)
 	 * Establish signal handlers.
 	 *
 	 * We want CHECK_FOR_INTERRUPTS() to kill off this worker process just as
-	 * it would a normal user backend.  To make that happen, we establish a
-	 * signal handler that is a stripped-down version of die().
+	 * it would a normal user backend.  To make that happen, we use die().
 	 */
-	pqsignal(SIGTERM, handle_sigterm);
+	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
 
 	/*
 	 * Connect to the dynamic shared memory segment.
 	 *
 	 * The backend that registered this worker passed us the ID of a shared
-	 * memory segment to which we must attach for further instructions.  In
-	 * order to attach to dynamic shared memory, we need a resource owner.
-	 * Once we've mapped the segment in our address space, attach to the table
-	 * of contents so we can locate the various data structures we'll need to
+	 * memory segment to which we must attach for further instructions.  Once
+	 * we've mapped the segment in our address space, attach to the table of
+	 * contents so we can locate the various data structures we'll need to
 	 * find within the segment.
+	 *
+	 * Note: at this point, we have not created any ResourceOwner in this
+	 * process.  This will result in our DSM mapping surviving until process
+	 * exit, which is fine.  If there were a ResourceOwner, it would acquire
+	 * ownership of the mapping, but we have no need for that.
 	 */
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "test_shm_mq worker");
 	seg = dsm_attach(DatumGetInt32(main_arg));
 	if (seg == NULL)
 		ereport(ERROR,
@@ -133,10 +134,8 @@ test_shm_mq_main(Datum main_arg)
 	copy_messages(inqh, outqh);
 
 	/*
-	 * We're done.  Explicitly detach the shared memory segment so that we
-	 * don't get a resource leak warning at commit time.  This will fire any
-	 * on_dsm_detach callbacks we've registered, as well.  Once that's done,
-	 * we can go ahead and exit.
+	 * We're done.  For cleanliness, explicitly detach from the shared memory
+	 * segment (that would happen anyway during process exit, though).
 	 */
 	dsm_detach(seg);
 	proc_exit(1);
@@ -191,29 +190,8 @@ copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh)
 			break;
 
 		/* Send it back out. */
-		res = shm_mq_send(outqh, len, data, false);
+		res = shm_mq_send(outqh, len, data, false, true);
 		if (res != SHM_MQ_SUCCESS)
 			break;
 	}
-}
-
-/*
- * When we receive a SIGTERM, we set InterruptPending and ProcDiePending just
- * like a normal backend.  The next CHECK_FOR_INTERRUPTS() will do the right
- * thing.
- */
-static void
-handle_sigterm(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	SetLatch(MyLatch);
-
-	if (!proc_exit_inprogress)
-	{
-		InterruptPending = true;
-		ProcDiePending = true;
-	}
-
-	errno = save_errno;
 }

@@ -33,8 +33,7 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class TServerSharedData {
  public:
@@ -159,6 +158,7 @@ class SharedExchange {
   Result<size_t> Poll();
   void SignalStop();
 
+  const std::string& instance_id() const;
   uint64_t session_id() const;
 
   static Status Cleanup(const std::string& instance_id);
@@ -193,6 +193,9 @@ struct SharedExchangeMessage {
 };
 
 constexpr size_t kTooBigResponseMask = 1ULL << 63;
+constexpr size_t kBigSharedMemoryMask = 1ULL << 62;
+constexpr size_t kBigSharedMemoryIdShift = 40;
 
-}  // namespace tserver
-}  // namespace yb
+std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id);
+
+}  // namespace yb::tserver

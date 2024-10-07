@@ -17,7 +17,7 @@
  * won't visit blocks added after the first scan, but that is fine since
  * such blocks shouldn't contain any visible tuples anyway.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -32,8 +32,7 @@
 #include "access/tsmapi.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
-#include "optimizer/clauses.h"
-#include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "utils/sampling.h"
 
 PG_MODULE_MAGIC;
@@ -46,7 +45,6 @@ typedef struct
 {
 	uint32		seed;			/* random seed */
 	int64		ntuples;		/* number of tuples to return */
-	int64		donetuples;		/* number of tuples already returned */
 	OffsetNumber lt;			/* last tuple returned from current block */
 	BlockNumber doneblocks;		/* number of already-scanned blocks */
 	BlockNumber lb;				/* last block visited */
@@ -57,22 +55,21 @@ typedef struct
 } SystemRowsSamplerData;
 
 static void system_rows_samplescangetsamplesize(PlannerInfo *root,
-									RelOptInfo *baserel,
-									List *paramexprs,
-									BlockNumber *pages,
-									double *tuples);
+												RelOptInfo *baserel,
+												List *paramexprs,
+												BlockNumber *pages,
+												double *tuples);
 static void system_rows_initsamplescan(SampleScanState *node,
-						   int eflags);
+									   int eflags);
 static void system_rows_beginsamplescan(SampleScanState *node,
-							Datum *params,
-							int nparams,
-							uint32 seed);
-static BlockNumber system_rows_nextsampleblock(SampleScanState *node);
+										Datum *params,
+										int nparams,
+										uint32 seed);
+static BlockNumber system_rows_nextsampleblock(SampleScanState *node, BlockNumber nblocks);
 static OffsetNumber system_rows_nextsampletuple(SampleScanState *node,
-							BlockNumber blockno,
-							OffsetNumber maxoffset);
-static bool SampleOffsetVisible(OffsetNumber tupoffset, HeapScanDesc scan);
-static uint32 random_relative_prime(uint32 n, SamplerRandomState randstate);
+												BlockNumber blockno,
+												OffsetNumber maxoffset);
+static uint32 random_relative_prime(uint32 n, pg_prng_state *randstate);
 
 
 /*
@@ -187,7 +184,6 @@ system_rows_beginsamplescan(SampleScanState *node,
 
 	sampler->seed = seed;
 	sampler->ntuples = ntuples;
-	sampler->donetuples = 0;
 	sampler->lt = InvalidOffsetNumber;
 	sampler->doneblocks = 0;
 	/* lb will be initialized during first NextSampleBlock call */
@@ -206,10 +202,9 @@ system_rows_beginsamplescan(SampleScanState *node,
  * Uses linear probing algorithm for picking next block.
  */
 static BlockNumber
-system_rows_nextsampleblock(SampleScanState *node)
+system_rows_nextsampleblock(SampleScanState *node, BlockNumber nblocks)
 {
 	SystemRowsSamplerData *sampler = (SystemRowsSamplerData *) node->tsm_state;
-	HeapScanDesc scan = node->ss.ss_currentScanDesc;
 
 	/* First call within scan? */
 	if (sampler->doneblocks == 0)
@@ -218,25 +213,25 @@ system_rows_nextsampleblock(SampleScanState *node)
 		if (sampler->step == 0)
 		{
 			/* Initialize now that we have scan descriptor */
-			SamplerRandomState randstate;
+			pg_prng_state randstate;
 
 			/* If relation is empty, there's nothing to scan */
-			if (scan->rs_nblocks == 0)
+			if (nblocks == 0)
 				return InvalidBlockNumber;
 
 			/* We only need an RNG during this setup step */
-			sampler_random_init_state(sampler->seed, randstate);
+			sampler_random_init_state(sampler->seed, &randstate);
 
 			/* Compute nblocks/firstblock/step only once per query */
-			sampler->nblocks = scan->rs_nblocks;
+			sampler->nblocks = nblocks;
 
 			/* Choose random starting block within the relation */
 			/* (Actually this is the predecessor of the first block visited) */
-			sampler->firstblock = sampler_random_fract(randstate) *
+			sampler->firstblock = sampler_random_fract(&randstate) *
 				sampler->nblocks;
 
 			/* Find relative prime as step size for linear probing */
-			sampler->step = random_relative_prime(sampler->nblocks, randstate);
+			sampler->step = random_relative_prime(sampler->nblocks, &randstate);
 		}
 
 		/* Reinitialize lb */
@@ -245,7 +240,7 @@ system_rows_nextsampleblock(SampleScanState *node)
 
 	/* If we've read all blocks or returned all needed tuples, we're done */
 	if (++sampler->doneblocks > sampler->nblocks ||
-		sampler->donetuples >= sampler->ntuples)
+		node->donetuples >= sampler->ntuples)
 		return InvalidBlockNumber;
 
 	/*
@@ -258,7 +253,7 @@ system_rows_nextsampleblock(SampleScanState *node)
 	{
 		/* Advance lb, using uint64 arithmetic to forestall overflow */
 		sampler->lb = ((uint64) sampler->lb + sampler->step) % sampler->nblocks;
-	} while (sampler->lb >= scan->rs_nblocks);
+	} while (sampler->lb >= nblocks);
 
 	return sampler->lb;
 }
@@ -278,74 +273,25 @@ system_rows_nextsampletuple(SampleScanState *node,
 							OffsetNumber maxoffset)
 {
 	SystemRowsSamplerData *sampler = (SystemRowsSamplerData *) node->tsm_state;
-	HeapScanDesc scan = node->ss.ss_currentScanDesc;
 	OffsetNumber tupoffset = sampler->lt;
 
 	/* Quit if we've returned all needed tuples */
-	if (sampler->donetuples >= sampler->ntuples)
+	if (node->donetuples >= sampler->ntuples)
 		return InvalidOffsetNumber;
 
-	/*
-	 * Because we should only count visible tuples as being returned, we need
-	 * to search for a visible tuple rather than just let the core code do it.
-	 */
+	/* Advance to next possible offset on page */
+	if (tupoffset == InvalidOffsetNumber)
+		tupoffset = FirstOffsetNumber;
+	else
+		tupoffset++;
 
-	/* We rely on the data accumulated in pagemode access */
-	Assert(scan->rs_pageatatime);
-	for (;;)
-	{
-		/* Advance to next possible offset on page */
-		if (tupoffset == InvalidOffsetNumber)
-			tupoffset = FirstOffsetNumber;
-		else
-			tupoffset++;
-
-		/* Done? */
-		if (tupoffset > maxoffset)
-		{
-			tupoffset = InvalidOffsetNumber;
-			break;
-		}
-
-		/* Found a candidate? */
-		if (SampleOffsetVisible(tupoffset, scan))
-		{
-			sampler->donetuples++;
-			break;
-		}
-	}
+	/* Done? */
+	if (tupoffset > maxoffset)
+		tupoffset = InvalidOffsetNumber;
 
 	sampler->lt = tupoffset;
 
 	return tupoffset;
-}
-
-/*
- * Check if tuple offset is visible
- *
- * In pageatatime mode, heapgetpage() already did visibility checks,
- * so just look at the info it left in rs_vistuples[].
- */
-static bool
-SampleOffsetVisible(OffsetNumber tupoffset, HeapScanDesc scan)
-{
-	int			start = 0,
-				end = scan->rs_ntuples - 1;
-
-	while (start <= end)
-	{
-		int			mid = (start + end) / 2;
-		OffsetNumber curoffset = scan->rs_vistuples[mid];
-
-		if (tupoffset == curoffset)
-			return true;
-		else if (tupoffset < curoffset)
-			end = mid - 1;
-		else
-			start = mid + 1;
-	}
-
-	return false;
 }
 
 /*
@@ -371,7 +317,7 @@ gcd(uint32 a, uint32 b)
  * (else return 1).
  */
 static uint32
-random_relative_prime(uint32 n, SamplerRandomState randstate)
+random_relative_prime(uint32 n, pg_prng_state *randstate)
 {
 	uint32		r;
 

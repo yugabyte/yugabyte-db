@@ -75,9 +75,9 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
-| `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
 | `ybServersRefreshInterval` | If `loadBalance` is true, the interval in seconds to refresh the node list | 300
-| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
@@ -109,7 +109,7 @@ Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for mo
 
 #### Use SSL with YugabyteDB Aeon
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 With clusters in YugabyteDB Aeon, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 

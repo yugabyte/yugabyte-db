@@ -164,7 +164,7 @@ class RowPackerV1 : public RowPackerBase {
   // Add value consisting of 2 parts - value_prefix+value_suffix.
   Result<bool> AddValue(
       ColumnId column_id, Slice value_prefix, PackedValueV1 value_suffix, ssize_t tail_size);
-  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, Slice control_fields, const QLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
@@ -207,7 +207,7 @@ class RowPackerV2 : public RowPackerBase {
   // Add value consisting of 2 parts - value_prefix+value_suffix.
   Result<bool> AddValue(
       ColumnId column_id, Slice value_prefix, PackedValueV1 value_suffix, ssize_t tail_size);
-  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
 

@@ -57,6 +57,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_bool(TEST_skip_applying_truncate);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -75,6 +76,11 @@ namespace pgwrapper {
 class PgSingleTServerTest : public PgMiniTestBase {
  protected:
   static constexpr const char* kDatabaseName = "testdb";
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
+    PgMiniTestBase::SetUp();
+  }
 
   size_t NumTabletServers() override {
     return 1;
@@ -138,6 +144,11 @@ class PgSingleTServerTest : public PgMiniTestBase {
       google::SetVLOGLevel("docdb", 4);
     }
 
+    MeasureRead(conn, reads, aggregate, select_cmd, rows);
+  }
+
+  void MeasureRead(
+      PGConn& conn, int reads, bool aggregate, const std::string& select_cmd, int64_t rows) {
     auto read_histogram =
         cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
             &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->underlying();
@@ -523,6 +534,16 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
       /* compact= */ false, /* aggregate = */ false);
 }
 
+TEST_F(PgSingleTServerTest, ScanOneColumn) {
+  const auto num_rows = NumScanRows();
+
+  std::string create_cmd = "CREATE TABLE t (k BIGINT, PRIMARY KEY (k ASC));";
+  std::string insert_cmd = "INSERT INTO t (k) VALUES (generate_series($0, $1))";
+  const std::string select_cmd = "SELECT k FROM t WHERE k > 0";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
 
 TEST_F(PgSingleTServerTest, BigValue) {
   constexpr size_t kValueSize = 32_MB;

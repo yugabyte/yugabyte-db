@@ -1,0 +1,108 @@
+-- The gist_page_opaque_info() function prints the page's LSN. Normally,
+-- that's constant 1 (GistBuildLSN) on every page of a freshly built GiST
+-- index. But with wal_level=minimal, the whole relation is dumped to WAL at
+-- the end of the transaction if it's smaller than wal_skip_threshold, which
+-- updates the LSNs. Wrap the tests on gist_page_opaque_info() in the
+-- same transaction with the CREATE INDEX so that we see the LSNs before
+-- they are possibly overwritten at end of transaction.
+BEGIN;
+-- Create a test table and GiST index.
+CREATE TABLE test_gist AS SELECT point(i,i) p, i::text t FROM
+    generate_series(1,1000) i;
+CREATE INDEX test_gist_idx ON test_gist USING gist (p);
+-- Page 0 is the root, the rest are leaf pages
+SELECT * FROM gist_page_opaque_info(get_raw_page('test_gist_idx', 0));
+ lsn | nsn | rightlink  | flags 
+-----+-----+------------+-------
+ 0/1 | 0/0 | 4294967295 | {}
+(1 row)
+
+SELECT * FROM gist_page_opaque_info(get_raw_page('test_gist_idx', 1));
+ lsn | nsn | rightlink  | flags  
+-----+-----+------------+--------
+ 0/1 | 0/0 | 4294967295 | {leaf}
+(1 row)
+
+SELECT * FROM gist_page_opaque_info(get_raw_page('test_gist_idx', 2));
+ lsn | nsn | rightlink | flags  
+-----+-----+-----------+--------
+ 0/1 | 0/0 |         1 | {leaf}
+(1 row)
+
+COMMIT;
+SELECT * FROM gist_page_items(get_raw_page('test_gist_idx', 0), 'test_gist_idx');
+ itemoffset |   ctid    | itemlen | dead |       keys        
+------------+-----------+---------+------+-------------------
+          1 | (1,65535) |      40 | f    | (p)=((185,185))
+          2 | (2,65535) |      40 | f    | (p)=((370,370))
+          3 | (3,65535) |      40 | f    | (p)=((555,555))
+          4 | (4,65535) |      40 | f    | (p)=((740,740))
+          5 | (5,65535) |      40 | f    | (p)=((870,870))
+          6 | (6,65535) |      40 | f    | (p)=((1000,1000))
+(6 rows)
+
+SELECT * FROM gist_page_items(get_raw_page('test_gist_idx', 1), 'test_gist_idx') LIMIT 5;
+ itemoffset | ctid  | itemlen | dead |    keys     
+------------+-------+---------+------+-------------
+          1 | (0,1) |      40 | f    | (p)=((1,1))
+          2 | (0,2) |      40 | f    | (p)=((2,2))
+          3 | (0,3) |      40 | f    | (p)=((3,3))
+          4 | (0,4) |      40 | f    | (p)=((4,4))
+          5 | (0,5) |      40 | f    | (p)=((5,5))
+(5 rows)
+
+-- gist_page_items_bytea prints the raw key data as a bytea. The output of that is
+-- platform-dependent (endianness), so omit the actual key data from the output.
+SELECT itemoffset, ctid, itemlen FROM gist_page_items_bytea(get_raw_page('test_gist_idx', 0));
+ itemoffset |   ctid    | itemlen 
+------------+-----------+---------
+          1 | (1,65535) |      40
+          2 | (2,65535) |      40
+          3 | (3,65535) |      40
+          4 | (4,65535) |      40
+          5 | (5,65535) |      40
+          6 | (6,65535) |      40
+(6 rows)
+
+-- Failure with non-GiST index.
+CREATE INDEX test_gist_btree on test_gist(t);
+SELECT gist_page_items(get_raw_page('test_gist_btree', 0), 'test_gist_btree');
+ERROR:  "test_gist_btree" is not a GiST index
+-- Failure with various modes.
+-- Suppress the DETAIL message, to allow the tests to work across various
+-- page sizes and architectures.
+\set VERBOSITY terse
+-- invalid page size
+SELECT gist_page_items_bytea('aaa'::bytea);
+ERROR:  invalid page size
+SELECT gist_page_items('aaa'::bytea, 'test_gist_idx'::regclass);
+ERROR:  invalid page size
+SELECT gist_page_opaque_info('aaa'::bytea);
+ERROR:  invalid page size
+-- invalid special area size
+SELECT * FROM gist_page_opaque_info(get_raw_page('test_gist', 0));
+ERROR:  input page is not a valid GiST page
+SELECT gist_page_items_bytea(get_raw_page('test_gist', 0));
+ERROR:  input page is not a valid GiST page
+SELECT gist_page_items_bytea(get_raw_page('test_gist_btree', 0));
+ERROR:  input page is not a valid GiST page
+\set VERBOSITY default
+-- Tests with all-zero pages.
+SHOW block_size \gset
+SELECT gist_page_items_bytea(decode(repeat('00', :block_size), 'hex'));
+ gist_page_items_bytea 
+-----------------------
+(0 rows)
+
+SELECT gist_page_items(decode(repeat('00', :block_size), 'hex'), 'test_gist_idx'::regclass);
+ gist_page_items 
+-----------------
+(0 rows)
+
+SELECT gist_page_opaque_info(decode(repeat('00', :block_size), 'hex'));
+ gist_page_opaque_info 
+-----------------------
+ 
+(1 row)
+
+DROP TABLE test_gist;

@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -29,6 +30,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
@@ -36,12 +38,26 @@
 DECLARE_int32(are_nodes_safe_to_take_down_timeout_buffer_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 using std::string;
 using std::vector;
 
 namespace yb {
 namespace integration_tests {
+
+template <typename T>
+Result<T> parse(const std::string& s);
+
+template <>
+Result<uint64> parse(const std::string& s) {
+  std::size_t pos;
+  auto out = std::stoull(s, &pos);
+  if (pos != s.size()) {
+    return STATUS(InvalidArgument, "Couldn't parse string to unsigned integer: $0", s);
+  }
+  return out;
+}
 
 class AreNodesSafeToTakeDownItest : public YBTableTestBase {
  protected:
@@ -90,6 +106,32 @@ class AreNodesSafeToTakeDownItest : public YBTableTestBase {
   }
 
   const int kFollowerLagBoundMs = 1000 * kTimeMultiplier;
+
+  template <typename T>
+  Result<T> GetLeaderMasterMetric(const std::string& metric_name) {
+    EasyCurl curl;
+    auto addr = external_mini_cluster_->GetLeaderMaster()->bound_http_hostport();
+    faststring out;
+    RETURN_NOT_OK(
+        curl.FetchURL(Format("http://$0:$1/prometheus-metrics", addr.host(), addr.port()), &out));
+    std::stringstream ss(out.ToString());
+    for (std::string line; std::getline(ss, line, '\n');) {
+      if (!line.starts_with(metric_name)) {
+        continue;
+      }
+      std::vector<std::string> words;
+      std::stringstream line_ss(line);
+      for (std::string word; std::getline(line_ss, word, ' ');) {
+        words.push_back(std::move(word));
+      }
+      if (words.size() < 2) {
+        return STATUS_FORMAT(IllegalState, "Bad prometheus metric line: $0", line);
+      }
+      return parse<T>(words[words.size() - 2]);
+    }
+    return STATUS_FORMAT(
+        NotFound, "Couldn't find metric $0 on prometheus-metrics page", metric_name);
+  }
 };
 
 TEST_F(AreNodesSafeToTakeDownItest, HealthyCluster) {
@@ -257,6 +299,9 @@ TEST_F(AreNodesSafeToTakeDownItest, GetFollowerUpdateDelay) {
   for (const auto& heartbeat_delay : resp.heartbeat_delay()) {
     ASSERT_LE(heartbeat_delay.last_heartbeat_delta_ms(), max_expected_heartbeat_time);
   }
+  auto max_actual_heartbeat_delay =
+      ASSERT_RESULT(GetLeaderMasterMetric<uint64_t>("max_follower_heartbeat_delay"));
+  ASSERT_LE(max_actual_heartbeat_delay, max_expected_heartbeat_time);
 }
 
 // Stop one of the nodes and ensure its delay increases.
@@ -271,7 +316,7 @@ TEST_F(AreNodesSafeToTakeDownItest, GetFollowerUpdateDelayWithStoppedNode) {
   ASSERT_NE(master_it, masters.end());
   auto other_master = *master_it;
   other_master->Shutdown();
-  auto sleep_time = FLAGS_raft_heartbeat_interval_ms * 3;
+  auto sleep_time = static_cast<uint64>(FLAGS_raft_heartbeat_interval_ms * 3);
   SleepFor(MonoDelta::FromMilliseconds(sleep_time));
   master::GetMasterHeartbeatDelaysRequestPB req;
   master::GetMasterHeartbeatDelaysResponsePB resp;
@@ -286,7 +331,23 @@ TEST_F(AreNodesSafeToTakeDownItest, GetFollowerUpdateDelayWithStoppedNode) {
       ASSERT_GE(heartbeat_delay.last_heartbeat_delta_ms(), sleep_time);
     }
   }
-
+  // Verify the heartbeat delay shows up in the metric max_follower_heartbeat_delay. This metric is
+  // updated by the catalog manager background task. The background task may not have run recently
+  // enough to pick up the delay so we retry a few times.
+  std::string failure_message;
+  ASSERT_OK(WaitFor(
+      [this, sleep_time, &failure_message]() -> Result<bool> {
+        auto max_actual_heartbeat_delay =
+            VERIFY_RESULT(GetLeaderMasterMetric<uint64_t>("max_follower_heartbeat_delay"));
+        auto done = max_actual_heartbeat_delay >= sleep_time;
+        if (!done) {
+          failure_message = Format(
+              "Heartbeat delay from metric is $0, expecting it to be at least $1",
+              max_actual_heartbeat_delay, sleep_time);
+        }
+        return done;
+      },
+      MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 3), failure_message));
   ASSERT_OK(other_master->Restart());
 }
 

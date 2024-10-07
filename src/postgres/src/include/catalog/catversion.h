@@ -25,8 +25,8 @@
  *
  * The rule for developers is: if you commit a change that requires
  * an initdb, you should update the catalog version number (as well as
- * notifying the pghackers mailing list, which has been the informal
- * practice for a long time).
+ * notifying the pgsql-hackers mailing list, which has been the
+ * informal practice for a long time).
  *
  * The catalog version number is placed here since modifying files in
  * include/catalog is the most common kind of initdb-forcing change.
@@ -34,7 +34,7 @@
  * database contents or layout, such as altering tuple headers.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/catversion.h
@@ -53,8 +53,9 @@
  */
 
 /*							yyyymmddN */
+
 /* YB note:
  * There is no need to bump this number when backporting from upstream */
-#define CATALOG_VERSION_NO	201809051
+#define CATALOG_VERSION_NO	202209061
 
 #endif

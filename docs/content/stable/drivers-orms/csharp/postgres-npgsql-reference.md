@@ -3,7 +3,8 @@ title: PostgreSQL Npgsql Driver
 headerTitle: C# Drivers
 linkTitle: C# Drivers
 description: C# PostgreSQL Npgsql Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: C# Drivers

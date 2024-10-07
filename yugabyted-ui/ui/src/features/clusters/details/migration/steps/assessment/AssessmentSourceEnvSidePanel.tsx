@@ -53,7 +53,7 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationSourceEnvSidePanelProps {
   open: boolean;
   onClose: () => void;
-  migration: Migration;
+  migration: Migration | undefined;
 }
 
 export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> = ({
@@ -66,7 +66,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
 
   const { data: sourceDBDataAPI, isFetching: isFetchingSourceDBData } =
     useGetAssessmentSourceDBInfoQuery({
-      uuid: migration.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "migration_uuid_not_found",
     });
 
   const sourceDBData = sourceDBDataAPI as AssessmentSourceDbObject | undefined;

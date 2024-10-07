@@ -12,6 +12,9 @@ SELECT * FROM test();
 (1 row)
   
 DROP LANGUAGE plpgsql CASCADE;
+ERROR:  cannot drop language plpgsql because extension plpgsql requires it
+HINT:  You can drop extension plpgsql instead.
+DROP EXTENSION plpgsql CASCADE;
 NOTICE:  drop cascades to function test()
 -- leave the cluster in a clean state
 CREATE EXTENSION plpgsql;

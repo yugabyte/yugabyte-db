@@ -4473,6 +4473,6 @@ static join_result_t join(               //
 
 // This file is part of the usearch inline third-party dependency of YugabyteDB.
 // Git repo: https://github.com/unum-cloud/usearch
-// Git commit: 240fe9c298100f9e37a2d7377b1595be6ba1f412
+// Git commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
 //
 // See also src/inline-thirdparty/README.md.

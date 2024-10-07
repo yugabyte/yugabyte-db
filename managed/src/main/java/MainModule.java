@@ -135,6 +135,8 @@ public class MainModule extends AbstractModule {
 
   @Override
   public void configure() {
+    // Bind the uncaught exception handler at the application startup
+    Thread.setDefaultUncaughtExceptionHandler(new GlobalExceptionHandler());
     bind(StaticInjectorHolder.class).asEagerSingleton();
     bind(Long.class)
         .annotatedWith(Names.named("AppStartupTimeMs"))
