@@ -251,6 +251,10 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
   client_host_port = host_port;
 }
 
+void AshMetadata::clear_rpc_request_id() {
+  rpc_request_id = 0;
+}
+
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, database_id,
