@@ -362,4 +362,4 @@ $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
 ## See also
 
 - [ysql_dumpall](../ysql-dumpall/)
-- [ysqlsh](../ysqlsh/)
+- [ysqlsh](../../api/ysqlsh/)

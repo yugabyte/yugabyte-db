@@ -14,11 +14,9 @@ YugabyteDB ships with command line interface (CLI) shells for interacting with e
 - [ysqlsh](../../api/ysqlsh/) - The YugabyteDB SQL shell for interacting with YugabyteDB using [YSQL](../../api/ysql/).
 - [ycqlsh](../../api/ycqlsh/) - The CQL shell for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
-For information about [yugabyted](../../reference/configuration/yugabyted/) and configuring [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) services, refer to [Configuration](../../reference/configuration/).
-
 ### Installation
 
-The YugabyteDB clients are installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
+The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
 If you prefer, you can install a standalone version using any of the following methods:
 
@@ -96,13 +94,13 @@ docker pull yugabytedb/yugabyte-client:latest
 {{<index/block>}}
 
   {{<index/item
-    title="ysqlsh"
+    title="ysqlsh reference"
     body="CLI for interacting with YugabyteDB using YSQL."
     href="../../api/ysqlsh/"
     icon="fa-light fa-terminal">}}
 
   {{<index/item
-    title="ycqlsh"
+    title="ycqlsh reference"
     body="CLI for interacting with YugabyteDB using YCQL."
     href="../../api/ycqlsh/"
     icon="fa-light fa-terminal">}}
