@@ -70,6 +70,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
 TAG_FLAG(ysql_enable_db_catalog_version_mode, advanced);
 TAG_FLAG(ysql_enable_db_catalog_version_mode, hidden);
 
+DEFINE_test_flag(bool, ysql_enable_db_logical_client_version_mode, true,
+    "Enable the per database logical client version mode, a DDL statement that only "
+    "affects the current database will only increment catalog version for "
+    "the current database.");
+
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
     " out of the RPC timeout to respond back to client. If margin is zero, client will determine"

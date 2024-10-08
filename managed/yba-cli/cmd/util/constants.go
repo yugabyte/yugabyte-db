@@ -336,7 +336,7 @@ const (
 	// HashicorpVaultCertificateType type
 	HashicorpVaultCertificateType = "HashicorpVault"
 	// K8sCertManagerCertificateType type
-	K8sCertManagerCertificateType = "K8sCertManager"
+	K8sCertManagerCertificateType = "K8SCertManager"
 	// CustomCertHostPathCertificateType type
 	CustomCertHostPathCertificateType = "CustomCertHostPath"
 	// CustomServerCertCertificateType type

@@ -281,6 +281,28 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
  20 | 20 | 0020 |    |   |
 (16 rows)
 
+/*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (p1.a = p2.b)
+   ->  Seq Scan on p2
+         Storage Filter: (b = a)
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.b), ROW($1, $1), ROW($2, $2)]))
+         Storage Filter: (a = b)
+(7 rows)
+
+/*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
+ a  | b  |  c   | a  | b  |  c
+----+----+------+----+----+------
+ 12 | 12 | 0012 | 12 | 12 | 0012
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 18 | 18 | 0018 | 18 | 18 | 0018
+  0 |  0 | 0000 |  0 |  0 | 0000
+ 24 | 24 | 0024 | 24 | 24 | 0024
+(5 rows)
+
 /*+ set(enable_seqscan true) Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
               QUERY PLAN
 ---------------------------------------
@@ -1286,6 +1308,44 @@ INSERT INTO s3 select i,i from generate_series(1,100) i;
 DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
+CREATE TABLE r1(a int, PRIMARY KEY(a ASC));
+CREATE TABLE r2(a int);
+/*+Leading(r2 r1)*/
+EXPLAIN (COSTS OFF)
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+                           QUERY PLAN
+----------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (r1.a = (NULL::integer))
+   ->  Limit
+         ->  Seq Scan on r2
+   ->  Index Scan using r1_pkey on r1
+         Index Cond: (a = ANY (ARRAY[(NULL::integer), $1, $2]))
+(6 rows)
+
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+ a | nullcol
+---+---------
+(0 rows)
+
+DROP TABLE r1;
+DROP TABLE r2;
 create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));
 create table s3(a int, primary key (a asc));

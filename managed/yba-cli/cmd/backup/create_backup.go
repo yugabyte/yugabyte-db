@@ -138,6 +138,22 @@ var createBackupCmd = &cobra.Command{
 
 		}
 
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Create - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+		}
+
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -270,15 +286,6 @@ var createBackupCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 				}
 
-				if len(r.GetEntities()) == 1 {
-					fullBackupContext := *backup.NewFullBackupContext()
-					fullBackupContext.Output = os.Stdout
-					fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
-					fullBackupContext.SetFullBackup(r.GetEntities()[0])
-					fullBackupContext.Write()
-					return
-				}
-
 				if len(r.GetEntities()) < 1 {
 					logrus.Fatalf(
 						formatter.Colorize(
@@ -384,7 +391,9 @@ func init() {
 	createBackupCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3")
 	createBackupCmd.Flags().String("category", "",
-		"[Optional] Category of the backup. Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+		"[Optional] Category of the backup. "+
+			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
+			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
 	createBackupCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
 	createBackupCmd.Flags().Int("parallelism", 8,

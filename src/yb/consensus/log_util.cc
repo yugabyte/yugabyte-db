@@ -119,6 +119,8 @@ DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted,
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);
 
+DECLARE_bool(store_min_start_ht_running_txns);
+
 namespace yb {
 namespace log {
 
@@ -309,6 +311,12 @@ Status ReadableLogSegment::RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* f
         .offset_in_segment = entry_metadata.offset,
       }, Overwrite::kFalse));
     }
+  }
+
+  // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
+  // to stream records from this segment based on the tablet leader safe time.
+  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    footer_builder->set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
   UpdateReadableToOffset(read_entries.end_offset);

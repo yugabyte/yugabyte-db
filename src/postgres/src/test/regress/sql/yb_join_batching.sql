@@ -62,6 +62,10 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
 /*+IndexScan(p5 p5_hash_asc)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 /*+IndexScan(p5 p5_hash_asc)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 
+/*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
+
+/*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
+
 /*+ set(enable_seqscan true) Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
 CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
@@ -333,6 +337,8 @@ DROP TABLE p3;
 DROP TABLE p4;
 DROP TABLE p5;
 
+
+
 CREATE TABLE s1(r1 int, r2 int, r3 int);
 CREATE TABLE s2(r1 int, r2 int, r3 int);
 CREATE TABLE s3(r1 int, r2 int);
@@ -347,6 +353,34 @@ INSERT INTO s3 select i,i from generate_series(1,100) i;
 DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
+
+CREATE TABLE r1(a int, PRIMARY KEY(a ASC));
+CREATE TABLE r2(a int);
+
+/*+Leading(r2 r1)*/
+EXPLAIN (COSTS OFF)
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+
+SELECT *
+FROM r1
+RIGHT OUTER JOIN (
+    (SELECT
+        NULL::int AS nullcol
+     FROM
+        r2
+     LIMIT 1)) AS r2
+ON (r1.a = r2.nullcol);
+
+DROP TABLE r1;
+DROP TABLE r2;
 
 create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));

@@ -13,13 +13,19 @@
 
 package org.yb.ysqlconnmgr;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.io.IOException;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import org.junit.AfterClass;
@@ -34,6 +40,9 @@ import org.yb.pgsql.ConnectionBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.util.PGobject;
 
 public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseYsqlConnMgr.class);
@@ -76,6 +85,281 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected boolean isTestRunningInWarmupRandomMode() {
     return warmup_random_mode;
+  }
+
+  protected static class Row implements Comparable<Row>, Cloneable {
+    static Row fromResultSet(ResultSet rs) throws SQLException {
+      List<Object> elems = new ArrayList<>();
+      List<String> columnNames = new ArrayList<>();
+      for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+        elems.add(rs.getObject(i));
+        columnNames.add(rs.getMetaData().getColumnLabel(i));
+      }
+      // Pre-initialize stuff while connection is still available
+      for (Object el : elems) {
+        // TODO(alex): Store as List to begin with?
+        if (el instanceof PgArray)
+          ((PgArray) el).getArray();
+      }
+      return new Row(elems, columnNames);
+    }
+
+    List<Object> elems = new ArrayList<>();
+
+    /**
+     * List of column names, should have the same size as {@link #elems}.
+     * <p>
+     * Not used for equality, hash code and comparison.
+     */
+    List<String> columnNames = new ArrayList<>();
+
+    Row(Object... elems) {
+      Collections.addAll(this.elems, elems);
+    }
+
+    Row(List<Object> elems, List<String> columnNames) {
+      checkArgument(elems.size() == columnNames.size());
+      this.elems = elems;
+      this.columnNames = columnNames;
+    }
+
+    /** Returns a column name if available, or {@code null} otherwise. */
+    String getColumnName(int index) {
+      return columnNames.size() > 0 ? columnNames.get(index) : null;
+    }
+
+    Object get(int index) {
+      return elems.get(index);
+    }
+
+    Boolean getBoolean(int index) {
+      return (Boolean) elems.get(index);
+    }
+
+    Integer getInt(int index) {
+      return (Integer) elems.get(index);
+    }
+
+    Long getLong(int index) {
+      return (Long) elems.get(index);
+    }
+
+    Double getDouble(int index) {
+      return (Double) elems.get(index);
+    }
+
+    String getString(int index) {
+      return (String) elems.get(index);
+    }
+
+    Float getFloat(int index) {
+      return (Float) elems.get(index);
+    }
+
+    public boolean elementEquals(int idx, Object value) {
+      return compare(elems.get(idx), value) == 0;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      if (!(obj instanceof Row)) {
+        return false;
+      }
+      Row other = (Row)obj;
+      return compareTo(other) == 0;
+    }
+
+    @Override
+    public int compareTo(Row that) {
+      // In our test, if selected Row has different number of columns from expected row, something
+      // must be very wrong. Stop the test here.
+      assertEquals("Row width mismatch between " + this + " and " + that,
+          this.elems.size(), that.elems.size());
+      return compare(this.elems, that.elems);
+    }
+
+    @Override
+    public int hashCode() {
+      return elems.hashCode();
+    }
+
+    @Override
+    public String toString() {
+      return toString(false /* printColumnNames */);
+    }
+
+    public String toString(boolean printColumnNames) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Row[");
+      for (int i = 0; i < elems.size(); i++) {
+        if (i > 0) sb.append(',');
+        if (printColumnNames) {
+          String columnNameOrNull = getColumnName(i);
+          sb.append((columnNameOrNull != null ? columnNameOrNull : i) + "=");
+        }
+        if (elems.get(i) == null) {
+          sb.append("null");
+        } else {
+          sb.append(elems.get(i).getClass().getName() + "::");
+          sb.append(elems.get(i).toString());
+        }
+      }
+      sb.append(']');
+      return sb.toString();
+    }
+
+    @Override
+    public Row clone() {
+      try {
+        Row clone = (Row) super.clone();
+        clone.elems = new ArrayList<>(this.elems);
+        clone.columnNames = new ArrayList<>(this.columnNames);
+        return clone;
+      } catch (CloneNotSupportedException ex) {
+        // Not possible
+        throw new RuntimeException(ex);
+      }
+    }
+
+    //
+    // Helpers
+    //
+
+    /**
+     * Compare two objects if possible. Is able to compare:
+     * <ul>
+     * <li>Primitives
+     * <li>Comparables (including {@code String}) - but cannot handle the case of two unrelated
+     * Comparables
+     * <li>{@code PGobject}s wrapping {@code Comparable}s
+     * <li>Arrays, {@code PgArray}s or lists of the above types
+     * </ul>
+     */
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private static int compare(Object o1, Object o2) {
+      if (o1 == null || o2 == null) {
+        if (o1 != o2) {
+          return o1 == null ? -1 : 1;
+        }
+        return 0;
+      } else {
+        Object promoted1 = promoteType(o1);
+        Object promoted2 = promoteType(o2);
+        if (promoted1 instanceof Long && promoted2 instanceof Long) {
+          return ((Long) promoted1).compareTo((Long) promoted2);
+        } else if (promoted1 instanceof Double && promoted2 instanceof Double) {
+          return ((Double) promoted1).compareTo((Double) promoted2);
+        } else if (promoted1 instanceof Number && promoted2 instanceof Number) {
+          return Double.compare(
+              ((Number) promoted1).doubleValue(),
+              ((Number) promoted2).doubleValue());
+        } else if (promoted1 instanceof Comparable && promoted2 instanceof Comparable) {
+          // This is unsafe but we dont expect arbitrary types here.
+          return ((Comparable) promoted1).compareTo((Comparable) promoted2);
+        } else if (promoted1 instanceof List && promoted2 instanceof List) {
+          List list1 = (List) promoted1;
+          List list2 = (List) promoted2;
+          if (list1.size() != list2.size()) {
+            return Integer.compare(list1.size(), list2.size());
+          }
+          for (int i = 0; i < list1.size(); ++i) {
+            int comparisonResult = compare(list1.get(i), list2.get(i));
+            if (comparisonResult != 0) {
+              return comparisonResult;
+            }
+          }
+          return 0;
+        } else {
+          throw new IllegalArgumentException("Cannot compare "
+              + o1 + " (of class " + o1.getClass().getCanonicalName() + ") with "
+              + o2 + " (of class " + o2.getClass().getCanonicalName() + ")");
+        }
+      }
+    }
+
+    /** Converts the value to a widest one of the same type for comparison */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static Object promoteType(Object v) {
+      if (v instanceof Byte || v instanceof Short || v instanceof Integer) {
+        return ((Number)v).longValue();
+      } else if (v instanceof Float) {
+        return ((Float)v).doubleValue();
+      } else if (v instanceof Comparable) {
+        return v;
+      } else if (v instanceof List) {
+        return v;
+      } else if (v instanceof PGobject) {
+        return promoteType(((PGobject) v).getValue()); // For PG_LSN type.
+      } else if (v instanceof PgArray) {
+        try {
+          return promoteType(((PgArray) v).getArray());
+        } catch (SQLException ex) {
+          throw new RuntimeException("SQL exception during type promotion", ex);
+        }
+      } else if (v.getClass().isArray()) {
+        List list = new ArrayList<>();
+        // Unfortunately there's no easy way to automate that, we have to enumerate all array types
+        // explicitly.
+        if (v instanceof byte[]) {
+          for (byte ve : (byte[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof short[]) {
+          for (short ve : (short[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof int[]) {
+          for (int ve : (int[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof long[]) {
+          for (long ve : (long[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof float[]) {
+          for (float ve : (float[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof double[]) {
+          for (double ve : (double[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof boolean[]) {
+          for (boolean ve : (boolean[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof char[]) {
+          for (char ve : (char[]) v) {
+            list.add(promoteType(ve));
+          }
+        } else if (v instanceof Object[]) {
+          for (Object ve : (Object[]) v) {
+            list.add(promoteType(ve));
+          }
+        }
+        return list;
+      } else {
+        throw new IllegalArgumentException(v + " (of class " + v.getClass().getSimpleName() + ")"
+            + " cannot be promoted for comparison!");
+      }
+    }
+  }
+
+  protected List<Row> getRowList(Statement stmt, String query) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery(query)) {
+      return getRowList(rs);
+    }
+  }
+
+  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+    List<Row> rows = new ArrayList<>();
+    while (rs.next()) {
+      rows.add(Row.fromResultSet(rs));
+    }
+    return rows;
   }
 
   @Before
