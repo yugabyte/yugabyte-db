@@ -138,6 +138,22 @@ var createBackupCmd = &cobra.Command{
 
 		}
 
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Create - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+		}
+
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -268,15 +284,6 @@ var createBackupCmd = &cobra.Command{
 				if err != nil {
 					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
 					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(r.GetEntities()) == 1 {
-					fullBackupContext := *backup.NewFullBackupContext()
-					fullBackupContext.Output = os.Stdout
-					fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
-					fullBackupContext.SetFullBackup(r.GetEntities()[0])
-					fullBackupContext.Write()
-					return
 				}
 
 				if len(r.GetEntities()) < 1 {
