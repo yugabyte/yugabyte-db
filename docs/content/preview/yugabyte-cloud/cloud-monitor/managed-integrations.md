@@ -34,8 +34,8 @@ Currently, you can export data to the following tools.
 | [Datadog](https://docs.datadoghq.com/) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
 | [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
 | [Sumo Logic](https://www.sumologic.com) | | Yes |
-| [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}} | | Yes |
-| [VictoriaMetrics](https://docs.victoriametrics.com/) {{<badge/tp>}} | | Yes |
+| [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<tags/feature/tp>}} | | Yes |
+| [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
 | [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
 
 ## Configure integrations
