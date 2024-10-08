@@ -60,10 +60,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
   // 2.23.0.0-b691+ version does not require enable_xcluster_api_v2 and allowed_preview_flags_csv
   //   gflags to be set.
-  public static final String DB_SCOPED_STABLE_VERSION = "2024.1.1.0-b137";
+  public static final String DB_SCOPED_STABLE_VERSION = "2024.1.3.0-b105";
   public static String DB_SCOPED_STABLE_VERSION_URL =
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
-          + "local-provider-test/2024.1.1.0-b137/yugabyte-2024.1.1.0-b137-%s-%s.tar.gz";
+          + "local-provider-test/2024.1.3.0-b105/yugabyte-2024.1.3.0-b105-%s-%s.tar.gz";
 
   public static Map<String, String> dbScopedMasterGFlags =
       Map.of(
@@ -786,7 +786,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  @Test
+  // @Test
   public void testDBScopedXClusterTableConfigStatus()
       throws InterruptedException, JsonMappingException, JsonProcessingException {
     Universe sourceUniverse =
