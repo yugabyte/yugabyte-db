@@ -798,6 +798,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssesmentComplexityInfo'
+        operating_system:
+          type: string
     ErrorsAndSuggestionsDetails:
       title: Errors and Suggestions details
       description: Errors and suggestions details

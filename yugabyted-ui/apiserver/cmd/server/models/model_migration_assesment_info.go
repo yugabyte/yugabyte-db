@@ -10,4 +10,6 @@ type MigrationAssesmentInfo struct {
     TopSuggestions []string `json:"top_suggestions"`
 
     ComplexityOverview []AssesmentComplexityInfo `json:"complexity_overview"`
+
+    OperatingSystem string `json:"operating_system"`
 }
