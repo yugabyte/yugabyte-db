@@ -8,7 +8,7 @@
         # By default, scrape targets every 15 seconds.
         scrape_interval:     {{ yamlPath "prometheus.scrapeInterval" }}
         evaluation_interval: {{ yamlPath "prometheus.scrapeInterval" }}
-        # scrape_timeout is set to the global default (10s).
+        scrape_timeout: {{ yamlPath "prometheus.scrapeTimeout" }}
 
         # The labels to add to any time series or alerts when communicating with
         # external systems (federation, remote storage, Alertmanager).
