@@ -97,6 +97,7 @@
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />
 
   <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
+  <logger name="org.apache.pekko.actor.ActorSystemImpl" level="ERROR"/>
 
 
     <if condition='property("LOGTESTTOFILE").equals("true")'>
