@@ -4,7 +4,6 @@ import configparser
 from jinja2 import Environment, FileSystemLoader
 from collections import defaultdict
 from pathlib import Path
-import copy
 
 
 def convert_dotted_keys_to_nested(config_dict):
@@ -34,9 +33,7 @@ def parse_config(ynp_config):
     template = env.get_template("config.j2")
 
     # Render the template with the configuration data
-    output = template.render(ynp=ynp_config['ynp'],
-                             yba=ynp_config['yba'],
-                             logging=ynp_config['logging'],
+    output = template.render(ynp_config=ynp_config,
                              ynp_dir=ynp_dir,
                              start_time=start_time)
 
@@ -55,10 +52,28 @@ def parse_config(ynp_config):
     config = configparser.ConfigParser()
     config_dict = {}
     try:
-        config.read(config_file)
-        config_dict = {section: dict(config.items(section)) for section in config.sections()}
+        # Read the config file
+        with open(config_file, 'r') as f:
+            content = f.readlines()
+
+        # Clean up the lines to remove excess whitespace
+        cleaned_content = []
+        for line in content:
+            # Remove leading and trailing whitespace
+            cleaned_line = line.strip()
+            # Ignore empty lines and comments
+            if cleaned_line and not cleaned_line.startswith('#'):
+                cleaned_content.append(cleaned_line)
+
+        # Read the cleaned content into the config parser
+        config.read_string('\n'.join(cleaned_content))
+        config_dict = {
+            section: {
+                key.strip(): value.strip() for key, value in config.items(section)
+            } for section in config.sections()
+        }
         if config.defaults():
-            config_dict['DEFAULT'] = dict(config.defaults())
+            config_dict['DEFAULT'] = {key.strip(): value.strip() for key, value in config.defaults().items()}
     except Exception as e:
         print("Error occurred while parsing config.ini:", str(e))
 
