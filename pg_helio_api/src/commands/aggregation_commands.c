@@ -136,7 +136,7 @@ static Datum HandleFirstPageRequest(PG_FUNCTION_ARGS,
 									QueryData *cursorState,
 									QueryKind queryKind, Query *query);
 
-static int64_t GenerateCursorId(void);
+static int64_t GenerateCursorId(int64_t inputValue);
 
 
 /* Generates a base QueryData used for the first page */
@@ -172,11 +172,6 @@ command_aggregate_cursor_first_page(PG_FUNCTION_ARGS)
 	pgbson *aggregationSpec = PG_GETARG_PGBSON(1);
 	int64_t cursorId = PG_GETARG_INT64(2);
 
-	if (cursorId == 0)
-	{
-		cursorId = GenerateCursorId();
-	}
-
 	bool generateCursorParams = true;
 	QueryData queryData = GenerateFirstPageQueryData();
 	Query *query = GenerateAggregationQuery(database, aggregationSpec, &queryData,
@@ -200,11 +195,6 @@ command_find_cursor_first_page(PG_FUNCTION_ARGS)
 	Datum database = PG_GETARG_DATUM(0);
 	pgbson *findSpec = PG_GETARG_PGBSON(1);
 	int64_t cursorId = PG_GETARG_INT64(2);
-
-	if (cursorId == 0)
-	{
-		cursorId = GenerateCursorId();
-	}
 
 	/* Parse the find spec for the purposes of query execution */
 	QueryData queryData = GenerateFirstPageQueryData();
@@ -301,7 +291,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 	/* Write the preamble for the cursor response */
 	bool isFirstPage = false;
 	SetupCursorPagePreamble(&writer, &cursorDoc, &arrayWriter,
-							getMoreInfo.cursorId, getMoreInfo.queryData.namespaceName,
+							getMoreInfo.queryData.namespaceName,
 							isFirstPage,
 							&accumulatedSize);
 
@@ -487,7 +477,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	/* Write the preamble for the cursor response */
 	bool isFirstPage = true;
 	SetupCursorPagePreamble(&writer, &cursorDoc, &arrayWriter,
-							cursorId, queryData->namespaceName, isFirstPage,
+							queryData->namespaceName, isFirstPage,
 							&accumulatedSize);
 
 	/* now set up the query */
@@ -506,6 +496,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 									 isHoldCursor, closeCursor);
 		queryFullyDrained = true;
 		continuationDoc = NULL;
+		cursorId = 0;
 	}
 	else if (queryData->isTailableCursor)
 	{
@@ -513,6 +504,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 		DrainTailableQuery(tailableCursorMap, query, queryData->batchSize,
 						   &numIterations, accumulatedSize,
 						   &arrayWriter);
+		cursorId = GenerateCursorId(cursorId);
 		continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
 															 querySpec,
 															 cursorId, queryKind,
@@ -523,20 +515,26 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	{
 		Assert(queryData->cursorStateParamNumber == 1);
 		HTAB *cursorMap = CreateCursorHashSet();
-
 		queryFullyDrained = DrainStreamingQuery(cursorMap, query, queryData->batchSize,
 												&numIterations, accumulatedSize,
 												&arrayWriter);
-		queryFullyDrained = queryFullyDrained || queryData->isSingleBatch;
 
-		continuationDoc = queryFullyDrained ? NULL :
-						  BuildStreamingContinuationDocument(cursorMap, querySpec,
-															 cursorId, queryKind,
-															 numIterations, false);
+		continuationDoc = NULL;
+		if (!queryFullyDrained)
+		{
+			cursorId = GenerateCursorId(cursorId);
+			continuationDoc = BuildStreamingContinuationDocument(cursorMap, querySpec,
+																 cursorId, queryKind,
+																 numIterations, false);
+		}
+
 		hash_destroy(cursorMap);
 	}
 	else
 	{
+		/* In order to create the persistent cursor we initialize a cursorId anyway */
+		cursorId = GenerateCursorId(cursorId);
+
 		StringInfo cursorStringInfo = makeStringInfo();
 		appendStringInfo(cursorStringInfo, "cursor_%ld", cursorId);
 		const char *cursorName = cursorStringInfo->data;
@@ -730,8 +728,13 @@ ParseGetMoreSpec(text *databaseName, pgbson *getMoreSpec, pgbson *cursorSpec,
  * within a node.
  */
 static int64_t
-GenerateCursorId(void)
+GenerateCursorId(int64_t inputValue)
 {
+	if (inputValue != 0)
+	{
+		return inputValue;
+	}
+
 	/* 2^53-1 masks integer precision of IEEE 754 double precision floating point numbers
 	 * Works around issue with certain versions of the NodeJS driver
 	 */

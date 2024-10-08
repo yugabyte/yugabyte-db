@@ -45,7 +45,7 @@ pgbson * DrainSingleResultQuery(Query *query);
 
 void SetupCursorPagePreamble(pgbson_writer *topLevelWriter,
 							 pgbson_writer *cursorDoc,
-							 pgbson_array_writer *arrayWriter, int64_t cursorId,
+							 pgbson_array_writer *arrayWriter,
 							 const char *namespaceName, bool isFirstPage,
 							 uint32_t *accumulatedLength);
 

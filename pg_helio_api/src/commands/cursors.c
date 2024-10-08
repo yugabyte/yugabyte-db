@@ -86,8 +86,6 @@ static void HoldPortal(Portal portal);
 static uint32 CursorHashEntryHashFunc(const void *obj, size_t objsize);
 static int CursorHashEntryCompareFunc(const void *obj1, const void *obj2,
 									  Size objsize);
-static pgbson * BuildCursorDocument(HTAB *cursorMap, int numIterations);
-
 static pgbson * SerializeContinuationForWorker(HTAB *cursorMap, int32_t batchSize, bool
 											   isTailable);
 
@@ -111,318 +109,12 @@ static TerminationReason FetchCursorAndWriteUntilPageOrSize(Portal portal, int32
 															MemoryContext writerContext,
 															bool isTailableCursor);
 
-PG_FUNCTION_INFO_V1(command_enumerate_cursors);
-PG_FUNCTION_INFO_V1(command_get_cursor_page);
-PG_FUNCTION_INFO_V1(command_get_cursor_page_query);
-
 const char NodeId[] = "nodeId";
 uint32_t NodeIdLength = 7;
 const char ContinuationToken[] = "continuationToken";
 uint32_t ContiunationTokenLength = 16;
 
 #define PATH_AND_PATH_LEN(path) path, sizeof(path) - 1
-
-/*
- * command_enumerate_cursors implements
- * enumeration of a cursor page for a transactional
- * cursor.
- */
-Datum
-command_enumerate_cursors(PG_FUNCTION_ARGS)
-{
-	ereport(ERROR, (errmsg("enumerate_cursors is deprecated. Unexpected")));
-}
-
-
-/*
- * Gets the next page of the cursors based on
- * the page size, the backend cursor that got created already.
- * The page is formatted with the mongo wire protocol response
- * format.
- * The function drains the query up to one of MaxBsonSize (16 MB)
- * or batch size - whichever hits first.
- */
-Datum
-command_get_cursor_page(PG_FUNCTION_ARGS)
-{
-	text *cursor = PG_GETARG_TEXT_P(0);
-	char *cursorName = text_to_cstring(cursor);
-	int32_t batchSize = PG_GETARG_INT32(1);
-
-	text *namespace = PG_GETARG_TEXT_P(2);
-	char *namespaceName = text_to_cstring(namespace);
-
-	int64_t cursorId = PG_GETARG_INT64(3);
-	bool isFirstPage = PG_GETARG_BOOL(4);
-
-	bool queryFullyDrained = false;
-
-	/* Save the context before doing SPI */
-	MemoryContext currentContext = CurrentMemoryContext;
-	pgbson_writer writer;
-	pgbson_writer cursorDoc;
-	pgbson_array_writer arrayWriter;
-
-	/* min bson size is 5 (see IsPgbsonEmptyDocument) */
-	uint32_t accumulatedLength = 5;
-
-	/* Write the preamble for the cursor response */
-	SetupCursorPagePreamble(&writer, &cursorDoc, &arrayWriter,
-							cursorId, namespaceName, isFirstPage,
-							&accumulatedLength);
-	if (SPI_connect() != SPI_OK_CONNECT)
-	{
-		ereport(ERROR, (errmsg("could not connect to SPI manager")));
-	}
-
-	/* Find the portal (if it exists) */
-	Portal portal = SPI_cursor_find(cursorName);
-	if (portal == NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_CURSORNOTFOUND),
-						errmsg("Cursor not found in the store.")));
-	}
-
-	if (portal->tupDesc->natts > 1)
-	{
-		ereport(ERROR, (errmsg(
-							"Cursor return more than 1 column not supported. This is a bug")));
-	}
-
-	if (portal->tupDesc->attrs[0].atttypid != BsonTypeId())
-	{
-		ereport(ERROR, (errmsg(
-							"Cursor return cannot be anything other than Bson. This is a bug")));
-	}
-
-	/* Drain the cursor and fetch the next page based on batchSize provided. */
-	HTAB *cursorMap = NULL;
-	int32_t numRowsFetched = 0;
-	uint64_t currentAccumulatedSize = 0;
-	bool isTailableCursor = false;
-	TerminationReason reason = FetchCursorAndWriteUntilPageOrSize(portal, batchSize,
-																  &arrayWriter,
-																  &accumulatedLength,
-																  cursorMap,
-																  &numRowsFetched,
-																  &currentAccumulatedSize,
-																  currentContext,
-																  isTailableCursor);
-	queryFullyDrained = reason == TerminationReason_CursorCompletion;
-
-	SPI_finish();
-
-	/* Initialize the continuation (NULL if drained, {} otherwise) */
-	pgbson *continuation = queryFullyDrained ? NULL : PgbsonInitEmpty();
-
-	/* Write the tail of the response ("ok": 1 ) etc. */
-	bool persistConnection = false;
-	return PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer, cursorId,
-								 continuation, persistConnection);
-}
-
-
-/*
- * Gets the next page of the query based on
- * the page size, the query and continuation for a streaming query.
- * The page is formatted with the mongo wire protocol response
- * format.
- * The function drains the query up to one of MaxBsonSize (16 MB)
- * or batch size - whichever hits first.
- * Returns the page and an updated continuation token.
- */
-Datum
-command_get_cursor_page_query(PG_FUNCTION_ARGS)
-{
-	text *query = PG_GETARG_TEXT_P(0);
-	char *queryText = text_to_cstring(query);
-	int32_t batchSize = PG_GETARG_INT32(1);
-
-	text *namespace = PG_GETARG_TEXT_P(2);
-	char *namespaceName = text_to_cstring(namespace);
-
-	int64_t cursorId = PG_GETARG_INT64(3);
-	bool isFirstPage = PG_GETARG_BOOL(4);
-
-	/* Gets the index into the VARARGS where the continuation token exists. */
-	int32_t continuationIndex = PG_GETARG_INT32(5);
-
-	Datum *args;
-	bool *nulls;
-	Oid *types;
-
-	/* fetch argument values to build the object */
-	bool convertUnknown = false;
-	int nargs = extract_variadic_args(fcinfo, 6, convertUnknown, &args, &types, &nulls);
-
-	/* Set up nulls for SPI */
-	char *nullValues = palloc(sizeof(char) * nargs);
-	for (int i = 0; i < nargs; i++)
-	{
-		nullValues[i] = nulls[i] ? 'n' : ' ';
-	}
-
-	bool isSinglePage = cursorId == 0;
-
-	/* Validate the continuation token data for multi-page queries */
-	if (!isSinglePage)
-	{
-		if (continuationIndex >= nargs || continuationIndex < 0)
-		{
-			ereport(ERROR, (errmsg(
-								"Continuation index is invalid: %d must be less than %d",
-								continuationIndex, nargs)));
-		}
-		else if (nulls[continuationIndex] ||
-				 (types[continuationIndex] != BsonTypeId() &&
-				  types[continuationIndex] != BYTEAOID))
-		{
-			ereport(ERROR, (errmsg(
-								"Continuation data is invalid in parameters: index %d in args %d, is null %d, Oid=%u",
-								continuationIndex, nargs, nulls[continuationIndex],
-								types[continuationIndex])));
-		}
-	}
-
-	pgbson_writer writer;
-	pgbson_writer cursorDoc;
-	pgbson_array_writer arrayWriter;
-
-	/* min bson size is 5 (see IsPgbsonEmptyDocument) */
-	uint32_t accumulatedSize = 5;
-
-	/* Write the preamble of the cursor page. */
-	SetupCursorPagePreamble(&writer, &cursorDoc, &arrayWriter, cursorId, namespaceName,
-							isFirstPage, &accumulatedSize);
-
-	/* Set up the continuation map based on the continuation token provided.
-	 * This will be updated per row as the query is drained.
-	 */
-	HTAB *cursorMap = NULL;
-
-	if (!isSinglePage)
-	{
-		cursorMap = CreateCursorHashSet();
-		pgbson *continuationValue = DatumGetPgBson(args[continuationIndex]);
-		BuildContinuationMap(continuationValue, cursorMap);
-	}
-
-	int32_t numIterations = 0;
-	bool queryFullyDrained = false;
-	int32_t accumulatedRows = 0;
-
-	/* Save the context before doing SPI */
-	MemoryContext currentContext = CurrentMemoryContext;
-	if (SPI_connect() != SPI_OK_CONNECT)
-	{
-		ereport(ERROR, (errmsg("could not connect to SPI manager")));
-	}
-
-	/* Prepare the query once across multiple iterations */
-	SPIPlanPtr queryPlan = SPI_prepare_cursor(queryText, nargs, types,
-											  CURSOR_OPT_NO_SCROLL | CURSOR_OPT_BINARY);
-	while (true)
-	{
-		/* Serialize the continuation to be passed to the workers */
-		if (cursorMap != NULL)
-		{
-			bool isTailableCursor = false;
-			args[continuationIndex] = PointerGetDatum(SerializeContinuationForWorker(
-														  cursorMap, batchSize,
-														  isTailableCursor));
-		}
-
-		/* Create a new portal for the streaming cursor - this will be removed
-		 * At the end of this method. This is okay since on failure the TXN gets rolled back
-		 * and with it, the cursor.
-		 */
-		bool readOnly = true;
-		Portal queryPortal = SPI_cursor_open("myStreamingCursor", queryPlan, args,
-											 nullValues, readOnly);
-		if (cursorMap != NULL)
-		{
-			if (queryPortal->tupDesc->natts != 2)
-			{
-				ereport(ERROR, (errmsg(
-									"Cursor return more than 2 column not supported: Found %d. This is a bug",
-									queryPortal->tupDesc->natts)));
-			}
-
-			if (queryPortal->tupDesc->attrs[0].atttypid != BsonTypeId() ||
-				queryPortal->tupDesc->attrs[1].atttypid != BsonTypeId())
-			{
-				ereport(ERROR, (errmsg(
-									"Cursor return cannot be anything other than Bson. This is a bug")));
-			}
-		}
-		else
-		{
-			if (queryPortal->tupDesc->natts < 1)
-			{
-				ereport(ERROR, (errmsg(
-									"Cursor returning less than 1 column not supported. This is a bug")));
-			}
-
-			if (queryPortal->tupDesc->attrs[0].atttypid != BsonTypeId())
-			{
-				ereport(ERROR, (errmsg(
-									"Cursor return cannot be anything other than Bson. This is a bug")));
-			}
-		}
-
-		/* Drain the cursor and fetch the next page based on batchSize provided. */
-		uint64_t currentAccumulatedSize = 0;
-		bool isTailableCursor = false;
-		TerminationReason reason = FetchCursorAndWriteUntilPageOrSize(
-			queryPortal, batchSize, &arrayWriter, &accumulatedSize, cursorMap,
-			&accumulatedRows, &currentAccumulatedSize, currentContext, isTailableCursor);
-
-		/* Close the portal since the current page is retrieved. */
-		SPI_cursor_close(queryPortal);
-
-		numIterations++;
-
-		if (cursorMap == NULL)
-		{
-			queryFullyDrained = reason == TerminationReason_CursorCompletion;
-			break;
-		}
-		else if (reason == TerminationReason_CursorCompletion)
-		{
-			/*
-			 * ValidateCursorCustomScanPlan ensures that we're the top most
-			 * plan in the worker. Therefore, we can safely assume that
-			 * we're correctly tracking sizes in the worker. Consequently,
-			 * if we terminated with less than WorkerSize, we know it's
-			 * a pure cursor termination. This way we avoid an additional
-			 * round trip to find out whether it's actually drained.
-			 */
-			if (currentAccumulatedSize < (uint64_t) MaxWorkerCursorSize)
-			{
-				queryFullyDrained = true;
-				break;
-			}
-		}
-		else
-		{
-			/* We terminated because of size or batchSize limits */
-			break;
-		}
-	}
-
-	SPI_freeplan(queryPlan);
-
-	SPI_finish();
-
-	/* Initialize the continuation (NULL if drained, { "continuation": [ { "shard": "value" ... } ] } otherwise) */
-	pgbson *continuation = (queryFullyDrained || isSinglePage) ? NULL :
-						   BuildCursorDocument(cursorMap, numIterations);
-
-	/* Write the tail */
-	bool persistConnection = false;
-	return PostProcessCursorPage(fcinfo, &cursorDoc, &arrayWriter, &writer, cursorId,
-								 continuation, persistConnection);
-}
 
 
 /*
@@ -1342,25 +1034,6 @@ SerializeTailableContinuationsToWriter(pgbson_writer *writer, HTAB *cursorMap)
 
 
 /*
- * Serializes the cursor state into a single pgbson document.
- * Takes the form:
- * { "continuation": [ { "tableName": "<table>", "value": <binaryValue> } ] }
- */
-static pgbson *
-BuildCursorDocument(HTAB *cursorMap, int numIterations)
-{
-	pgbson_writer finalWriter;
-
-	PgbsonWriterInit(&finalWriter);
-	SerializeContinuationsToWriter(&finalWriter, cursorMap);
-
-	/* In the response add the number of iterations (used in tests) */
-	PgbsonWriterAppendInt32(&finalWriter, "numIters", 8, numIterations);
-	return PgbsonWriterGetPgbson(&finalWriter);
-}
-
-
-/*
  * Serializes continuation state from the map into a bson that can be sent to the
  * workers. This includes continuation state and page size hints for round trips.
  */
@@ -1446,7 +1119,7 @@ CreateTailableCursorHashSet()
  */
 void
 SetupCursorPagePreamble(pgbson_writer *topLevelWriter, pgbson_writer *cursorDoc,
-						pgbson_array_writer *arrayWriter, int64_t cursorId,
+						pgbson_array_writer *arrayWriter,
 						const char *namespaceName, bool isFirstPage,
 						uint32_t *accumulatedLength)
 {
@@ -1455,8 +1128,8 @@ SetupCursorPagePreamble(pgbson_writer *topLevelWriter, pgbson_writer *cursorDoc,
 	/* Write the preface */
 	PgbsonWriterStartDocument(topLevelWriter, "cursor", 6, cursorDoc);
 
-	/* Write the cursor ID, this may be overwritten later */
-	PgbsonWriterAppendInt64(cursorDoc, "id", 2, cursorId);
+	/* Write the cursor ID, this is overwritten later */
+	PgbsonWriterAppendInt64(cursorDoc, "id", 2, 0);
 
 	/* write the namespace */
 	PgbsonWriterAppendUtf8(cursorDoc, "ns", 2, namespaceName);
@@ -1504,6 +1177,12 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 	}
 	else if (queryFullyDrained)
 	{
+		/* Write out the cursor_id given that the cursor is not drained */
+		cursorId = 0;
+	}
+
+	if (cursorId != 0)
+	{
 		bson_iter_t cursorDocIter;
 		PgbsonWriterGetIterator(topLevelWriter, &cursorDocIter);
 		if (!bson_iter_find_descendant(&cursorDocIter, "cursor.id", &cursorDocIter))
@@ -1512,8 +1191,7 @@ PostProcessCursorPage(PG_FUNCTION_ARGS,
 								"Could not find cursor.id in cursor document. This is a bug")));
 		}
 
-		/* Query is drained - set the cursor to 0 */
-		bson_iter_overwrite_int64(&cursorDocIter, 0);
+		bson_iter_overwrite_int64(&cursorDocIter, cursorId);
 	}
 
 	/* Returns (continuation bson, cursorPage bson) */
