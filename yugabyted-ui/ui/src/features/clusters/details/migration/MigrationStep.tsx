@@ -39,7 +39,9 @@ export const MigrationStep: FC<MigrationStepProps> = ({
     },
     { query: { enabled: false } }
   );
-
+  const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
+    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+  });
   const { refetch: refetchMigrationAssesmentInfo } = useGetMigrationAssessmentInfoQuery(
     {
       uuid: migration?.migration_uuid || "migration_uuid_not_found",
@@ -85,7 +87,6 @@ export const MigrationStep: FC<MigrationStepProps> = ({
     refetchMigrationSchemaTasks();
     refetchMigrationMetrics();
   }, []);
-
   return (
     <Box mt={1}>
       {stepComponents.map((StepComponent, index) => {
@@ -93,6 +94,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
           return (
             <StepComponent
               key={index}
+              operatingSystem={index === 0 ? migrationAssessmentData?.operating_system: "git"}
               step={index}
               heading={steps[step]}
               migration={migration}

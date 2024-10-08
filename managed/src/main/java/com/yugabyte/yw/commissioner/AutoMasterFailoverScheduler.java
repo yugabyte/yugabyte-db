@@ -149,9 +149,7 @@ public class AutoMasterFailoverScheduler {
                               String errMsg =
                                   String.format(
                                       "Auto master failover task %s (%s) failed for universe %s",
-                                      tf.getTaskType(),
-                                      tf.getTaskUUID(),
-                                      universe.getUniverseUUID());
+                                      tf.getTaskType(), tf.getUuid(), universe.getUniverseUUID());
                               throw new RuntimeException(errMsg);
                             }
                           });

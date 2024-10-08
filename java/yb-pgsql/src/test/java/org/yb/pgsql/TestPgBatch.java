@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -179,6 +180,15 @@ public class TestPgBatch extends BasePgSQLTest {
       assertThrows(
           "Internal retries are not supported in batched execution mode",
            BatchUpdateException.class, () -> s1.executeBatch());
+    }
+  }
+
+  @After
+  public void resetFlags() throws Throwable {
+    // Re-enable heartbeats.
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(
+          hp, "TEST_tserver_disable_heartbeat", "false", true));
     }
   }
 

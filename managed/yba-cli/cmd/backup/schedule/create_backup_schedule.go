@@ -208,6 +208,21 @@ var createBackupScheduleCmd = &cobra.Command{
 		}
 		frequencyTimeUnit := "MINUTES"
 
+		enableVerboseLogs, err := cmd.Flags().GetBool("enable-verbose-logs")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		parallelism, err := cmd.Flags().GetInt("parallelism")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		category, err := cmd.Flags().GetString("category")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		keyspaceTableList = buildKeyspaceTables(keyspaces)
 		requestBody := ybaclient.BackupRequestParams{
 			UniverseUUID:        universeUUID,
@@ -222,6 +237,9 @@ var createBackupScheduleCmd = &cobra.Command{
 			SchedulingFrequency: util.GetInt64Pointer(scheduleFrequencyInSecs * 1000),
 			FrequencyTimeUnit:   util.GetStringPointer(frequencyTimeUnit),
 			ExpiryTimeUnit:      util.GetStringPointer("MILLISECONDS"),
+			EnableVerboseLogs:   util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:         util.GetInt32Pointer(int32(parallelism)),
+			BackupCategory:      util.GetStringPointer(strings.ToUpper(category)),
 		}
 
 		if (len(strings.TrimSpace(cronExpression))) > 0 {
@@ -365,7 +383,15 @@ func init() {
 			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd\"")
 	createBackupScheduleCmd.Flags().Bool("use-tablespaces", false,
 		"[Optional] Backup tablespaces information as part of the backup.")
+	createBackupScheduleCmd.Flags().String("category", "",
+		"[Optional] Category of the backup. "+
+			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
+			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
 	createBackupScheduleCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3.")
+	createBackupScheduleCmd.Flags().Bool("enable-verbose-logs", false,
+		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
+	createBackupScheduleCmd.Flags().Int("parallelism", 8,
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 }

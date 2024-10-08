@@ -29,7 +29,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [PostgreSQL extensions are not supported by target YugabyteDB](#postgresql-extensions-are-not-supported-by-target-yugabytedb)
 - [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-constraints-other-than-foreign-keys-is-not-supported)
 - [Data ingestion on XML data type is not supported](#data-ingestion-on-xml-data-type-is-not-supported)
-- [GiST index type is not supported](#gist-index-type-is-not-supported)
+- [GiST, BRIN, and SPGIST index types are not supported](#gist-brin-and-spgist-index-types-are-not-supported)
 - [Indexes on some complex data types are not supported](#indexes-on-some-complex-data-types-are-not-supported)
 - [Constraint trigger is not supported](#constraint-trigger-is-not-supported)
 - [Table inheritance is not supported](#table-inheritance-is-not-supported)
@@ -41,6 +41,9 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
 - [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
 - [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
+- [Unsupported datatypes by YugabyteDB](#unsupported-datatypes-by-yugabytedb)
+- [Unsupported datatypes by Voyager during live migration](#unsupported-datatypes-by-voyager-during-live-migration)
+- [XID functions is not supported](#xid-functions-is-not-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -534,11 +537,11 @@ CREATE TABLE xml_example (
 
 ---
 
-### GiST index type is not supported
+### GiST, BRIN, and SPGIST index types are not supported
 
 **GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
 
-**Description**: If you have GiST indexes on the source database, it errors out in the import schema phase with the following error:
+**Description**: If you have GiST, BRIN, and SPGIST indexes on the source database, it errors out in the import schema phase with the following error:
 
 ```output
  ERROR: index method "gist" not supported yet (SQLSTATE XX000)
@@ -881,7 +884,6 @@ CREATE TRIGGER trigger_modify_employee_12000
 
 ---
 
-
 ### UNLOGGED table is not supported
 
 **GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
@@ -1014,5 +1016,78 @@ Suggested changes to the schema can be done using the following steps:
     ```sh
     ALTER SCHEMA "test" RENAME TO "Test";
     ```
+
+---
+
+### Unsupported datatypes by YugabyteDB
+
+**GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
+
+**Description**: If your source datatabase has any of these datatypes on the columns - `GEOMETRY`, `GEOGRAPHY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`, it will be skipped during the migration.
+
+**Workaround**: None.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.locations (
+    id integer NOT NULL,
+    name character varying(100),
+    geom geometry(Point,4326)
+ );
+
+```
+
+---
+
+### Unsupported datatypes by Voyager during live migration
+
+**GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
+
+**Description**: If your source datatabase has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`, it will be skipped during the migration.
+
+**Workaround**: None.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE combined_tbl (
+    id int,
+    l line,
+    ls lseg,
+    p point,
+    p1 path,
+    p2 polygon
+);
+```
+
+---
+
+### XID functions is not supported
+
+**GitHub**: [Issue #15638](https://github.com/yugabyte/yugabyte-db/issues/15638)
+
+**Description**: If you have XID datatypes in the source database, its functions, such as, `txid_current()` are not yet supported in YugabyteDB and will result in an error in the target as follows:
+
+```output
+ ERROR: Yugabyte does not support xid
+```
+
+**Workaround**: None.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE xid_example (
+      id integer,
+      tx_id xid
+);
+```
 
 ---

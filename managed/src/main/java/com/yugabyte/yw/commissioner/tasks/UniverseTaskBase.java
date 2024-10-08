@@ -280,7 +280,6 @@ import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMastersResponse;
@@ -2459,9 +2458,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Fetch DB entities from /dump-entities endpoint.
    *
    * @param universe the universe.
+   * @param moreStopCondition more stop condition to be checked if needed.
    * @return the API response.
    */
-  public DumpEntitiesResponse dumpDbEntities(Universe universe) {
+  public DumpEntitiesResponse dumpDbEntities(
+      Universe universe, @Nullable Predicate<DumpEntitiesResponse> moreStopCondition) {
     // Wait for a maximum of 10 seconds for url to succeed.
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     HostAndPort masterLeaderHostPort =
@@ -2473,20 +2474,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     RetryTaskUntilCondition<DumpEntitiesResponse> waitForCheck =
         new RetryTaskUntilCondition<>(
             () -> {
-              log.debug("Making url request to endpoint: {}", masterLeaderUrl);
-              JsonNode masterLeaderDumpJson = nodeUIApiHelper.getRequest(masterLeaderUrl);
-              DumpEntitiesResponse dumpEntities =
-                  Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
-              return dumpEntities;
+              try {
+                log.debug("Making url request to endpoint: {}", masterLeaderUrl);
+                JsonNode masterLeaderDumpJson = nodeUIApiHelper.getRequest(masterLeaderUrl);
+                return Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
+              } catch (RuntimeException e) {
+                String errMsg =
+                    String.format(
+                        "Error in sending request to endpoint: %s - %s",
+                        masterLeaderUrl, e.getMessage());
+                log.error(errMsg);
+              }
+              return null;
             },
             d -> {
+              if (d == null) {
+                return false;
+              }
               if (d.getError() != null) {
                 log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
                 return false;
               }
-              return true;
+              return moreStopCondition == null ? true : moreStopCondition.test(d);
             });
-    return waitForCheck.retryWithBackoff(1, 2, 10);
+    return waitForCheck.retryWithBackoff(1, 2, 60);
   }
 
   /**
@@ -2549,7 +2560,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
-    DumpEntitiesResponse dumpEntitiesResponse = dumpDbEntities(universe);
+    DumpEntitiesResponse dumpEntitiesResponse =
+        dumpDbEntities(universe, null /* moreStopCondition */);
     boolean useSecondaryIp = GFlagsUtil.isUseSecondaryIP(universe, currentNode, cloudEnabled);
     HostAndPort currentNodeHP =
         HostAndPort.fromParts(
@@ -2570,49 +2582,59 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     String masterAddresses = universe.getMasterAddresses();
     try (YBClient client =
         ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
-      DumpEntitiesResponse dumpEntitiesResponse = dumpDbEntities(universe);
-      GetMasterClusterConfigResponse response = client.getMasterClusterConfig();
-      Optional<String> errMsgOp =
-          response.getConfig().getServerBlacklist().getHostsList().stream()
-              .map(
-                  hp -> {
-                    NodeDetails node = universe.getNodeByAnyIP(hp.getHost());
-                    if (node == null) {
-                      // The node can be an old permanently blacklisted one.
-                      log.info(
-                          "Unknown blacklisted node {} in universe {}",
-                          hp,
-                          universe.getUniverseUUID());
-                      return null;
-                    }
-                    // Use the RPC port from node because it is generally not set in the HostAndPort
-                    // response.
-                    Set<String> tabletIds =
-                        dumpEntitiesResponse.getTabletsByTserverAddress(
-                            HostAndPort.fromParts(hp.getHost(), node.tserverRpcPort));
-                    if (log.isDebugEnabled()) {
-                      log.debug(
-                          "Number of tablets on tserver {} is {} tablets. Example tablets {}...",
-                          node.getNodeName(),
-                          tabletIds.size(),
-                          tabletIds.stream().limit(20).collect(Collectors.toSet()));
-                    }
-                    if (CollectionUtils.isNotEmpty(tabletIds)) {
-                      return String.format(
-                          "Expected 0 tablets on node %s. Got %d tablets",
-                          node.getNodeName(), tabletIds.size());
-                    }
-                    return null;
-                  })
-              .filter(Objects::nonNull)
-              .findFirst();
-      if (errMsgOp.isPresent()) {
-        throw new IllegalStateException(errMsgOp.get());
+      Set<HostAndPort> backlistedHostAndPorts = getBlacklistedHostAndPorts(universe, client);
+      if (CollectionUtils.isEmpty(backlistedHostAndPorts)) {
+        log.info("No tserver is blacklisted for universe {}", universe.getUniverseUUID());
+        return;
       }
+      dumpDbEntities(
+          universe,
+          r -> {
+            for (HostAndPort hp : backlistedHostAndPorts) {
+              Set<String> tabletIds = r.getTabletsByTserverAddress(hp);
+              if (log.isDebugEnabled()) {
+                log.debug(
+                    "Number of tablets on tserver {} is {} tablets. Example tablets {}...",
+                    hp.getHost(),
+                    tabletIds.size(),
+                    tabletIds.stream().limit(20).collect(Collectors.toSet()));
+              }
+              if (CollectionUtils.isNotEmpty(tabletIds)) {
+                log.error(
+                    "Expected 0 tablets on node {}. Got {} tablets",
+                    hp.getHost(),
+                    tabletIds.size());
+                // Return false to retry the fetch and check.
+                return false;
+              }
+            }
+            return true;
+          });
     } catch (Exception e) {
       log.error("Error in verifying no tablets on blacklisted tservers - {}", e.getMessage());
-      Throwables.propagate(e);
+      throw new RuntimeException(
+          "Error in verifying no tablets on blacklisted tservers - " + e.getMessage());
     }
+  }
+
+  private Set<HostAndPort> getBlacklistedHostAndPorts(Universe universe, YBClient client)
+      throws Exception {
+    return client.getMasterClusterConfig().getConfig().getServerBlacklist().getHostsList().stream()
+        .map(
+            hp -> {
+              NodeDetails node = universe.getNodeByAnyIP(hp.getHost());
+              if (node == null) {
+                // The node can be an old permanently blacklisted one.
+                log.info(
+                    "Unknown blacklisted node {} in universe {}", hp, universe.getUniverseUUID());
+                return null;
+              }
+              // Use the RPC port from node because it is generally not set in the HostAndPort
+              // response.
+              return HostAndPort.fromParts(hp.getHost(), node.tserverRpcPort);
+            })
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
   }
 
   /**

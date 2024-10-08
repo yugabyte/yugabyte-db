@@ -1560,7 +1560,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
 
 Status ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
-  LOG(INFO) << Format("Moving replica $0 from $1 to $2", tablet_id, from_ts, to_ts);
+  LOG(INFO) << Format("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));
   RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
@@ -1569,7 +1569,7 @@ Status ClusterLoadBalancer::MoveReplica(
 }
 
 Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
-  LOG(INFO) << Format("Adding replica $0 to $1", tablet_id, to_ts);
+  LOG(INFO) << Format("Adding replica of tablet $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the "should_remove_leader" flag is irrelevant.
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));

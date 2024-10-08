@@ -13,7 +13,8 @@ import (
     "strings"
     "time"
     "math"
-
+    "os"
+    "runtime"
     "github.com/jackc/pgtype"
     "github.com/jackc/pgx/v4/pgxpool"
     "github.com/labstack/echo/v4"
@@ -773,6 +774,14 @@ func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, mi
     future <- MigrateSchemaUIDetailResponse
 }
 
+func extractValue(line string) string {
+    parts := strings.SplitN(line, "=", 2)
+    if len(parts) != 2 {
+        return ""
+    }
+    return strings.Trim(strings.TrimSpace(parts[1]), "\"")
+}
+
 func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
 
     migrationAssesmentInfo := models.MigrationAssesmentInfo{}
@@ -786,6 +795,58 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
+    // Detect operating system
+    var osName string
+    if strings.EqualFold(runtime.GOOS, "linux") {
+      // Check if running in Docker
+      dockerFile, errDocker := os.ReadFile("/proc/1/cgroup")
+      if errDocker == nil && strings.EqualFold(string(dockerFile), "docker") {
+          osName = "docker"
+      } else {
+          file, errLinux := os.ReadFile("/etc/os-release")
+          if errLinux != nil {
+              c.logger.Errorf("Failed to read /etc/os-release: %v", errLinux)
+              osName = "unknown"
+          } else {
+              var versionID string
+              lines := strings.Split(string(file), "\n")
+              for _, line := range lines {
+                  if strings.HasPrefix(line, "ID=") {
+                      osName = extractValue(line)
+                  }
+                  if strings.HasPrefix(line, "VERSION_ID=") {
+                      versionID = extractValue(line)
+                  }
+                  if osName != "" && versionID != "" {
+                      break
+                  }
+              }
+
+              if strings.EqualFold(osName, "ubuntu") {
+                  if strings.HasPrefix(versionID, "22.") {
+                      osName = "ubuntu"
+                  } else {
+                      osName = "UbuntuGeneric"
+                  }
+              } else {
+                  distrosList := []string{"centos", "almalinux", "rhel"}
+                  isRHELDistro := false
+                  for _, distro := range distrosList {
+                      if strings.EqualFold(distro, osName) {
+                          isRHELDistro = true
+                          break
+                      }
+                  }
+                  if !isRHELDistro {
+                      osName = "INVALID_OS"
+                  }
+              }
+          }
+      }
+    } else if strings.EqualFold(runtime.GOOS, "darwin") {
+      osName = "darwin"
+    }
+    migrationAssesmentInfo.OperatingSystem = osName
 
     // Compute the top errors and suggestions
     var migrationUuid string

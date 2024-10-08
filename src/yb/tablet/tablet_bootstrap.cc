@@ -862,7 +862,8 @@ class TabletBootstrap {
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
-        create_new_segment));
+        create_new_segment,
+        data_.min_start_ht_running_txns_callback));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
     log_->DisableSync();
     return Status::OK();

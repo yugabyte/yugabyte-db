@@ -972,6 +972,9 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
   void CleanupIntentFiles();
+
+  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

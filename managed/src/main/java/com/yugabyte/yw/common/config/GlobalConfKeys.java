@@ -1492,4 +1492,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " retained in the storage bucket",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> autoRetryTasksOnYbaRestartTimeWindow =
+      new ConfKeyInfo<>(
+          "yb.task.auto_retry_on_yba_restart_time_window",
+          ScopeType.GLOBAL,
+          "Auto Retry Aborted Tasks on YBA Restart Time Window",
+          "On YBA startup, retry tasks automatically that were aborted due to YBA shutdown if time"
+              + " window is non-zero",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
