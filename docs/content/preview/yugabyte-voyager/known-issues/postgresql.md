@@ -29,7 +29,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [PostgreSQL extensions are not supported by target YugabyteDB](#postgresql-extensions-are-not-supported-by-target-yugabytedb)
 - [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-constraints-other-than-foreign-keys-is-not-supported)
 - [Data ingestion on XML data type is not supported](#data-ingestion-on-xml-data-type-is-not-supported)
-- [GiST, BRIN and SPGIST index types are not supported](#gist-brin-and-spgist-index-types-are-not-supported)
+- [GiST, BRIN, and SPGIST index types are not supported](#gist-brin-and-spgist-index-types-are-not-supported)
 - [Indexes on some complex data types are not supported](#indexes-on-some-complex-data-types-are-not-supported)
 - [Constraint trigger is not supported](#constraint-trigger-is-not-supported)
 - [Table inheritance is not supported](#table-inheritance-is-not-supported)
@@ -537,11 +537,11 @@ CREATE TABLE xml_example (
 
 ---
 
-### GiST, BRIN and SPGIST index types are not supported
+### GiST, BRIN, and SPGIST index types are not supported
 
 **GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
 
-**Description**: If you have GiST, BRIN and SPGIST indexes on the source database, it errors out in the import schema phase with the following error:
+**Description**: If you have GiST, BRIN, and SPGIST indexes on the source database, it errors out in the import schema phase with the following error:
 
 ```output
  ERROR: index method "gist" not supported yet (SQLSTATE XX000)
