@@ -17,6 +17,8 @@ yba backup restore create [flags]
       --storage-config-name string   [Required] Storage config to be used for taking the backup
       --kms-config string            [Optional] Key management service config name. For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.
       --keyspace-info stringArray    [Required] Keyspace info to perform restore operation. Provide the following semicolon separated fields as key value pairs, and enclose the string with quotes: "'keyspace-name=<keyspace-name>;storage-location=<storage_location>;backup-type=<ycql/ysql>;use-tablespaces=<use-tablespaces>;selective-restore=<selective-restore>;table-name-list=<table-name1>,<table-name2>'". The table-name-list attribute has to be specified as comma separated values. Keyspace name, storage-location and backup-type are required values. The attribute use-tablespaces, selective-restore and table-name-list are optional values. Attributes selective-restore and table-name-list and are needed only for YCQL. The attribute use-tablespaces is to be used if needed only in the case of YSQL. Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;backup-type=ycql;selective-restore=true;table-name-list=table1,table2' --keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2backup-type=ysql;use-tablespaces=true'
+      --enable-verbose-logs          [Optional] Enable verbose logging while taking backup via "yb_backup" script. (default false)
+      --parallelism int              [Optional] Number of concurrent commands to run on nodes over SSH via "yb_backup" script. (default 8)
   -h, --help                         help for create
 ```
 

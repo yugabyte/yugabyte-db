@@ -5,7 +5,6 @@
 package restore
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -150,17 +149,21 @@ var createRestoreCmd = &cobra.Command{
 				))
 		}
 
+		enableVerboseLogs, err := cmd.Flags().GetBool("enable-verbose-logs")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		parallelism, err := cmd.Flags().GetInt("parallelism")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		backupInfos, err := cmd.Flags().GetStringArray("keyspace-info")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		data, err := json.Marshal(backupInfos)
-		if err != nil {
-			fmt.Println("Error marshalling:", err)
-			return
-		}
-		logrus.Debug(string(data))
 		var result []ybaclient.BackupStorageInfo = buildBackupInfoList(backupInfos)
 		requestBody := ybaclient.RestoreBackupParams{
 			UniverseUUID:          universeUUID,
@@ -168,6 +171,8 @@ var createRestoreCmd = &cobra.Command{
 			StorageConfigUUID:     util.GetStringPointer(storageUUID),
 			BackupStorageInfoList: &result,
 			KmsConfigUUID:         util.GetStringPointer(kmsConfigUUID),
+			EnableVerboseLogs:     util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:           util.GetInt32Pointer(int32(parallelism)),
 		}
 
 		rCreate, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
@@ -344,5 +349,9 @@ func init() {
 			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
 			"backup-type=ysql;use-tablespaces=true'")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
+	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
+		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
+	createRestoreCmd.Flags().Int("parallelism", 8,
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 }
