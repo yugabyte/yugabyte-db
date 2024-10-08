@@ -54,6 +54,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/defrem.h"
@@ -286,7 +287,8 @@ IsSharedRelation(Oid relationId)
 		relationId == TableSpaceRelationId ||
 		relationId == YBCatalogVersionRelationId ||
 		relationId == YbProfileRelationId ||
-		relationId == YbRoleProfileRelationId)
+		relationId == YbRoleProfileRelationId ||
+		relationId == YBLogicalClientVersionRelationId)
 		return true;
 	/* These are their indexes */
 	if (relationId == AuthIdOidIndexId ||
@@ -311,7 +313,8 @@ IsSharedRelation(Oid relationId)
 		relationId == YBCatalogVersionDbOidIndexId ||
 		relationId == YbProfileOidIndexId ||
 		relationId == YbProfileRolnameIndexId ||
-		relationId == YbRoleProfileOidIndexId)
+		relationId == YbRoleProfileOidIndexId ||
+		relationId == YBLogicalClientVersionDbOidIndexId)
 		return true;
 	/* These are their toast tables and toast indexes */
 	if (relationId == PgAuthidToastTable ||
