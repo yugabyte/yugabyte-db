@@ -948,7 +948,7 @@ public class ReleaseManager {
       }
       if (release.getArtifactForArchitecture(arch) == null) {
         ReleaseArtifact artifact =
-            ReleaseArtifact.create("", ReleaseArtifact.Platform.LINUX, arch, url);
+            ReleaseArtifact.create(em.sha256, ReleaseArtifact.Platform.LINUX, arch, url);
         release.addArtifact(artifact);
       }
     }
