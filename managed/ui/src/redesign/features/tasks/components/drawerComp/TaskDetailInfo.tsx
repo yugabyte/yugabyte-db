@@ -108,7 +108,7 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   if (currentTask.type === 'SoftwareUpgrade') {
     taskInfo.push({
       label: t('startVersion'),
-      value: currentTask.details.versionNumbers?.ybSoftwareVersion ?? '-'
+      value: currentTask.details.versionNumbers?.ybPrevSoftwareVersion ?? '-'
     });
     taskInfo.push({
       label: t('targetVersion'),
