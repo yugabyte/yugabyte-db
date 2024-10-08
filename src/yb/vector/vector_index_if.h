@@ -34,6 +34,7 @@ class VectorIndexReaderIf {
 
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
   virtual SearchResult Search(const Vector& query_vector, size_t max_num_results) const = 0;
+  virtual std::string IndexStatsStr() const { return "N/A"; }
 };
 
 template<IndexableVectorType Vector>

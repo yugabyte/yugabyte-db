@@ -38,6 +38,8 @@
 
 namespace yb::vectorindex {
 
+using hnswlib::Stats;
+
 namespace {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -59,11 +61,16 @@ class HnswlibIndex :
           num_vectors);
     }
     RETURN_NOT_OK(CreateSpaceImpl());
+    // Please be careful about adding and removing arguments here and make sure they match the
+    // actual list of arguments in hnswalg.h.
     hnsw_ = std::make_unique<HNSWImpl>(
-        space_.get(),
+        /* s= */ space_.get(),
         /* max_elements= */ num_vectors,
-        /* M= */ options_.max_neighbors_per_vertex,
-        /* ef_construction= */ options_.ef_construction);
+        /* M= */ options_.num_neighbors_per_vertex,
+        /* ef_construction= */ options_.ef_construction,
+        /* random_seed= */ 100,              // Default value from hnswalg.h
+        /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
+        /* ef= */ options_.ef);
     return Status::OK();
   }
 
@@ -121,6 +128,45 @@ class HnswlibIndex :
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
+
+  static std::string StatsToStringHelper(const Stats& stats) {
+    return Format(
+        "$0 nodes, $1 edges, $2 average edges per node",
+        stats.nodes,
+        stats.edges,
+        StringPrintf("%.2f", stats.edges * 1.0 / stats.nodes));
+  }
+
+  std::string IndexStatsStr() const override {
+    auto internal_params = hnsw_->getInternalParameters();
+    std::ostringstream output;
+
+    // Get the maximum level of the index
+    auto max_level = hnsw_->getMaxLevel();
+    output << "Hnswlib index with " << (max_level + 1) << " levels" << std::endl;
+    output << "    max_elements: " << internal_params.max_elements << std::endl;
+    output << "    M: " << internal_params.M << std::endl;
+    output << "    maxM: " << internal_params.maxM << std::endl;
+    output << "    maxM0: " << internal_params.maxM0 << std::endl;
+    output << "    ef_construction: " << internal_params.ef_construction << std::endl;
+    output << "    ef: " << internal_params.ef << std::endl;
+    output << "    mult: " << internal_params.mult << std::endl;
+
+    // Prepare stats per level
+    std::vector<Stats> stats_per_level(max_level + 1);
+    Stats total_stats = hnsw_->getStats(stats_per_level.data(), max_level);
+
+    // Print connectivity distribution for each level
+    for (int level = 0; level <= max_level; ++level) {
+        output << "    Level " << level
+               << ": " << StatsToStringHelper(stats_per_level[level]) << std::endl;
+    }
+
+    // Print the total stats for all levels
+    output << "    Totals: " << StatsToStringHelper(total_stats) << std::endl;
+
+    return output.str();
+}
 
  private:
   Status CreateSpaceImpl() {

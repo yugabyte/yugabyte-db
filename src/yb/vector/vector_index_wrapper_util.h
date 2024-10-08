@@ -69,6 +69,10 @@ class VectorIndexReaderAdapter
         vector_cast<SourceVector>(rhs)));
   }
 
+  std::string IndexStatsStr() const override {
+    return source_reader_.IndexStatsStr();
+  }
+
  private:
   const VectorIndexReaderIf<SourceVector, SourceDistanceResult>& source_reader_;
 };

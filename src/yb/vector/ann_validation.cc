@@ -101,11 +101,12 @@ Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
 
   if (!precomputed_ground_truth_.empty() && validate_precomputed_ground_truth_) {
     // Compare the ground truth we've just computed to the the precomputed ground truth.
-    const auto& precomputed_top_k = precomputed_ground_truth_[query_index];
-    SCHECK_EQ(
-        precomputed_top_k.size(), k_, IllegalState,
-        "Precomputed ground truth vector has wrong number of elements.");
-    auto precomputed_top_k_with_distance = AugmentWithDistances(precomputed_top_k, query);
+    const auto& precomputed_correct_results = precomputed_ground_truth_[query_index];
+    SCHECK_GE(
+        precomputed_correct_results.size(), k_, IllegalState,
+        "Precomputed ground truth vector has too few elements.");
+    auto precomputed_top_k_with_distance =
+        AugmentWithDistancesAndTrimToK(precomputed_correct_results, query);
     if (!ResultSetsEquivalent(our_correct_top_k, precomputed_top_k_with_distance)) {
       return STATUS_FORMAT(
           IllegalState,
@@ -123,15 +124,20 @@ Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VerticesWithDistances<DistanceResult>
-GroundTruth<Vector, DistanceResult>::AugmentWithDistances(
-    const std::vector<VertexId>& vertex_ids,
+GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
+    const std::vector<VertexId>& precomputed_correct_results,
     const Vector& query) {
   VerticesWithDistances<DistanceResult> result;
-  result.reserve(vertex_ids.size());
-  for (auto vertex_id : vertex_ids) {
-    result.push_back(VertexWithDistance<DistanceResult>(
-        vertex_id, distance_fn_(vertex_id, query)));
+  result.reserve(k_);
+  for (auto vertex_id : precomputed_correct_results) {
+    result.push_back(VertexWithDistance<DistanceResult>(vertex_id, distance_fn_(vertex_id, query)));
+    if (result.size() == k_) {
+      break;
+    }
   }
+  // This assumption should never be violated as long as result list size provided by the user of
+  // this class is k_ or more.
+  CHECK_EQ(result.size(), k_);
   return result;
 }
 
@@ -147,7 +153,10 @@ void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
   }
 
   size_t overlap = 0;
-  for (size_t j = 1; j <= correct_result.size(); ++j) {
+  // The correct result might come from a precomputed ground truth dataset and contain more than k
+  // elements, but we only use the first k.
+  auto n = std::min(correct_result.size(), k_);
+  for (size_t j = 1; j <= n; ++j) {
     if (approx_set.contains(correct_result[j - 1])) {
       overlap++;
     }

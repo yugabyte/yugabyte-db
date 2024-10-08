@@ -15,14 +15,19 @@
 
 #include <cstring>
 
+#include "yb/util/string_util.h"
+
 using namespace std::placeholders;
 
 namespace yb {
 
 namespace {
 
-Status CreateInvalid(Slice input, int err = 0) {
+Status CreateInvalid(Slice input, int err = 0, const char* type_name = "") {
   auto message = Format("$0 is not a valid number", input.ToDebugString());
+  if (*type_name) {
+    message += Format(" for type $0", type_name);
+  }
   if (err != 0) {
     message += ": ";
     message += std::strerror(err);
@@ -41,17 +46,31 @@ Status CheckNotSpace(Slice slice) {
 template <typename T, typename StrToT>
 Result<T> CheckedSton(Slice slice, StrToT str_to_t) {
   RETURN_NOT_OK(CheckNotSpace(slice));
+  if constexpr (std::is_floating_point_v<T>) {
+    auto maybe_special_value = TryParsingNonNumberValue<T>(slice);
+    if (maybe_special_value) {
+      return *maybe_special_value;
+    }
+  }
+
   char* str_end;
   errno = 0;
   T result = str_to_t(slice.cdata(), &str_end);
   // Check errno.
   if (errno != 0) {
-    return CreateInvalid(slice, errno);
+    return CreateInvalid(slice, errno, typeid(T).name());
   }
-
+  if constexpr (std::is_unsigned<T>::value) {
+    // Do not allow any minus signs for unsigned types.
+    for (auto* p = slice.cdata(); p != str_end; ++p) {
+      if (*p == '-') {
+        return CreateInvalid(slice, /* err= */ 0, typeid(T).name());
+      }
+    }
+  }
   // Check that entire string was processed.
   if (str_end != slice.cend()) {
-    return CreateInvalid(slice);
+    return CreateInvalid(slice, /* err= */ 0, typeid(T).name());
   }
 
   return result;

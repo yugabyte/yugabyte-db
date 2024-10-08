@@ -74,9 +74,10 @@ class GroundTruth {
       const std::vector<VertexId>& correct_result,
       AtomicUInt64Vector& total_overlap_counters);
 
-  // This works on queries convertered from input vector io indexed vector format.
-  VerticesWithDistances<DistanceResult> AugmentWithDistances(
-      const std::vector<VertexId>& vertex_ids, const Vector& converted_query);
+  // This works on queries convertered from input vector io indexed vector format. Only uses up to
+  // k_ first elements of precomputed_correct_results.
+  VerticesWithDistances<DistanceResult> AugmentWithDistancesAndTrimToK(
+      const std::vector<VertexId>& precomputed_correct_results, const Vector& converted_query);
 
   VertexIdToVectorDistanceFunction<Vector, DistanceResult> distance_fn_;
   size_t k_;

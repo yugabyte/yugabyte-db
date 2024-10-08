@@ -25,7 +25,6 @@ std::string HNSWOptions::ToString() const {
       max_neighbors_per_vertex,
       num_neighbors_per_vertex_base,
       max_neighbors_per_vertex_base,
-      ml,
       ef_construction,
       robust_prune_alpha);
 }

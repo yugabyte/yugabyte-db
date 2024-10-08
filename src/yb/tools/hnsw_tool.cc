@@ -18,10 +18,12 @@
 #include <boost/program_options.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -81,14 +83,15 @@ struct BenchmarkArguments {
   bool validate_ground_truth = false;
   CoordinateKind coordinate_kind = CoordinateKind::kFloat32;
   HNSWOptions hnsw_options;
-  size_t k = 0;
-  size_t max_memory_for_loading_vectors_mb = 4096;
+
+  std::string k_values_comma_sep = "10";
   size_t num_indexing_threads = 0;
   size_t num_query_threads = 0;
   size_t num_threads = 0;
   size_t num_validation_queries = 0;
   size_t num_vectors_to_insert = 0;
-  size_t report_num_keys = 2500;
+  size_t report_num_keys = 0;
+  size_t report_interval_ms = 1000;
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
@@ -97,12 +100,16 @@ struct BenchmarkArguments {
   std::string save_index_to_path;
   ANNMethodKind ann_method;
 
+  // Parsed version of k_values.
+  std::set<size_t> k_values;
+  size_t max_k = 0;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         build_vecs_path,
         ground_truth_path,
         hnsw_options,
-        k,
+        k_values_comma_sep,
         num_indexing_threads,
         num_query_threads,
         num_threads,
@@ -115,7 +122,7 @@ struct BenchmarkArguments {
   }
 
   // Set default values of some options, potentially based on the values of other options.
-  void FinalizeDefaults() {
+  Status Finalize() {
     if (num_threads == 0) {
       num_threads = std::thread::hardware_concurrency();
     }
@@ -125,8 +132,24 @@ struct BenchmarkArguments {
     if (num_query_threads == 0) {
       num_query_threads = num_threads;
     }
+    auto k_values_result = ParseCommaSeparatedListOfNumbers<size_t, std::set<size_t>>(
+        k_values_comma_sep, /* lower_bound= */ static_cast<size_t>(1));
+    RETURN_NOT_OK(k_values_result);
+    k_values = std::move(*k_values_result);
+    if (k_values.empty()) {
+      return STATUS(InvalidArgument, "No values of k (size of top results list) specified");
+    }
+    max_k = *k_values.rbegin();
+    return Status::OK();
   }
 };
+
+std::string VectorSourceVerbForLogging(const VectorSourceBase& vector_source, bool finished) {
+  if (vector_source.is_file()) {
+    return finished ? "Loaded" : "Loading";
+  }
+  return finished ? "Generating" : "Generated";
+}
 
 std::unique_ptr<OptionsDescription> BenchmarkOptions() {
   auto result = std::make_unique<OptionsDescriptionImpl<BenchmarkArguments>>(kBenchmarkDescription);
@@ -177,15 +200,23 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
-      (OPTIONAL_ARG_FIELD(k),
-       "Number of results to retrieve with each validation query")
+      ("k", po::value(&args.k_values_comma_sep)->default_value(
+          args.k_values_comma_sep),
+       "A comma-separated list of the possible numbers of results k to retrieve with each "
+       "validation query. A separate evaluation is performed for every value of k. If using "
+       "precomputed ground truth data, the maximum specified value of k can't be higher than "
+       "the precomputed result set size.")
       (OPTIONAL_ARG_FIELD(num_validation_queries),
        "Number of validation queries to execute")
       ("dimensions", po::value(&args.hnsw_options.dimensions),
        "Number of dimensions for automatically generated vectors. Required if no input file "
        "is specified.")
-      (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(report_num_keys, 1),
-       "Report progress after each batch of this many keys is inserted. 0 to disable reporting.")
+      (OPTIONAL_ARG_FIELD(report_num_keys),
+       "Report progress after each batch of this many keys is inserted. 0 would mean that we "
+       "should not trigger progress reporting based on the number of keys.")
+      (OPTIONAL_ARG_FIELD(report_interval_ms),
+       "Report progress after this many milliseconds. 0 would mean that we should not trigger "
+       "progress reporting based on the amount of time.")
       (HNSW_OPTION_BOOL_ARG(extend_candidates),
        "Whether to extend the set of candidates with their neighbors before executing the "
        "neighborhood selection heuristic.")
@@ -200,16 +231,15 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Number of neighbors for newly inserted vertices at levels 0 (base level).")
       (HNSW_OPTION_ARG(max_neighbors_per_vertex_base),
        "Maximum number of neighbors for vertices at level 0 (base level).")
-      (HNSW_OPTION_ARG(ml),
-       "The scaling factor used to randomly select the level for a newly added vertex. "
-       "Setting this to 1 / log(2), or ~1.44, results in the average number of points at every "
-       "level being half of the number of points at the level below it. Higher values of this "
-       "parameter result in a more compact graph with fewer levels, but may increase the search "
-       "time.")
       (HNSW_OPTION_ARG(ef_construction),
        "The number of closest neighbors at each level that are used to determine the candidates "
        "used for constructing the neighborhood of a newly added vertex. Higher values result in "
        "a higher quality graph at the cost of higher indexing time.")
+      (HNSW_OPTION_ARG(ef),
+       "The expansion factor used during search. At least this many approximate nearest neighbors "
+       "are obtained regardless of the user-specified value of k, and the result list is truncated "
+       "to the user-specified length k if needed. Higher values of ef should result in higher "
+       "recall at the cost of slower retrieval.")
       (HNSW_OPTION_ARG(robust_prune_alpha),
        "The parameter inspired by DiskANN that controls the neighborhood pruning procedure. "
        "Higher values result in fewer candidates being pruned. Typically between 1.0 and 1.6.")
@@ -225,9 +255,6 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (BOOL_SWITCH_ARG_FIELD(validate_ground_truth),
        "Validate the ground truth data provided in a file by recomputing our own ground truth "
        "result sets using brute-force precise nearest neighbor search. Could be slow.")
-      (OPTIONAL_ARG_FIELD(max_memory_for_loading_vectors_mb),
-       "Maximum amount of memory to use for loading raw input vectors. Used to avoid memory "
-       "overflow on large datasets. Specify 0 to disable.")
       (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(num_index_shards, 1),
        "For experiments that try to take advantage of a large number of cores, this allows to "
        "create multiple instances of the vector index and insert into them concurrently.");
@@ -399,7 +426,7 @@ class BenchmarkTool {
 
     if (num_vectors_to_use > 0) {
       if constexpr (std::is_same<InputVector, FloatVector>::value) {
-        return CreateRandomFloatVectorSource(args_.num_validation_queries, dimensions());
+        return CreateRandomFloatVectorSource(num_vectors_to_use, dimensions());
       }
       return STATUS(InvalidArgument,
                     "Random vector generation is currently only supported for Float32");
@@ -436,17 +463,26 @@ class BenchmarkTool {
     loaded_ground_truth_.clear();
     loaded_ground_truth_.reserve(ground_truth_by_index.size());
     std::unordered_set<int32_t> used_indexes;
+    std::optional<size_t> num_provided_top_results;
     for (const auto& ground_truth_vec : ground_truth_by_index) {
-      if (ground_truth_vec.size() != args_.k) {
+      if (!num_provided_top_results.has_value()) {
+        num_provided_top_results = ground_truth_vec.size();
+        if (*num_provided_top_results < args_.max_k) {
+          return STATUS_FORMAT(
+              IllegalState,
+              "The number of top results provided in the precomputed ground truth ($0) is "
+              "less than the maximum number k of results to use for evaluation ($1)",
+              *num_provided_top_results, args_.max_k);
+        }
+      } else if (*num_provided_top_results != ground_truth_vec.size()) {
         return STATUS_FORMAT(
             IllegalState,
-            "Provided ground truth vector has size of $0 but the configured number k of top "
-            "results is $1",
-            ground_truth_vec.size(), args_.k);
+            "Inconsistent number of precomputed top results for different queries: $0 vs $1",
+            *num_provided_top_results, ground_truth_vec.size());
       }
       loaded_ground_truth_.emplace_back();
       auto& correct_top_k_vertex_ids = loaded_ground_truth_.back();
-      correct_top_k_vertex_ids.reserve(ground_truth_vec.size());
+      correct_top_k_vertex_ids.reserve(args_.max_k);
       used_indexes.clear();
       size_t total_num_vectors = indexed_vector_source_->num_points();
       for (auto idx : ground_truth_vec) {
@@ -454,7 +490,10 @@ class BenchmarkTool {
             "0-based vector index in a ground truth file is out of range";
         SCHECK_GE(idx, 0, IllegalState, kInvalidMsg);
         SCHECK_LT(idx, total_num_vectors, IllegalState, kInvalidMsg);
-        correct_top_k_vertex_ids.push_back(InputVectorIndexToVertexId(idx));
+        if (correct_top_k_vertex_ids.size() < args_.max_k) {
+          // Only keep the first k items of the provided list.
+          correct_top_k_vertex_ids.push_back(InputVectorIndexToVertexId(idx));
+        }
         auto [_, inserted] = used_indexes.insert(idx);
         if (!inserted) {
           return STATUS(
@@ -462,11 +501,15 @@ class BenchmarkTool {
         }
       }
     }
+    if (!num_provided_top_results.has_value()) {
+      return STATUS(IllegalState, "Could not determine the number of provided top results");
+    }
 
     return Status::OK();
   }
 
   Status Validate() {
+    LOG(INFO) << "Index stats:\n" << vector_index_->IndexStatsStr();
     std::vector<InputVector> query_vectors = VERIFY_RESULT(query_vector_source_->LoadVectors());
 
     auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
@@ -491,33 +534,35 @@ class BenchmarkTool {
       adapter.emplace(*vector_index_.get());
       reader = &adapter.value();
     }
-    // The ground truth evaluation is always done in the input coordinate type.
-    GroundTruth<InputVector, InputDistanceResult> ground_truth(
-        vertex_id_to_query_distance_fn,
-        args_.k,
-        query_vectors,
-        loaded_ground_truth_,
-        args_.validate_ground_truth,
-        *reader,
-        // The set of vertex ids to recompute ground truth with.
-        //
-        // In case ground truth is specified as an input file, it must have been computed using all
-        // input vectors, so we must use all vectors to validate them. Otherwise, use the set of
-        // vectors we've inserted.
-        loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
+    for (auto k : args_.k_values) {
+      // The ground truth evaluation is always done in the input coordinate type.
+      GroundTruth<InputVector, InputDistanceResult> ground_truth(
+          vertex_id_to_query_distance_fn,
+          k,
+          query_vectors,
+          loaded_ground_truth_,
+          args_.validate_ground_truth,
+          *reader,
+          // The set of vertex ids to recompute ground truth with.
+          //
+          // In case ground truth is specified as an input file, it must have been computed using all
+          // input vectors, so we must use all vectors to validate them. Otherwise, use the set of
+          // vectors we've inserted.
+          loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
 
-    LOG(INFO) << "Validating with " << query_vectors.size() << " queries using "
-              << args_.num_query_threads << " threads "
-              << (args_.validate_ground_truth ? "(also recomputing and validating provided"
-                                                " ground truth)"
-                                              : "");
+      LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors.size()
+                << " queries using " << args_.num_query_threads << " threads "
+                << (args_.validate_ground_truth ? "(also recomputing and validating provided"
+                                                  " ground truth)"
+                                                : "");
 
-    auto start_time = MonoTime::Now();
-    auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads));
-    auto elapsed_time = MonoTime::Now() - start_time;
-    LOG(INFO) << "Validation finished in " << elapsed_time;
-    for (size_t j = 0; j < result.size(); ++j) {
-      LOG(INFO) << (j + 1) << "-recall @ " << args_.k << ": " << StringPrintf("%.10f", result[j]);
+      auto start_time = MonoTime::Now();
+      auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads));
+      auto elapsed_time = MonoTime::Now() - start_time;
+      LOG(INFO) << "Validation finished in " << elapsed_time;
+      for (size_t j = 0; j < result.size(); ++j) {
+        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << StringPrintf("%.10f", result[j]);
+      }
     }
     return Status::OK();
   }
@@ -531,10 +576,17 @@ class BenchmarkTool {
   }
 
   void ReportIndexingProgress(MonoTime load_start_time, size_t num_inserted, bool force = false) {
-    if (!force &&
-        (args_.report_num_keys == 0 ||
-         num_inserted == 0 ||
-         num_inserted % args_.report_num_keys != 0)) {
+    int64_t elapsed_usec = (MonoTime::Now() - load_start_time).ToMicroseconds();
+    bool report_based_on_time = false;
+    if (args_.report_interval_ms > 0) {
+      auto prev_elapsed_usec = prev_elapsed_usec_.load();
+      auto next_report_time = prev_elapsed_usec + static_cast<int64_t>(1000 * args_.report_interval_ms);
+      report_based_on_time =
+          next_report_time < elapsed_usec &&
+          prev_elapsed_usec_.compare_exchange_strong(prev_elapsed_usec, elapsed_usec);
+    }
+    if (!force && !report_based_on_time &&
+        (args_.report_num_keys == 0 || num_inserted == 0 || num_inserted % args_.report_num_keys != 0)) {
       return;
     }
     auto last_report_count = last_progress_report_count_.exchange(num_inserted);
@@ -543,7 +595,6 @@ class BenchmarkTool {
       // "force" does not affect this -- we avoid duplicate reports anyway.
       return;
     }
-    auto elapsed_usec = (MonoTime::Now() - load_start_time).ToMicroseconds();
     double n_log_n_constant = elapsed_usec * 1.0 / num_inserted / log(num_inserted);
     double elapsed_time_sec = elapsed_usec / 1000000.0;
     size_t remaining_points = max_num_vectors_to_insert() - num_inserted;
@@ -556,21 +607,11 @@ class BenchmarkTool {
               << "time remaining: "
               << StringPrintf("%.1f", keys_per_sec > 0 ? remaining_points / keys_per_sec : 0)
               << " sec";
+    prev_elapsed_usec_ = elapsed_usec;
   }
 
   Status PrepareInputVectors() {
     size_t num_vectors_to_load = max_num_vectors_to_insert();
-    double total_mem_required_mb =
-        num_vectors_to_load * sizeof(typename InputVector::value_type) *
-        dimensions() / 1024.0 / 1024;
-    if (args_.max_memory_for_loading_vectors_mb != 0 &&
-        total_mem_required_mb > args_.max_memory_for_loading_vectors_mb) {
-      return STATUS_FORMAT(
-          IllegalState,
-          "Decided that we should load $0 vectors, but the amount of memory required would be "
-          "$1 MiB, which is more than the $2 MiB limit.",
-          num_vectors_to_load, total_mem_required_mb, args_.max_memory_for_loading_vectors_mb);
-    }
 
     MonoTime load_start_time = MonoTime::Now();
     LOG(INFO) << "Loading vectors from " << indexed_vector_source_->file_path() << "...";
@@ -686,6 +727,7 @@ class BenchmarkTool {
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
+  std::atomic<int64_t> prev_elapsed_usec_{0};  // Previously reported elapsed time in microseconds.
   std::atomic<size_t> last_progress_report_count_{0};  // Last reported progress at this # vectors.
 
   // Ground truth data loaded from a provided file, not computed on the fly.
@@ -725,7 +767,7 @@ std::optional<Status> BenchmarkExecuteHelper(
 
 Status BenchmarkExecute(const BenchmarkArguments& args) {
   auto args_copy = args;
-  args_copy.FinalizeDefaults();
+  RETURN_NOT_OK(args_copy.Finalize());
 
   LOG(INFO) << "Distance kind: " << args_copy.hnsw_options.distance_kind;
 
@@ -743,7 +785,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, L2Squared,    float,      float  ))        \
     ((Usearch, L2Squared,    uint8_t,    float  ))        \
     ((Hnswlib, L2Squared,    float,      float  ))        \
-    ((Hnswlib, L2Squared,    uint8_t,    float))        \
+    ((Hnswlib, L2Squared,    uint8_t,    float))          \
     /* Cosine similarity */                               \
     ((Usearch, Cosine,       float,      float  ))        \
     ((Usearch, Cosine,       uint8_t,    float  ))        \
