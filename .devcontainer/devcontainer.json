@@ -1,0 +1,25 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vadimcn.vscode-lldb",
+                "GitHub.copilot",
+                "eamodio.gitlens",
+                "bradymholt.pgformatter",
+                "rust-lang.rust-analyzer",
+                "ms-vscode.cpptools",
+                "henriiik.docker-linter"
+            ]
+        }
+    },
+    "postStartCommand": "bash .devcontainer/scripts/setup-minio.sh",
+    "forwardPorts": [
+        5432
+    ],
+    "capAdd": [
+        "SYS_PTRACE"
+    ]
+}
