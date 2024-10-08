@@ -27,7 +27,7 @@ If any of the data drives is approaching disk full condition, then the inserts, 
 IO error (yb/tserver/tablet_service.cc:2288): Write to tablet 749e4d78244c43d2bba9cdb8505b732f rejected. Node 9a24d9c8493b44caa97ba4ae06e5829d has insufficient disk space
 ```
 
-The flags `max_disk_throughput_mbps` and `reject_writes_min_disk_space_mb` determine the amount of disk space that is considered too low. The default value is 3GB.
+The flags [max_disk_throughput_mbps](../../../reference/configuration/all-flags-yb-master/#max-disk-throughput-mbps) and [reject_writes_min_disk_space_mb](../../../reference/configuration/all-flags-yb-master/#reject-writes-min-disk-space-mb) determine the amount of disk space that is considered too low. The default value is 3GB.
 
 The YB-TServer logs contain the following message when the system nears the threshold (18GB):
 
@@ -41,7 +41,7 @@ and the following message when there is no more space left:
 0829 15:35:51.325239 1986375680 log.cc:2181] Not enough disk space available on yb-data/tserver/wals/table-7457ebcd745e4ea89375a30406f2c188/tablet-749e4d78244c43d2bba9cdb8505b732f/wal-000000001. Free space: 3518698209 bytes
 ```
 
-The following options prevents YSQL/YCQL writes from consuming additional disk space:
+If the data drive is running short of disk space, use one of the following options to stop the writes from failing.
 
 ### Increase capacity
 
@@ -93,7 +93,7 @@ The following sections describe the disk full scenarios and the recommended reco
 
 ### The drive containing the log file is full
 
-During the tablet bootstrap that takes place during a YB-TServer restart, a new WAL file is allocated, irrespective of the amount of logs generated in the server's previous WAL file. If a YB-TServer has several tablets and results in a crash loop, each one of the tablets creates new WAL files on every bootstrap, filling up the disk. The process is unable to create new log files at tablet bootstrap time, and this can be identified by looking at the `/var/log/messages` files.
+The process is unable to create new log files at tablet bootstrap time, and this can be identified by looking at the `/var/log/messages` files. This results in YB-TServer or YB-Master crash loop.
 
 ### Disk full situation on other data drives
 
