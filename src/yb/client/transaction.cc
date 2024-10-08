@@ -1418,38 +1418,49 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         cleanup_type, tablet_ids);
   }
 
+  bool CheckWaitAbortOnOldStatusTablet(std::string_view action, Waiter waiter) REQUIRES(mutex_) {
+    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
+    if (old_status_tablet_state != OldTransactionState::kAborting) {
+      return false;
+    }
+
+    VLOG_WITH_PREFIX(1) << action << " done, but waiting for abort on old status tablet";
+    cleanup_waiter_ = std::move(waiter);
+    return true;
+  }
+
   void CommitDone(const Status& status,
                   const tserver::UpdateTransactionResponsePB& response,
                   const YBTransactionPtr& transaction) {
     TRACE_TO(trace_, __func__);
 
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
-    if (old_status_tablet_state == OldTransactionState::kAborting) {
-      std::lock_guard lock(mutex_);
-      VLOG_WITH_PREFIX(1) << "Commit done, but waiting for abort on old status tablet";
-      cleanup_waiter_ = Waiter(std::bind(&Impl::CommitDone, this, status, response, transaction));
-      return;
-    }
-
-    VLOG_WITH_PREFIX(1) << "Committed: " << status;
-
-    UpdateClock(response, manager_);
-    manager_->rpcs().Unregister(&commit_handle_);
-
-    Status actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+    Status actual_status;
     CommitCallback commit_callback;
-    if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
-        actual_status.ok()) {
+    {
       std::lock_guard lock(mutex_);
-      commit_replicated_ = true;
-      if (running_requests_ != 0) {
+      if (CheckWaitAbortOnOldStatusTablet(
+          "Commit", Waiter(std::bind(&Impl::CommitDone, this, status, response, transaction)))) {
         return;
       }
-      commit_callback = std::move(commit_callback_);
-    } else {
-      std::lock_guard lock(mutex_);
-      commit_callback = std::move(commit_callback_);
+
+      VLOG_WITH_PREFIX(1) << "Committed: " << status;
+
+      UpdateClock(response, manager_);
+      manager_->rpcs().Unregister(&commit_handle_);
+
+      actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+      if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
+          actual_status.ok()) {
+        commit_replicated_ = true;
+        if (running_requests_ != 0) {
+          return;
+        }
+        commit_callback = std::move(commit_callback_);
+      } else {
+        commit_callback = std::move(commit_callback_);
+      }
     }
+
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
     commit_callback(actual_status);
 
@@ -1466,12 +1477,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                  const YBTransactionPtr& transaction) {
     TRACE_TO(trace_, __func__);
 
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
-    if (old_status_tablet_state == OldTransactionState::kAborting) {
+    {
       std::lock_guard lock(mutex_);
-      VLOG_WITH_PREFIX(1) << "Abort done, but waiting for abort on old status tablet";
-      cleanup_waiter_ = Waiter(std::bind(&Impl::AbortDone, this, status, response, transaction));
-      return;
+      if (CheckWaitAbortOnOldStatusTablet(
+          "Abort", Waiter(std::bind(&Impl::AbortDone, this, status, response, transaction)))) {
+        return;
+      }
     }
 
     VLOG_WITH_PREFIX(1) << "Aborted: " << status;
