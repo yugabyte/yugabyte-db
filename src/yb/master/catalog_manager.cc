@@ -412,7 +412,7 @@ DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
 DEFINE_RUNTIME_bool(enable_ysql_tablespaces_for_placement, true,
     "If set, tablespaces will be used for placement of YSQL tables.");
 
-DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
+DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
