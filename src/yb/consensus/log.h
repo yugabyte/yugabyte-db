@@ -142,21 +142,23 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries, if create_new_segment is true.
-  static Status Open(const LogOptions &options,
-                             const std::string& tablet_id,
-                             const std::string& wal_dir,
-                             const std::string& peer_uuid,
-                             const Schema& schema,
-                             uint32_t schema_version,
-                             const scoped_refptr<MetricEntity>& table_metric_entity,
-                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
-                             ThreadPool *append_thread_pool,
-                             ThreadPool* allocation_thread_pool,
-                             ThreadPool* background_sync_threadpool,
-                             scoped_refptr<Log> *log,
-                             const PreLogRolloverCallback& pre_log_rollover_callback = {},
-                             NewSegmentAllocationCallback callback = {},
-                             CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
+  static Status Open(
+      const LogOptions& options,
+      const std::string& tablet_id,
+      const std::string& wal_dir,
+      const std::string& peer_uuid,
+      const Schema& schema,
+      uint32_t schema_version,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      ThreadPool* append_thread_pool,
+      ThreadPool* allocation_thread_pool,
+      ThreadPool* background_sync_threadpool,
+      scoped_refptr<Log>* log,
+      const PreLogRolloverCallback& pre_log_rollover_callback = {},
+      NewSegmentAllocationCallback callback = {},
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
+      MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
 
   ~Log();
 
@@ -382,7 +384,8 @@ class Log : public RefCountedThreadSafe<Log> {
       ThreadPool* background_sync_threadpool,
       NewSegmentAllocationCallback callback,
       const PreLogRolloverCallback& pre_log_rollover_callback,
-      CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
+      MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
 
   Env* get_env() {
     return options_.env;
@@ -515,6 +518,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // able to make forward progress.
   Result<std::unique_ptr<LogEntryBatch>> Reserve(
       LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch);
+
+  void WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
   LogOptions options_;
 
@@ -676,6 +681,10 @@ class Log : public RefCountedThreadSafe<Log> {
   PreLogRolloverCallback pre_log_rollover_callback_;
 
   const yb::ash::WaitStateInfoPtr background_synchronizer_wait_state_;
+
+  // Initialised during tablet bootstrap to TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime.
+  // The callback guarantees that value returned would be a 'valid' Hybrid time.
+  MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
 
   std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
   std::atomic<bool> has_free_disk_space_{false};

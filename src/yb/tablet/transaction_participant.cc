@@ -586,6 +586,8 @@ class TransactionParticipant::Impl
       }
     }
 
+    VLOG_WITH_PREFIX(2) << "Running txns: " << transactions_.size()
+                        << ", returning HybridTime::kInvalid for min start time among running txns";
     return HybridTime::kInvalid;
   }
 

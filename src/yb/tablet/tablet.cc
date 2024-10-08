@@ -1109,6 +1109,35 @@ void Tablet::CleanupIntentFiles() {
       "Submit cleanup intent files failed");
 }
 
+// Calls GetMinStartTimeAmongAllRunningTransactions() on transaction participant. If the result
+// obtained is invalid then returns leader safe time.
+HybridTime Tablet::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
+  HybridTime min_start_ht_running_txns = HybridTime::kInvalid;
+  if (transaction_participant()) {
+    min_start_ht_running_txns =
+        transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from txn participant: "
+                        << min_start_ht_running_txns;
+  }
+
+  if (min_start_ht_running_txns != HybridTime::kInvalid) {
+    return min_start_ht_running_txns;
+  }
+
+  auto safe_time_result = SafeTime();
+  if (safe_time_result.ok() && *safe_time_result != HybridTime::kInvalid) {
+    min_start_ht_running_txns = *safe_time_result;
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from tablet leader safe time: "
+                        << min_start_ht_running_txns;
+    return min_start_ht_running_txns;
+  }
+
+  LOG_WITH_PREFIX(WARNING) << "Could not retrive a valid safe time so setting minimum start time "
+                              "of running txns to kInitial.";
+
+  return HybridTime::kInitial;
+}
+
 void Tablet::DoCleanupIntentFiles() {
   if (metadata_->IsUnderXClusterReplication()) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of xCluster replication";

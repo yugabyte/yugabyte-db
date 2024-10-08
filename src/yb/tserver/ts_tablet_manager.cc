@@ -2065,6 +2065,17 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
               <<  "Failed to submit retryable requests task: " << s.ToString();
         }
       },
+      .min_start_ht_running_txns_callback = [peer_weak_ptr, kLogPrefix]() -> HybridTime {
+        auto peer = peer_weak_ptr.lock();
+        if (peer) {
+          return peer->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+        }
+
+        LOG(WARNING) << kLogPrefix
+                      << "Tablet peer not found, so setting minimum start time of running txns to "
+                        "kInitial.";
+        return HybridTime::kInitial;
+      }
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
