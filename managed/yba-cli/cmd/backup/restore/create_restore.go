@@ -341,9 +341,9 @@ func init() {
 			" The table-name-list attribute has to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name, storage-location and backup-type are required "+
 				"values. ", formatter.GreenColor)+
-			"The attribute use-tablespaces, selective-restore and table-name-list are optional values. "+
-			"Attributes selective-restore and table-name-list and are needed only for YCQL. "+
-			"The attribute use-tablespaces is to be used if needed only in the case of YSQL. "+
+			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
+			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
+			"The attribute use-tablespaces is needed only for YSQL. "+
 			"Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
 			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2' "+
 			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
