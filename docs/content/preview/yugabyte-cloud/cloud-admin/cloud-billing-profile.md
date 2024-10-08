@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Review your usage and charges, manage your plan, and manage your billing information using the **Usage & Billing** page.
+Review your usage and charges, manage your plan, and manage your billing information on the **Usage & Billing** page.
 
 Yugabyte bills for its services as follows:
 
@@ -29,19 +29,21 @@ The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Invo
 
 ## Usage
 
-Use this section to review your usage by cluster over time. You can view cumulative and daily usage of the following:
+Use this section to review your usage, per billing period, by cluster, over time. You can view cumulative and daily usage of the following:
 
-- cluster compute (vCPU hours)
-- disk storage
-- disk IOPS
-- cloud backup storage
-- data transfer
+- Cluster compute (vCPU hours)
+- Disk storage
+- Disk IOPS
+- Cloud backup storage
+- Data transfer
 
 ## Plan
 
-Use this section to subscribe to a plan, or review your plan details, including any add-ons.
+Use this section to subscribe to a plan, manage an existing plan (including adding add-ons), and review plan details.
 
-To make changes to your plan, contact {{% support-cloud %}}.
+To make changes to your plan, click **Manage Plan** or **Add to Plan**.
+
+You can subscribe to the Standard or Professional plan, upgrade a plan from Standard to Professional, or add add-ons. For other changes, contact {{% support-cloud %}}.
 
 ## Invoices
 
@@ -49,27 +51,24 @@ Your invoice is generated at the end of each month. The amount is charged automa
 
 **Invoices** lists your active and past invoices, along with a running total of usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
 
-### Active Invoice
+### Active Invoice Summary
 
-Shows the billing details for the current billing cycle, including:
+Shows a summary for the current billing cycle, including:
 
 - Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
-- Billing option - your billing plan (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
 - Previous invoice - the amount of the previous invoice.
-- Last billed on - the date of the previous invoice.
-- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
 
-Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for the active invoice.
+Click **Invoice Details** to view the [Summary](#invoice-summary) for the active invoice.
 
 ### Usage Breakdown
 
 Shows a breakdown of costs for the current billing cycle. YugabyteDB Aeon billing is based on your actual usage across the following dimensions:
 
-- vCPU Minutes
-- Disk Storage
 - Backup Storage
 - Data Transfer
+- vCPU Minutes
+- Disk Storage
 - Disk IOPS
 
 ### Invoice History
@@ -93,18 +92,18 @@ To download the invoice as a PDF, click the **Download** icon.
 
 ### Invoice summary
 
-To view invoice details, select an invoice in **Invoice History** to display its **Summary**.
+To view invoice details, select an invoice in **Invoice History**.
 
 To download the invoice as a PDF, click **Download Invoice**.
 
 **Summary** shows the following invoice details:
 
-- Total - the amount you owe in the billing period (or running total in the current billing period; Yugabyte updates the running total once a day).
-- Billing option - your billing plan (pay-as-you-go or subscription).
+- Plan, Price, and Billing option - your plan type and how you are charged (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
+- Total - the amount you owe in the billing period (or running total in the current billing period; Yugabyte updates the running total once a day).
 - Previous invoice - the amount of the previous invoice.
 - Last billed on - the date of the previous invoice.
-- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
 - Payment status - whether the invoice was paid.
 - Payment date - the date the invoice was paid.
 - Payment method - the payment method used to pay the invoice.
