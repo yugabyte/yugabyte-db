@@ -10,5 +10,9 @@ SET search_path TO helio_api;
 #include "udfs/rum/bson_rum_exclusion_functions--1.23-0.sql"
 #include "operators/shard_key_and_document_operators--1.23-0.sql"
 #include "schema/bson_rum_exclusion_operator_class--1.23-0.sql"
+
+#include "udfs/rum/bson_rum_hashed_ops_functions--1.23-0.sql"
+#include "schema/bson_hash_operator_class--1.23-0.sql"
+#include "udfs/index_mgmt/create_index_background--1.23-0.sql"
 #include "schema/collection_metadata--1.23-0.sql"
 RESET search_path;

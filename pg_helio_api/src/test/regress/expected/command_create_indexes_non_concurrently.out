@@ -130,20 +130,35 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 
 -- valid hash indexes
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed"}, "name": "my_idx_hashed"}]}',true);
-ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6011 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "11" }, "numIndexesAfter" : { "$numberInt" : "12" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed", "b": 1 }, "name": "my_idx_hashed_compound"}]}',true);
-ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6012 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a'), document helio_api_catalog.bson_rum_single_path_ops(path='b')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "12" }, "numIndexesAfter" : { "$numberInt" : "13" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "b": "hashed" }, "name": "my_idx_hashed_compound_hash"}]}',true);
-ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6013 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a'), document helio_api_catalog.helio_rum_hashed_ops(path='b')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "13" }, "numIndexesAfter" : { "$numberInt" : "14" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "hashed"}, "name": "my_idx_dollar_name_1"}]}',true);
-ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6014 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a$**')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "14" }, "numIndexesAfter" : { "$numberInt" : "15" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.c$": "hashed"}, "name": "my_idx_dollar_name_2"}]}',true);
-ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6015 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a.c$')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "15" }, "numIndexesAfter" : { "$numberInt" : "16" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 -- invalid hash indexes
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}',true);
 ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
@@ -199,7 +214,7 @@ DEBUG:  building index "documents_rum_index_6018" on table "documents_6000" seri
 DEBUG:  executing "SELECT COUNT(*) FROM helio_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "11" }, "numIndexesAfter" : { "$numberInt" : "14" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "16" }, "numIndexesAfter" : { "$numberInt" : "19" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 RESET client_min_messages;
@@ -218,10 +233,15 @@ SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'collection_1') OR
           6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
           6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
           6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
+          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
+          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
+          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
+          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
           6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
           6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
           6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
-(14 rows)
+(19 rows)
 
 -- also show that we didn't leave any invalid pg indexes behind
 SELECT indexrelid::regclass, indisvalid, indisready
@@ -240,10 +260,15 @@ ORDER BY indexrelid;
  helio_data.documents_rum_index_6008 | t          | t
  helio_data.documents_rum_index_6009 | t          | t
  helio_data.documents_rum_index_6010 | t          | t
+ helio_data.documents_rum_index_6011 | t          | t
+ helio_data.documents_rum_index_6012 | t          | t
+ helio_data.documents_rum_index_6013 | t          | t
+ helio_data.documents_rum_index_6014 | t          | t
+ helio_data.documents_rum_index_6015 | t          | t
  helio_data.documents_rum_index_6016 | t          | t
  helio_data.documents_rum_index_6017 | t          | t
  helio_data.documents_rum_index_6018 | t          | t
-(14 rows)
+(19 rows)
 
 -- Test invalid indexes are not left behind
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**foo": 1}, "name": "my_idx"}]}');
@@ -289,10 +314,15 @@ SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'collection_1') OR
           6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
           6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
           6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
+          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
+          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
+          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
+          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
           6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
           6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
           6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
-(14 rows)
+(19 rows)
 
 -- also show that we didn't leave any invalid pg indexes behind
 SELECT indexrelid::regclass, indisvalid, indisready
@@ -311,10 +341,15 @@ ORDER BY indexrelid;
  helio_data.documents_rum_index_6008 | t          | t
  helio_data.documents_rum_index_6009 | t          | t
  helio_data.documents_rum_index_6010 | t          | t
+ helio_data.documents_rum_index_6011 | t          | t
+ helio_data.documents_rum_index_6012 | t          | t
+ helio_data.documents_rum_index_6013 | t          | t
+ helio_data.documents_rum_index_6014 | t          | t
+ helio_data.documents_rum_index_6015 | t          | t
  helio_data.documents_rum_index_6016 | t          | t
  helio_data.documents_rum_index_6017 | t          | t
  helio_data.documents_rum_index_6018 | t          | t
-(14 rows)
+(19 rows)
 
 -- ******* Wilcard projection indexes ******* --
 -- cannot specify wildcardProjection for a non-root wildcard index

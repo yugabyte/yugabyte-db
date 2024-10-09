@@ -1109,15 +1109,15 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 	 *      FROM helio_api_catalog.helio_index_queue piq
 	 *      WHERE cmd_type = 'C' AND index_id =ANY(ARRAY[32001, 32002, 32003, 32004, 32005, 32006])
 	 *  )
-	 *  SELECT COALESCE(CORE_SCHEMA.bson_array_agg(CORE_SCHEMA.row_get_bson(query), ''), '{ "": [] }'::CORE_SCHEMA.bson) FROM query
+	 *  SELECT COALESCE(CATALOG_SCHEMA.bson_array_agg(helio_core.row_get_bson(query), ''), '{ "": [] }'::CORE_SCHEMA.bson) FROM query
 	 */
 	const char *query =
 		FormatSqlQuery("WITH query AS (SELECT index_cmd_status::int4, comment, attempt"
 					   " FROM %s piq "
 					   " WHERE cmd_type = $1 AND index_id =ANY($2)) "
-					   " SELECT COALESCE(%s.bson_array_agg(%s.row_get_bson(query), ''), '{ \"\": [] }'::%s) FROM query",
+					   " SELECT COALESCE(%s.bson_array_agg(helio_core.row_get_bson(query), ''), '{ \"\": [] }'::%s) FROM query",
 					   GetIndexQueueName(), ApiCatalogSchemaName,
-					   ApiCatalogSchemaName, FullBsonTypeName);
+					   FullBsonTypeName);
 
 	int argCount = 2;
 	Oid argTypes[2];

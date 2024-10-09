@@ -113,7 +113,12 @@ test: bson_aggregates_distinct_tests
 
 test: commands_create_drop_indexes_b commands_drop_indexes commands_create_indexes_wp regex5_tests_explain
 test: andor and and3 or9 bson_query_operator_tests_parameterized
-test: commands_find_and_modify bson_unique_index
+test: bson_hash_indexes commands_find_and_modify bson_unique_index
 test: regex5_tests_runtime regex_options_runtime
 test: regex5_tests_index regex_options_index regex
 test: bson_index_selection_tests commands_shard_collection commands_update
+
+test: commands_create_indexes_background
+test: commands_create_indexes_pfe_b commands_create_indexes commands_create_drop_indexes_a
+test: bson_get_indexes_a commands_create_indexes_pfe_a commands_crud_ignore_common_spec_fields
+test: write_commands_batching conflicting_indexes

@@ -1597,7 +1597,7 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "UPDATE %s SET index_cmd_status = $1, comment = mongo_catalog.bson_from_bytea($2),"
+					 "UPDATE %s SET index_cmd_status = $1, comment = helio_core.bson_from_bytea($2),"
 					 " update_time = $3, attempt = $4 ", GetIndexQueueName());
 
 	if (opId != NULL)

@@ -204,7 +204,7 @@ CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
 		appendStringInfo(cmdStr,
 						 "SELECT success, result FROM run_command_on_all_nodes("
 						 "FORMAT($$ SELECT %s.current_op_worker(%%L) $$, $1))",
-						 ApiSchemaName);
+						 ApiToApiInternalSchemaName);
 		int numValues = 1;
 		Datum values[1] = { PointerGetDatum(spec) };
 		Oid types[1] = { BsonTypeId() };

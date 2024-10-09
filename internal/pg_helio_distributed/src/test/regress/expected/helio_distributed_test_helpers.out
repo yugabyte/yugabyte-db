@@ -204,7 +204,7 @@ BEGIN
     SELECT create_index_response.requests->>'indexRequest' INTO indexRequest;
     IF indexRequest IS NOT NULL THEN
       LOOP
-          SELECT * INTO check_build_index_status FROM helio_api.check_build_index_status(create_index_response.requests);
+          SELECT * INTO check_build_index_status FROM helio_api_internal.check_build_index_status(create_index_response.requests);
           IF check_build_index_status.ok THEN 
             completed := check_build_index_status.complete;
             IF completed THEN
