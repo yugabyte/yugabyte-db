@@ -16,7 +16,7 @@ This document describes the potential consequences and recommended actions when 
 
 YugabyteDB data drive doesn't rely on the local root file system for storing data. Instead, YugabyteDB data directories are typically mounted on separate file systems to ensure isolation and manageability.
 
-The following flags are used to configure the data drive:
+The following Master and TServer flags are used to configure the location of the data drives:
 
 - [fs_data_dirs](../../../reference/configuration/yb-tserver/#fs-data-dirs)
 - [log_dir](../../../reference/configuration/yb-tserver/#log-dir)
