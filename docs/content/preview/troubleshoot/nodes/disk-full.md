@@ -27,6 +27,12 @@ If any of the data drives is approaching disk full condition, then the inserts, 
 IO error (yb/tserver/tablet_service.cc:2288): Write to tablet 749e4d78244c43d2bba9cdb8505b732f rejected. Node 9a24d9c8493b44caa97ba4ae06e5829d has insufficient disk space
 ```
 
+Note that read only queries are not affected by this error.
+
+{{<tip title="Configuration tip">}}
+Consider configuring low disk space alerts that will notify you before nodes run out of space so that mitigation actions can be taken ahead of time, and help prevent any disruption to your applications.
+{{</tip>}}
+
 The flags [max_disk_throughput_mbps](../../../reference/configuration/all-flags-yb-master/#max-disk-throughput-mbps) and [reject_writes_min_disk_space_mb](../../../reference/configuration/all-flags-yb-master/#reject-writes-min-disk-space-mb) determine the amount of disk space that is considered too low. The default value is 3GB.
 
 The YB-TServer logs contain the following message when the system nears the threshold (18GB):
