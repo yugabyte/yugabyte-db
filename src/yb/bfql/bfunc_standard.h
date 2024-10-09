@@ -51,6 +51,8 @@
 #include "yb/util/uuid.h"
 #include "yb/util/yb_partition.h"
 
+DECLARE_bool(cql_revert_to_partial_microsecond_support);
+
 namespace yb {
 
 bool operator ==(const QLValuePB& lhs, const QLValuePB& rhs);
@@ -207,7 +209,19 @@ inline Result<BFRetValue> NowTime(BFFactory factory) {
 
 inline Result<BFRetValue> NowTimestamp(BFFactory factory) {
   BFRetValue result = factory();
-  result.set_timestamp_value(DateTime::TimestampNow().ToInt64());
+  int64_t value_us = DateTime::TimestampNow().ToInt64();
+  int64_t value_ms = DateTime::FloorTimestamp(
+      value_us, DateTime::kInternalPrecision, DateTime::CqlInputFormat.input_precision);
+
+  if (value_ms != value_us) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "timestamp is inserted in YCQL with microseconds precision";
+  }
+  int64_t value = value_us;
+  if (!FLAGS_cql_revert_to_partial_microsecond_support) {
+    value = value_ms;
+  }
+  result.set_timestamp_value(value);
   return result;
 }
 
