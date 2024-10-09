@@ -90,7 +90,7 @@ Simplifies the management of YSQL transactional xCluster replication by operatin
 
 The improvements to backward scan performance now allows such queries to be 10X faster out of the box!
 
-For other new features and improvements, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/)
+> For the full list of features and improvements, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/)
 
 ## v2024.1 (Stable)
 
@@ -110,7 +110,7 @@ A join execution strategy that is an improvement on Nested Loop joins that sends
 
 Explain Analyze when used with DIST option will also show the rows read from the storage layer, which can help diagnosing the query performance.
 
-For other new features and improvements, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/)
+> For the full list of features and improvements, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/)
 
 # Architecture
 
