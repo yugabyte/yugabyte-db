@@ -30,12 +30,15 @@ type prometheusDirectories struct {
 	DataDir             string
 	PromDir             string
 	PromBinaryFile      string
+	LogDir							string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
 	binFile := "/usr/local/bin/prometheus"
+	logDir := "/var/log"
 	if !common.HasSudoAccess() {
 		binFile = common.GetSoftwareRoot() + "/prometheus/bin/prometheus"
+		logDir = common.GetBaseInstall() + "/data/logs"
 	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
@@ -45,6 +48,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
 		PromBinaryFile:      binFile,
+		LogDir:							 logDir,
 	}
 }
 
@@ -246,12 +250,17 @@ func (prom Prometheus) Upgrade() error {
 // Status prints out the header information for the
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
+
+	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
+	if common.SystemdLogMethod() == "" {
+		logFileLoc = "journalctl -u prometheus"
+	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: prom.DataDir + "/prometheus.log",
+		LogFileLoc: logFileLoc,
 	}
 
 	// Set the systemd service file location if one exists
@@ -453,6 +462,12 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		{promPkg, binDir, "promtool"},
 		{promPkg, prom.PromDir, "consoles"},
 		{promPkg, prom.PromDir, "console_libraries"},
+	}
+	// for root the log file is in /var/log in case of SELinux
+	if (common.HasSudoAccess()) {
+		links = append(links, struct {
+			pkgDir, linkDir, binary string
+		}{prom.LogDir, filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"})
 	}
 	for _, link := range links {
 		if err := common.CreateSymlink(link.pkgDir, link.linkDir, link.binary); err != nil {
