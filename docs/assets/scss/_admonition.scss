@@ -83,7 +83,6 @@ main {
         left: 16px;
       }
 
-
       > *:not(code) {
         margin: 1em 0;
 
@@ -215,46 +214,6 @@ main {
       }
     }
 
-    .admonition.lead {
-      background: rgba(205, 239, 225, 0.4);
-      border: 1px solid #cdefe1;
-
-      &::before {
-        opacity: 0;
-      }
-
-      i[class*="fa-"] {
-        position: absolute;
-        left: 17px;
-        top: 17px;
-        font-size: 20px;
-        color: #000;
-        z-index: 0;
-      }
-
-      img {
-        &.icon {
-          position: absolute;
-          width: 23px;
-          height: 24px;
-          top: 17px;
-          left: 17px;
-        }
-      }
-
-      .clickable {
-        position: absolute;
-        z-index: 1;
-        inset: 0;
-        font-size: 0;
-        transition: all 250ms ease;
-
-        &:hover {
-          background: rgba(0, 0, 0, 0.02);
-        }
-      }
-    }
-
     .admonition.callout {
       border-radius: 8px;
       padding: 16px;
@@ -283,25 +242,15 @@ main {
         }
       }
 
-      &.release {
-        .icon {
-          i {
-            color: #4E5F6D;
-          }
-
-          svg {
-            path {
-              fill: #4E5F6D;
-            }
-          }
-        }
-      }
-
       .content-area {
         margin-bottom: 0;
 
         a {
           color: #2B59C3;
+
+          :hover{
+            text-decoration: none;
+          }
         }
 
         .heading {
@@ -336,6 +285,75 @@ main {
           font-style: normal;
           font-weight: 400;
           line-height: 22px;
+
+          a {
+            position: relative;
+            z-index: 9;
+          }
+        }
+      }
+
+      &.release {
+        .icon {
+          i {
+            color: #4E5F6D;
+          }
+
+          svg {
+            path {
+              fill: #4E5F6D;
+            }
+          }
+        }
+      }
+
+      &.topic {
+        display: flex;
+        max-width: max-content;
+        align-items: center;
+        border-radius: 8px;
+        border: 1px solid #CBCCFB;
+        background: #FFF;
+        position: relative;
+
+        .desc {
+          color: #25323D;
+        }
+
+        &.clickable {
+          &:hover {
+            border-radius: 8px;
+            border: 1px solid #CBCCFB;
+            background: #F2F3FE;
+          }
+
+          .callout-link {
+            position: absolute;
+            z-index: 1;
+            inset: 0;
+            font-size: 0;
+            transition: all 250ms ease;
+          }
+
+          .end-icon {
+            margin: 0 0 0 8px;
+
+            i {
+              color: #4E5F6D;
+              font-size: 13px;
+              font-style: normal;
+              font-weight: 300;
+              line-height: 22px;
+            }
+          }
+        }
+
+        .icon {
+          svg {
+            path {
+              fill: #A5A6F6;
+            }
+          }
         }
       }
     }
