@@ -1223,6 +1223,8 @@ MigrationAssesmentInfo:
       type: array
       items:
         $ref: '#/AssesmentComplexityInfo'
+    operating_system:
+      type: string
 AssesmentComplexityInfo:
   title: Assesment complexity details
   description: Assesment complexity details

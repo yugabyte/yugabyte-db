@@ -970,6 +970,7 @@
           "tabComplexityOverview": "Complexity Overview",
           "installVoyager": "Install Voyager",
           "installVoyagerDesc": "Install YugabyteDB Voyager on the cluster.",
+          "specificVersion": "Install a specific version of yb-voyager on your machine using the following command:",
           "installVoyagerLearn": "Learn more about installing Voyager",
           "assessMigration": "Assess Migration",
           "assessMigrationDesc": "Assess the source database to be migrated to check for database compatibility, evaluate cluster size requirements, and estimate migration complexity.",
