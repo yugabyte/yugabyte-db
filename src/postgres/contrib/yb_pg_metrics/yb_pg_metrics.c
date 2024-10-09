@@ -262,32 +262,111 @@ DecBlockNestingLevel(void)
 void
 set_metric_names(void)
 {
-  strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
-  strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
-  strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
-  strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
-  strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
-  strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
-  strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
-  strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
-  // Deprecated. Names with "_"s may cause confusion to metric conumsers.
-  strcpy(
-      ybpgm_table[Single_Shard_Transaction].name, YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+	for (int i = 0; i < kMaxStatementType; i++)
+	{
+		ybpgm_table[i].count_help[0] = '\0';
+		ybpgm_table[i].sum_help[0] = '\0';
+	}
 
-  strcpy(ybpgm_table[SingleShardTransaction].name, YSQL_METRIC_PREFIX "SingleShardTransactions");
-  strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
-  strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
-  strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-  for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-  {
-	int cache_id = i - CatCacheIdMisses_Start;
-	char index_name[NAMEDATALEN + 16];
-	strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-	sprintf(index_name, "_%s", YbGetCatalogCacheIndexName(cache_id));
-	Assert(strlen(ybpgm_table[i].name) + strlen(index_name) <
-		   sizeof(ybpgm_table[i].name));
-	strcat(ybpgm_table[i].name, index_name);
-  }
+	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
+	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
+	strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
+	strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
+	strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
+	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
+	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
+	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+	// Deprecated. Names with "_"s may cause confusion to metric conumsers.
+	strcpy(ybpgm_table[Single_Shard_Transaction].name,
+		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+	strcpy(ybpgm_table[SingleShardTransaction].name, 
+    YSQL_METRIC_PREFIX "SingleShardTransactions");
+	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+	strcpy(ybpgm_table[AggregatePushdown].name, 
+       YSQL_METRIC_PREFIX "AggregatePushdowns");
+	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+
+	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
+		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+
+	strcpy(ybpgm_table[Select].count_help, 
+         "Number of SELECT statements that have been executed");
+	strcpy(ybpgm_table[Select].sum_help, 
+         "Total time spent executing SELECT statements");
+
+	strcpy(ybpgm_table[Insert].count_help, 
+         "Number of INSERT statements that have been executed");
+	strcpy(ybpgm_table[Insert].sum_help, 
+         "Total time spent executing INSERT statements");
+
+	strcpy(ybpgm_table[Delete].count_help, 
+         "Number of DELETE statements that have been executed");
+	strcpy(ybpgm_table[Delete].sum_help, 
+         "Total time spent executing DELETE statements");
+
+	strcpy(ybpgm_table[Update].count_help, 
+         "Number of UPDATE statements that have been executed");
+	strcpy(ybpgm_table[Update].sum_help, 
+         "Total time spent executing UPDATE statements");
+
+	strcpy(ybpgm_table[Begin].count_help, 
+         "Number of BEGIN statements that have been executed");
+	strcpy(ybpgm_table[Begin].sum_help, 
+         "Total time spent executing BEGIN statements");
+
+	strcpy(ybpgm_table[Commit].count_help, 
+         "Number of COMMIT statements that have been executed");
+	strcpy(ybpgm_table[Commit].sum_help, 
+         "Total time spent executing COMMIT statements");
+
+	strcpy(ybpgm_table[Rollback].count_help, 
+         "Number of ROLLBACK statements that have been executed");
+	strcpy(ybpgm_table[Rollback].sum_help, 
+         "Total time spent executing ROLLBACK statements");
+
+	strcpy(ybpgm_table[Other].count_help, 
+         "Number of other statements that have been executed");
+	strcpy(ybpgm_table[Other].sum_help, 
+         "Total time spent executing other statements");
+
+	strcpy(ybpgm_table[Single_Shard_Transaction].count_help, 
+         "Number of single shard transactions that have been executed (deprecated)");
+	strcpy(ybpgm_table[Single_Shard_Transaction].sum_help, 
+         "Total time spent executing single shard transactions (deprecated)");
+
+	strcpy(ybpgm_table[SingleShardTransaction].count_help, 
+         "Number of single shard transactions that have been executed");
+	strcpy(ybpgm_table[SingleShardTransaction].sum_help, 
+         "Total time spent executing single shard transactions");
+
+	strcpy(ybpgm_table[Transaction].count_help, 
+         "Number of transactions that have been executed");
+	strcpy(ybpgm_table[Transaction].sum_help, 
+         "Total time spent executing transactions");
+
+	strcpy(ybpgm_table[AggregatePushdown].count_help, 
+         "Number of aggregate pushdowns");
+	strcpy(ybpgm_table[AggregatePushdown].sum_help, 
+         "Total time spent executing aggregate pushdowns");
+
+	strcpy(ybpgm_table[CatCacheMisses].count_help, 
+         "Total number of catalog cache misses");
+	strcpy(ybpgm_table[CatCacheMisses].sum_help, "Not applicable");
+
+	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
+	{
+    int cache_id = i - CatCacheIdMisses_Start;
+    char index_name[YB_PG_METRIC_NAME_LEN];
+    snprintf(index_name, YB_PG_METRIC_NAME_LEN, "_%s", YbGetCatalogCacheIndexName(cache_id));
+    
+    Assert(strlen(ybpgm_table[i].name) + strlen(index_name) < YB_PG_METRIC_NAME_LEN);
+    strcat(ybpgm_table[i].name, index_name);
+
+		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
+				 "Number of catalog cache misses for index %s",
+				 YbGetCatalogCacheIndexName(cache_id));
+		strcpy(ybpgm_table[i].sum_help, "Not applicable");
+	}
 }
 
 /*

@@ -21,6 +21,7 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <regex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -3948,11 +3949,109 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
   }
 }
 
-static int GetCacheMissCount(const string& metric_instance) {
-  auto begin = metric_instance.find("} ");
-  int count;
-  std::istringstream(metric_instance.substr(begin + 2)) >> count;
-  return count;
+struct YsqlMetric {
+  std::string name;
+  std::unordered_map<std::string, std::string> labels;
+  int64_t value;
+  int64_t time;
+  std::string type;
+  std::string description;
+
+  YsqlMetric(
+      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
+      int64_t time, std::string type = "", std::string description = "")
+      : name(std::move(name)),
+        labels(std::move(labels)),
+        value(value),
+        time(time),
+        type(type),
+        description(description) {}
+};
+
+static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
+  // Splits a metric line into name, labels, value and timestamp.
+  // Example line:
+  // metric_name{label_1="value_1",label_2="value_2"} 123 456
+  const std::regex metric_regex(R"((\w+)\{([^}]+)\}\s+(\d+)\s+(\d+))");
+
+  // Splits the list of labels into individual label-value pairs.
+  const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
+
+  // Parses the HELP and TYPE lines into the metric name and the description/type.
+  // HELP and TYPE lines are formatted as:
+  // # HELP <metric_name> <description>
+  // # TYPE <metric_name> <type>
+  const std::regex help_regex(R"(# HELP (\S+) (.+))");
+  const std::regex type_regex(R"(# TYPE (\S+) (\w+))");
+
+  std::vector<YsqlMetric> parsed_metrics;
+  std::istringstream stream(metrics_output);
+  std::string line;
+  std::unordered_map<std::string, std::string> descriptions;
+  std::unordered_map<std::string, std::string> types;
+
+  while (std::getline(stream, line)) {
+    std::smatch help_match;
+    std::smatch type_match;
+    std::smatch metric_match;
+
+    if (std::regex_search(line, help_match, help_regex)) {
+      descriptions[help_match[1].str()] = help_match[2].str();
+    } else if (std::regex_search(line, type_match, type_regex)) {
+      types[type_match[1].str()] = type_match[2].str();
+    } else if (std::regex_search(line, metric_match, metric_regex)) {
+      std::unordered_map<std::string, std::string> labels;
+      const std::string labels_str = metric_match[2].str();
+      auto search_start = labels_str.cbegin();
+      std::smatch label_match;
+
+      while (std::regex_search(search_start, labels_str.cend(), label_match, label_regex)) {
+        labels[label_match[1].str()] = label_match[2].str();
+        search_start = label_match.suffix().first;
+      }
+
+      std::string metric_name = metric_match[1].str();
+
+      parsed_metrics.emplace_back(
+          metric_name, std::move(labels), std::stoll(metric_match[3].str()),
+          std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
+    }
+  }
+
+  return parsed_metrics;
+}
+
+// Parse metrics from the JSON output of the /metrics endpoint.
+// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
+static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
+  std::vector<YsqlMetric> parsed_metrics;
+
+  // Parse the JSON string
+  rapidjson::Document document;
+  document.Parse(metrics_output.c_str());
+
+  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
+  const auto& server = document[0];
+  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
+  const auto& metrics = server["metrics"];
+  for (const auto& metric : metrics.GetArray()) {
+    EXPECT_TRUE(
+        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
+        metric.HasMember("rows"));
+    std::unordered_map<std::string, std::string> labels;
+    if (metric.HasMember("table_name")) {
+      labels["table_name"] = metric["table_name"].GetString();
+    } else {
+      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    }
+
+    parsed_metrics.emplace_back(
+        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        0  // JSON doesn't include timestamp
+    );
+  }
+
+  return parsed_metrics;
 }
 
 TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
@@ -3970,28 +4069,95 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
       hostport);
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
-  string page_content = buf.ToString();
-  auto cache_miss_metric =
-    "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count";
-  auto begin = page_content.find(cache_miss_metric);
-  auto end = page_content.find("\n", begin);
-  auto expected = GetCacheMissCount(page_content.substr(begin, end - begin));
-  ASSERT_GT(expected, 0);
-  LOG(INFO) << "Expected total cache misses: " << expected;
-  int total_cache_misses = 0;
-  while (true) {
-    auto cache_id_miss_metric = "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_";
-    begin = page_content.find(cache_id_miss_metric, end);
-    if (begin == std::string::npos) {
-      break;
+
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=false", hostport);
+  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+  for (const auto& metrics : {prometheus_metrics}) {
+    int64_t expected_total_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") == metric.labels.end()) {
+        expected_total_cache_misses = metric.value;
+        break;
+      }
     }
-    end = page_content.find("\n", begin);
-    auto cache_misses = GetCacheMissCount(page_content.substr(begin, end - begin));
-    ASSERT_GE(cache_misses, 0);
-    total_cache_misses += cache_misses;
+    ASSERT_GT(expected_total_cache_misses, 0);
+    LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
+
+      // Go through the per-index metrics and aggregate them by table.
+      int64_t total_index_cache_misses = 0;
+      std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
+      for (const auto& metric : metrics) {
+        if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+            metric.labels.find("table_name") != metric.labels.end()) {
+          total_index_cache_misses += metric.value;
+          LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
+                                        << metric.value << " cache misses";
+        } else {
+          LOG(INFO) << "Ignoring metric: " << metric.name << " with value " << metric.value;
+        }
+      }
+      ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
   }
-  ASSERT_EQ(total_cache_misses, expected);
+}
+
+// The YSQL Webserver should respond to the show_help URL parameter.
+TEST_F(PgLibPqTest, PrometheusMetricsHelpAndTypeTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Make a new connection to see more cache misses (by default we will only
+  // preload the catalog caches for the first connection).
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  // Check that HELP and TYPE are included by default.
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+  for (const auto& metric : prometheus_metrics) {
+    EXPECT_FALSE(metric.description.empty())
+        << "Metric " << metric.name << " has empty description: " << metric.description;
+    EXPECT_FALSE(metric.type.empty())
+        << "Metric " << metric.name << " has empty type: " << metric.type;
+  }
+
+  // Check that HELP and TYPE are included when show_help=true
+  prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+  for (const auto& metric : prometheus_metrics) {
+    EXPECT_FALSE(metric.description.empty())
+        << "Metric " << metric.name << " has empty description: " << metric.description;
+    EXPECT_FALSE(metric.type.empty())
+        << "Metric " << metric.name << " has empty type: " << metric.type;
+  }
+
+  // Check that HELP and TYPE are not included when show_help=false
+  prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+  for (const auto& metric : prometheus_metrics) {
+    EXPECT_TRUE(metric.description.empty())
+        << "Metric " << metric.name << " has non-empty description: " << metric.description;
+    EXPECT_TRUE(metric.type.empty())
+        << "Metric " << metric.name << " has non-empty type: " << metric.type;
+  }
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
