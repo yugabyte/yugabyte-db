@@ -33,7 +33,7 @@ typedef struct BsonCovarianceAndVarianceAggState
 	bson_value_t sx;
 	bson_value_t sy;
 	bson_value_t sxy;
-	bson_value_t count; /* TODO: change to int64 */
+	int64_t count;
 
 	/* number of decimal values in current window, used to determine if we need to return decimal128 value */
 	int decimalCount;
@@ -68,26 +68,39 @@ typedef struct BsonIntegralAndDerivativeAggState
 	bson_value_t anchorY;
 } BsonIntegralAndDerivativeAggState;
 
+/*
+ * ArithmeticOperation is used to determine which operation to perform.
+ * The operations are:
+ *   ArithmeticOperation_Add, i.e. AddNumberToBsonValue,
+ *   ArithmeticOperation_Subtract, i.e. SubtractNumberFromBsonValue,
+ *   ArithmeticOperation_Multiply, i.e. MultiplyWithFactorAndUpdate, or
+ *   ArithmeticOperation_Divide, i.e. DivideBsonValueNumbers.
+ */
+typedef enum ArithmeticOperation
+{
+	ArithmeticOperation_Add = 0,
+	ArithmeticOperation_Subtract = 1,
+	ArithmeticOperation_Multiply = 2,
+	ArithmeticOperation_Divide = 3
+} ArithmeticOperation;
+
+typedef enum ArithmeticOperationErrorSource
+{
+	OperationSource_CovariancePopFinal = 0,
+	OperationSource_CovarianceSampFinal = 1,
+	OperationSource_StdDevPopFinal = 2,
+	OperationSource_StdDevSampFinal = 3,
+	OperationSource_StdDevPopWinfuncFinal = 4,
+	OperationSource_StdDevSampWinfuncFinal = 5,
+	OperationSource_InvYCAlgr = 6,
+	OperationSource_CombineYCAlgr = 7,
+	OperationSource_SFuncYCAlgr = 8
+} ArithmeticOperationErrorSource;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-#define GENERATE_ERROR_MSG(ErrorMessage, Element1, Element2) \
-	ErrorMessage \
-	# Element1 " = %s, " # Element2 " = %s", \
-	BsonValueToJsonForLogging(&(Element1)), BsonValueToJsonForLogging(&(Element2))
-
-#define HANDLE_DECIMAL_OP_ERROR(OperatorFuncName, Element1, Element2, Result, \
-								ErrorMessage) \
-	do { \
-		Decimal128Result decimalOpResult = (OperatorFuncName) (&(Element1), &(Element2), \
-															   &(Result)); \
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult != \
-			Decimal128Result_Inexact) { \
-			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)), \
-					errmsg(GENERATE_ERROR_MSG(ErrorMessage, Element1, Element2))); \
-		} \
-	} while (0)
 
 bool ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
 									 bson_value_t *inputExpression,
@@ -133,8 +146,16 @@ static bool IntegralOfTwoPointsByTrapezoidalRule(bson_value_t *xValue,
 static bool DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
 								  BsonIntegralAndDerivativeAggState *currentState,
 								  bson_value_t *timeUnitInMs);
-static void CalculateSqrtForStdDev(const bson_value_t *inputResult,
+static void CalculateSqrtForStdDev(const bson_value_t *inputValue,
 								   bson_value_t *outputResult);
+
+static void ArithmeticOperationFunc(ArithmeticOperation op, bson_value_t *state, const
+									bson_value_t *number, ArithmeticOperationErrorSource
+									errSource);
+static void HandleArithmeticOperationError(const char *opName, bson_value_t *state,
+										   const
+										   bson_value_t *number,
+										   ArithmeticOperationErrorSource errSource);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -185,14 +206,13 @@ bson_covariance_pop_samp_transition(PG_FUNCTION_ARGS)
 		bytes = AllocateBsonCovarianceOrVarianceAggState();
 
 		currentState = (BsonCovarianceAndVarianceAggState *) VARDATA(bytes);
-		currentState->sx.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sx);
-		currentState->sy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sy);
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sxy);
-		currentState->count.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->count);
+		currentState->sx.value_type = BSON_TYPE_DOUBLE;
+		currentState->sx.value.v_double = 0.0;
+		currentState->sy.value_type = BSON_TYPE_DOUBLE;
+		currentState->sy.value.v_double = 0.0;
+		currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+		currentState->sxy.value.v_double = 0.0;
+		currentState->count = 0;
 		currentState->decimalCount = 0;
 
 		MemoryContextSwitchTo(oldContext);
@@ -206,8 +226,8 @@ bson_covariance_pop_samp_transition(PG_FUNCTION_ARGS)
 	pgbson *currentXValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
 	pgbson *currentYValue = PG_GETARG_MAYBE_NULL_PGBSON(2);
 
-	if (currentXValue == NULL || IsPgbsonEmptyDocument(currentXValue) || currentYValue ==
-		NULL || IsPgbsonEmptyDocument(currentYValue))
+	if (currentXValue == NULL || IsPgbsonEmptyDocument(currentXValue) ||
+		currentYValue == NULL || IsPgbsonEmptyDocument(currentYValue))
 	{
 		PG_RETURN_POINTER(bytes);
 	}
@@ -218,8 +238,8 @@ bson_covariance_pop_samp_transition(PG_FUNCTION_ARGS)
 	PgbsonToSinglePgbsonElement(currentYValue, &currentYValueElement);
 
 	/* we should ignore numeric values */
-	if (BsonValueIsNumber(&currentXValueElement.bsonValue) && BsonValueIsNumber(
-			&currentYValueElement.bsonValue))
+	if (BsonValueIsNumber(&currentXValueElement.bsonValue) &&
+		BsonValueIsNumber(&currentYValueElement.bsonValue))
 	{
 		CalculateSFuncForCovarianceOrVarianceWithYCAlgr(&currentXValueElement.bsonValue,
 														&currentYValueElement.bsonValue,
@@ -256,14 +276,13 @@ bson_covariance_pop_samp_combine(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldContext);
 
 	/* Handle either left or right being null. A new state needs to be allocated regardless */
-	currentState->sx.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sx);
-	currentState->sy.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sy);
-	currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sxy);
-	currentState->count.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->count);
+	currentState->sx.value_type = BSON_TYPE_DOUBLE;
+	currentState->sx.value.v_double = 0.0;
+	currentState->sy.value_type = BSON_TYPE_DOUBLE;
+	currentState->sy.value.v_double = 0.0;
+	currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+	currentState->sxy.value.v_double = 0.0;
+	currentState->count = 0;
 	currentState->decimalCount = 0;
 
 	/* handle left or right being null */
@@ -334,8 +353,8 @@ bson_covariance_pop_samp_invtransition(PG_FUNCTION_ARGS)
 	pgbson *currentXValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
 	pgbson *currentYValue = PG_GETARG_MAYBE_NULL_PGBSON(2);
 
-	if (currentXValue == NULL || IsPgbsonEmptyDocument(currentXValue) || currentYValue ==
-		NULL || IsPgbsonEmptyDocument(currentYValue))
+	if (currentXValue == NULL || IsPgbsonEmptyDocument(currentXValue) ||
+		currentYValue == NULL || IsPgbsonEmptyDocument(currentYValue))
 	{
 		PG_RETURN_POINTER(bytes);
 	}
@@ -353,12 +372,13 @@ bson_covariance_pop_samp_invtransition(PG_FUNCTION_ARGS)
 
 	/* restart aggregate if NaN or Infinity in current state or current values */
 	/* or count is 0 */
-	if (IsBsonValueNaN(&currentState->sxy) || IsBsonValueInfinity(&currentState->sxy) ||
-		IsBsonValueNaN(&currentXValueElement.bsonValue) || IsBsonValueInfinity(
-			&currentXValueElement.bsonValue) ||
-		IsBsonValueNaN(&currentYValueElement.bsonValue) || IsBsonValueInfinity(
-			&currentYValueElement.bsonValue) ||
-		BsonValueAsInt64(&currentState->count) == 0)
+	if (IsBsonValueNaN(&currentState->sxy) ||
+		IsBsonValueInfinity(&currentState->sxy) ||
+		IsBsonValueNaN(&currentXValueElement.bsonValue) ||
+		IsBsonValueInfinity(&currentXValueElement.bsonValue) ||
+		IsBsonValueNaN(&currentYValueElement.bsonValue) ||
+		IsBsonValueInfinity(&currentYValueElement.bsonValue) ||
+		currentState->count == 0)
 	{
 		PG_RETURN_NULL();
 	}
@@ -386,24 +406,23 @@ bson_covariance_pop_final(PG_FUNCTION_ARGS)
 	finalValue.pathLength = 0;
 	if (covarianceIntermediateState != NULL)
 	{
-		bson_value_t decimalResult = { 0 };
-		decimalResult.value_type = BSON_TYPE_DECIMAL128;
+		bson_value_t bsonResult = { 0 };
 		BsonCovarianceAndVarianceAggState *covarianceState =
 			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(
 				covarianceIntermediateState);
 
-		if (IsBsonValueNaN(&covarianceState->sxy) || IsBsonValueInfinity(
-				&covarianceState->sxy) != 0)
+		if (IsBsonValueNaN(&covarianceState->sxy) ||
+			IsBsonValueInfinity(&covarianceState->sxy) != 0)
 		{
-			decimalResult.value.v_decimal128 = covarianceState->sxy.value.v_decimal128;
+			bsonResult = covarianceState->sxy;
 		}
-		else if (BsonValueAsInt64(&covarianceState->count) == 0)
+		else if (covarianceState->count == 0)
 		{
 			/* Mongo returns null for empty sets or wrong input field count */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
 			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 		}
-		else if (BsonValueAsInt64(&covarianceState->count) == 1)
+		else if (covarianceState->count == 1)
 		{
 			/* Mongo returns 0 for single numeric value */
 			/* return double even if the value is decimal128 */
@@ -413,21 +432,33 @@ bson_covariance_pop_final(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, covarianceState->sxy,
-									covarianceState->count, decimalResult,
-									"Failed while calculating bson_covariance_pop_final decimalResult for these values: ");
+			bsonResult = covarianceState->sxy;
+
+			/* bsonCount = covarianceState->count */
+			bson_value_t bsonCount = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = covarianceState->count
+			};
+
+			ArithmeticOperationFunc(ArithmeticOperation_Divide,
+									&bsonResult,
+									&bsonCount,
+									OperationSource_CovariancePopFinal);
 		}
+
+		finalValue.bsonValue = bsonResult;
 
 		/* if there is at least one decimal value in current window, we should return decimal128; otherwise, return double */
 		if (covarianceState->decimalCount > 0)
 		{
 			finalValue.bsonValue.value_type = BSON_TYPE_DECIMAL128;
-			finalValue.bsonValue.value.v_decimal128 = decimalResult.value.v_decimal128;
+			finalValue.bsonValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+				&bsonResult);
 		}
 		else
 		{
 			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
-			finalValue.bsonValue.value.v_double = BsonValueAsDouble(&decimalResult);
+			finalValue.bsonValue.value.v_double = BsonValueAsDouble(&bsonResult);
 		}
 	}
 	else
@@ -455,19 +486,18 @@ bson_covariance_samp_final(PG_FUNCTION_ARGS)
 	finalValue.pathLength = 0;
 	if (covarianceIntermediateState != NULL)
 	{
-		bson_value_t decimalResult = { 0 };
-		decimalResult.value_type = BSON_TYPE_DECIMAL128;
+		bson_value_t bsonResult = { 0 };
 		BsonCovarianceAndVarianceAggState *covarianceState =
 			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(
 				covarianceIntermediateState);
 
-		if (IsBsonValueNaN(&covarianceState->sxy) || IsBsonValueInfinity(
-				&covarianceState->sxy))
+		if (IsBsonValueNaN(&covarianceState->sxy) ||
+			IsBsonValueInfinity(&covarianceState->sxy))
 		{
-			decimalResult.value.v_decimal128 = covarianceState->sxy.value.v_decimal128;
+			bsonResult = covarianceState->sxy;
 		}
-		else if (BsonValueAsInt64(&covarianceState->count) == 0 || BsonValueAsInt64(
-					 &covarianceState->count) == 1)
+		else if (covarianceState->count == 0 ||
+				 covarianceState->count == 1)
 		{
 			/* Mongo returns null for empty sets, single numeric value or wrong input field count */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
@@ -475,31 +505,31 @@ bson_covariance_samp_final(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			bson_value_t decimalOne;
-			decimalOne.value_type = BSON_TYPE_DECIMAL128;
-			decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+			bson_value_t countMinus1 = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = covarianceState->count - 1
+			};
+			bsonResult = covarianceState->sxy;
 
-			bson_value_t countMinus1;
-			countMinus1.value_type = BSON_TYPE_DECIMAL128;
-			HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, covarianceState->count,
-									decimalOne, countMinus1,
-									"Failed while calculating bson_covariance_samp_final countMinus1 for these values: ");
-
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, covarianceState->sxy,
-									countMinus1, decimalResult,
-									"Failed while calculating bson_covariance_samp_final decimalResult for these values: ");
+			ArithmeticOperationFunc(ArithmeticOperation_Divide,
+									&bsonResult, &countMinus1,
+									OperationSource_CovarianceSampFinal);
 		}
+
+		/* if there is at least one decimal value in current window, we should return decimal128; otherwise, return double */
+		finalValue.bsonValue = bsonResult;
 
 		/* if there is at least one decimal value in current window, we should return decimal128; otherwise, return double */
 		if (covarianceState->decimalCount > 0)
 		{
 			finalValue.bsonValue.value_type = BSON_TYPE_DECIMAL128;
-			finalValue.bsonValue.value.v_decimal128 = decimalResult.value.v_decimal128;
+			finalValue.bsonValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+				&bsonResult);
 		}
 		else
 		{
 			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
-			finalValue.bsonValue.value.v_double = BsonValueAsDouble(&decimalResult);
+			finalValue.bsonValue.value.v_double = BsonValueAsDouble(&bsonResult);
 		}
 	}
 	else
@@ -538,14 +568,13 @@ bson_std_dev_pop_samp_transition(PG_FUNCTION_ARGS)
 		bytes = AllocateBsonCovarianceOrVarianceAggState();
 
 		currentState = (BsonCovarianceAndVarianceAggState *) VARDATA(bytes);
-		currentState->sx.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sx);
-		currentState->sy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sy);
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->sxy);
-		currentState->count.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128Zero(&currentState->count);
+		currentState->sx.value_type = BSON_TYPE_DOUBLE;
+		currentState->sx.value.v_double = 0.0;
+		currentState->sy.value_type = BSON_TYPE_DOUBLE;
+		currentState->sy.value.v_double = 0.0;
+		currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+		currentState->sxy.value.v_double = 0.0;
+		currentState->count = 0;
 		currentState->decimalCount = 0;
 
 		MemoryContextSwitchTo(oldContext);
@@ -597,20 +626,18 @@ bson_std_dev_pop_samp_combine(PG_FUNCTION_ARGS)
 
 	bytea *combinedStateBytes = AllocateBsonCovarianceOrVarianceAggState();
 	BsonCovarianceAndVarianceAggState *currentState =
-		(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(
-			combinedStateBytes);
+		(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(combinedStateBytes);
 
 	MemoryContextSwitchTo(oldContext);
 
 	/* Handle either left or right being null. A new state needs to be allocated regardless */
-	currentState->sx.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sx);
-	currentState->sy.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sy);
-	currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->sxy);
-	currentState->count.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&currentState->count);
+	currentState->sx.value_type = BSON_TYPE_DOUBLE;
+	currentState->sx.value.v_double = 0.0;
+	currentState->sy.value_type = BSON_TYPE_DOUBLE;
+	currentState->sy.value.v_double = 0.0;
+	currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+	currentState->sxy.value.v_double = 0.0;
+	currentState->count = 0;
 	currentState->decimalCount = 0;
 
 	/*--------------------
@@ -678,32 +705,36 @@ bson_std_dev_pop_final(PG_FUNCTION_ARGS)
 	if (stdDevIntermediateState != NULL)
 	{
 		BsonCovarianceAndVarianceAggState *stdDevState =
-			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(
-				stdDevIntermediateState);
+			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
 
-		if (IsBsonValueNaN(&stdDevState->sxy) || IsBsonValueInfinity(&stdDevState->sxy))
+		if (IsBsonValueNaN(&stdDevState->sxy) ||
+			IsBsonValueInfinity(&stdDevState->sxy))
 		{
 			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
 			finalValue.bsonValue.value.v_double = NAN;
 		}
-		else if (BsonValueAsInt64(&stdDevState->count) == 0)
+		else if (stdDevState->count == 0)
 		{
 			/* Mongo returns $null for empty sets */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
 		}
-		else if (BsonValueAsInt64(&stdDevState->count) == 1)
+		else if (stdDevState->count == 1)
 		{
 			/* Mongo returns 0 for single numeric value */
-			finalValue.bsonValue.value_type = BSON_TYPE_INT32;
-			finalValue.bsonValue.value.v_int32 = 0;
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = 0.0;
 		}
 		else
 		{
-			bson_value_t result;
-			result.value_type = BSON_TYPE_DECIMAL128;
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
-									stdDevState->count, result,
-									"Failed while calculating bson_std_dev_pop_final result for these values: ");
+			bson_value_t result = stdDevState->sxy;
+			bson_value_t bsonCount = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = stdDevState->count
+			};
+
+			ArithmeticOperationFunc(ArithmeticOperation_Divide, &result,
+									&bsonCount,
+									OperationSource_StdDevPopFinal);
 
 			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
 			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
@@ -735,11 +766,10 @@ bson_std_dev_samp_final(PG_FUNCTION_ARGS)
 	if (stdDevIntermediateState != NULL)
 	{
 		BsonCovarianceAndVarianceAggState *stdDevState =
-			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(
-				stdDevIntermediateState);
+			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
 
-		if (BsonValueAsInt64(&stdDevState->count) == 0 || BsonValueAsInt64(
-				&stdDevState->count) == 1)
+		if (stdDevState->count == 0 ||
+			stdDevState->count == 1)
 		{
 			/* Mongo returns $null for empty sets or single numeric value */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
@@ -751,21 +781,15 @@ bson_std_dev_samp_final(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			bson_value_t decimalOne;
-			decimalOne.value_type = BSON_TYPE_DECIMAL128;
-			decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+			bson_value_t countMinus1 = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = stdDevState->count - 1
+			};
+			bson_value_t result = stdDevState->sxy;
 
-			bson_value_t countMinus1;
-			countMinus1.value_type = BSON_TYPE_DECIMAL128;
-			HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, stdDevState->count,
-									decimalOne, countMinus1,
-									"Failed while calculating bson_std_dev_samp_final countMinus1 for these values: ");
-
-			bson_value_t result;
-			result.value_type = BSON_TYPE_DECIMAL128;
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
-									countMinus1, result,
-									"Failed while calculating bson_std_dev_samp_final result for these values: ");
+			ArithmeticOperationFunc(ArithmeticOperation_Divide, &result,
+									&countMinus1,
+									OperationSource_StdDevSampFinal);
 
 			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
 			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
@@ -1118,8 +1142,6 @@ bson_std_dev_pop_winfunc_final(PG_FUNCTION_ARGS)
 	finalValue.pathLength = 0;
 	if (stdDevIntermediateState != NULL)
 	{
-		bson_value_t decimalResult = { 0 };
-		decimalResult.value_type = BSON_TYPE_DECIMAL128;
 		BsonCovarianceAndVarianceAggState *stdDevState =
 			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
 
@@ -1130,29 +1152,35 @@ bson_std_dev_pop_winfunc_final(PG_FUNCTION_ARGS)
 			finalValue.bsonValue.value.v_double = NAN;
 			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 		}
-		else if (BsonValueAsInt64(&stdDevState->count) == 0)
+		else if (stdDevState->count == 0)
 		{
 			/* we return null for empty sets */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
 			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 		}
-		else if (BsonValueAsInt64(&stdDevState->count) == 1)
+		else if (stdDevState->count == 1)
 		{
 			/* we returns 0 for single numeric value */
 			/* return double even if the value is decimal128 */
 			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
-			finalValue.bsonValue.value.v_double = 0;
+			finalValue.bsonValue.value.v_double = 0.0;
 			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 		}
 		else
 		{
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
-									stdDevState->count, decimalResult,
-									"Failed while calculating bson_std_dev_pop_winfunc_final decimalResult for these values: ");
-		}
+			bson_value_t result = stdDevState->sxy;
+			bson_value_t bsonCount = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = stdDevState->count
+			};
 
-		/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
-		CalculateSqrtForStdDev(&decimalResult, &finalValue.bsonValue);
+			ArithmeticOperationFunc(ArithmeticOperation_Divide, &result,
+									&bsonCount,
+									OperationSource_StdDevPopWinfuncFinal);
+
+			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
+		}
 	}
 	else
 	{
@@ -1179,8 +1207,6 @@ bson_std_dev_samp_winfunc_final(PG_FUNCTION_ARGS)
 	finalValue.pathLength = 0;
 	if (stdDevIntermediateState != NULL)
 	{
-		bson_value_t decimalResult = { 0 };
-		decimalResult.value_type = BSON_TYPE_DECIMAL128;
 		BsonCovarianceAndVarianceAggState *stdDevState =
 			(BsonCovarianceAndVarianceAggState *) VARDATA_ANY(stdDevIntermediateState);
 
@@ -1191,8 +1217,8 @@ bson_std_dev_samp_winfunc_final(PG_FUNCTION_ARGS)
 			finalValue.bsonValue.value.v_double = NAN;
 			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
 		}
-		else if (BsonValueAsInt64(&stdDevState->count) == 0 ||
-				 BsonValueAsInt64(&stdDevState->count) == 1)
+		else if (stdDevState->count == 0 ||
+				 stdDevState->count == 1)
 		{
 			/* we returns null for empty sets or single numeric value */
 			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
@@ -1200,23 +1226,19 @@ bson_std_dev_samp_winfunc_final(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			bson_value_t decimalOne;
-			decimalOne.value_type = BSON_TYPE_DECIMAL128;
-			decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+			bson_value_t countMinus1 = {
+				.value_type = BSON_TYPE_INT64,
+				.value.v_int64 = stdDevState->count - 1
+			};
+			bson_value_t result = stdDevState->sxy;
 
-			bson_value_t countMinus1;
-			countMinus1.value_type = BSON_TYPE_DECIMAL128;
-			HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, stdDevState->count,
-									decimalOne, countMinus1,
-									"Failed while calculating bson_std_dev_samp_winfunc_final countMinus1 for these values: ");
+			ArithmeticOperationFunc(ArithmeticOperation_Divide, &result,
+									&countMinus1,
+									OperationSource_StdDevSampWinfuncFinal);
 
-			HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, stdDevState->sxy,
-									countMinus1, decimalResult,
-									"Failed while calculating bson_std_dev_samp_winfunc_final decimalResult for these values: ");
+			/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
+			CalculateSqrtForStdDev(&result, &finalValue.bsonValue);
 		}
-
-		/* The value type of finalValue.bsonValue is set to BSON_TYPE_DOUBLE inside the function*/
-		CalculateSqrtForStdDev(&decimalResult, &finalValue.bsonValue);
 	}
 	else
 	{
@@ -1277,7 +1299,7 @@ bson_std_dev_pop_samp_winfunc_invtransition(PG_FUNCTION_ARGS)
 		IsBsonValueInfinity(&currentState->sxy) ||
 		IsBsonValueNaN(&currentValueElement.bsonValue) ||
 		IsBsonValueInfinity(&currentValueElement.bsonValue) ||
-		BsonValueAsInt64(&currentState->count) == 0)
+		currentState->count == 0)
 	{
 		PG_RETURN_NULL();
 	}
@@ -1342,99 +1364,89 @@ CalculateInvFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 		currentState->decimalCount--;
 	}
 
-	bson_value_t decimalCurrentXValue;
-	decimalCurrentXValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalCurrentXValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		newXValue);
+	bson_value_t bsonCurrentXValue = *newXValue;
+	bson_value_t bsonCurrentYValue = *newYValue;
 
-	bson_value_t decimalCurrentYValue;
-	decimalCurrentYValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalCurrentYValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		newYValue);
-
-	bson_value_t decimalOne;
-	decimalOne.value_type = BSON_TYPE_DECIMAL128;
-	decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
-
-	/* decimalN = currentState->count */
-	bson_value_t decimalN;
-	decimalN.value_type = BSON_TYPE_DECIMAL128;
-	decimalN.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		&currentState->count);
+	/* bsonN = currentState->count */
+	bson_value_t bsonN = {
+		.value_type = BSON_TYPE_INT64,
+		.value.v_int64 = currentState->count
+	};
 
 	/* currentState->count -= 1.0 */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->count, decimalOne,
-							currentState->count,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr count for these values: ");
+	currentState->count--;
+	bson_value_t bsonNMinusOne = {
+		.value_type = BSON_TYPE_INT64,
+		.value.v_int64 = currentState->count
+	};
 
-	/* currentState->sx -= decimalCurrentXValue */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->sx,
-							decimalCurrentXValue, currentState->sx,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr sx for these values: ");
+	/* currentState->sx -= bsonCurrentXValue */
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+							&currentState->sx,
+							&bsonCurrentXValue,
+							OperationSource_InvYCAlgr);
 
-	/* currentState->sy -= decimalCurrentYValue */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->sy,
-							decimalCurrentYValue, currentState->sy,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr sy for these values: ");
+	/* currentState->sy -= bsonCurrentYValue */
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+							&currentState->sy,
+							&bsonCurrentYValue,
+							OperationSource_InvYCAlgr);
 
-	bson_value_t decimalXTmp;
-	decimalXTmp.value_type = BSON_TYPE_DECIMAL128;
+	bson_value_t bsonXTmp = bsonCurrentXValue;
+	bson_value_t bsonYTmp = bsonCurrentYValue;
 
-	bson_value_t decimalYTmp;
-	decimalYTmp.value_type = BSON_TYPE_DECIMAL128;
-
-	/* decimalXTmp = currentState->sx - decimalCurrentXValue * currentState->count */
+	/* bsonXTmp = currentState->sx - bsonCurrentXValue * currentState->count */
 	/* X * N^ */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalCurrentXValue,
-							currentState->count, decimalXTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalXTmp_1 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonXTmp,
+							&bsonNMinusOne,
+							OperationSource_InvYCAlgr);
 
 	/* Sx^ - X * N^ */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->sx, decimalXTmp,
-							decimalXTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalXTmp_2 for these values: ");
+	bson_value_t bsonTmp = currentState->sx;
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract, &bsonTmp,
+							&bsonXTmp, OperationSource_InvYCAlgr);
+	bsonXTmp = bsonTmp;
 
-	/* decimalYTmp = currentState->sy - decimalCurrentYValue * currentState->count */
+	/* bsonYTmp = currentState->sy - bsonCurrentYValue * bsonNMinusOne(currentState->count) */
 	/* Y * N^ */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalCurrentYValue,
-							currentState->count, decimalYTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalYTmp_1 = for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonYTmp,
+							&bsonNMinusOne, OperationSource_InvYCAlgr);
 
 	/* Sy^ - Y * N^ */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->sy, decimalYTmp,
-							decimalYTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalYTmp_2 for these values: ");
+	bsonTmp = currentState->sy;
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract, &bsonTmp,
+							&bsonYTmp,
+							OperationSource_InvYCAlgr);
+	bsonYTmp = bsonTmp;
 
-	bson_value_t decimalXYTmp;
-	decimalXYTmp.value_type = BSON_TYPE_DECIMAL128;
+	bson_value_t bsonXYTmp;
 
-	/* decimalXYTmp = decimalXTmp * decimalYTmp */
+	/* bsonXYTmp = bsonXTmp * bsonYTmp */
 	/* (Sx^ - X * N^) * (Sy^ - Y * N^) */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalXTmp, decimalYTmp,
-							decimalXYTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalXYTmp for these values: ");
+	bsonXYTmp = bsonXTmp;
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonXYTmp,
+							&bsonYTmp,
+							OperationSource_InvYCAlgr);
 
-	bson_value_t decimalTmpNxx;
-	decimalTmpNxx.value_type = BSON_TYPE_DECIMAL128;
+	bson_value_t bsonTmpNxx = bsonN;
 
-	/* decimalTmpNxx = decimalN * currentState->count */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalN, currentState->count,
-							decimalTmpNxx,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalTmpNxx for these values: ");
+	/* bsonTmpNxx = bsonN * bsonNMinusOne(currentState->count) */
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonTmpNxx,
+							&bsonNMinusOne,
+							OperationSource_InvYCAlgr);
 
-	bson_value_t decimalTmp;
-	decimalTmp.value_type = BSON_TYPE_DECIMAL128;
+	bsonTmp = bsonXYTmp;
 
-	/* decimalTmp = decimalXYTmp / decimalTmpNxx */
+	/* bsonTmp = bsonXYTmp / bsonTmpNxx */
 	/* (Sx^ - X * N^) * (Sy^ - Y * N^) / (N * N^) = N^/N * (Sx^/N^ - X) * (Sy^/N^ - Y) */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, decimalXYTmp, decimalTmpNxx,
-							decimalTmp,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr decimalTmp for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonTmp,
+							&bsonTmpNxx,
+							OperationSource_InvYCAlgr);
 
-	/* currentState->sxy -= decimalTmp */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, currentState->sxy, decimalTmp,
-							currentState->sxy,
-							"Failed while calculating CalculateInvFuncForCovarianceOrVarianceWithYCAlgr sxy for these values: ");
+	/* currentState->sxy -= bsonTmp */
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+							&currentState->sxy, &bsonTmp,
+							OperationSource_InvYCAlgr);
 }
 
 
@@ -1460,12 +1472,12 @@ CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr(const
 													  currentState)
 {
 	/* If either of left or right node's count is 0, we can just copy the other node's state and return */
-	if (IsDecimal128Zero(&leftState->count))
+	if (leftState->count == 0)
 	{
 		memcpy(currentState, rightState, sizeof(BsonCovarianceAndVarianceAggState));
 		return;
 	}
-	else if (IsDecimal128Zero(&rightState->count))
+	else if (rightState->count == 0)
 	{
 		memcpy(currentState, leftState, sizeof(BsonCovarianceAndVarianceAggState));
 		return;
@@ -1475,9 +1487,7 @@ CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr(const
 	currentState->decimalCount = leftState->decimalCount + rightState->decimalCount;
 
 	/* currentState->count = leftState->count + rightState->count */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, leftState->count, rightState->count,
-							currentState->count,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr count for these values: ");
+	currentState->count = leftState->count + rightState->count;
 
 	/* handle infinities first */
 	/* if infinity values from left and right node with different signs, return NaN */
@@ -1487,127 +1497,160 @@ CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr(const
 	int isInfinityRight = IsBsonValueInfinity(&rightState->sxy);
 	if (isInfinityLeft * isInfinityRight == -1)
 	{
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128NaN(&currentState->sxy);
+		if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
+		{
+			SetDecimal128NaN(&currentState->sxy);
+		}
+		else
+		{
+			currentState->sxy.value.v_double = NAN;
+		}
 		return;
 	}
 	else if (isInfinityLeft + isInfinityRight != 0)
 	{
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		if (isInfinityLeft + isInfinityRight > 0)
+		if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
 		{
-			SetDecimal128PositiveInfinity(&currentState->sxy);
+			if (isInfinityLeft + isInfinityRight > 0)
+			{
+				SetDecimal128PositiveInfinity(&currentState->sxy);
+			}
+			else
+			{
+				SetDecimal128NegativeInfinity(&currentState->sxy);
+			}
 		}
 		else
 		{
-			SetDecimal128NegativeInfinity(&currentState->sxy);
+			currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+			if (isInfinityLeft + isInfinityRight > 0)
+			{
+				currentState->sxy.value.v_double = (double) INFINITY;
+			}
+			else
+			{
+				currentState->sxy.value.v_double = (double) -INFINITY;
+			}
 		}
 		return;
 	}
 
 	/* currentState->sx = leftState->sx + rightState->sx */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, leftState->sx, rightState->sx,
-							currentState->sx,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr sx for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sx,
+							&leftState->sx,
+							OperationSource_CombineYCAlgr);
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sx,
+							&rightState->sx,
+							OperationSource_CombineYCAlgr);
 
 	/* currentState->sy = leftState->sy + rightState->sy */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, leftState->sy, rightState->sy,
-							currentState->sy,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr sy for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sy,
+							&leftState->sy,
+							OperationSource_CombineYCAlgr);
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sy,
+							&rightState->sy,
+							OperationSource_CombineYCAlgr);
 
-	bson_value_t decimalTmpLeft;
-	decimalTmpLeft.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&decimalTmpLeft);
+	bson_value_t bsonTmpLeft = leftState->sx;
+	bson_value_t bsonTmpRight = rightState->sx;
 
-	bson_value_t decimalTmpRight;
-	decimalTmpRight.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&decimalTmpRight);
+	bson_value_t bsonXTmp;
 
-	bson_value_t decimalXTmp;
-	decimalXTmp.value_type = BSON_TYPE_DECIMAL128;
-
-	/* decimalXTmp = leftState->sx / leftState->count - rightState->sx / rightState->count; */
+	/* bsonXTmp = leftState->sx / leftState->count - rightState->sx / rightState->count; */
 	/* leftState->count and rightState->count won't be 0 as we have checked outside */
 
+	bson_value_t leftN = {
+		.value_type = BSON_TYPE_INT64,
+		.value.v_int64 = leftState->count
+	};
+	bson_value_t rightN = {
+		.value_type = BSON_TYPE_INT64,
+		.value.v_int64 = rightState->count
+	};
+
 	/* Sx1/N1 */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, leftState->sx, leftState->count,
-							decimalTmpLeft,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalTmpLeft_1 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonTmpLeft,
+							&leftN,
+							OperationSource_CombineYCAlgr);
 
 	/* Sx2/N2 */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, rightState->sx, rightState->count,
-							decimalTmpRight,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalTmpRight_1 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonTmpRight,
+							&rightN,
+							OperationSource_CombineYCAlgr);
 
 	/* Sx1/N1 - Sx2/N2 */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, decimalTmpLeft, decimalTmpRight,
-							decimalXTmp,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalXTmp for these values: ");
+	bsonXTmp = bsonTmpLeft;
 
-	bson_value_t decimalYTmp;
-	decimalYTmp.value_type = BSON_TYPE_DECIMAL128;
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract, &bsonXTmp,
+							&bsonTmpRight,
+							OperationSource_CombineYCAlgr);
 
-	/* decimalYTmp = leftState->sy / leftState->count - rightState->sy / rightState->count; */
+	bsonTmpLeft = leftState->sy;
+	bsonTmpRight = rightState->sy;
+	bson_value_t bsonYTmp;
+
+	/* bsonYTmp = leftState->sy / leftState->count - rightState->sy / rightState->count; */
 	/* Sy1/N1 */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, leftState->sy, leftState->count,
-							decimalTmpLeft,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalTmpLeft_2 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonTmpLeft,
+							&leftN,
+							OperationSource_CombineYCAlgr);
 
 	/* Sy2/N2 */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, rightState->sy, rightState->count,
-							decimalTmpRight,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalTmpRight_2 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonTmpRight,
+							&rightN,
+							OperationSource_CombineYCAlgr);
 
 	/* Sy1/N1 - Sy2/N2 */
-	HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, decimalTmpLeft, decimalTmpRight,
-							decimalYTmp,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalYTmp for these values: ");
+	bsonYTmp = bsonTmpLeft;
+	ArithmeticOperationFunc(ArithmeticOperation_Subtract, &bsonYTmp,
+							&bsonTmpRight,
+							OperationSource_CombineYCAlgr);
+	bson_value_t bsonNxx = leftN;
 
-	bson_value_t decimalNxx;
-	decimalNxx.value_type = BSON_TYPE_DECIMAL128;
+	/* bsonNxx = leftState->count * rightState->count; */
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonNxx,
+							&rightN,
+							OperationSource_CombineYCAlgr);
 
-	/* decimalNxx = leftState->count * rightState->count; */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, leftState->count,
-							rightState->count, decimalNxx,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalNxx for these values: ");
+	bson_value_t bsonXYTmp = bsonXTmp;
 
-	bson_value_t decimalXYTmp;
-	decimalXYTmp.value_type = BSON_TYPE_DECIMAL128;
+	/* bsonXYTmp = bsonXTmp * bsonYTmp; */
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonXYTmp,
+							&bsonYTmp,
+							OperationSource_CombineYCAlgr);
 
-	/* decimalXYTmp = decimalXTmp * decimalYTmp; */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalXTmp, decimalYTmp,
-							decimalXYTmp,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalXYTmp for these values: ");
+	bson_value_t bsonTmp = bsonNxx;
 
-	bson_value_t decimalTmp;
-	decimalTmp.value_type = BSON_TYPE_DECIMAL128;
-
-	/* decimalTmp = decimalNxx * decimalXYTmp; */
+	/* bsonTmp = bsonNxx * bsonXYTmp; */
 	/* N1 * N2 * (Sx1/N1 - Sx2/N2) * (Sy1/N1 - Sy2/N2) */
-	HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalNxx, decimalXYTmp,
-							decimalTmp,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalTmp for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonTmp,
+							&bsonXYTmp,
+							OperationSource_CombineYCAlgr);
 
-	bson_value_t decimalD;
-	decimalD.value_type = BSON_TYPE_DECIMAL128;
-	SetDecimal128Zero(&decimalD);
+	bson_value_t bsonD = bsonTmp;
 
-	/* decimalD = decimalTmp / N; */
+	/* bsonD = bsonTmp / N; */
 	/* N1 * N2 * (Sx1/N1 - Sx2/N2) * (Sy1/N1 - Sy2/N2) / N; */
 	/* didn't check if N is 0, as we should not meet that case */
-	HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, decimalTmp, currentState->count,
-							decimalD,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr decimalD for these values: ");
+
+	bson_value_t currentN = {
+		.value_type = BSON_TYPE_INT64,
+		.value.v_int64 = currentState->count
+	};
+
+	ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonD, &currentN,
+							OperationSource_CombineYCAlgr);
 
 	/* Sxy1 + Sxy2 */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, leftState->sxy, rightState->sxy,
-							currentState->sxy,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr sxy_1 for these values: ");
+	currentState->sxy = leftState->sxy;
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sxy,
+							&rightState->sxy,
+							OperationSource_CombineYCAlgr);
 
 	/* Sxy1 + Sxy2 + N1 * N2 * (Sx1/N1 - Sx2/N2) * (Sy1/N1 - Sy2/N2) / N */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, currentState->sxy, decimalD,
-							currentState->sxy,
-							"Failed while calculating CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr sxy_2 for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sxy,
+							&bsonD,
+							OperationSource_CombineYCAlgr);
 }
 
 
@@ -1629,37 +1672,24 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 												BsonCovarianceAndVarianceAggState *
 												currentState)
 {
-	bson_value_t decimalOne;
-	decimalOne.value_type = BSON_TYPE_DECIMAL128;
-	decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+	bson_value_t intOne;
+	intOne.value_type = BSON_TYPE_INT32;
+	intOne.value.v_int32 = (int32_t) 1;
 
-	bson_value_t decimalXTmp;
-	decimalXTmp.value_type = BSON_TYPE_DECIMAL128;
+	bson_value_t bsonXTmp;
+	bson_value_t bsonYTmp;
+	bson_value_t bsonXYTmp;
+	bson_value_t bsonNxx;
 
-	bson_value_t decimalYTmp;
-	decimalYTmp.value_type = BSON_TYPE_DECIMAL128;
+	bson_value_t bsonCurrentXValue = *newXValue;
+	bson_value_t bsonCurrentYValue = *newYValue;
 
-	bson_value_t decimalXYTmp;
-	decimalXYTmp.value_type = BSON_TYPE_DECIMAL128;
-
-	bson_value_t decimalNxx;
-	decimalNxx.value_type = BSON_TYPE_DECIMAL128;
-
-	bson_value_t decimalCurrentXValue;
-	decimalCurrentXValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalCurrentXValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		newXValue);
-
-	bson_value_t decimalCurrentYValue;
-	decimalCurrentYValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalCurrentYValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		newYValue);
-
-	/* decimalN = currentState->count */
-	bson_value_t decimalN;
-	decimalN.value_type = BSON_TYPE_DECIMAL128;
-	decimalN.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		&currentState->count);
+	/* bsonN = currentState->count */
+	bson_value_t bsonN, bsonNTmp;
+	bsonN.value_type = BSON_TYPE_INT64;
+	bsonN.value.v_int64 = currentState->count;
+	bsonNTmp.value_type = BSON_TYPE_INT64;
+	bsonNTmp.value.v_int64 = currentState->count;
 
 	/* update the count of decimal values accordingly */
 	if (newXValue->value_type == BSON_TYPE_DECIMAL128 ||
@@ -1668,9 +1698,8 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 		currentState->decimalCount++;
 	}
 
-	/* decimalN += 1.0 */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, decimalN, decimalOne, decimalN,
-							"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalN for these values: ");
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &bsonN, &intOne,
+							OperationSource_SFuncYCAlgr);
 
 	/* NAN will be handled in later parts */
 	/* focus on infinities first */
@@ -1689,96 +1718,25 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 		isInfinityY * isInfinitySxy == -1)
 	/* infinities with different signs, return nan */
 	{
-		currentState->count = decimalN;
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		SetDecimal128NaN(&currentState->sxy);
+		currentState->count++;
+		if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
+		{
+			SetDecimal128NaN(&currentState->sxy);
+		}
+		else
+		{
+			currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+			currentState->sxy.value.v_double = NAN;
+		}
 		return;
 	}
 	else if (isInfinityX || isInfinityY || isInfinitySxy)
 	/* infinities with the same sign, return infinity */
 	{
-		currentState->count = decimalN;
-		currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-		if ((isInfinityX > 0) || (isInfinityY > 0) || (isInfinitySxy > 0))
+		currentState->count++;
+		if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
 		{
-			SetDecimal128PositiveInfinity(&currentState->sxy);
-		}
-		else
-		{
-			SetDecimal128NegativeInfinity(&currentState->sxy);
-		}
-
-		return;
-	}
-
-
-	/* currentState->sx += decimalCurrentXValue */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, currentState->sx, decimalCurrentXValue,
-							currentState->sx,
-							"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr sx for these values: ");
-
-	/* currentState->sy += decimalCurrentYValue */
-	HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, currentState->sy, decimalCurrentYValue,
-							currentState->sy,
-							"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr sy for these values: ");
-
-	if (BsonValueAsDouble(&currentState->count) > 0.0)
-	{
-		/* decimalXTmp = decimalCurrentXValue * decimalN - currentState->sx; */
-		HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalCurrentXValue, decimalN,
-								decimalXTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalXTmp_1 for these values: ");
-
-		HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, decimalXTmp, currentState->sx,
-								decimalXTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalXTmp_2 for these values: ");
-
-		/* decimalYTmp = decimalCurrentYValue * decimalN - currentState->sy; */
-		HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalCurrentYValue, decimalN,
-								decimalYTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalYTmp_1 for these values: ");
-
-		HANDLE_DECIMAL_OP_ERROR(SubtractDecimal128Numbers, decimalYTmp, currentState->sy,
-								decimalYTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalYTmp_2 for these values: ");
-
-
-		/* currentState->sxy += decimalXTmp * decimalYTmp / (decimalN * currentState->count); */
-		HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalXTmp, decimalYTmp,
-								decimalXYTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalXYTmp_1 for these values: ");
-
-		HANDLE_DECIMAL_OP_ERROR(MultiplyDecimal128Numbers, decimalN, currentState->count,
-								decimalNxx,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalNxx for these values: ");
-
-		decimalXTmp = decimalXYTmp; /* use decimalXTmp as a temporary variable to take origin value of decimalXYTmp */
-		HANDLE_DECIMAL_OP_ERROR(DivideDecimal128Numbers, decimalXTmp, decimalNxx,
-								decimalXYTmp,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr decimalXYTmp_2 for these values: ");
-
-		/* currentState->sxy += decimalXYTmp */
-		HANDLE_DECIMAL_OP_ERROR(AddDecimal128Numbers, currentState->sxy, decimalXYTmp,
-								currentState->sxy,
-								"Failed while calculating CalculateSFuncForCovarianceOrVarianceWithYCAlgr sxy for these values: ");
-	}
-	else
-	{
-		/*
-		 * At the first input, we normally can leave currentState->sxy as 0.
-		 * However, if the first input is Inf or NaN, we'd better force currentState->sxy
-		 * to Inf or NaN.
-		 */
-		if (IsBsonValueNaN(newXValue) || IsBsonValueNaN(newYValue) || isInfinityX *
-			isInfinityY == -1)
-		{
-			currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-			SetDecimal128NaN(&currentState->sxy);
-		}
-		else if (isInfinityX + isInfinityY != 0)
-		{
-			currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
-			if (isInfinityX + isInfinityY > 0)
+			if ((isInfinityX > 0) || (isInfinityY > 0) || (isInfinitySxy > 0))
 			{
 				SetDecimal128PositiveInfinity(&currentState->sxy);
 			}
@@ -1787,9 +1745,126 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 				SetDecimal128NegativeInfinity(&currentState->sxy);
 			}
 		}
+		else
+		{
+			currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+			if ((isInfinityX > 0) || (isInfinityY > 0) || (isInfinitySxy > 0))
+			{
+				currentState->sxy.value.v_double = (double) INFINITY;
+			}
+			else
+			{
+				currentState->sxy.value.v_double = (double) -INFINITY;
+			}
+		}
+
+		return;
 	}
 
-	currentState->count = decimalN;
+
+	/* currentState->sx += bsonCurrentXValue */
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sx,
+							&bsonCurrentXValue,
+							OperationSource_SFuncYCAlgr);
+
+	/* currentState->sy += bsonCurrentYValue */
+	ArithmeticOperationFunc(ArithmeticOperation_Add, &currentState->sy,
+							&bsonCurrentYValue,
+							OperationSource_SFuncYCAlgr);
+
+	if (currentState->count > 0)
+	{
+		/* bsonXTmp = bsonCurrentXValue * bsonN - currentState->sx; */
+		bsonXTmp = bsonCurrentXValue;
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&bsonXTmp, &bsonN,
+								OperationSource_SFuncYCAlgr);
+		ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+								&bsonXTmp,
+								&currentState->sx,
+								OperationSource_SFuncYCAlgr);
+
+		/* bsonYTmp = bsonCurrentYValue * bsonN - currentState->sy; */
+		bsonYTmp = bsonCurrentYValue;
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&bsonYTmp, &bsonN,
+								OperationSource_SFuncYCAlgr);
+		ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+								&bsonYTmp,
+								&currentState->sy,
+								OperationSource_SFuncYCAlgr);
+
+		/* currentState->sxy += bsonXTmp * bsonYTmp / (bsonN * currentState->count); */
+		bsonXYTmp = bsonXTmp;
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&bsonXYTmp, &bsonYTmp,
+								OperationSource_SFuncYCAlgr);
+
+		bsonNxx = bsonN;
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply, &bsonNxx,
+								&bsonNTmp,
+								OperationSource_SFuncYCAlgr);
+		ArithmeticOperationFunc(ArithmeticOperation_Divide, &bsonXYTmp,
+								&bsonNxx,
+								OperationSource_SFuncYCAlgr);
+
+		/* currentState->sxy += bsonXYTmp */
+		ArithmeticOperationFunc(ArithmeticOperation_Add,
+								&currentState->sxy, &bsonXYTmp,
+								OperationSource_SFuncYCAlgr);
+	}
+	else
+	{
+		/*
+		 * At the first input, we normally can leave currentState->sxy as 0.
+		 * However, if the first input is Inf or NaN, we'd better force currentState->sxy
+		 * to Inf or NaN.
+		 */
+		if (IsBsonValueNaN(newXValue) ||
+			IsBsonValueNaN(newYValue) ||
+			isInfinityX * isInfinityY == -1)
+		{
+			if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
+			{
+				currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
+				SetDecimal128NaN(&currentState->sxy);
+			}
+			else
+			{
+				currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+				currentState->sxy.value.v_double = NAN;
+			}
+		}
+		else if (isInfinityX + isInfinityY != 0)
+		{
+			if (currentState->sxy.value_type == BSON_TYPE_DECIMAL128)
+			{
+				currentState->sxy.value_type = BSON_TYPE_DECIMAL128;
+				if (isInfinityX + isInfinityY > 0)
+				{
+					SetDecimal128PositiveInfinity(&currentState->sxy);
+				}
+				else
+				{
+					SetDecimal128NegativeInfinity(&currentState->sxy);
+				}
+			}
+			else
+			{
+				currentState->sxy.value_type = BSON_TYPE_DOUBLE;
+				if (isInfinityX + isInfinityY > 0)
+				{
+					currentState->sxy.value.v_double = (double) INFINITY;
+				}
+				else
+				{
+					currentState->sxy.value.v_double = (double) -INFINITY;
+				}
+			}
+		}
+	}
+
+	currentState->count++;
 }
 
 
@@ -2285,23 +2360,23 @@ DerivativeOfTwoPoints(bson_value_t *xValue, bson_value_t *yValue,
  * The output result is double.
  */
 static void
-CalculateSqrtForStdDev(const bson_value_t *inputResult, bson_value_t *outputResult)
+CalculateSqrtForStdDev(const bson_value_t *inputValue, bson_value_t *outputResult)
 {
 	outputResult->value_type = BSON_TYPE_DOUBLE;
 	double resultForSqrt = 0;
-	if (inputResult->value_type == BSON_TYPE_DECIMAL128)
+	if (inputValue->value_type == BSON_TYPE_DECIMAL128)
 	{
-		if (IsDecimal128InDoubleRange(inputResult))
+		if (IsDecimal128InDoubleRange(inputValue))
 		{
-			resultForSqrt = BsonValueAsDouble(inputResult);
+			resultForSqrt = BsonValueAsDouble(inputValue);
 			if (resultForSqrt < 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
-						errmsg("CalculateSqrtForStdDev: *inputResult = %f",
-							   BsonValueAsDouble(inputResult)),
+						errmsg("CalculateSqrtForStdDev: *inputValue = %f",
+							   BsonValueAsDouble(inputValue)),
 						errdetail_log(
 							"CalculateSqrtForStdDev: *inputResult = %f",
-							BsonValueAsDouble(inputResult)));
+							BsonValueAsDouble(inputValue)));
 			}
 			else
 			{
@@ -2315,7 +2390,146 @@ CalculateSqrtForStdDev(const bson_value_t *inputResult, bson_value_t *outputResu
 	}
 	else
 	{
-		resultForSqrt = BsonValueAsDouble(inputResult);
+		resultForSqrt = BsonValueAsDouble(inputValue);
 		outputResult->value.v_double = sqrt(resultForSqrt);
 	}
+}
+
+
+/* This function is to execute the arithmetic functions.
+ * such as AddNumberToBsonValue, SubtractNumberFromBsonValue, MultiplyWithFactorAndUpdate, DivideBsonValueNumbers
+ * return void as the individual operation return error directly if failed.
+ */
+static void
+ArithmeticOperationFunc(ArithmeticOperation op, bson_value_t *state, const
+						bson_value_t *number, ArithmeticOperationErrorSource errSource)
+{
+	bool opResult = false;
+	bool overflowedFromInt64 = false;
+	char *opName = "AddNumberToBsonValue";
+
+	switch (op)
+	{
+		case ArithmeticOperation_Add:
+		{
+			opResult = AddNumberToBsonValue(state, number, &overflowedFromInt64);
+			break;
+		}
+
+		case ArithmeticOperation_Subtract:
+		{
+			opName = "SubtractNumberFromBsonValue";
+			opResult = SubtractNumberFromBsonValue(state, number, &overflowedFromInt64);
+			break;
+		}
+
+		case ArithmeticOperation_Multiply:
+		{
+			opName = "MultiplyWithFactorAndUpdate";
+			bool convertInt64OverflowToDouble = false;
+			opResult = MultiplyWithFactorAndUpdate(state, number,
+												   convertInt64OverflowToDouble);
+			break;
+		}
+
+		case ArithmeticOperation_Divide:
+		{
+			opName = "DivideBsonValueNumbers";
+			opResult = DivideBsonValueNumbers(state, number);
+			break;
+		}
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+					errmsg("Unknown arithmetic operation: %d", op));
+	}
+
+	if (!opResult)
+	{
+		HandleArithmeticOperationError(opName, state, number, errSource);
+	}
+}
+
+
+/* This function is to handle error of arithmetic operations
+ * from ArithmeticOperationFunc.
+ */
+static void
+HandleArithmeticOperationError(const char *opName, bson_value_t *state, const
+							   bson_value_t *number, ArithmeticOperationErrorSource
+							   errSource)
+{
+	char *errMsg =
+		"Failed while calculating %s result: opName = %s, state = %s, number = %s";
+	char *calculateFunc = "";
+
+	switch (errSource)
+	{
+		case OperationSource_CovariancePopFinal:
+		{
+			calculateFunc = "bson_covariance_pop_final";
+			break;
+		}
+
+		case OperationSource_CovarianceSampFinal:
+		{
+			calculateFunc = "bson_covariance_samp_final";
+			break;
+		}
+
+		case OperationSource_StdDevPopFinal:
+		{
+			calculateFunc = "bson_std_dev_pop_final";
+			break;
+		}
+
+		case OperationSource_StdDevSampFinal:
+		{
+			calculateFunc = "bson_std_dev_samp_final";
+			break;
+		}
+
+		case OperationSource_StdDevPopWinfuncFinal:
+		{
+			calculateFunc = "bson_std_dev_pop_winfunc_final";
+			break;
+		}
+
+		case OperationSource_StdDevSampWinfuncFinal:
+		{
+			calculateFunc = "bson_std_dev_samp_winfunc_final";
+			break;
+		}
+
+		case OperationSource_CombineYCAlgr:
+		{
+			calculateFunc =
+				"CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr";
+			break;
+		}
+
+		case OperationSource_InvYCAlgr:
+		{
+			calculateFunc =
+				"CalculateInvFuncForCovarianceOrVarianceWithYCAlgr";
+			break;
+		}
+
+		case OperationSource_SFuncYCAlgr:
+		{
+			calculateFunc =
+				"CalculateSFuncForCovarianceOrVarianceWithYCAlgr";
+			break;
+		}
+	}
+
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
+			errmsg(
+				"Internal error while calculating variance/covariance."),
+			errdetail_log(
+				errMsg,
+				calculateFunc,
+				opName,
+				BsonValueToJsonForLogging(state),
+				BsonValueToJsonForLogging(number)));
 }
