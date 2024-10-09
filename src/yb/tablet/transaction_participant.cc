@@ -122,8 +122,6 @@ DEFINE_test_flag(bool, no_schedule_remove_intents, false,
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
-DECLARE_int64(cdc_intent_retention_ms);
-
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
