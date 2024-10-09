@@ -3,14 +3,17 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.common.NodeAgentClient.ChannelFactory;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
@@ -20,12 +23,19 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentImplBase;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
+import com.yugabyte.yw.nodeagent.Server.NodeConfig;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckInput;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
 import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UploadFileRequest;
@@ -42,12 +52,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+import java.util.function.Function;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 
+@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgentClient nodeAgentClient;
@@ -57,14 +75,24 @@ public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgentImplBase nodeAgentImpl;
   private UploadFileRequestObserver requestObserver;
   private NodeAgentImplBase serviceImpl;
+  private volatile AsyncTaskData asyncTaskData;
 
   // Graceful shutdown of the registered servers and their channels after the tests.
   @Rule public final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
+
+  @Getter
+  @Setter
+  static class AsyncTaskData {
+    private volatile String taskId;
+    private volatile Instant completionTime;
+    private volatile Function<DescribeTaskRequest, DescribeTaskResponse> taskFunc;
+  }
 
   @Before
   public void setup() throws IOException {
     customer = ModelFactory.testCustomer();
     nodeAgentHandler = app.injector().instanceOf(NodeAgentHandler.class);
+    asyncTaskData = new AsyncTaskData();
     NodeAgentForm payload = new NodeAgentForm();
     payload.version = "2.12.0";
     payload.name = "node";
@@ -109,6 +137,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
                       .build());
               responseObserver.onCompleted();
             } catch (IOException e) {
+              log.error("Error occurred", e);
               responseObserver.onError(e);
             }
           }
@@ -118,6 +147,38 @@ public class NodeAgentClientTest extends FakeDBApplication {
               UpdateRequest request, StreamObserver<UpdateResponse> responseObserver) {
             responseObserver.onNext(UpdateResponse.newBuilder().build());
             responseObserver.onCompleted();
+          }
+
+          @Override
+          public void submitTask(
+              SubmitTaskRequest request, StreamObserver<SubmitTaskResponse> responseObserver) {
+            String taskId = UUID.randomUUID().toString();
+            responseObserver.onNext(SubmitTaskResponse.newBuilder().setTaskId(taskId).build());
+            asyncTaskData.setTaskId(taskId);
+            responseObserver.onCompleted();
+          }
+
+          @Override
+          public void describeTask(
+              DescribeTaskRequest request, StreamObserver<DescribeTaskResponse> responseObserver) {
+            try {
+              String taskId = asyncTaskData.getTaskId();
+              if (taskId == null || !taskId.equals(request.getTaskId())) {
+                throw new IllegalArgumentException("Invalid task ID " + request.getTaskId());
+              }
+              while (Instant.now().isBefore(asyncTaskData.getCompletionTime())) {
+                responseObserver.onNext(
+                    DescribeTaskResponse.newBuilder()
+                        .setOutput("Running at " + Instant.now())
+                        .build());
+                Thread.sleep(200);
+              }
+              responseObserver.onNext(asyncTaskData.getTaskFunc().apply(request));
+              responseObserver.onCompleted();
+            } catch (Exception e) {
+              log.error("Error occurred", e);
+              responseObserver.onError(e);
+            }
           }
         };
 
@@ -135,7 +196,12 @@ public class NodeAgentClientTest extends FakeDBApplication {
 
     // Create a client channel and register for automatic graceful shutdown.
     ManagedChannel channel =
-        grpcCleanup.register(InProcessChannelBuilder.forName(serverName).directExecutor().build());
+        grpcCleanup.register(
+            InProcessChannelBuilder.forName(serverName)
+                .directExecutor()
+                .defaultServiceConfig(
+                    ChannelFactory.getServiceConfig("node-agent/test_service_config.json"))
+                .build());
 
     nodeAgentClient =
         new NodeAgentClient(
@@ -234,5 +300,26 @@ public class NodeAgentClientTest extends FakeDBApplication {
   @Test
   public void testFinalizeUpgrade() {
     nodeAgentClient.finalizeUpgrade(nodeAgent);
+  }
+
+  @Test
+  public void testRunAsyncTask() {
+    asyncTaskData.setTaskFunc(
+        in ->
+            DescribeTaskResponse.newBuilder()
+                .setPreflightCheckOutput(
+                    PreflightCheckOutput.newBuilder()
+                        .addNodeConfigs(
+                            NodeConfig.newBuilder().setType("DISK_SPACE").setValue("100GB").build())
+                        .build())
+                .build());
+    asyncTaskData.setCompletionTime(Instant.now().plus(5, ChronoUnit.SECONDS));
+    PreflightCheckOutput output =
+        nodeAgentClient.runPreflightCheck(
+            nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */);
+    assertNotNull("PreflightCheckOutput must be set", output);
+    NodeConfig nodeConfig = Iterables.getOnlyElement(output.getNodeConfigsList());
+    assertEquals("DISK_SPACE", nodeConfig.getType());
+    assertEquals("100GB", nodeConfig.getValue());
   }
 }
