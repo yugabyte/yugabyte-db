@@ -38,17 +38,13 @@ Use YBA Installer to install YugabyteDB Anywhere on a host, either online or air
 
 You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
-{{<lead>}}
+-> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
-To perform a new installation, follow the steps in [Quick start](#quick-start).
+-> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
-To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
 
-To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
-
-For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
-
-{{</lead>}}
+-> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 

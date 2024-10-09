@@ -40,8 +40,8 @@ Being able to scale seamlessly is as important as being able to scale. Scaling n
 
 There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. In vertical scaling, you enhance the capabilities of your existing nodes by increasing CPU, memory, storage, and so on. With horizontal scaling, you add more nodes of the same type to your cluster. Horizontal scaling is the most common type of scaling in YugabyteDB. As YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
-{{<lead link="./horizontal-vs-vertical-scaling">}}
-To learn more about the pros and cons of the two types of scaling, see [Horizontal vs vertical scaling](./horizontal-vs-vertical-scaling).
+{{<lead link="./horizontal-vs-vertical-scaling/">}}
+Learn about the pros and cons of [horizontal vs vertical scaling](./horizontal-vs-vertical-scaling/).
 {{</lead>}}
 
 ## How scaling works
@@ -52,9 +52,11 @@ To get a better idea of the effort and time you will need to scale your systems,
 
 Data distribution is critical in scaling. In YugabyteDB, data is [split (sharded)](./data-distribution/) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
 
-{{<lead>}}
-To learn more about the different types of sharding, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/).
+{{<lead link="../../architecture/docdb-sharding/sharding/">}}
+Learn about [hash and range sharding](../../architecture/docdb-sharding/sharding/).
+{{</lead>}}
 
+{{<lead link="./data-distribution/#tablet-splitting">}}
 For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting).
 {{</lead>}}
 
@@ -83,7 +85,7 @@ For best results, keep steady state resource usage under 60%, and take strong ac
 [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
 
 {{<lead link="../observability">}}
-To learn more about the various metrics than you can monitor, see [Observability](../observability).
+Learn about the various metrics than you can monitor in [Observability](../observability).
 {{</lead>}}
 
 ## Learn more
