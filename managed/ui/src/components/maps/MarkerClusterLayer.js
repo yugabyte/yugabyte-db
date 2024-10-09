@@ -108,7 +108,7 @@ export default class MarkerClusterLayer extends MapLayer {
       sortByLengthOfArrayProperty(newMarkerData, 'universes').forEach((obj) => {
         const popupDetail = ReactDOMServer.renderToString(<MarkerDetail markerDetail={obj} />);
         const latLng = Leaflet.latLng(obj.latitude, obj.longitude);
-        const leafletMarker = new Leaflet.Marker(latLng).bindPopup(popupDetail, {
+        const leafletMarker = new Leaflet.Marker(latLng)?.bindPopup(popupDetail, {
           maxHeight: 100,
           maxWidth: 300,
           minWidth: 100
@@ -128,7 +128,7 @@ export default class MarkerClusterLayer extends MapLayer {
       });
       const marker = a.layer.getAllChildMarkers()[0];
       const cluster = a.target.getVisibleParent(marker);
-      cluster.bindPopup(clusterMarker, { minWidth: 100 }).openPopup();
+      cluster?.bindPopup(clusterMarker, { minWidth: 100 }).openPopup();
     });
   }
 
