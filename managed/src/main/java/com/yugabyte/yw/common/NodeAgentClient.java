@@ -12,6 +12,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -26,6 +27,9 @@ import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
+import com.yugabyte.yw.nodeagent.Server.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
@@ -33,6 +37,10 @@ import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.Server.FileInfo;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckInput;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
 import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
@@ -81,6 +89,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
@@ -242,18 +251,16 @@ public class NodeAgentClient {
         channelBuilder.withOption(
             ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
-      Map<String, ?> serviceConfig = getServiceConfig();
+      Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
         channelBuilder.defaultServiceConfig(serviceConfig);
       }
       return channelBuilder.build();
     }
 
-    static Map<String, ?> getServiceConfig() {
+    public static Map<String, ?> getServiceConfig(String configFile) {
       try (InputStream inputStream =
-          ChannelFactory.class
-              .getClassLoader()
-              .getResourceAsStream(NODE_AGENT_SERVICE_CONFIG_FILE)) {
+          ChannelFactory.class.getClassLoader().getResourceAsStream(configFile)) {
         Map<String, ?> map =
             Json.mapper()
                 .readValue(
@@ -458,6 +465,50 @@ public class NodeAgentClient {
       try {
         outputStream.write(response.getChunkData().toByteArray());
       } catch (IOException e) {
+        onError(e);
+      }
+    }
+  }
+
+  static class DescribeTaskResponseObserver<T> extends BaseResponseObserver<DescribeTaskResponse> {
+    private final Class<T> responseClass;
+    private final AtomicReference<T> resultRef;
+
+    DescribeTaskResponseObserver(String id, Class<T> responseClass) {
+      super(id);
+      this.responseClass = responseClass;
+      this.resultRef = new AtomicReference<>();
+    }
+
+    public T waitForResponse() {
+      super.waitFor();
+      return resultRef.get();
+    }
+
+    @Override
+    public void onNext(DescribeTaskResponse response) {
+      try {
+        if (response.hasError()) {
+          com.yugabyte.yw.nodeagent.Server.Error error = response.getError();
+          onError(
+              new RuntimeException(
+                  String.format("Code: %d, Error: %s", error.getCode(), error.getMessage())));
+        } else {
+          if (response.hasOutput()) {
+            log.info(response.getOutput());
+          } else {
+            for (Map.Entry<FieldDescriptor, Object> entry : response.getAllFields().entrySet()) {
+              if (entry.getValue() == null) {
+                continue;
+              }
+              if (entry.getValue().getClass().isAssignableFrom(responseClass)) {
+                resultRef.set(responseClass.cast(entry.getValue()));
+                break;
+              }
+            }
+          }
+        }
+      } catch (Exception e) {
         onError(e);
       }
     }
@@ -778,11 +829,63 @@ public class NodeAgentClient {
     return response.getHome();
   }
 
+  public void abortTask(NodeAgent nodeAgent, String taskId) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    try {
+      NodeAgentGrpc.newBlockingStub(channel)
+          .abortTask(AbortTaskRequest.newBuilder().setTaskId(taskId).build());
+    } catch (Exception e) {
+      // Ignore error.
+      log.error("Abort failed for task {} - {}", taskId, e.getMessage());
+    }
+  }
+
+  public PreflightCheckOutput runPreflightCheck(
+      NodeAgent nodeAgent, PreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder().setPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), PreflightCheckOutput.class);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
     } catch (RuntimeException e) {
       log.error("Client cache cleanup failed {}", e);
+    }
+  }
+
+  // Common method to submit async task and wait for the result.
+  private <T> T runAsyncTask(
+      NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
+    String taskId = response.getTaskId();
+    NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
+    String id = String.format("%s-%s", nodeAgent.getUuid(), taskId);
+    DescribeTaskRequest describeTaskRequest =
+        DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
+    while (true) {
+      try {
+        log.info("Describing task {}", taskId);
+        DescribeTaskResponseObserver<T> responseObserver =
+            new DescribeTaskResponseObserver<>(id, responseClass);
+        stub.describeTask(describeTaskRequest, responseObserver);
+        return responseObserver.waitForResponse();
+      } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+          // Best effort to abort.
+          abortTask(nodeAgent, taskId);
+          log.error(
+              "Error in describing task for node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          throw e;
+        } else {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent.getIp(), taskId);
+        }
+      }
     }
   }
 
