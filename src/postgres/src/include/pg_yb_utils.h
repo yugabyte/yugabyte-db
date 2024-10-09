@@ -575,6 +575,11 @@ extern bool yb_enable_fkey_catcache;
  */
 extern int yb_insert_on_conflict_read_batch_size;
 
+/*
+ * Enable the nop alter role statement optimization.
+ */
+extern bool yb_enable_nop_alter_role_optimization;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

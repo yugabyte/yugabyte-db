@@ -305,6 +305,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
 
 DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
+    "Enable nop alter role statement optimization.");
+
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
 
