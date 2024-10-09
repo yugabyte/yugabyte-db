@@ -71,6 +71,11 @@ public class AlertChannelEmail extends AlertChannelBase {
     }
 
     try {
+      log.debug(
+          "Sending Email alert notification with title {} and text {} to {}",
+          title,
+          text,
+          String.join(",", recipients));
       emailHelper.sendEmail(
           customer,
           title,
