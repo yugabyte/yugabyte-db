@@ -35,6 +35,7 @@ class TSHeartbeatResponsePB;
 class XClusterConfig;
 class XClusterSafeTimeService;
 struct SysCatalogLoadingState;
+struct XClusterSetupUniverseReplicationData;
 
 // The XClusterManager class is responsible for managing all yb-master related control logic of
 // XCluster. All XCluster related RPCs and APIs are handled by this class.
@@ -106,6 +107,9 @@ class XClusterManager : public XClusterManagerIf,
       const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  Status SetupUniverseReplication(
+      XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch);
+
   Status IsSetupUniverseReplicationDone(
       const IsSetupUniverseReplicationDoneRequestPB* req,
       IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc);
@@ -129,6 +133,11 @@ class XClusterManager : public XClusterManagerIf,
   Status DeleteUniverseReplication(
       const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+      const LeaderEpoch& epoch) override;
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
