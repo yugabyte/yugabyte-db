@@ -25,17 +25,17 @@
 
 # Core Features
 
-* **Powerful RDBMS capabilities** Yugabyte SQL (*YSQL* for short) reuses the query layer of PostgreSQL (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc). Here is a detailed [list of features currently supported by YSQL](https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/).
+* **[Powerful RDBMS capabilities](https://docs.yugabyte.com/preview/explore/ysql-language-features/)** Yugabyte SQL (*YSQL* for short) reuses the query layer of PostgreSQL (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc).
 
-* **Distributed transactions** The [transaction design](https://docs.yugabyte.com/preview/architecture/transactions/) is based on the Google Spanner architecture. Strong consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot*, *serializable* and *read committed* isolation levels are supported. Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read-replicas.
+* **[Distributed transactions](https://docs.yugabyte.com/preview/architecture/transactions/)** The transaction design is based on the Google Spanner architecture. Strong consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot*, *serializable* and *read committed* isolation levels are supported. Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read-replicas.
 
-* **Continuous availability** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, node, zone, region, and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds). Learn more at [Resiliency, high availability, and fault tolerance](https://docs.yugabyte.com/preview/explore/fault-tolerance/)
+* **[Continuous availability](https://docs.yugabyte.com/preview/explore/fault-tolerance/)** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, node, zone, region, and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
 
-* **Horizontal scalability** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster. To understand how YugabyteDB scales, see [Horizontal scalability](https://docs.yugabyte.com/preview/explore/linear-scalability/)
+* **[Horizontal scalability](https://docs.yugabyte.com/preview/explore/linear-scalability/)** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
 
-* **Geo-distributed, multi-cloud** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations that can be leveraged in two-region deployments. To serve (stale) data with low latencies, read replicas are also a supported feature. Learn more at [Build multi-cloud applications ](https://docs.yugabyte.com/preview/develop/multi-cloud/)
+* **[Geo-distributed, multi-cloud](https://docs.yugabyte.com/preview/develop/multi-cloud/)** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations that can be leveraged in two-region deployments. To serve (stale) data with low latencies, read replicas are also a supported feature.
 
-* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/preview/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/preview/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
+* **[Multi API design](https://docs.yugabyte.com/preview/api)** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/preview/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/preview/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
 * **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data-at-rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
@@ -58,21 +58,21 @@ YugabyteDB supports many languages and client drivers, including Java, Go, NodeJ
 
 Here is a list of some of the key features being worked on for the upcoming releases. The YugabyteDB [**v2024.1 release**](https://docs.yugabyte.com/preview/releases/ybdb-releases/) has been released in **June, 2024**.
 
-|                                                  Feature                                                   |                                                Details                                                 |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [PostgreSQL 15 Compatibility](https://github.com/yugabyte/yugabyte-db/issues/9797)                         | For latest features, new PostgreSQL extensions, performance, and community fixes                       |
-| [PostgreSQL Publication/Replication slot API in CDC](https://github.com/yugabyte/yugabyte-db/issues/18724) | PostgreSQL has a huge community that needs a PG-compatible API to set up and consume database changes. |
-| [Bitmap scan](https://github.com/yugabyte/yugabyte-db/issues/22653)                                        | Bitmap Scan support for using Index Scans, remote filter and enhance Cost Model.                       |
-| [Cost based optimizer(CBO)](https://github.com/yugabyte/yugabyte-db/issues/10177)                          | Better query plans based on table statistics                                                                         |
-| [Parallel query execution](https://github.com/yugabyte/yugabyte-db/issues/17984)                           | Devise query plans that can leverage multiple CPUs in order to answer queries faster.                  |
-| [pgvector extension](https://github.com/yugabyte/yugabyte-db/issues/16166)                                 | Support for vector data types, enabling efficient storage and querying of high-dimensional vectors.                                                             |
-| [Connection Management](https://github.com/yugabyte/yugabyte-db/issues/17599)                              | Server side connection management                                                                      |
+|                                                  Feature                                                   |                                                           Details                                                           |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [PostgreSQL 15 Compatibility](https://github.com/yugabyte/yugabyte-db/issues/9797)                         | For latest features, new PostgreSQL extensions, performance, and community fixes                                            |
+| [PostgreSQL Publication/Replication slot API in CDC](https://github.com/yugabyte/yugabyte-db/issues/18724) | PostgreSQL has a huge community that needs a PG-compatible API to set up and consume database changes.                      |
+| [Bitmap scan](https://github.com/yugabyte/yugabyte-db/issues/22653)                                        | Bitmap Scan support for using Index Scans, remote filter and enhance Cost Model.                                            |
+| [Cost based optimizer(CBO)](https://github.com/yugabyte/yugabyte-db/issues/10177)                          | Efficient query plans based on statistics (such as table size, number of rows) and data distribution.                       |
+| [Parallel query execution](https://github.com/yugabyte/yugabyte-db/issues/17984)                           | Higher query performance by splitting a single query and executing them simultaneously across different CPU cores.          |
+| [pgvector extension](https://github.com/yugabyte/yugabyte-db/issues/16166)                                 | Support for vector data types, enabling efficient storage and querying of high-dimensional vectors.                         |
+| [Connection Management](https://github.com/yugabyte/yugabyte-db/issues/17599)                              | Server side connection management enabling upto 30K connections per node                                                    |
 
 Please refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:issue+is:open+label:current-roadmap) for the list of all items in the current roadmap.
 
 # Recently released features
 
-## v2.23
+## v2.23 (Preview)
 
 #### [Instant database cloning](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=and%20improving%20performance.-,Instant%20database%20cloning)
 
@@ -90,7 +90,9 @@ Simplifies the management of YSQL transactional xCluster replication by operatin
 
 The improvements to backward scan performance now allows such queries to be 10X faster out of the box!
 
-## v2024.1
+For other new features and improvements, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/)
+
+## v2024.1 (Stable)
 
 #### [Enhanced Postgres Compatibility Mode](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/#highlights:~:text=Highlights-,Enhanced%20Postgres%20Compatibility%20Mode,-EA)
 
@@ -104,13 +106,11 @@ Seamlessly roll back to the pre-upgrade version if you're not satisfied with the
 
 A join execution strategy that is an improvement on Nested Loop joins that sends one request to the inner table per batch of outer table tuples instead of once per individual outer table tuple.
 
-#### [Catalog Caching](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#catalog-flags)
-
-Reduce master requests during PostgreSQL system catalog refresh by populating YB-TServer catalog cache
-
 #### [Enhanced Explain Analyze output](https://docs.yugabyte.com/stable/explore/query-1-performance/explain-analyze/)
 
 Explain Analyze when used with DIST option will also show the rows read from the storage layer, which can help diagnosing the query performance.
+
+For other new features and improvements, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/)
 
 # Architecture
 
