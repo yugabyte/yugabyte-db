@@ -66,6 +66,9 @@ var WARNING_MSGS = map[string]string{
     "insecure" :"Cluster started in an insecure mode without " +
         "authentication and encryption enabled. For non-production use only, " +
         "not to be used without firewalls blocking the internet traffic.",
+    "clockbound": "Clockbound is recommended on AWS clusters. It can reduce read restart errors" +
+        " significantly in concurrent workloads." +
+        " Relevant flag: --enhance_time_sync_via_clockbound.",
 }
 
 type SlowQueriesFuture struct {

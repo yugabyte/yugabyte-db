@@ -190,6 +190,12 @@ class MonoTime {
   static const MonoTime kMax;
   static const MonoTime kUninitialized;
 
+  // Connvert timespec to microseconds.
+  static uint64_t TimespecToMicros(const struct timespec& ts) {
+    return ts.tv_sec * kMicrosecondsPerSecond +
+           ts.tv_nsec / kNanosecondsPerMicrosecond;
+  }
+
   // The coarse monotonic time is faster to retrieve, but "only" accurate to within a millisecond or
   // two.  The speed difference will depend on your timer hardware.
   static MonoTime Now();
