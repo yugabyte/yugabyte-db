@@ -15,7 +15,6 @@ aliases:
   - /preview/explore/auto-sharding/linux/
   - /preview/explore/auto-sharding/docker/
   - /preview/explore/auto-sharding/kubernetes/
-image: /images/section_icons/explore/linear_scalability.png
 menu:
   preview:
     identifier: explore-scalability
@@ -53,9 +52,11 @@ To get a better idea of the effort and time you will need to scale your systems,
 
 Data distribution is critical in scaling. In YugabyteDB, data is [split (sharded)](./data-distribution/) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
 
-{{<tip>}}
-To learn more about the different types of sharding, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting).
-{{</tip>}}
+{{<lead>}}
+To learn more about the different types of sharding, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/).
+
+For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting).
+{{</lead>}}
 
 ### Rebalancing
 
@@ -93,48 +94,48 @@ To learn more about the various metrics than you can monitor, see [Observability
     title="Distribute data across nodes"
     body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
     href="data-distribution/"
-    icon="fa-solid fa-building">}}
+    icon="fa-thin fa-share-nodes">}}
 
   {{<index/item
     title="Horizontal vs vertical scaling"
     body="Understand the differences between horizontal and vertical scaling."
     href="horizontal-vs-vertical-scaling/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Scale out by adding nodes"
     body="Seamlessly scale your cluster on demand by adding new nodes to the cluster."
     href="node-addition/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-plus">}}
 
   {{<index/item
     title="Reads"
     body="See how reads scale in YugabyteDB."
     href="scaling-reads/"
-    icon="fa-brands fa-readme">}}
+    icon="fa-thin fa-book-open-reader">}}
 
   {{<index/item
     title="Writes"
     body="See how writes scale in YugabyteDB."
     href="scaling-writes/"
-    icon="fa-solid fa-pen">}}
+    icon="fa-thin fa-pen">}}
 
   {{<index/item
     title="Transactions"
     body="See how transactions scale in YugabyteDB."
     href="scaling-transactions/"
-    icon="/images/section_icons/explore/auto_sharding.png">}}
+    icon="fa-thin fa-money-from-bracket">}}
 
   {{<index/item
     title="Large datasets"
     body="See how large datasets scale in YugabyteDB."
     href="scaling-large-datasets/"
-    icon="fa-solid fa-weight-hanging">}}
+    icon="fa-thin fa-weight-hanging">}}
 
   {{<index/item
     title="Scale out a universe"
     body="Try it out for yourself by following an example."
     href="scaling-universe/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
 {{</index/block>}}
