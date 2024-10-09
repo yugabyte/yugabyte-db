@@ -48,6 +48,9 @@ var preflightCmd = &cobra.Command{
 			}
 			// TODO: We should allow the user to better specify which checks to run.
 			// Will do this as we implement a set of upgrade preflight checks
+			if dataless {
+				skippedPreflightChecks = append(skippedPreflightChecks, "disk-availability")
+			}
 			results := preflight.Run(checksToRun, skippedPreflightChecks...)
 			preflight.PrintPreflightResults(results)
 			if preflight.ShouldFail(results) {
