@@ -12,10 +12,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ear"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // CreateEARValidation validates the delete config command
@@ -36,9 +38,12 @@ func CreateEARValidation(cmd *cobra.Command) {
 // WaitForCreateEARTask is a util task for create ear
 func WaitForCreateEARTask(
 	authAPI *ybaAuthClient.AuthAPIClient,
-	earName, earUUID, earCode, taskUUID string) {
+	earName string, rTask ybaclient.YBPTask, earCode string) {
 
 	var err error
+
+	taskUUID := rTask.GetTaskUUID()
+	earUUID := rTask.GetResourceUUID()
 
 	earNameMessage := formatter.Colorize(earName, formatter.GreenColor)
 	if len(strings.TrimSpace(earUUID)) != 0 {
@@ -100,9 +105,14 @@ func WaitForCreateEARTask(
 		}
 
 		ear.Write(earsCtx, kmsConfigs)
-
-	} else {
-		logrus.Infoln(msg + "\n")
+		return
 	}
+	logrus.Infoln(msg + "\n")
+	taskCtx := formatter.Context{
+		Command: "create",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 }

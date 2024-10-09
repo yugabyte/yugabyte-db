@@ -11,11 +11,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ear"
-	earFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ear"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // UpdateEARConfig is a util function to monitor update tasks
@@ -24,12 +25,12 @@ func UpdateEARConfig(
 	earName, earUUID, earCode string,
 	requestBody map[string]interface{}) {
 	callSite := fmt.Sprintf("EAR: %s", earCode)
-	rUpdate, response, err := authAPI.EditKMSConfig(earUUID).KMSConfig(requestBody).Execute()
+	rTask, response, err := authAPI.EditKMSConfig(earUUID).KMSConfig(requestBody).Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Update")
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
-	taskUUID := rUpdate.GetTaskUUID()
+	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The ear %s (%s) is being updated",
 		formatter.Colorize(earName, formatter.GreenColor), earUUID)
@@ -81,14 +82,20 @@ func UpdateEARConfig(
 		earsCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,
-			Format:  earFormatter.NewEARFormat(viper.GetString("output")),
+			Format:  ear.NewEARFormat(viper.GetString("output")),
 		}
 
 		ear.Write(earsCtx, kmsConfigs)
-
-	} else {
-		logrus.Infoln(msg + "\n")
+		return
 	}
+	logrus.Infoln(msg + "\n")
+
+	taskCtx := formatter.Context{
+		Command: "update",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 }
 

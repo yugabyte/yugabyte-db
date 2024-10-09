@@ -133,7 +133,7 @@ var createK8sProviderCmd = &cobra.Command{
 			},
 		}
 
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -144,11 +144,8 @@ var createK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 

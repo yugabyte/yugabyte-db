@@ -6,13 +6,16 @@ package universe
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // deleteUniverseCmd represents the universe command
@@ -87,7 +90,7 @@ var deleteUniverseCmd = &cobra.Command{
 		deleteUniverseRequest = deleteUniverseRequest.IsForceDelete(forceDelete).
 			IsDeleteBackups(deleteBackups).IsDeleteAssociatedCerts(deleteCerts)
 
-		rDelete, response, err := deleteUniverseRequest.Execute()
+		rTask, response, err := deleteUniverseRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Delete")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
@@ -97,10 +100,10 @@ var deleteUniverseCmd = &cobra.Command{
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 		if viper.GetBool("wait") {
-			if len(rDelete.GetTaskUUID()) > 0 {
+			if len(rTask.GetTaskUUID()) > 0 {
 				logrus.Info(fmt.Sprintf("Waiting for universe %s (%s) to be deleted\n",
 					formatter.Colorize(universeName, formatter.GreenColor), universeUUID))
-				err = authAPI.WaitForTask(rDelete.GetTaskUUID(), msg)
+				err = authAPI.WaitForTask(rTask.GetTaskUUID(), msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
@@ -110,6 +113,12 @@ var deleteUniverseCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 

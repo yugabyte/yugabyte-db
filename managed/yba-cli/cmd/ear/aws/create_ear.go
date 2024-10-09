@@ -116,18 +116,15 @@ var createAWSEARCmd = &cobra.Command{
 			}
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.AWSEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.AWSEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: AWS", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.AWSEARType, taskUUID)
+			configName, rTask, util.AWSEARType)
 
 	},
 }

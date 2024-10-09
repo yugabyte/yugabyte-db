@@ -17,15 +17,20 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	providerFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/provider"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // WaitForUpdateProviderTask is a util function to monitor update tasks
 func WaitForUpdateProviderTask(
-	authAPI *ybaAuthClient.AuthAPIClient, providerName, providerUUID, providerCode, taskUUID string) {
+	authAPI *ybaAuthClient.AuthAPIClient,
+	providerName string, rTask ybaclient.YBPTask, providerCode string) {
 
 	var providerData []ybaclient.Provider
 	var response *http.Response
 	var err error
+
+	providerUUID := rTask.GetResourceUUID()
+	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The provider %s (%s) is being updated",
 		formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
@@ -55,9 +60,15 @@ func WaitForUpdateProviderTask(
 		}
 
 		providerFormatter.Write(providersCtx, providerData)
-
+		return
 	} else {
 		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "update",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	}
 
 }
