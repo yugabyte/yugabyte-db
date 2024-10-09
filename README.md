@@ -10,7 +10,7 @@
 
 # What is YugabyteDB?
 
-**YugabyteDB** is a **high-performance, cloud-native, [distributed SQL](https://www.yugabyte.com/tech/distributed-sql/) database** that aims to support **all PostgreSQL features**. It is best suited for **cloud-native OLTP (i.e., real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
+**YugabyteDB** is a **[high-performance](https://docs.yugabyte.com/preview/benchmark/), cloud-native, [distributed SQL](https://www.yugabyte.com/tech/distributed-sql/) database** that aims to be fully feature compatible with **PostgreSQL**. It aims to combine the benefits of traditional relational databases with the scalability of NoSQL systems, making it suitable for applications that require both transactional consistency and the ability to handle large amounts of data. It is best suited for **cloud-native OLTP (i.e., real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
 
 * [Core Features](#core-features)
 * [Get Started](#get-started)
@@ -39,7 +39,7 @@
 
 * **[100% open source](https://github.com/yugabyte/yugabyte-db)** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data-at-rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
-Read more about YugabyteDB in our [FAQ](https://docs.yugabyte.com/preview/faq/general/).
+YugabyteDB was created with several key design goals in mind, aiming to address the challenges faced by modern, cloud-native applications while maintaining the familiarity and power of traditional relational databases. Read more about these in our [Design goals](https://docs.yugabyte.com/preview/architecture/design-goals/).
 
 # Get Started
 
@@ -54,9 +54,9 @@ Cannot find what you are looking for? Have a question? Please post your question
 
 YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/preview/drivers-orms/).
 
-# Current roadmap
+# Current Roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases. The YugabyteDB [**v2024.1 release**](https://docs.yugabyte.com/preview/releases/ybdb-releases/) has been released in **June, 2024**.
+Here is a list of some of the key features being worked on for the upcoming releases.
 
 |                                                  Feature                                                   |                                                           Details                                                           |
 | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -72,7 +72,9 @@ Please refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues
 
 # Recently released features
 
-## v2.23 (Preview)
+## v2.23 (Preview) - Sep, 2024
+
+**v2.23** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and are recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/). Here are some of the prominent features.
 
 #### [Instant database cloning](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=and%20improving%20performance.-,Instant%20database%20cloning)
 
@@ -90,9 +92,9 @@ Simplifies the management of YSQL transactional xCluster replication by operatin
 
 The improvements to backward scan performance now allows such queries to be 10X faster out of the box!
 
-> For the full list of features and improvements, see [Release notes - v2.23](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/)
+## v2024.1 (Stable) - Jun, 2024
 
-## v2024.1 (Stable)
+**v2024.1** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/). Here are some of the prominent features.
 
 #### [Enhanced Postgres Compatibility Mode](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/#highlights:~:text=Highlights-,Enhanced%20Postgres%20Compatibility%20Mode,-EA)
 
@@ -109,8 +111,6 @@ A join execution strategy that is an improvement on Nested Loop joins that sends
 #### [Enhanced Explain Analyze output](https://docs.yugabyte.com/stable/explore/query-1-performance/explain-analyze/)
 
 Explain Analyze when used with DIST option will also show the rows read from the storage layer, which can help diagnosing the query performance.
-
-> For the full list of features and improvements, see [Release notes - v2024.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.1/)
 
 # Architecture
 
