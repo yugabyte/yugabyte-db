@@ -100,7 +100,7 @@ To download the invoice as a PDF, click **Download Invoice**.
 
 - Plan, Price, and Billing option - your plan type and how you are charged (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
-- Total - the amount you owe in the billing period (or running total in the current billing period; Yugabyte updates the running total once a day).
+- Total billable amount due - the amount you owe in the billing period net of remaining credits. For active invoices, Running total in the current billing period, which Yugabyte updates once a day.
 - Previous invoice - the amount of the previous invoice.
 - Last billed on - the date of the previous invoice.
 - This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
