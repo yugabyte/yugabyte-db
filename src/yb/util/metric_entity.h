@@ -196,6 +196,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   bool TEST_ContainMetricName(const std::string& metric_name) const;
 
+  Result<std::string> TEST_GetAttributeFromMap(const std::string& key) const;
+
  private:
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;
