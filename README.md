@@ -128,7 +128,7 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/preview/arc
 
 # Contribute
 
-As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com).
+As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com/c/design-discussions/7).
 
 # License
 
@@ -145,5 +145,5 @@ The build produces two sets of binaries:
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
 * For an in-depth design and the YugabyteDB architecture, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
-* Tech Talks and [Videos](https://www.youtube.com/c/YugaByte).
+* [Tech Talks](https://www.yugabyte.com/yftt/) and [Videos](https://www.youtube.com/c/YugaByte).
 * See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/preview/faq/comparisons/).
