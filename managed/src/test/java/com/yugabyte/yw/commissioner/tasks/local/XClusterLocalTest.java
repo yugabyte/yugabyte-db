@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
@@ -211,6 +212,141 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("2", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
+  }
+
+  @Test
+  public void testTableExistsOnTargetUniverseInBiDirectionalReplication()
+      throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getDefaultUserIntent("source-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe sourceUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(sourceUniverse);
+    initYCQL(sourceUniverse);
+
+    userIntent = getDefaultUserIntent("target-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe targetUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(targetUniverse);
+    initYCQL(targetUniverse);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+    log.info("Customer config here: {}", customerConfig.toString());
+
+    Db db = Db.create("test_xcluster_db", false);
+    Table table1 = Table.create("test_table_1", DEFAULT_TABLE_COLUMNS, db);
+    Table table2 = Table.create("test_table_2", DEFAULT_TABLE_COLUMNS, db);
+    Table table3 = Table.create("test_table_3", DEFAULT_TABLE_COLUMNS, db);
+    Table table4 = Table.create("test_table_4", DEFAULT_TABLE_COLUMNS, db);
+    createTestSet(sourceUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+    createTestSet(targetUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+
+    // Get the table info for the source universe.
+    List<TableInfoForm.TableInfoResp> resp =
+        tableHandler.listTables(
+            customer.getUuid(), sourceUniverse.getUniverseUUID(), false, false, true, true);
+    // Create source to target xCluster config.
+    XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "bi-directional-xcluster-1";
+    formData.tables = new HashSet<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name) && !tableInfo.tableName.equals(table4.name)) {
+        formData.tables.add(tableInfo.tableID);
+      }
+    }
+    formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+    formData.bootstrapParams.tables = formData.tables;
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createXClusterConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID xClusterConfigUuid = UUID.fromString(json.get("resourceUUID").asText());
+
+    // Verify the table status on xCluster config.
+    Result getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    XClusterConfig xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+
+    assertEquals(3, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    // Create target to source xCluster config.
+    resp =
+        tableHandler.listTables(
+            customer.getUuid(), targetUniverse.getUniverseUUID(), false, false, true, true);
+    XClusterConfigCreateFormData formData2 = new XClusterConfigCreateFormData();
+    formData2.sourceUniverseUUID = targetUniverse.getUniverseUUID();
+    formData2.targetUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData2.name = "bi-directional-xcluster-2";
+    formData2.tables = new HashSet<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name)) {
+        formData2.tables.add(tableInfo.tableID);
+      }
+    }
+
+    result = createXClusterConfig(formData2);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID xClusterConfigUuid2 = UUID.fromString(json.get("resourceUUID").asText());
+
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid2);
+    assertOk(getXClusterConfigResult);
+    xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+    assertEquals(3, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    createTable(sourceUniverse, table4);
+    String table4Id = "";
+    // Get the table info for the source universe.
+    resp =
+        tableHandler.listTables(
+            customer.getUuid(), sourceUniverse.getUniverseUUID(), false, false, true, true);
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables = new HashSet<String>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name)) {
+        editFormData.tables.add(tableInfo.tableID);
+      }
+      if (tableInfo.tableName.equals(table4.name)) {
+        table4Id = tableInfo.tableID;
+      }
+    }
+    editFormData.bootstrapParams = null;
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> editXClusterConfig(editFormData, xClusterConfigUuid));
+    String errMsg =
+        String.format(
+            "Table ids [%s] do not have corresponding tables on the target universe and they must"
+                + " be bootstrapped but bootstrapParams is null",
+            table4Id);
+    assertEquals(errMsg, exception.getMessage());
   }
 
   @Test
