@@ -41,6 +41,9 @@ and the following message when there is no more space left:
 0829 15:35:51.325239 1986375680 log.cc:2181] Not enough disk space available on yb-data/tserver/wals/table-7457ebcd745e4ea89375a30406f2c188/tablet-749e4d78244c43d2bba9cdb8505b732f/wal-000000001. Free space: 3518698209 bytes
 ```
 
+
+## What to do when a drive is running low
+
 If the data drive is running short of disk space, use one of the following options to stop the writes from failing.
 
 ### Increase capacity
@@ -87,20 +90,24 @@ YugabyteDB automatically compacts data to keep the database running efficiently 
 
 Note that regardless of the above options, it is possible that some other activity on the node (such as remote bootstrap) can end up taking up more space and use up the space on the disk.
 
-The following sections describe the disk full scenarios and the recommended recovery actions.
 
-## Scenarios
+## Drive full scenarios
+
+The following sections describe disk full scenarios and the recommended recovery actions.
 
 ### The drive containing the log file is full
 
-The process is unable to create new log files at tablet bootstrap time, and this can be identified by looking at the `/var/log/messages` files. This results in YB-TServer or YB-Master crash loop.
+If the Master or TServer are unable to create new log files at tablet bootstrap time, they can enter a crash loop.
 
-### Disk full situation on other data drives
+You can identify this by looking at the `/var/log/messages` files [for what? can we have an example log message]
+
+### Data drive is full
 
 #### Crash loop due to write I/O error
 
 If the disk isn't completely full (it probably has a few KBs of disk space left), the YB-TServer can successfully bootstrap. However, a subsequent write operation might fail with a fatal/crash error due to the disk getting full. This can lead to a continuous crash loop as the server restarts and encounters the same issue all over again.
-An example IO error is as follows:
+
+An example I/O error is as follows:
 
 ```output
 consensus_queue.cc:368] Check failed: _s.ok() Bad status: IO error (yb/util/env_posix.cc:504): /mnt/d1/yb-data/tserver/wals/table-6e527d21c179455286ae94ddcbebd267/tablet-be46450d80d049ee8b6a0780dfa54926/.tmp.newsegmentiS4vyN: No space left on device (system error 28)
