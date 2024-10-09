@@ -16,7 +16,7 @@ This document describes the potential consequences and recommended actions when 
 
 YugabyteDB data drive doesn't rely on the local root file system for storing data. Instead, YugabyteDB data directories are typically mounted on separate file systems to ensure isolation and manageability.
 
-The following Master and TServer flags are used to configure the location of the data drives:
+The following YB-Master and YB-TServer flags are used to configure the location of the data drives:
 
 - [fs_data_dirs](../../../reference/configuration/yb-tserver/#fs-data-dirs)
 - [log_dir](../../../reference/configuration/yb-tserver/#log-dir)
@@ -38,9 +38,8 @@ W0829 15:35:51.325239 1986375680 log.cc:2186] Low disk space on yb-data/tserver/
 and the following message when there is no more space left:
 
 ```output
-0829 15:35:51.325239 1986375680 log.cc:2181] Not enough disk space available on yb-data/tserver/wals/table-7457ebcd745e4ea89375a30406f2c188/tablet-749e4d78244c43d2bba9cdb8505b732f/wal-000000001. Free space: 3518698209 bytes
+0829 15:35:51.325239 1986375680 log.cc:2181] Not enough disk space available on yb-data/tserver/wals/table-7457ebcd745e4ea89375a30406f2c188/tablet-749e4d78244c43d2bba9cdb8505b732f/wal-000000001.
 ```
-
 
 ## What to do when a drive is running low
 
@@ -89,7 +88,6 @@ YugabyteDB automatically compacts data to keep the database running efficiently 
 - [Compact individual tablets](../../../admin/yb-ts-cli/#compact-tablet)
 
 Note that regardless of the above options, it is possible that some other activity on the node (such as remote bootstrap) can end up taking up more space and use up the space on the disk.
-
 
 ## Drive full scenarios
 
@@ -140,4 +138,4 @@ The following two recommendations are specific to [YugabyteDB Anywhere](../../..
 
 **Option 2**: Add a new node using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option.
 
-Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1 or Option 2) to form a quorum, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
+Note that in a cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF) of N, if more than N/2 nodes fail, adding a new node will fail. To recover from this situation, you need to bring some failed nodes back online (using Option 1) to form a quorum, and then add new nodes. If that's not possible, you might need to manually perform an unsafe configuration change.
