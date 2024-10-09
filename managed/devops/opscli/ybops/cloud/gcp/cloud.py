@@ -284,11 +284,15 @@ class GcpCloud(AbstractCloud):
                         }
                     if region in result[name]["prices"]:
                         continue
-                    result[name]["prices"][region] = self.get_os_price_map(pricing_map,
-                                                                           name,
-                                                                           region,
-                                                                           result[name]["numCores"],
-                                                                           result[name]["isShared"])
+                    try:
+                        result[name]["prices"][region] = self.get_os_price_map(pricing_map,
+                                                                               name,
+                                                                               region,
+                                                                               result[name]["numCores"],
+                                                                               result[name]["isShared"])
+                    except Exception as e:
+                        logging.warn("[app] Error {} getting price info for {}".format(e, name))
+                        result[name]["prices"][region] = 0.0
         to_delete_instance_types = []
         for name in result:
             to_delete_regions = []
