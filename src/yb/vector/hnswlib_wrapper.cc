@@ -68,6 +68,7 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
   Status Insert(VertexId vertex_id, const Vector& v) override {
     CHECK_NOTNULL(hnsw_);
     hnsw_->addPoint(v.data(), vertex_id);
+    has_entries_ = true;
     return Status::OK();
   }
 
@@ -91,8 +92,15 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
+  }
+
   std::vector<VertexWithDistance<DistanceResult>> Search(
       const Vector& query_vector, size_t max_num_results) const override {
+    if (!has_entries_) {
+      return {};
+    }
     std::vector<VertexWithDistance<DistanceResult>> result;
     auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), max_num_results);
     result.reserve(tmp_result.size());
@@ -141,6 +149,7 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+  std::atomic<bool> has_entries_{false};
 };
 
 }  // namespace

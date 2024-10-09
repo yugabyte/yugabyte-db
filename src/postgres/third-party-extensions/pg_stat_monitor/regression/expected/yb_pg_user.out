@@ -1,0 +1,65 @@
+CREATE USER su WITH SUPERUSER;
+ERROR:  role "su" already exists
+SET ROLE su;
+CREATE EXTENSION pg_stat_monitor;
+CREATE USER u1;
+CREATE USER u2;
+GRANT ALL ON SCHEMA public TO u1;
+GRANT ALL ON SCHEMA public TO u2;
+SET ROLE su;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+SET ROLE u1;
+SELECT pg_stat_monitor_reset();
+ERROR:  permission denied for function pg_stat_monitor_reset
+CREATE TABLE t1 (a int);
+SELECT * FROM t1;
+ a
+---
+(0 rows)
+
+SET ROLE u2;
+CREATE TABLE t2 (a int);
+SELECT * FROM t2;
+ a 
+---
+(0 rows)
+
+DROP TABLE t2;
+SET ROLE su;
+DROP OWNED BY u2;
+DROP USER u2;
+SELECT username, query FROM pg_stat_monitor WHERE username != 'postgres' ORDER BY username, query COLLATE "C"; -- YB: add username filter to avoid catalog version update queries
+ username |              query              
+----------+---------------------------------
+ su       | DROP OWNED BY u2
+ su       | DROP USER u2
+ su       | SELECT pg_stat_monitor_reset()
+ su       | SET ROLE su
+ u1       | CREATE TABLE t1 (a int)
+ u1       | SELECT * FROM t1
+ u1       | SELECT pg_stat_monitor_reset();
+ u1       | SET ROLE u1
+ u2       | CREATE TABLE t2 (a int)
+ u2       | DROP TABLE t2
+ u2       | SELECT * FROM t2
+ u2       | SET ROLE u2
+(12 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+DROP TABLE t1;
+DROP OWNED BY u1;
+DROP USER u1;
+DROP EXTENSION pg_stat_monitor;
+SET ROLE NONE;
+DROP OWNED BY su;
+DROP USER su;

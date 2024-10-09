@@ -37,7 +37,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.putAll(FailOnConflictTestGflags);
+    setFailOnConflictFlags(flagMap);
     return flagMap;
   }
 

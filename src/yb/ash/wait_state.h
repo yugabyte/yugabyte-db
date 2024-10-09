@@ -231,6 +231,7 @@ struct AshMetadata {
   uint8_t addr_family = AF_UNSPEC;
 
   void set_client_host_port(const HostPort& host_port);
+  void clear_rpc_request_id();
 
   std::string ToString() const;
 
@@ -385,7 +386,10 @@ class WaitStateInfo {
   static void UpdateMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      wait_state->UpdateMetadata(AshMetadata::FromPB(pb));
+      // rpc_request_id is generated for each RPC, we don't populate it from PB
+      auto metadata = AshMetadata::FromPB(pb);
+      metadata.clear_rpc_request_id();
+      wait_state->UpdateMetadata(metadata);
     }
   }
 

@@ -627,7 +627,7 @@ endif()
 function(ADD_THIRDPARTY_LIB LIB_NAME)
   set(options)
   set(one_value_args SHARED_LIB STATIC_LIB)
-  set(multi_value_args DEPS)
+  set(multi_value_args DEPS INCLUDE_DIRS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -651,6 +651,11 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
   if(ARG_DEPS)
     set_target_properties(${LIB_NAME}
       PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+  endif()
+
+  if (ARG_INCLUDE_DIRS)
+    target_include_directories(${LIB_NAME}
+      SYSTEM INTERFACE "${ARG_INCLUDE_DIRS}")
   endif()
 
   # Set up an "exported variant" for this thirdparty library (see "Visibility"

@@ -9,5 +9,6 @@ import lombok.Setter;
 @Setter
 /** Details for {@link com.yugabyte.yw.models.TaskInfo.class} */
 public class TaskDetails {
+  private String version;
   private YBAError error;
 }

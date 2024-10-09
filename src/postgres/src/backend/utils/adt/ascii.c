@@ -2,7 +2,7 @@
  * ascii.c
  *	 The PostgreSQL routine for string to ascii conversion.
  *
- *	 Portions Copyright (c) 1999-2018, PostgreSQL Global Development Group
+ *	 Portions Copyright (c) 1999-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/ascii.c
@@ -16,7 +16,7 @@
 #include "utils/builtins.h"
 
 static void pg_to_ascii(unsigned char *src, unsigned char *src_end,
-			unsigned char *dest, int enc);
+						unsigned char *dest, int enc);
 static text *encode_to_ascii(text *data, int enc);
 
 

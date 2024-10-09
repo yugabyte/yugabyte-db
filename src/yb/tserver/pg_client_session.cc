@@ -2313,8 +2313,12 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
   return result;
 }
 
-void PgClientSession::Shutdown() {
-  big_shared_mem_expiration_task_.Shutdown();
+void PgClientSession::StartShutdown() {
+  big_shared_mem_expiration_task_.StartShutdown();
+}
+
+void PgClientSession::CompleteShutdown() {
+  big_shared_mem_expiration_task_.CompleteShutdown();
 }
 
 }  // namespace yb::tserver

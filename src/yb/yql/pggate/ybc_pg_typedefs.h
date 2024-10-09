@@ -214,7 +214,6 @@ typedef unsigned int YBCPgOid;
 // Structure to hold the values of hidden columns when passing tuple from YB to PG.
 typedef struct PgSysColumns {
   // Postgres system columns.
-  uint32_t oid;
   uint32_t tableoid;
   uint32_t xmin;
   uint32_t cmin;
@@ -395,6 +394,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     TEST_generate_ybrowid_sequentially;
   const bool*     ysql_use_fast_backward_scan;
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
+  const bool*     TEST_ysql_enable_db_logical_client_version_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

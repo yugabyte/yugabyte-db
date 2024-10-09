@@ -1418,38 +1418,49 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         cleanup_type, tablet_ids);
   }
 
+  bool CheckWaitAbortOnOldStatusTablet(std::string_view action, Waiter waiter) REQUIRES(mutex_) {
+    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
+    if (old_status_tablet_state != OldTransactionState::kAborting) {
+      return false;
+    }
+
+    VLOG_WITH_PREFIX(1) << action << " done, but waiting for abort on old status tablet";
+    cleanup_waiter_ = std::move(waiter);
+    return true;
+  }
+
   void CommitDone(const Status& status,
                   const tserver::UpdateTransactionResponsePB& response,
                   const YBTransactionPtr& transaction) {
     TRACE_TO(trace_, __func__);
 
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
-    if (old_status_tablet_state == OldTransactionState::kAborting) {
-      std::lock_guard lock(mutex_);
-      VLOG_WITH_PREFIX(1) << "Commit done, but waiting for abort on old status tablet";
-      cleanup_waiter_ = Waiter(std::bind(&Impl::CommitDone, this, status, response, transaction));
-      return;
-    }
-
-    VLOG_WITH_PREFIX(1) << "Committed: " << status;
-
-    UpdateClock(response, manager_);
-    manager_->rpcs().Unregister(&commit_handle_);
-
-    Status actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+    Status actual_status;
     CommitCallback commit_callback;
-    if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
-        actual_status.ok()) {
+    {
       std::lock_guard lock(mutex_);
-      commit_replicated_ = true;
-      if (running_requests_ != 0) {
+      if (CheckWaitAbortOnOldStatusTablet(
+          "Commit", Waiter(std::bind(&Impl::CommitDone, this, status, response, transaction)))) {
         return;
       }
-      commit_callback = std::move(commit_callback_);
-    } else {
-      std::lock_guard lock(mutex_);
-      commit_callback = std::move(commit_callback_);
+
+      VLOG_WITH_PREFIX(1) << "Committed: " << status;
+
+      UpdateClock(response, manager_);
+      manager_->rpcs().Unregister(&commit_handle_);
+
+      actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+      if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
+          actual_status.ok()) {
+        commit_replicated_ = true;
+        if (running_requests_ != 0) {
+          return;
+        }
+        commit_callback = std::move(commit_callback_);
+      } else {
+        commit_callback = std::move(commit_callback_);
+      }
     }
+
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
     commit_callback(actual_status);
 
@@ -1466,12 +1477,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                  const YBTransactionPtr& transaction) {
     TRACE_TO(trace_, __func__);
 
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
-    if (old_status_tablet_state == OldTransactionState::kAborting) {
+    {
       std::lock_guard lock(mutex_);
-      VLOG_WITH_PREFIX(1) << "Abort done, but waiting for abort on old status tablet";
-      cleanup_waiter_ = Waiter(std::bind(&Impl::AbortDone, this, status, response, transaction));
-      return;
+      if (CheckWaitAbortOnOldStatusTablet(
+          "Abort", Waiter(std::bind(&Impl::AbortDone, this, status, response, transaction)))) {
+        return;
+      }
     }
 
     VLOG_WITH_PREFIX(1) << "Aborted: " << status;
@@ -1967,23 +1978,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "SendUpdateTransactionStatusLocationRpcs()";
 
-    std::weak_ptr<YBTransaction> weak_transaction = transaction_->shared_from_this();
+    std::shared_ptr<YBTransaction> transaction = transaction_->shared_from_this();
     manager_->client()->messenger()->scheduler().Schedule(
-        [this, weak_transaction, id = metadata_.transaction_id](const Status&) {
-          DoSendUpdateTransactionStatusLocationRpcs(weak_transaction, id);
+        [this, transaction = std::move(transaction), id = metadata_.transaction_id](const Status&) {
+          DoSendUpdateTransactionStatusLocationRpcs(std::move(transaction), id);
         },
         std::chrono::milliseconds(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms));
   }
 
   void DoSendUpdateTransactionStatusLocationRpcs(
-      const std::weak_ptr<YBTransaction>& weak_transaction, const TransactionId& id)
+      std::shared_ptr<YBTransaction> transaction, const TransactionId& id)
       EXCLUDES(mutex_) {
-    auto transaction = weak_transaction.lock();
-    if (!transaction) {
-      VLOG(1) << id << ": " << "Transaction destroyed, not sending status location updates";
-      return;
-    }
-
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionStatusLocationRpcs()";
 
@@ -1997,10 +2002,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (transaction_status_move_tablets_.empty()) {
       auto old_status_tablet = old_status_tablet_;
-      auto transaction = transaction_->shared_from_this();
       lock.unlock();
       VLOG_WITH_PREFIX(1) << "No participants to send transaction status location updates to";
-      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
+      SendAbortToOldStatusTabletIfNeeded(
+          TransactionRpcDeadline(), std::move(transaction), old_status_tablet);
       return;
     }
 
@@ -2035,12 +2040,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     for (const auto& participant_tablet : participant_tablets) {
       VLOG_WITH_PREFIX(2) << "SendUpdateTransactionStatusLocationRpcs() to tablet "
                           << participant_tablet;
-      LookupTabletForTransactionStatusLocationUpdate(weak_transaction, id, req, participant_tablet);
+      LookupTabletForTransactionStatusLocationUpdate(
+          std::move(transaction), id, req, participant_tablet);
     }
   }
 
   void LookupTabletForTransactionStatusLocationUpdate(
-      const std::weak_ptr<YBTransaction>& weak_transaction,
+      std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const tserver::UpdateTransactionStatusLocationRequestPB& request_template,
       const TabletId& tablet_id) EXCLUDES(mutex_) {
@@ -2051,9 +2057,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         master::IncludeInactive::kFalse,
         master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
-        std::bind(
-            &Impl::LookupTabletForTransactionStatusLocationUpdateDone, this, _1, weak_transaction,
-            id, request_template, tablet_id),
+        [this, transaction = std::move(transaction), id, request_template, tablet_id](
+            const Result<internal::RemoteTabletPtr>& result) mutable {
+          LookupTabletForTransactionStatusLocationUpdateDone(
+              result, std::move(transaction), id, request_template, tablet_id);
+        },
         client::UseCache::kTrue);
   }
 
@@ -2064,7 +2072,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   rpc::RpcCommandPtr PrepareUpdateTransactionStatusLocationRpc(
-      const std::weak_ptr<YBTransaction>& weak_transaction,
+      std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const TabletId &tablet_id, internal::RemoteTabletPtr participant_tablet,
       const tserver::UpdateTransactionStatusLocationRequestPB& request_template) {
@@ -2077,23 +2085,22 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         participant_tablet.get(),
         manager_->client(),
         &request,
-        std::bind(
-            &Impl::UpdateTransactionStatusLocationDone, this, weak_transaction, id, tablet_id,
-            participant_tablet, request_template, _1, _2));
+        [this, transaction = std::move(transaction), id, tablet_id, participant_tablet,
+         request_template](
+            const Status& status,
+            const tserver::UpdateTransactionStatusLocationResponsePB& response) mutable {
+          UpdateTransactionStatusLocationDone(
+              std::move(transaction), id, tablet_id, participant_tablet, request_template,
+              status, response);
+        });
   }
 
   void LookupTabletForTransactionStatusLocationUpdateDone(
       const Result<internal::RemoteTabletPtr>& result,
-      const std::weak_ptr<YBTransaction>& weak_transaction,
+      std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const tserver::UpdateTransactionStatusLocationRequestPB& request_template,
       const TabletId& tablet_id) EXCLUDES(mutex_) {
-    auto transaction = weak_transaction.lock();
-    if (!transaction) {
-      VLOG(1) << id << ": " << "Transaction destroyed, not sending status location updates";
-      return;
-    }
-
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
@@ -2106,25 +2113,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     auto handle = GetTransactionStatusMoveHandle(tablet_id);
     auto rpc = PrepareUpdateTransactionStatusLocationRpc(
-        weak_transaction, id, tablet_id, *result, request_template);
+        std::move(transaction), id, tablet_id, *result, request_template);
 
     lock.unlock();
     manager_->rpcs().RegisterAndStart(rpc, handle);
   }
 
   void UpdateTransactionStatusLocationDone(
-      const std::weak_ptr<YBTransaction>& weak_transaction,
+      std::shared_ptr<YBTransaction> transaction,
       const TransactionId& id,
       const TabletId &tablet_id, internal::RemoteTabletPtr participant_tablet,
       const tserver::UpdateTransactionStatusLocationRequestPB& request_template,
       const Status& status,
       const tserver::UpdateTransactionStatusLocationResponsePB& response) EXCLUDES(mutex_) {
-    auto transaction = weak_transaction.lock();
-    if (!transaction) {
-      VLOG(1) << id << ": " << "Transaction destroyed before status location update finished";
-      return;
-    }
-
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Transaction status update for participant tablet "
                         << tablet_id << ": " << yb::ToString(status);

@@ -1,62 +1,66 @@
 # Swedish message translation file for pg_config.
-# Dennis Björklund <db@zigo.dhs.org>, 2004, 2005, 2006, 2017.
+# Dennis Björklund <db@zigo.dhs.org>, 2004, 2005, 2006, 2017, 2018, 2019, 2020, 2021.
 # Mats Erik Andersson <bsd@gisladisker.se>, 2014.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: PostgreSQL 10\n"
-"Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2017-07-13 23:45+0000\n"
-"PO-Revision-Date: 2017-07-20 21:37+0200\n"
+"Project-Id-Version: PostgreSQL 14\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2021-11-06 22:15+0000\n"
+"PO-Revision-Date: 2021-11-07 06:44+0100\n"
 "Last-Translator: Dennis Björklund <db@zigo.dhs.org>\n"
-"Language-Team: Swedish <sv@li.org>\n"
+"Language-Team: Swedish <pgsql-translators@postgresql.org>\n"
 "Language: sv\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
 
-#: ../../common/config_info.c:130 ../../common/config_info.c:138
-#: ../../common/config_info.c:146 ../../common/config_info.c:154
-#: ../../common/config_info.c:162 ../../common/config_info.c:170
-#: ../../common/config_info.c:178 ../../common/config_info.c:186
-#: ../../common/config_info.c:194
+#: ../../common/config_info.c:134 ../../common/config_info.c:142
+#: ../../common/config_info.c:150 ../../common/config_info.c:158
+#: ../../common/config_info.c:166 ../../common/config_info.c:174
+#: ../../common/config_info.c:182 ../../common/config_info.c:190
 msgid "not recorded"
 msgstr "ej sparad"
 
-#: ../../common/exec.c:127 ../../common/exec.c:241 ../../common/exec.c:284
+#: ../../common/exec.c:136 ../../common/exec.c:253 ../../common/exec.c:299
 #, c-format
-msgid "could not identify current directory: %s"
-msgstr "kunde inte identifiera aktuell katalog: %s"
+msgid "could not identify current directory: %m"
+msgstr "kunde inte identifiera aktuell katalog: %m"
 
-#: ../../common/exec.c:146
+#: ../../common/exec.c:155
 #, c-format
 msgid "invalid binary \"%s\""
 msgstr "ogiltig binär \"%s\""
 
-#: ../../common/exec.c:195
+#: ../../common/exec.c:205
 #, c-format
 msgid "could not read binary \"%s\""
 msgstr "kunde inte läsa binär \"%s\""
 
-#: ../../common/exec.c:202
+#: ../../common/exec.c:213
 #, c-format
 msgid "could not find a \"%s\" to execute"
 msgstr "kunde inte hitta en \"%s\" att köra"
 
-#: ../../common/exec.c:257 ../../common/exec.c:293
+#: ../../common/exec.c:269 ../../common/exec.c:308
 #, c-format
-msgid "could not change directory to \"%s\": %s"
-msgstr "kunde inte byta katalog till \"%s\": %s"
+msgid "could not change directory to \"%s\": %m"
+msgstr "kunde inte byta katalog till \"%s\": %m"
 
-#: ../../common/exec.c:272
+#: ../../common/exec.c:286
 #, c-format
-msgid "could not read symbolic link \"%s\""
-msgstr "kunde inte läsa symbolisk länk \"%s\""
+msgid "could not read symbolic link \"%s\": %m"
+msgstr "kan inte läsa symbolisk länk \"%s\": %m"
 
-#: ../../common/exec.c:523
+#: ../../common/exec.c:409
 #, c-format
-msgid "pclose failed: %s"
-msgstr "pclose misslyckades: %s"
+msgid "%s() failed: %m"
+msgstr "%s() misslyckades: %m"
+
+#: ../../common/exec.c:522 ../../common/exec.c:567 ../../common/exec.c:659
+msgid "out of memory"
+msgstr "slut på minne"
 
 #: pg_config.c:74
 #, c-format
@@ -229,20 +233,25 @@ msgstr ""
 
 #: pg_config.c:105
 #, c-format
-msgid "Report bugs to <pgsql-bugs@postgresql.org>.\n"
-msgstr "Rapportera fel till <pgsql-bugs@postgresql.org>.\n"
+msgid "Report bugs to <%s>.\n"
+msgstr "Rapportera fel till <%s>.\n"
 
-#: pg_config.c:111
+#: pg_config.c:106
+#, c-format
+msgid "%s home page: <%s>\n"
+msgstr "hemsida för %s: <%s>\n"
+
+#: pg_config.c:112
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
 msgstr "Försök med \"%s --help\" för mer information.\n"
 
-#: pg_config.c:153
+#: pg_config.c:154
 #, c-format
 msgid "%s: could not find own program executable\n"
 msgstr "%s: kunde inte hitta det egna programmets körbara fil\n"
 
-#: pg_config.c:180
+#: pg_config.c:181
 #, c-format
 msgid "%s: invalid argument: %s\n"
 msgstr "%s: ogiltigt argument: %s\n"

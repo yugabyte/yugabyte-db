@@ -380,6 +380,11 @@ public class Backup extends Model {
       backup.scheduleUUID = params.scheduleUUID;
       backup.scheduleName = params.scheduleName;
     }
+    if (params.scheduleUUID == null && params.baseBackupUUID != null) {
+      // Set PIT enabled conditionally for manually added incremental backups
+      params.setPointInTimeRestoreEnabled(
+          BackupUtil.getManualIncrementPITEnabled(params.baseBackupUUID));
+    }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
       backup.setExpiryTimeUnit(params.expiryTimeUnit);
@@ -437,7 +442,7 @@ public class Backup extends Model {
       childParams.baseBackupUUID = params.baseBackupUUID;
       // Set PIT restore enabled if backup chain has it enabled.
       // This is required for manually created incremental backups.
-      childParams.setPointInTimeRestoreEnabled(previousBackupInfo.isPointInTimeRestoreEnabled());
+      childParams.setPointInTimeRestoreEnabled(params.isPointInTimeRestoreEnabled());
       if (!previousBackupInfo.backupType.equals(params.backupType)) {
         childParams.backupParamsIdentifier = UUID.randomUUID();
       } else {

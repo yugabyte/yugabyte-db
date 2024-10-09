@@ -158,7 +158,7 @@ public class SchedulerTest extends FakeDBApplication {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateBackup, null);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
-    taskInfo.setTaskUUID(fakeTaskUUID);
+    taskInfo.setUuid(fakeTaskUUID);
     taskInfo.save();
 
     setUniverseBackupInProgress(true, universe);

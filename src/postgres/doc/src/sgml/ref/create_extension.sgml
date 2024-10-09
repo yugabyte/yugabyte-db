@@ -24,7 +24,6 @@ PostgreSQL documentation
 CREATE EXTENSION [ IF NOT EXISTS ] <replaceable class="parameter">extension_name</replaceable>
     [ WITH ] [ SCHEMA <replaceable class="parameter">schema_name</replaceable> ]
              [ VERSION <replaceable class="parameter">version</replaceable> ]
-             [ FROM <replaceable class="parameter">old_version</replaceable> ]
              [ CASCADE ]
 </synopsis>
  </refsynopsisdiv>
@@ -47,12 +46,24 @@ CREATE EXTENSION [ IF NOT EXISTS ] <replaceable class="parameter">extension_name
   </para>
 
   <para>
-   Loading an extension requires the same privileges that would be
-   required to create its component objects.  For most extensions this
-   means superuser or database owner privileges are needed.
    The user who runs <command>CREATE EXTENSION</command> becomes the
-   owner of the extension for purposes of later privilege checks, as well
-   as the owner of any objects created by the extension's script.
+   owner of the extension for purposes of later privilege checks, and
+   normally also becomes the owner of any objects created by the
+   extension's script.
+  </para>
+
+  <para>
+   Loading an extension ordinarily requires the same privileges that would
+   be required to create its component objects.  For many extensions this
+   means superuser privileges are needed.
+   However, if the extension is marked <firstterm>trusted</firstterm> in
+   its control file, then it can be installed by any user who has
+   <literal>CREATE</literal> privilege on the current database.
+   In this case the extension object itself will be owned by the calling
+   user, but the contained objects will be owned by the bootstrap superuser
+   (unless the extension's script explicitly assigns them to the calling
+   user).  This configuration gives the calling user the right to drop the
+   extension, but not to modify individual objects within it.
   </para>
 
  </refsect1>
@@ -126,33 +137,6 @@ CREATE EXTENSION [ IF NOT EXISTS ] <replaceable class="parameter">extension_name
         The version of the extension to install.  This can be written as
         either an identifier or a string literal.  The default version is
         whatever is specified in the extension's control file.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><replaceable class="parameter">old_version</replaceable></term>
-      <listitem>
-       <para>
-        <literal>FROM</literal> <replaceable class="parameter">old_version</replaceable>
-        must be specified when, and only when, you are attempting to install
-        an extension that replaces an <quote>old style</quote> module that is just
-        a collection of objects not packaged into an extension.  This option
-        causes <command>CREATE EXTENSION</command> to run an alternative installation
-        script that absorbs the existing objects into the extension, instead
-        of creating new objects.  Be careful that <literal>SCHEMA</literal> specifies
-        the schema containing these pre-existing objects.
-       </para>
-
-       <para>
-        The value to use for <replaceable
-        class="parameter">old_version</replaceable> is determined by the
-        extension's author, and might vary if there is more than one version
-        of the old-style module that can be upgraded into an extension.
-        For the standard additional modules supplied with pre-9.1
-        <productname>PostgreSQL</productname>, use <literal>unpackaged</literal>
-        for <replaceable class="parameter">old_version</replaceable> when
-        updating a module to extension style.
        </para>
       </listitem>
      </varlistentry>
@@ -239,18 +223,7 @@ CREATE EXTENSION hstore SCHEMA addons;
 <programlisting>
 SET search_path = addons;
 CREATE EXTENSION hstore;
-</programlisting>
-  </para>
-
-  <para>
-   Update a pre-9.1 installation of <literal>hstore</literal> into
-   extension style:
-<programlisting>
-CREATE EXTENSION hstore SCHEMA public FROM unpackaged;
-</programlisting>
-   Be careful to specify the schema in which you installed the existing
-   <literal>hstore</literal> objects.
-  </para>
+</programlisting></para>
  </refsect1>
 
  <refsect1>

@@ -378,15 +378,15 @@ SELECT count(*) FROM complex_table;
 (1 row)
 
 --- ON CONFLICT DO UPDATE varlen type
-CREATE TABLE varlen (t text, b bytea, UNIQUE (t));
+CREATE TABLE varlen (t text, b bytea GENERATED ALWAYS AS (bytea(t)) STORED, UNIQUE (t));
 CREATE INDEX NONCONCURRENTLY ON varlen (b);
-INSERT INTO varlen VALUES ('a', bytea('a'));
-INSERT INTO varlen VALUES ('a', bytea('a')), ('a', bytea('a')) ON CONFLICT (t) DO UPDATE SET t = 'b';
+INSERT INTO varlen VALUES ('a');
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (t) DO UPDATE SET t = 'b';
 SELECT * FROM varlen ORDER BY t;
  t |  b
 ---+------
  a | \x61
- b | \x61
+ b | \x62
 (2 rows)
 
 --- ON CONFLICT DO UPDATE edge cases
@@ -491,10 +491,10 @@ TABLE child_table;
 (1 row)
 
 INSERT INTO child_table VALUES (false, 2, '1') ON CONFLICT (b) DO UPDATE SET b = true;
-ERROR:  insert or update on table "child_table" violates foreign key constraint "child_table_t_fkey"
+ERROR:  insert or update on table "child_table" violates foreign key constraint "child_table_t_n_fkey"
 DETAIL:  Key (t, n)=(1, 2) is not present in table "parent_table".
 INSERT INTO child_table VALUES (true, 2, '1') ON CONFLICT (b) DO UPDATE SET t = '2';
-ERROR:  insert or update on table "child_table" violates foreign key constraint "child_table_t_fkey"
+ERROR:  insert or update on table "child_table" violates foreign key constraint "child_table_t_n_fkey"
 DETAIL:  Key (t, n)=(2, 1) is not present in table "parent_table".
 TABLE child_table;
  b | n | t

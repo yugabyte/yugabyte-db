@@ -376,7 +376,11 @@ $(document).ready(() => {
             tabId = `${found.groups.name}-tab`;
           }
 
-          $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
+          $('.td-content .nav-tabs-yb .nav-link').removeClass('active');
+          $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).addClass('active');
+
+          $('.td-content .nav-tabs-yb').next('.tab-content').find('.tab-pane').removeClass('active show');
+          $('.td-content .nav-tabs-yb').next('.tab-content').find(`.tab-pane[aria-labelledby="${tabId}"]`).addClass('active show');
         }
       }
     });

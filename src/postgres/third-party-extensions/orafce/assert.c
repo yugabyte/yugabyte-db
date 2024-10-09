@@ -13,17 +13,9 @@
 
 #endif
 
-#include "ctype.h"
-#include "string.h"
 #include "orafce.h"
 #include "builtins.h"
-
-#if PG_VERSION_NUM >=  100000
-
 #include "utils/regproc.h"
-
-#endif
-
 
 PG_FUNCTION_INFO_V1(dbms_assert_enquote_literal);
 PG_FUNCTION_INFO_V1(dbms_assert_enquote_name);
@@ -32,6 +24,7 @@ PG_FUNCTION_INFO_V1(dbms_assert_qualified_sql_name);
 PG_FUNCTION_INFO_V1(dbms_assert_schema_name);
 PG_FUNCTION_INFO_V1(dbms_assert_simple_sql_name);
 PG_FUNCTION_INFO_V1(dbms_assert_object_name);
+PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
 
 #define CUSTOM_EXCEPTION(code, msg) \
@@ -75,29 +68,33 @@ ParseIdentifierString(char *rawstring)
 	/* At the top of the loop, we are at start of a new identifier. */
 	do
 	{
-		char	   *curname;
-		char	   *endp;
 
 		if (*nextp == '\"')
 		{
+			char	   *endp;
+
 			/* Quoted name --- collapse quote-quote pairs, no downcasing */
-			curname = nextp + 1;
 			for (;;)
 			{
 				endp = strchr(nextp + 1, '\"');
 				if (endp == NULL)
 					return false;		/* mismatched quotes */
+
 				if (endp[1] != '\"')
 					break;		/* found end of quoted name */
+
 				/* Collapse adjacent quotes into one quote, and look again */
 				memmove(endp, endp + 1, strlen(endp));
 				nextp = endp;
 			}
+
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
 		}
 		else
 		{
+			char	   *curname;
+
 			/* Unquoted name --- extends to separator or whitespace */
 			curname = nextp;
 			while (*nextp && *nextp != '.' &&
@@ -107,7 +104,7 @@ ParseIdentifierString(char *rawstring)
 					return false;
 				nextp++;
 			}
-			endp = nextp;
+
 			if (curname == nextp)
 				return false;	/* empty unquoted name not allowed */
 		}
@@ -266,7 +263,17 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
 	nspname = text_to_cstring(sname);
+
+#if PG_VERSION_NUM >= 160000
+
+	names = stringToQualifiedNameList(nspname, NULL);
+
+#else
+
 	names = stringToQualifiedNameList(nspname);
+
+#endif
+
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
@@ -284,10 +291,21 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 
 #endif
 
+
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
+#if PG_VERSION_NUM >= 160000
+
+	aclresult = object_aclcheck(NamespaceRelationId,namespaceId, GetUserId(),
+								ACL_USAGE);
+
+#else
+
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_USAGE);
+
+#endif
+
 	if (aclresult != ACLCHECK_OK)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
@@ -313,21 +331,33 @@ check_sql_name(char *cp, int len)
 {
 	if (*cp == '"')
 	{
-		for (cp++, len -= 2; len-- > 0; cp++)
+		char	   *last = cp + len - 1;
+
+		/* don't allow empty identifier */
+		if (len < 3)
+			return false;
+
+		/* last char should be double quote */
+		if (*last != '"')
+			return false;
+
+		cp += 1;
+
+		while (*cp && cp < last)
 		{
-			/* all double quotes have to be paired */
-			if (*cp == '"')
+			if (*cp++ == '"')
 			{
-				if (len-- == 0)
-					return false;
-				/* next char has to be quote */
-				if (*cp != '"')
+				if (cp < last)
+				{
+					if (*cp++ != '"')
+						return false;
+				}
+				else
 					return false;
 			}
-
 		}
-		if (*cp != '"')
-			return false;
+
+		return true;
 	}
 	else
 	{
@@ -394,7 +424,15 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	object_name = text_to_cstring(str);
 
+#if PG_VERSION_NUM >= 160000
+
+	names = stringToQualifiedNameList(object_name, NULL);
+
+#else
+
 	names = stringToQualifiedNameList(object_name);
+
+#endif
 
 	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, true);
 	if (!OidIsValid(classId))

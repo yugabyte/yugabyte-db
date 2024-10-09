@@ -4,7 +4,7 @@
  *	  support for foreign-data wrappers, servers and user mappings.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/include/foreign/foreign.h
  *
@@ -20,17 +20,6 @@
 #define MappingUserName(userid) \
 	(OidIsValid(userid) ? GetUserNameFromId(userid, false) : "public")
 
-
-/*
- * Generic option types for validation.
- * NB! These are treated as flags, so use only powers of two here.
- */
-typedef enum
-{
-	ServerOpt = 1,				/* options applicable to SERVER */
-	UserMappingOpt = 2,			/* options for USER MAPPING */
-	FdwOpt = 4					/* options for FOREIGN DATA WRAPPER */
-} GenericOptionFlags;
 
 typedef struct ForeignDataWrapper
 {
@@ -68,13 +57,23 @@ typedef struct ForeignTable
 	List	   *options;		/* ftoptions as DefElem list */
 } ForeignTable;
 
+/* Flags for GetForeignServerExtended */
+#define FSV_MISSING_OK	0x01
+
+/* Flags for GetForeignDataWrapperExtended */
+#define FDW_MISSING_OK	0x01
+
 
 extern ForeignServer *GetForeignServer(Oid serverid);
+extern ForeignServer *GetForeignServerExtended(Oid serverid,
+											   bits16 flags);
 extern ForeignServer *GetForeignServerByName(const char *name, bool missing_ok);
 extern UserMapping *GetUserMapping(Oid userid, Oid serverid);
 extern ForeignDataWrapper *GetForeignDataWrapper(Oid fdwid);
+extern ForeignDataWrapper *GetForeignDataWrapperExtended(Oid fdwid,
+														 bits16 flags);
 extern ForeignDataWrapper *GetForeignDataWrapperByName(const char *name,
-							bool missing_ok);
+													   bool missing_ok);
 extern ForeignTable *GetForeignTable(Oid relid);
 
 extern List *GetForeignColumnOptions(Oid relid, AttrNumber attnum);

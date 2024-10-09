@@ -254,6 +254,10 @@ DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
     "If true, enable time-based WAL retention for tables with xCluster "
     "by using --cdc_wal_retention_time_secs.");
 
+DEFINE_RUNTIME_AUTO_bool(store_min_start_ht_running_txns, kLocalPersisted, false, true,
+                         "If enabled, minimum start hybrid time among running txns will be "
+                         "persisted in the segment footer during closing of the segment.");
+
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
@@ -616,7 +620,8 @@ Status Log::Open(const LogOptions &options,
                  scoped_refptr<Log>* log,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
-                 CreateNewSegment create_new_segment) {
+                 CreateNewSegment create_new_segment,
+                 MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
 
@@ -636,7 +641,8 @@ Status Log::Open(const LogOptions &options,
                                      background_sync_threadpool,
                                      callback,
                                      pre_log_rollover_callback,
-                                     create_new_segment));
+                                     create_new_segment,
+                                     std::move(min_start_ht_running_txns_callback)));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
   return Status::OK();
@@ -656,7 +662,8 @@ Log::Log(
     ThreadPool* background_sync_threadpool,
     NewSegmentAllocationCallback callback,
     const PreLogRolloverCallback& pre_log_rollover_callback,
-    CreateNewSegment create_new_segment)
+    CreateNewSegment create_new_segment,
+    MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
       tablet_id_(std::move(tablet_id)),
@@ -686,7 +693,8 @@ Log::Log(
       new_segment_allocation_callback_(callback),
       pre_log_rollover_callback_(pre_log_rollover_callback),
       background_synchronizer_wait_state_(
-          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
+          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()),
+      min_start_ht_running_txns_callback_(std::move(min_start_ht_running_txns_callback)) {
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
@@ -772,8 +780,8 @@ Status Log::CloseCurrentSegment() {
     VLOG_WITH_PREFIX(1) << "Writing a segment without any REPLICATE message. Segment: "
                         << active_segment_->path();
   }
-  VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path()
-                      << ": " << footer_builder_.ShortDebugString();
+  VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path() << ": "
+                      << footer_builder_.ShortDebugString();
 
   auto close_timestamp_micros = GetCurrentTimeMicros();
 
@@ -804,6 +812,8 @@ Status Log::RollOver() {
   if (pre_log_rollover_callback_) {
     pre_log_rollover_callback_();
   }
+
+  WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
   LOG_SLOW_EXECUTION(WARNING, 50, LogPrefix() + "Log roll took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, roll_latency);
@@ -1674,6 +1684,9 @@ Status Log::Close() {
   if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
     return Status::OK();
   }
+
+  WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
+
   std::lock_guard l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
@@ -1970,6 +1983,12 @@ Status Log::SwitchToAllocatedSegment() {
   footer_builder_.Clear();
   footer_builder_.set_num_entries(0);
 
+  // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
+  // to stream all records from this segment based on the tablet leader safe time.
+  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
+  }
+
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
@@ -2216,6 +2235,25 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   last_disk_space_check_time_.store(now, std::memory_order_release);
 
   return has_space;
+}
+
+void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
+  if (!GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    return;
+  }
+  HybridTime min_start_ht_running_txns = HybridTime::kInitial;
+  if (min_start_ht_running_txns_callback_) {
+    min_start_ht_running_txns = min_start_ht_running_txns_callback_();
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
+    DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);
+  }
+
+  // If callback is not specified, we want to set min_start_time_running_txns to a valid value
+  // (in this case, kInitial) as it was set to kInvalid at the creation of this segment. This is to
+  // preserve the semantics that min_start_time_running_txns of a closed segment will always hold a
+  // valid HT value.
+  VLOG_WITH_PREFIX(2) << "setting min_start_ht_running_txns to " << min_start_ht_running_txns;
+  footer_builder_.set_min_start_time_running_txns(min_start_ht_running_txns.ToUint64());
 }
 
 }  // namespace log

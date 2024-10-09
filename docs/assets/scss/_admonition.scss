@@ -9,7 +9,7 @@ main {
       color: #25323d;
       background: #fff;
 
-      >p {
+      > p {
         font-family: 'inter';
         font-style: normal;
         font-weight: 400;
@@ -83,8 +83,7 @@ main {
         left: 16px;
       }
 
-
-      >*:not(code) {
+      > *:not(code) {
         margin: 1em 0;
 
         &:first-child:not(code) {
@@ -100,7 +99,7 @@ main {
         }
       }
 
-      >ul {
+      > ul {
         &:last-child {
           li {
             &:last-child {
@@ -110,7 +109,7 @@ main {
         }
       }
 
-      >ol {
+      > ol {
         &:last-child {
           li {
             &:last-child {
@@ -133,16 +132,18 @@ main {
     .admonition.waving {
       border: 1px solid #CAC9DF;
       background: #F5F5FF;
-      margin:20px 0 40px ;
-      display:flex;
-      justify-content:space-between;
+      margin: 20px 0 40px;
+      display: flex;
+      justify-content: space-between;
       padding-top: 10px;
       padding-bottom: 10px;
-      align-items:center;
-      .cross-btn{
-        cursor:pointer;
-        display:inline-block;
+      align-items: center;
+
+      .cross-btn {
+        cursor: pointer;
+        display: inline-block;
       }
+
       p {
         font-family: 'inter';
         color: #5D5FEF;
@@ -159,30 +160,32 @@ main {
           font-style: normal;
           font-weight: 600;
           line-height: 16px;
-          text-underline-offset:2px;
+          text-underline-offset: 2px;
 
           &:hover {
             text-decoration: underline;
             border: 0;
-            text-underline-offset:2px;
+            text-underline-offset: 2px;
           }
         }
       }
+
       &::before {
         width: 24px;
         height: 25px;
         background-image: url(/icons/waving-icon.svg);
         background-size: contain;
-        top:10px;
+        top: 10px;
       }
     }
+
     .admonition.note {
       &::before {
         background-size: 19px 20px;
       }
 
       p {
-        >code {
+        > code {
           box-shadow: 0 0 1px 0 #cbdbff;
         }
       }
@@ -250,15 +253,56 @@ main {
           }
         }
 
+        .heading {
+          color: #25323D;
+          font-size: 13px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 22px;
+          margin-bottom: 4px;
+
+          .tag {
+            margin: 0 4px;
+          }
+
+          .versions {
+            display: inline-block;
+            margin-left: 8px;
+          }
+
+          .admonition-title {
+            color: #25323D;
+            font-size: 13px;
+            font-style: normal;
+            font-weight: 600;
+            line-height: 22px;
+          }
+        }
+
         .desc {
           color: #6D7C88;
           font-size: 13px;
           font-style: normal;
           font-weight: 400;
           line-height: 22px;
+
           a {
             position: relative;
             z-index: 9;
+          }
+        }
+      }
+
+      &.release {
+        .icon {
+          i {
+            color: #4E5F6D;
+          }
+
+          svg {
+            path {
+              fill: #4E5F6D;
+            }
           }
         }
       }

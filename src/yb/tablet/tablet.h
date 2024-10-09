@@ -972,6 +972,9 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
   void CleanupIntentFiles();
+
+  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1319,6 +1322,8 @@ class ScopedReadOperation {
 
 bool IsSchemaVersionCompatible(
     uint32_t current_version, uint32_t request_version, bool compatible_with_previous_version);
+
+Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::string& dir);
 
 }  // namespace tablet
 }  // namespace yb

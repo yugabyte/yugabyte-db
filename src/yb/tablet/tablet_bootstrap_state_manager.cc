@@ -17,6 +17,7 @@
 
 #include "yb/common/opid.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/opid_util.h"
@@ -57,21 +58,23 @@ TabletBootstrapStateManager::TabletBootstrapStateManager() { }
 
 TabletBootstrapStateManager::TabletBootstrapStateManager(
     const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir)
-    : tablet_id_(tablet_id), fs_manager_(fs_manager), dir_(wal_dir) { }
+    : tablet_id_(tablet_id), fs_manager_(fs_manager), dir_(wal_dir),
+      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id, fs_manager->uuid())) {
+    }
 
 Status TabletBootstrapStateManager::Init() {
   CHECK(!dir_.empty());
   if (!fs_manager_->Exists(dir_)) {
-    LOG(INFO) << "Wal dir is not created, skip initializing TabletBootstrapStateManager for "
-              << tablet_id_;
+    LOG_WITH_PREFIX(INFO)
+        << "Wal dir is not created, skip initializing TabletBootstrapStateManager";
     // For first startup.
     has_file_on_disk_ = false;
     return Status::OK();
   }
   RETURN_NOT_OK(DoInit());
-  LOG(INFO) << "Initialized TabletBootstrapStateManager, found a file ? "
-            << (has_file_on_disk_ ? "yes" : "no")
-            << ", wal dir=" << dir_;
+  LOG_WITH_PREFIX(INFO) << "Initialized TabletBootstrapStateManager, found a file ? "
+                        << (has_file_on_disk_ ? "yes" : "no")
+                        << ", wal dir=" << dir_;
   return Status::OK();
 }
 
@@ -79,7 +82,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
     const TabletWeakPtr& tablet_ptr, consensus::RaftConsensus& raft_consensus) {
   auto retryable_requests = VERIFY_RESULT(raft_consensus.TakeSnapshotOfRetryableRequests());
   if (!retryable_requests) {
-    LOG(INFO) << "Nothing to save";
+    LOG_WITH_PREFIX(INFO) << "Nothing to save";
     return Status::OK();
   }
 
@@ -96,7 +99,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
     if (participant) {
       auto start_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
           max_replicated_op_id));
-      VLOG(1) << "Using min_replay_txn_start_ht = " << start_ht;
+      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_start_ht = " << start_ht;
       bootstrap_state.SetMinReplayTxnStartTime(start_ht);
     }
   }
@@ -106,7 +109,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   bootstrap_state.ToPB(&pb);
 
   auto path = NewFilePath();
-  LOG(INFO) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
+  LOG_WITH_PREFIX(INFO) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
   auto* env = fs_manager()->env();
   SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
@@ -117,7 +120,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   if (has_file_on_disk_) {
     RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
   }
-  LOG(INFO) << "Renaming " << NewFileName() << " to " << FileName();
+  LOG_WITH_PREFIX(INFO) << "Renaming " << NewFileName() << " to " << FileName();
   RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
   has_file_on_disk_ = true;
   RETURN_NOT_OK(env->SyncDir(dir_));
@@ -125,7 +128,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   RETURN_NOT_OK(raft_consensus.SetLastFlushedOpIdInRetryableRequests(max_replicated_op_id));
 
   if (participant) {
-    VLOG(1)
+    VLOG_WITH_PREFIX(1)
         << "Bootstrap state saved to disk, triggering cleanup of recently applied transactions";
     participant->SetRetryableRequestsFlushedOpId(max_replicated_op_id);
     return participant->ProcessRecentlyAppliedTransactions();
@@ -144,7 +147,7 @@ Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromD
       pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
       Format("Could not load bootstrap state from $0", path));
   bootstrap_state_.FromPB(pb);
-  LOG(INFO) << Format("Loaded tablet ($0) bootstrap state "
+  LOG_WITH_PREFIX(INFO) << Format("Loaded tablet ($0) bootstrap state "
                       "(max_replicated_op_id_=$1) from $2",
                       tablet_id_, pb.last_op_id(), path);
   return pb;
@@ -157,7 +160,7 @@ Status TabletBootstrapStateManager::CopyTo(const std::string& dest_path) {
   auto* env = fs_manager()->env();
   auto path = CurrentFilePath();
   auto dest_path_tmp = pb_util::MakeTempPath(dest_path);
-  LOG(INFO) << "Copying bootstrap state from " << path << " to " << dest_path;
+  LOG_WITH_PREFIX(INFO) << "Copying bootstrap state from " << path << " to " << dest_path;
   DCHECK(fs_manager()->Exists(path));
 
   WritableFileOptions options;

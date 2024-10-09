@@ -381,7 +381,7 @@ Status CorruptFile(
     offset = std::max<int64_t>(sbuf.st_size + offset, 0);
   }
   offset = std::min<int64_t>(offset, sbuf.st_size);
-  if (yb::std_util::cmp_greater(offset + bytes_to_corrupt, sbuf.st_size)) {
+  if (std::cmp_greater(offset + bytes_to_corrupt, sbuf.st_size)) {
     bytes_to_corrupt = sbuf.st_size - offset;
   }
 

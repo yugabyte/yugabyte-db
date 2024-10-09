@@ -28,7 +28,7 @@
 #define YB_PG_INHERITS_SCAN_H
 
 #include "access/heapam.h"
-#include "access/yb_scan.h"
+#include "access/yb_sys_scan_base.h"
 
 extern YbSysScanBase yb_pg_inherits_beginscan(
 	Relation inhrelation, ScanKey key, int nkeys, Oid indexId);

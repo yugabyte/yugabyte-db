@@ -4,7 +4,7 @@
  *	 Cleanup query from NOT values and/or stopword
  *	 Utility functions to correct work.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -15,8 +15,8 @@
 
 #include "postgres.h"
 
-#include "tsearch/ts_utils.h"
 #include "miscadmin.h"
+#include "tsearch/ts_utils.h"
 
 typedef struct NODE
 {

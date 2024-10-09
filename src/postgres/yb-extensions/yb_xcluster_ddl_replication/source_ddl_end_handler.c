@@ -71,15 +71,6 @@ SPI_GetBool(HeapTuple spi_tuple, int column_id)
 }
 
 bool
-AreCommandTagsEqual(const char *command_tag1, const char *command_tag2)
-{
-	size_t len = strlen(command_tag1);
-	if (len != strlen(command_tag2))
-		return false;
-	return strncmp(command_tag1, command_tag2, len) == 0;
-}
-
-bool
 ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
@@ -135,23 +126,19 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	{
 		HeapTuple spi_tuple = SPI_tuptable->vals[row];
 		Oid obj_id = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
-		const char *command_tag =
+		const char *command_tag_name =
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
+		CommandTag command_tag = GetCommandTagEnum(command_tag_name);
 
-		/*
-		 * TODO(jhe): Need a better way of handling all these DDL types. Perhaps
-		 * can mimic CreateCommandTag and return a custom enum instead, thus
-		 * allowing for switch cases here.
-		 */
-		if (AreCommandTagsEqual(command_tag, "CREATE TABLE") ||
-			AreCommandTagsEqual(command_tag, "CREATE INDEX"))
+		if (command_tag == CMDTAG_CREATE_TABLE ||
+			command_tag == CMDTAG_CREATE_INDEX)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
 		}
 		else
 		{
-			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag,
+			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag_name,
 				 kManualReplicationErrorMsg);
 		}
 	}

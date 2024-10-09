@@ -258,8 +258,10 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     gflagsParams.getAzOverrides(),
                     gflagsParams.isNewNamingStyle(),
                     false /* isReadOnlyCluster */,
-                    gflagsParams.isEnableYbc(),
-                    gflagsParams.getYbcSoftwareVersion());
+                    // Use taskParams here since updated universe details are not available
+                    // during subtasks creation.
+                    taskParams().isEnableYbc(),
+                    taskParams().getYbcSoftwareVersion());
       }
 
       createConfigureUniverseTasks(

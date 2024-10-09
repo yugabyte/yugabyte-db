@@ -117,7 +117,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
+    return 900; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
   }
 
   @Override
@@ -799,7 +799,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
       runInvalidQuery(
           stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
-          "null value in column \"a\" violates not-null constraint");
+          "null value in column \"a\" of relation \"test_tbl\" violates not-null constraint");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2097,9 +2097,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       // Create orafce extension.
       stmt.execute("CREATE EXTENSION orafce");
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");
@@ -2118,7 +2117,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(77));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2133,9 +2132,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
       // Test orafce after restore.
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");
@@ -2153,7 +2151,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(77));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");

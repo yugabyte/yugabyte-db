@@ -3,7 +3,7 @@
  * test_shm_mq.h
  *		Definitions for shared memory message queues
  *
- * Copyright (c) 2013-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/test_shm_mq.h
@@ -36,8 +36,8 @@ typedef struct
 
 /* Set up dynamic shared memory and background workers for test run. */
 extern void test_shm_mq_setup(int64 queue_size, int32 nworkers,
-				  dsm_segment **seg, shm_mq_handle **output,
-				  shm_mq_handle **input);
+							  dsm_segment **seg, shm_mq_handle **output,
+							  shm_mq_handle **input);
 
 /* Main entrypoint for a worker. */
 extern void test_shm_mq_main(Datum) pg_attribute_noreturn();

@@ -87,6 +87,8 @@ extern uint64_t YbGetCatalogCacheVersion();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 
+extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
+
 extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
@@ -127,7 +129,7 @@ extern int32_t yb_follower_read_staleness_ms;
 	{ \
 		/* Shared operations shouldn't be used during initdb. */ \
 		Assert(!IsBootstrapProcessingMode()); \
-		Relation    pg_db      = heap_open(DatabaseRelationId, AccessExclusiveLock); \
+		Relation    pg_db      = table_open(DatabaseRelationId, AccessExclusiveLock); \
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
@@ -142,7 +144,7 @@ extern int32_t yb_follower_read_staleness_ms;
 #define YB_FOR_EACH_DB_END \
 		} \
 		systable_endscan(pg_db_scan); \
-		heap_close(pg_db, AccessExclusiveLock); \
+		table_close(pg_db, AccessExclusiveLock); \
 	}
 
 /*
@@ -183,6 +185,8 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
 extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
+
+extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -263,6 +267,11 @@ extern bool YBIsWaitQueueEnabled();
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
+
+/*
+ * Whether the per database logical client version mode is enabled.
+ */
+extern bool YBIsDBLogicalClientVersionMode();
 
 /*
  * Whether we need to preload additional catalog tables.
@@ -440,6 +449,26 @@ void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
  */
 extern double PowerWithUpperLimit(double base, int exponent, double upper_limit);
 
+/*
+ * Return whether to use wholerow junk attribute for YB relations.
+ */
+extern bool YbUseWholeRowJunkAttribute(Relation relation,
+									   Bitmapset *updatedCols,
+									   CmdType operation,
+									   List *returningList);
+
+/*
+ * Return whether to use scanned "old" tuple to reconstruct the new tuple during
+ * UPDATE operations for YB relations. See function definition for details.
+ */
+extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+
+/*
+ * Return whether the returning list for an UPDATE statement is a subset of the columns being
+ * updated by the UPDATE query.
+ */
+bool YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols, List *returningList);
+
 //------------------------------------------------------------------------------
 // YB GUC variables.
 
@@ -567,14 +596,14 @@ extern int yb_toast_catcache_threshold;
 extern int yb_parallel_range_size;
 
 /*
- * Enable preloading of foreign key information into the relation cache.
- */
-extern bool yb_enable_fkey_catcache;
-
-/*
  * INSERT ON CONFLICT batching read batch size.
  */
 extern int yb_insert_on_conflict_read_batch_size;
+
+/*
+ * Enable preloading of foreign key information into the relation cache.
+ */
+extern bool yb_enable_fkey_catcache;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -719,6 +748,12 @@ extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 extern const char* YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
 													TupleDesc tupleDesc,
 													bool *is_omitted);
+
+/* Same as above except it takes slot instead of tuple. */
+extern const char* YbTupleTableSlotToString(TupleTableSlot *slot);
+
+extern const char* YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot,
+														 bool *is_omitted);
 
 /* Get a string representation of a bitmapset (for debug purposes only!) */
 extern const char* YbBitmapsetToString(Bitmapset *bms);
@@ -928,7 +963,7 @@ bool IsYbDbAdminUserNosuper(Oid member);
 /*
  * Check unsupported system columns and report error.
  */
-void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
+void YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *rte);
 
 /*
  * Register system table for prefetching.
@@ -1091,10 +1126,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(adjusted_elevel, __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 PG_FUNCNAME_MACRO, \
-						 TEXTDOMAIN)) \
+			if (errstart(adjusted_elevel, TEXTDOMAIN)) \
 			{ \
 				Assert(msg_buf); \
 				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
@@ -1104,7 +1136,9 @@ OptSplit *YbGetSplitOptions(Relation rel);
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(0); \
+				errfinish(NULL, \
+						  lineno > 0 ? lineno : __LINE__, \
+						  NULL); \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \

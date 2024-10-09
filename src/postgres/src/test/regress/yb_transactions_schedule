@@ -5,3 +5,4 @@
 # of different transaction types.
 ####################################################################################################
 test: yb_transactions
+test: yb_internal_subtransactions

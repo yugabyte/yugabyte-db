@@ -46,6 +46,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
@@ -84,6 +85,8 @@ DECLARE_int32(delay_alter_sequence_sec);
 DECLARE_int32(client_read_write_timeout_ms);
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+
+DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
@@ -231,8 +234,10 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
-  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats, bool is_binary_upgrade) {
+  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
+    return pgapi->InitSession(session_stats, is_binary_upgrade);
+  });
 }
 
 // ql_value is modified in-place.
@@ -467,6 +472,7 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
   server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
 
   InitThreading();
 
@@ -578,8 +584,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
+  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -1269,10 +1275,6 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols) {
-  return ExtractValueFromResult(pgapi->DmlHasSystemTargets(handle), has_system_cols);
-}
-
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
   return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
@@ -1417,8 +1419,9 @@ YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
-YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
-  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state));
+YBCStatus YBCPgInitRandomState(
+    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
+  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state_s0, rand_state_s1));
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
@@ -1996,6 +1999,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
       .TEST_ysql_conn_mgr_dowarmup_all_pools_mode =
           FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
+      .TEST_ysql_enable_db_logical_client_version_mode =
+          &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
   };
   // clang-format on
   return &accessor;

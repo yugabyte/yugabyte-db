@@ -131,7 +131,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
     new SessionParameter("idle_in_transaction_session_timeout", "0", "999",
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
-    new SessionParameter("extra_float_digits", "0", "2",
+    new SessionParameter("extra_float_digits", "1", "2",
       new ExceptionType[] { ExceptionType.EXTRA_FLOAT_DIGITS, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_statistics_target", "100", "200",
       new ExceptionType[] {}),

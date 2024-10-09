@@ -177,6 +177,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2:3] 
 -- Test for type modifiers
 -- REAL has 6 decimal digits of precision, NUMERIC has type modifiers 'precision' and 'scale'.
 -- Precision is the total number of digits, scale is the number of digits after the decimal point.
+SET extra_float_digits TO 0;
 CREATE TABLE numeric_table (h INT PRIMARY KEY, v1 REAL, v2 NUMERIC(4, 2), v3 NUMERIC(10, 4), v4 FLOAT4);
 CREATE INDEX NONCONCURRENTLY ON numeric_table (v1) INCLUDE (v2, v3, v4);
 INSERT INTO numeric_table VALUES (1, 1.234567, 12.34, 1.234567, 1.23456789012);
@@ -280,3 +281,5 @@ DROP TABLE numeric_table;
 DROP TABLE array_types_table;
 DROP TABLE geometric_types_table;
 DROP TABLE json_types_table;
+
+RESET extra_float_digits;

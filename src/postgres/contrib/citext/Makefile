@@ -3,13 +3,15 @@
 MODULES = citext
 
 EXTENSION = citext
-DATA = citext--1.4.sql citext--1.4--1.5.sql \
+DATA = citext--1.4.sql \
+	citext--1.5--1.6.sql \
+	citext--1.4--1.5.sql \
 	citext--1.3--1.4.sql \
 	citext--1.2--1.3.sql citext--1.1--1.2.sql \
-	citext--1.0--1.1.sql citext--unpackaged--1.0.sql
+	citext--1.0--1.1.sql
 PGFILEDESC = "citext - case-insensitive character string data type"
 
-REGRESS = citext
+REGRESS = create_index_acl citext citext_utf8
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

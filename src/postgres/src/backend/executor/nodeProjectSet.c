@@ -11,7 +11,7 @@
  *		can't be inside more-complex expressions.  If that'd otherwise be
  *		the case, the planner adds additional ProjectSet nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -196,8 +196,8 @@ ExecProjectSRF(ProjectSetState *node, bool continuing)
 	Assert(hassrf);
 
 	/*
-	 * If all the SRFs returned EndResult, we consider that as no row being
-	 * produced.
+	 * If all the SRFs returned ExprEndResult, we consider that as no row
+	 * being produced.
 	 */
 	if (hasresult)
 	{
@@ -256,7 +256,7 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	/*
 	 * tuple table and result type initialization
 	 */
-	ExecInitResultTupleSlotTL(&state->ps);
+	ExecInitResultTupleSlotTL(&state->ps, &TTSOpsVirtual);
 
 	/* Create workspace for per-tlist-entry expr state & SRF-is-done state */
 	state->nelems = list_length(node->plan.targetlist);
@@ -277,8 +277,8 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 		TargetEntry *te = (TargetEntry *) lfirst(lc);
 		Expr	   *expr = te->expr;
 
-		if ((IsA(expr, FuncExpr) &&((FuncExpr *) expr)->funcretset) ||
-			(IsA(expr, OpExpr) &&((OpExpr *) expr)->opretset))
+		if ((IsA(expr, FuncExpr) && ((FuncExpr *) expr)->funcretset) ||
+			(IsA(expr, OpExpr) && ((OpExpr *) expr)->opretset))
 		{
 			state->elems[off] = (Node *)
 				ExecInitFunctionResultSet(expr, state->ps.ps_ExprContext,
@@ -297,11 +297,12 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	Assert(node->plan.qual == NIL);
 
 	/*
-	 * Create a memory context that ExecMakeFunctionResult can use to evaluate
-	 * function arguments in.  We can't use the per-tuple context for this
-	 * because it gets reset too often; but we don't want to leak evaluation
-	 * results into the query-lifespan context either.  We use one context for
-	 * the arguments of all tSRFs, as they have roughly equivalent lifetimes.
+	 * Create a memory context that ExecMakeFunctionResultSet can use to
+	 * evaluate function arguments in.  We can't use the per-tuple context for
+	 * this because it gets reset too often; but we don't want to leak
+	 * evaluation results into the query-lifespan context either.  We use one
+	 * context for the arguments of all tSRFs, as they have roughly equivalent
+	 * lifetimes.
 	 */
 	state->argcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "tSRF function arguments",

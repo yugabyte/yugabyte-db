@@ -156,6 +156,8 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     auto conn = VERIFY_RESULT(cluster->Connect());
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE USER $0 WITH PASSWORD '123'", kNewUserName));
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+    RETURN_NOT_OK(conn.ExecuteFormat("GRANT CREATE ON SCHEMA public TO $0", kNewUserName));
     return Status::OK();
   }));
   {

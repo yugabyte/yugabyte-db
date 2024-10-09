@@ -701,8 +701,8 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, CleanupStreamsOfFailedTabl
   ASSERT_OK(conn.Execute("CREATE TABLE moneyp (a money) PARTITION BY LIST (a);"));
   ++expected_stream_count;
   ASSERT_OK(check_streams());
-  // This fails due to invalid cast but still creates (and drops) a new table.
-  ASSERT_NOK(conn.Execute("CREATE TABLE moneyp_10 PARTITION OF moneyp FOR VALUES IN (10);"));
+  // This fails due to invalid input syntax but still creates (and drops) a new table.
+  ASSERT_NOK(conn.Execute("CREATE TABLE moneyp_abc PARTITION OF moneyp FOR VALUES IN ('abc');"));
   ASSERT_OK(check_streams());
 
   ASSERT_OK(conn.Execute("CREATE TABLE bigintp (a bigint) PARTITION BY LIST (a);"));

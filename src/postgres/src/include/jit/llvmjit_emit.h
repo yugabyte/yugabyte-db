@@ -1,10 +1,10 @@
 /*
  * llvmjit_emit.h
- *	  Helpers to make emitting LLVM IR a it more concise and pgindent proof.
+ *	  Helpers to make emitting LLVM IR a bit more concise and pgindent proof.
  *
- * Copyright (c) 2018, PostgreSQL Global Development Group
+ * Copyright (c) 2018-2022, PostgreSQL Global Development Group
  *
- * src/include/lib/llvmjit_emit.h
+ * src/include/jit/llvmjit_emit.h
  */
 #ifndef LLVMJIT_EMIT_H
 #define LLVMJIT_EMIT_H
@@ -214,6 +214,60 @@ l_mcxt_switch(LLVMModuleRef mod, LLVMBuilderRef b, LLVMValueRef nc)
 	LLVMBuildStore(b, nc, cur);
 
 	return ret;
+}
+
+/*
+ * Return pointer to the argno'th argument nullness.
+ */
+static inline LLVMValueRef
+l_funcnullp(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
+{
+	LLVMValueRef v_args;
+	LLVMValueRef v_argn;
+
+	v_args = LLVMBuildStructGEP(b,
+								v_fcinfo,
+								FIELDNO_FUNCTIONCALLINFODATA_ARGS,
+								"");
+	v_argn = LLVMBuildStructGEP(b, v_args, argno, "");
+
+	return LLVMBuildStructGEP(b, v_argn, FIELDNO_NULLABLE_DATUM_ISNULL, "");
+}
+
+/*
+ * Return pointer to the argno'th argument datum.
+ */
+static inline LLVMValueRef
+l_funcvaluep(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
+{
+	LLVMValueRef v_args;
+	LLVMValueRef v_argn;
+
+	v_args = LLVMBuildStructGEP(b,
+								v_fcinfo,
+								FIELDNO_FUNCTIONCALLINFODATA_ARGS,
+								"");
+	v_argn = LLVMBuildStructGEP(b, v_args, argno, "");
+
+	return LLVMBuildStructGEP(b, v_argn, FIELDNO_NULLABLE_DATUM_DATUM, "");
+}
+
+/*
+ * Return argno'th argument nullness.
+ */
+static inline LLVMValueRef
+l_funcnull(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
+{
+	return LLVMBuildLoad(b, l_funcnullp(b, v_fcinfo, argno), "");
+}
+
+/*
+ * Return argno'th argument datum.
+ */
+static inline LLVMValueRef
+l_funcvalue(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
+{
+	return LLVMBuildLoad(b, l_funcvaluep(b, v_fcinfo, argno), "");
 }
 
 #endif							/* USE_LLVM */

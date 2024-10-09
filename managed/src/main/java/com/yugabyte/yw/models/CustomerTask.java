@@ -791,6 +791,10 @@ public class CustomerTask extends Model {
     return customerTask;
   }
 
+  public static Optional<CustomerTask> maybeGet(UUID taskUUID) {
+    return CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOneOrEmpty();
+  }
+
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
     sb.append(type.toString(completionTime != null).trim());

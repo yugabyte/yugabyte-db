@@ -1241,6 +1241,16 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   return namespace_id;
 }
 
+HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
+  auto tablet_result = shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
+    return HybridTime::kInitial;
+  }
+  return (*tablet_result)->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+}
+
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
     const HybridTime& cdc_sdk_safe_time) {

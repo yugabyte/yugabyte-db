@@ -4,7 +4,7 @@
  *	  utilities routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,18 +13,19 @@
  */
 #include "postgres.h"
 
-#include <float.h>
 #include <math.h>
 
 #include "access/gist_private.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "catalog/pg_opclass.h"
+#include "common/pg_prng.h"
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
 #include "utils/float.h"
+#include "utils/lsyscache.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
-
 
 /*
  * Write itup vector to page, has no control of free space.
@@ -32,7 +33,6 @@
 void
 gistfillbuffer(Page page, IndexTuple *itup, int len, OffsetNumber off)
 {
-	OffsetNumber l = InvalidOffsetNumber;
 	int			i;
 
 	if (off == InvalidOffsetNumber)
@@ -42,6 +42,7 @@ gistfillbuffer(Page page, IndexTuple *itup, int len, OffsetNumber off)
 	for (i = 0; i < len; i++)
 	{
 		Size		sz = IndexTupleSize(itup[i]);
+		OffsetNumber l;
 
 		l = PageAddItem(page, (Item) itup[i], sz, off, false, false);
 		if (l == InvalidOffsetNumber)
@@ -160,7 +161,7 @@ gistMakeUnionItVec(GISTSTATE *giststate, IndexTuple *itvec, int len,
 
 	evec = (GistEntryVector *) palloc((len + 2) * sizeof(GISTENTRY) + GEVHDRSZ);
 
-	for (i = 0; i < giststate->tupdesc->natts; i++)
+	for (i = 0; i < giststate->nonLeafTupdesc->natts; i++)
 	{
 		int			j;
 
@@ -171,7 +172,8 @@ gistMakeUnionItVec(GISTSTATE *giststate, IndexTuple *itvec, int len,
 			Datum		datum;
 			bool		IsNull;
 
-			datum = index_getattr(itvec[j], i + 1, giststate->tupdesc, &IsNull);
+			datum = index_getattr(itvec[j], i + 1, giststate->leafTupdesc,
+								  &IsNull);
 			if (IsNull)
 				continue;
 
@@ -296,11 +298,11 @@ gistDeCompressAtt(GISTSTATE *giststate, Relation r, IndexTuple tuple, Page p,
 {
 	int			i;
 
-	for (i = 0; i < r->rd_att->natts; i++)
+	for (i = 0; i < IndexRelationGetNumberOfKeyAttributes(r); i++)
 	{
 		Datum		datum;
 
-		datum = index_getattr(tuple, i + 1, giststate->tupdesc, &isnull[i]);
+		datum = index_getattr(tuple, i + 1, giststate->leafTupdesc, &isnull[i]);
 		gistdentryinit(giststate, i, &attdata[i],
 					   datum, r, p, o,
 					   false, isnull[i]);
@@ -329,7 +331,7 @@ gistgetadjusted(Relation r, IndexTuple oldtup, IndexTuple addtup, GISTSTATE *gis
 	gistDeCompressAtt(giststate, r, addtup, NULL,
 					  (OffsetNumber) 0, addentries, addisnull);
 
-	for (i = 0; i < r->rd_att->natts; i++)
+	for (i = 0; i < IndexRelationGetNumberOfKeyAttributes(r); i++)
 	{
 		gistMakeUnionKey(giststate, i,
 						 oldentries + i, oldisnull[i],
@@ -442,14 +444,15 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 		zero_penalty = true;
 
 		/* Loop over index attributes. */
-		for (j = 0; j < r->rd_att->natts; j++)
+		for (j = 0; j < IndexRelationGetNumberOfKeyAttributes(r); j++)
 		{
 			Datum		datum;
 			float		usize;
 			bool		IsNull;
 
 			/* Compute penalty for this column. */
-			datum = index_getattr(itup, j + 1, giststate->tupdesc, &IsNull);
+			datum = index_getattr(itup, j + 1, giststate->leafTupdesc,
+								  &IsNull);
 			gistdentryinit(giststate, j, &entry, datum, r, p, i,
 						   false, IsNull);
 			usize = gistpenalty(giststate, j, &entry, IsNull,
@@ -470,7 +473,7 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 				result = i;
 				best_penalty[j] = usize;
 
-				if (j < r->rd_att->natts - 1)
+				if (j < IndexRelationGetNumberOfKeyAttributes(r) - 1)
 					best_penalty[j + 1] = -1;
 
 				/* we have new best, so reset keep-it decision */
@@ -500,12 +503,12 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 		 * If we looped past the last column, and did not update "result",
 		 * then this tuple is exactly as good as the prior best tuple.
 		 */
-		if (j == r->rd_att->natts && result != i)
+		if (j == IndexRelationGetNumberOfKeyAttributes(r) && result != i)
 		{
 			if (keep_current_best == -1)
 			{
 				/* we didn't make the random choice yet for this old best */
-				keep_current_best = (random() <= (MAX_RANDOM_VALUE / 2)) ? 1 : 0;
+				keep_current_best = pg_prng_bool(&pg_global_prng_state) ? 1 : 0;
 			}
 			if (keep_current_best == 0)
 			{
@@ -527,7 +530,7 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 			if (keep_current_best == -1)
 			{
 				/* we didn't make the random choice yet for this old best */
-				keep_current_best = (random() <= (MAX_RANDOM_VALUE / 2)) ? 1 : 0;
+				keep_current_best = pg_prng_bool(&pg_global_prng_state) ? 1 : 0;
 			}
 			if (keep_current_best == 1)
 				break;
@@ -570,16 +573,35 @@ gistdentryinit(GISTSTATE *giststate, int nkey, GISTENTRY *e,
 
 IndexTuple
 gistFormTuple(GISTSTATE *giststate, Relation r,
-			  Datum attdata[], bool isnull[], bool isleaf)
+			  Datum *attdata, bool *isnull, bool isleaf)
 {
 	Datum		compatt[INDEX_MAX_KEYS];
-	int			i;
 	IndexTuple	res;
+
+	gistCompressValues(giststate, r, attdata, isnull, isleaf, compatt);
+
+	res = index_form_tuple(isleaf ? giststate->leafTupdesc :
+						   giststate->nonLeafTupdesc,
+						   compatt, isnull);
+
+	/*
+	 * The offset number on tuples on internal pages is unused. For historical
+	 * reasons, it is set to 0xffff.
+	 */
+	ItemPointerSetOffsetNumber(&(res->t_tid), 0xffff);
+	return res;
+}
+
+void
+gistCompressValues(GISTSTATE *giststate, Relation r,
+				   Datum *attdata, bool *isnull, bool isleaf, Datum *compatt)
+{
+	int			i;
 
 	/*
 	 * Call the compress method on each attribute.
 	 */
-	for (i = 0; i < r->rd_att->natts; i++)
+	for (i = 0; i < IndexRelationGetNumberOfKeyAttributes(r); i++)
 	{
 		if (isnull[i])
 			compatt[i] = (Datum) 0;
@@ -602,14 +624,19 @@ gistFormTuple(GISTSTATE *giststate, Relation r,
 		}
 	}
 
-	res = index_form_tuple(giststate->tupdesc, compatt, isnull);
-
-	/*
-	 * The offset number on tuples on internal pages is unused. For historical
-	 * reasons, it is set to 0xffff.
-	 */
-	ItemPointerSetOffsetNumber(&(res->t_tid), 0xffff);
-	return res;
+	if (isleaf)
+	{
+		/*
+		 * Emplace each included attribute if any.
+		 */
+		for (; i < r->rd_att->natts; i++)
+		{
+			if (isnull[i])
+				compatt[i] = (Datum) 0;
+			else
+				compatt[i] = attdata[i];
+		}
+	}
 }
 
 /*
@@ -644,11 +671,11 @@ gistFetchTuple(GISTSTATE *giststate, Relation r, IndexTuple tuple)
 	bool		isnull[INDEX_MAX_KEYS];
 	int			i;
 
-	for (i = 0; i < r->rd_att->natts; i++)
+	for (i = 0; i < IndexRelationGetNumberOfKeyAttributes(r); i++)
 	{
 		Datum		datum;
 
-		datum = index_getattr(tuple, i + 1, giststate->tupdesc, &isnull[i]);
+		datum = index_getattr(tuple, i + 1, giststate->leafTupdesc, &isnull[i]);
 
 		if (giststate->fetchFn[i].fn_oid != InvalidOid)
 		{
@@ -678,6 +705,15 @@ gistFetchTuple(GISTSTATE *giststate, Relation r, IndexTuple tuple)
 			isnull[i] = true;
 			fetchatt[i] = (Datum) 0;
 		}
+	}
+
+	/*
+	 * Get each included attribute.
+	 */
+	for (; i < r->rd_att->natts; i++)
+	{
+		fetchatt[i] = index_getattr(tuple, i + 1, giststate->leafTupdesc,
+									&isnull[i]);
 	}
 	MemoryContextSwitchTo(oldcxt);
 
@@ -718,22 +754,28 @@ gistpenalty(GISTSTATE *giststate, int attno,
  * Initialize a new index page
  */
 void
-GISTInitBuffer(Buffer b, uint32 f)
+gistinitpage(Page page, uint32 f)
 {
 	GISTPageOpaque opaque;
-	Page		page;
-	Size		pageSize;
 
-	pageSize = BufferGetPageSize(b);
-	page = BufferGetPage(b);
-	PageInit(page, pageSize, sizeof(GISTPageOpaqueData));
+	PageInit(page, BLCKSZ, sizeof(GISTPageOpaqueData));
 
 	opaque = GistPageGetOpaque(page);
-	/* page was already zeroed by PageInit, so this is not needed: */
-	/* memset(&(opaque->nsn), 0, sizeof(GistNSN)); */
 	opaque->rightlink = InvalidBlockNumber;
 	opaque->flags = f;
 	opaque->gist_page_id = GIST_PAGE_ID;
+}
+
+/*
+ * Initialize a new index buffer
+ */
+void
+GISTInitBuffer(Buffer b, uint32 f)
+{
+	Page		page;
+
+	page = BufferGetPage(b);
+	gistinitpage(page, f);
 }
 
 /*
@@ -802,13 +844,31 @@ gistNewBuffer(Relation r)
 		{
 			Page		page = BufferGetPage(buffer);
 
+			/*
+			 * If the page was never initialized, it's OK to use.
+			 */
 			if (PageIsNew(page))
-				return buffer;	/* OK to use, if never initialized */
+				return buffer;
 
 			gistcheckpage(r, buffer);
 
-			if (GistPageIsDeleted(page))
-				return buffer;	/* OK to use */
+			/*
+			 * Otherwise, recycle it if deleted, and too old to have any
+			 * processes interested in it.
+			 */
+			if (gistPageRecyclable(page))
+			{
+				/*
+				 * If we are generating WAL for Hot Standby then create a WAL
+				 * record that will allow us to conflict with queries running
+				 * on standby, in case they have snapshots older than the
+				 * page's deleteXid.
+				 */
+				if (XLogStandbyInfoActive() && RelationNeedsWAL(r))
+					gistXLogPageReuse(r, blkno, GistPageGetDeleteXid(page));
+
+				return buffer;
+			}
 
 			LockBuffer(buffer, GIST_UNLOCK);
 		}
@@ -832,32 +892,43 @@ gistNewBuffer(Relation r)
 	return buffer;
 }
 
+/* Can this page be recycled yet? */
+bool
+gistPageRecyclable(Page page)
+{
+	if (PageIsNew(page))
+		return true;
+	if (GistPageIsDeleted(page))
+	{
+		/*
+		 * The page was deleted, but when? If it was just deleted, a scan
+		 * might have seen the downlink to it, and will read the page later.
+		 * As long as that can happen, we must keep the deleted page around as
+		 * a tombstone.
+		 *
+		 * For that check if the deletion XID could still be visible to
+		 * anyone. If not, then no scan that's still in progress could have
+		 * seen its downlink, and we can recycle it.
+		 */
+		FullTransactionId deletexid_full = GistPageGetDeleteXid(page);
+
+		return GlobalVisCheckRemovableFullXid(NULL, deletexid_full);
+	}
+	return false;
+}
+
 bytea *
 gistoptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	GiSTOptions *rdopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"fillfactor", RELOPT_TYPE_INT, offsetof(GiSTOptions, fillfactor)},
-		{"buffering", RELOPT_TYPE_STRING, offsetof(GiSTOptions, bufferingModeOffset)}
+		{"buffering", RELOPT_TYPE_ENUM, offsetof(GiSTOptions, buffering_mode)}
 	};
 
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIST,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	rdopts = allocateReloptStruct(sizeof(GiSTOptions), options, numoptions);
-
-	fillRelOptions((void *) rdopts, sizeof(GiSTOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	pfree(options);
-
-	return (bytea *) rdopts;
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_GIST,
+									  sizeof(GiSTOptions),
+									  tab, lengthof(tab));
 }
 
 /*
@@ -872,12 +943,6 @@ gistproperty(Oid index_oid, int attno,
 			 IndexAMProperty prop, const char *propname,
 			 bool *res, bool *isnull)
 {
-	HeapTuple	tuple;
-	Form_pg_index rd_index PG_USED_FOR_ASSERTS_ONLY;
-	Form_pg_opclass rd_opclass;
-	Datum		datum;
-	bool		disnull;
-	oidvector  *indclass;
 	Oid			opclass,
 				opfamily,
 				opcintype;
@@ -911,41 +976,19 @@ gistproperty(Oid index_oid, int attno,
 	}
 
 	/* First we need to know the column's opclass. */
-
-	tuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(index_oid));
-	if (!HeapTupleIsValid(tuple))
+	opclass = get_index_column_opclass(index_oid, attno);
+	if (!OidIsValid(opclass))
 	{
 		*isnull = true;
 		return true;
 	}
-	rd_index = (Form_pg_index) GETSTRUCT(tuple);
-
-	/* caller is supposed to guarantee this */
-	Assert(attno > 0 && attno <= rd_index->indnatts);
-
-	datum = SysCacheGetAttr(INDEXRELID, tuple,
-							Anum_pg_index_indclass, &disnull);
-	Assert(!disnull);
-
-	indclass = ((oidvector *) DatumGetPointer(datum));
-	opclass = indclass->values[attno - 1];
-
-	ReleaseSysCache(tuple);
 
 	/* Now look up the opclass family and input datatype. */
-
-	tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclass));
-	if (!HeapTupleIsValid(tuple))
+	if (!get_opclass_opfamily_and_input_type(opclass, &opfamily, &opcintype))
 	{
 		*isnull = true;
 		return true;
 	}
-	rd_opclass = (Form_pg_opclass) GETSTRUCT(tuple);
-
-	opfamily = rd_opclass->opcfamily;
-	opcintype = rd_opclass->opcintype;
-
-	ReleaseSysCache(tuple);
 
 	/* And now we can check whether the function is provided. */
 
@@ -968,26 +1011,49 @@ gistproperty(Oid index_oid, int attno,
 									  Int16GetDatum(GIST_COMPRESS_PROC));
 	}
 
+	*isnull = false;
+
 	return true;
 }
 
 /*
- * Temporary and unlogged GiST indexes are not WAL-logged, but we need LSNs
- * to detect concurrent page splits anyway. This function provides a fake
- * sequence of LSNs for that purpose.
+ * Some indexes are not WAL-logged, but we need LSNs to detect concurrent page
+ * splits anyway. This function provides a fake sequence of LSNs for that
+ * purpose.
  */
 XLogRecPtr
 gistGetFakeLSN(Relation rel)
 {
-	static XLogRecPtr counter = 1;
-
 	if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 	{
 		/*
 		 * Temporary relations are only accessible in our session, so a simple
 		 * backend-local counter will do.
 		 */
+		static XLogRecPtr counter = FirstNormalUnloggedLSN;
+
 		return counter++;
+	}
+	else if (RelationIsPermanent(rel))
+	{
+		/*
+		 * WAL-logging on this relation will start after commit, so its LSNs
+		 * must be distinct numbers smaller than the LSN at the next commit.
+		 * Emit a dummy WAL record if insert-LSN hasn't advanced after the
+		 * last call.
+		 */
+		static XLogRecPtr lastlsn = InvalidXLogRecPtr;
+		XLogRecPtr	currlsn = GetXLogInsertRecPtr();
+
+		/* Shouldn't be called for WAL-logging relations */
+		Assert(!RelationNeedsWAL(rel));
+
+		/* No need for an actual record if we already have a distinct LSN */
+		if (!XLogRecPtrIsInvalid(lastlsn) && lastlsn == currlsn)
+			currlsn = gistXLogAssignLSN();
+
+		lastlsn = currlsn;
+		return currlsn;
 	}
 	else
 	{

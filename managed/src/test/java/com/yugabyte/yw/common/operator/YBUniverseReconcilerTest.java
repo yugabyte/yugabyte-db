@@ -269,14 +269,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     taskInfo.refresh();
 
     UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
-    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getUuid();
     universe.setUniverseDetails(uTaskParams);
     universe.save();
     ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.CREATE);
 
     Mockito.verify(customerTaskManager, Mockito.times(1))
-        .retryCustomerTask(
-            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+        .retryCustomerTask(Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getUuid()));
   }
 
   @Test
@@ -296,14 +295,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     taskInfo.refresh();
 
     UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
-    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getUuid();
     universe.setUniverseDetails(uTaskParams);
     universe.save();
     ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.UPDATE);
 
     Mockito.verify(customerTaskManager, Mockito.times(1))
-        .retryCustomerTask(
-            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+        .retryCustomerTask(Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getUuid()));
   }
 
   @Test
@@ -350,7 +348,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     CustomerTask.create(
         defaultCustomer,
         oldUniverse.getUniverseUUID(),
-        taskInfo.getTaskUUID(),
+        taskInfo.getUuid(),
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Create,
         oldUniverse.getName());

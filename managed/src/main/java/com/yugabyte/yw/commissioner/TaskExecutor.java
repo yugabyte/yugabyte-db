@@ -516,6 +516,7 @@ public class TaskExecutor {
         RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
+    taskInfo.setVersion(Util.getYbaVersion());
     return taskInfo;
   }
 
@@ -978,7 +979,7 @@ public class TaskExecutor {
     }
 
     public UUID getTaskUUID() {
-      return taskInfo.getTaskUUID();
+      return taskInfo.getUuid();
     }
 
     // This is invoked from tasks to save the updated task details generally in transaction with
@@ -1075,7 +1076,7 @@ public class TaskExecutor {
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
-          taskInfo.getTaskUUID(),
+          taskInfo.getUuid(),
           redactedTaskParams,
           t);
 
@@ -1143,7 +1144,7 @@ public class TaskExecutor {
     /** Invoked by the ExecutorService. Do not invoke this directly. */
     @Override
     public void run() {
-      UUID taskUUID = getTaskInfo().getTaskUUID();
+      UUID taskUUID = getTaskInfo().getUuid();
       try {
         getTask().setUserTaskUUID(taskUUID);
         super.run();

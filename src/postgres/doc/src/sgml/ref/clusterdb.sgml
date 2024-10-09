@@ -15,7 +15,7 @@ PostgreSQL documentation
  </refmeta>
 
  <refnamediv>
-  <refname id="clusterdb">clusterdb</refname>
+  <refname>clusterdb</refname>
   <refpurpose>cluster a <productname>PostgreSQL</productname> database</refpurpose>
  </refnamediv>
 
@@ -95,7 +95,10 @@ PostgreSQL documentation
         If this is not specified, the database name is read
         from the environment variable <envar>PGDATABASE</envar>.  If
         that is not set, the user name specified for the connection is
-        used.
+        used.  The <replaceable>dbname</replaceable> can be a <link
+        linkend="libpq-connstring">connection string</link>.  If so,
+        connection string parameters will override any conflicting command
+        line options.
        </para>
       </listitem>
      </varlistentry>
@@ -277,6 +280,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

@@ -3,7 +3,7 @@
  * pg_aggregate.c
  *	  routines to support manipulation of the pg_aggregate relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,8 +14,8 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_aggregate.h"
@@ -34,9 +34,9 @@
 #include "utils/syscache.h"
 
 
-static Oid lookup_agg_function(List *fnName, int nargs, Oid *input_types,
-					Oid variadicArgType,
-					Oid *rettype);
+static Oid	lookup_agg_function(List *fnName, int nargs, Oid *input_types,
+								Oid variadicArgType,
+								Oid *rettype);
 
 
 /*
@@ -45,6 +45,7 @@ static Oid lookup_agg_function(List *fnName, int nargs, Oid *input_types,
 ObjectAddress
 AggregateCreate(const char *aggName,
 				Oid aggNamespace,
+				bool replace,
 				char aggKind,
 				int numArgs,
 				int numDirectArgs,
@@ -77,8 +78,10 @@ AggregateCreate(const char *aggName,
 {
 	Relation	aggdesc;
 	HeapTuple	tup;
+	HeapTuple	oldtup;
 	bool		nulls[Natts_pg_aggregate];
 	Datum		values[Natts_pg_aggregate];
+	bool		replaces[Natts_pg_aggregate];
 	Form_pg_proc proc;
 	Oid			transfn;
 	Oid			finalfn = InvalidOid;	/* can be omitted */
@@ -90,8 +93,6 @@ AggregateCreate(const char *aggName,
 	Oid			mfinalfn = InvalidOid;	/* can be omitted */
 	Oid			sortop = InvalidOid;	/* can be omitted */
 	Oid		   *aggArgTypes = parameterTypes->values;
-	bool		hasPolyArg;
-	bool		hasInternalArg;
 	bool		mtransIsStrict = false;
 	Oid			rettype;
 	Oid			finaltype;
@@ -100,9 +101,11 @@ AggregateCreate(const char *aggName,
 	int			nargs_finalfn;
 	Oid			procOid;
 	TupleDesc	tupDesc;
+	char	   *detailmsg;
 	int			i;
 	ObjectAddress myself,
 				referenced;
+	ObjectAddresses *addrs;
 	AclResult	aclresult;
 
 	/* sanity checks (caller should have caught these) */
@@ -113,7 +116,7 @@ AggregateCreate(const char *aggName,
 		elog(ERROR, "aggregate must have a transition function");
 
 	if (numDirectArgs < 0 || numDirectArgs > numArgs)
-		elog(ERROR, "incorrect number of direct args for aggregate");
+		elog(ERROR, "incorrect number of direct arguments for aggregate");
 
 	/*
 	 * Aggregates can have at most FUNC_MAX_ARGS-1 args, else the transfn
@@ -128,36 +131,33 @@ AggregateCreate(const char *aggName,
 							   FUNC_MAX_ARGS - 1,
 							   FUNC_MAX_ARGS - 1)));
 
-	/* check for polymorphic and INTERNAL arguments */
-	hasPolyArg = false;
-	hasInternalArg = false;
-	for (i = 0; i < numArgs; i++)
-	{
-		if (IsPolymorphicType(aggArgTypes[i]))
-			hasPolyArg = true;
-		else if (aggArgTypes[i] == INTERNALOID)
-			hasInternalArg = true;
-	}
-
 	/*
 	 * If transtype is polymorphic, must have polymorphic argument also; else
 	 * we will have no way to deduce the actual transtype.
 	 */
-	if (IsPolymorphicType(aggTransType) && !hasPolyArg)
+	detailmsg = check_valid_polymorphic_signature(aggTransType,
+												  aggArgTypes,
+												  numArgs);
+	if (detailmsg)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("cannot determine transition data type"),
-				 errdetail("An aggregate using a polymorphic transition type must have at least one polymorphic argument.")));
+				 errdetail_internal("%s", detailmsg)));
 
 	/*
 	 * Likewise for moving-aggregate transtype, if any
 	 */
-	if (OidIsValid(aggmTransType) &&
-		IsPolymorphicType(aggmTransType) && !hasPolyArg)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("cannot determine transition data type"),
-				 errdetail("An aggregate using a polymorphic transition type must have at least one polymorphic argument.")));
+	if (OidIsValid(aggmTransType))
+	{
+		detailmsg = check_valid_polymorphic_signature(aggmTransType,
+													  aggArgTypes,
+													  numArgs);
+		if (detailmsg)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("cannot determine transition data type"),
+					 errdetail_internal("%s", detailmsg)));
+	}
 
 	/*
 	 * An ordered-set aggregate that is VARIADIC must be VARIADIC ANY.  In
@@ -489,12 +489,14 @@ AggregateCreate(const char *aggName,
 	 * that itself violates the rule against polymorphic result with no
 	 * polymorphic input.)
 	 */
-	if (IsPolymorphicType(finaltype) && !hasPolyArg)
+	detailmsg = check_valid_polymorphic_signature(finaltype,
+												  aggArgTypes,
+												  numArgs);
+	if (detailmsg)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("cannot determine result data type"),
-				 errdetail("An aggregate returning a polymorphic type "
-						   "must have at least one polymorphic argument.")));
+				 errdetail_internal("%s", detailmsg)));
 
 	/*
 	 * Also, the return type can't be INTERNAL unless there's at least one
@@ -502,11 +504,14 @@ AggregateCreate(const char *aggName,
 	 * for regular functions, but at the level of aggregates.  We must test
 	 * this explicitly because we allow INTERNAL as the transtype.
 	 */
-	if (finaltype == INTERNALOID && !hasInternalArg)
+	detailmsg = check_valid_internal_signature(finaltype,
+											   aggArgTypes,
+											   numArgs);
+	if (detailmsg)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("unsafe use of pseudo-type \"internal\""),
-				 errdetail("A function returning \"internal\" must have at least one \"internal\" argument.")));
+				 errdetail_internal("%s", detailmsg)));
 
 	/*
 	 * If a moving-aggregate implementation is supplied, look up its finalfn
@@ -560,8 +565,8 @@ AggregateCreate(const char *aggName,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("moving-aggregate implementation returns type %s, but plain implementation returns type %s",
-							format_type_be(aggmTransType),
-							format_type_be(aggTransType))));
+							format_type_be(rettype),
+							format_type_be(finaltype))));
 	}
 
 	/* handle sortop, if supplied */
@@ -609,14 +614,15 @@ AggregateCreate(const char *aggName,
 
 	myself = ProcedureCreate(aggName,
 							 aggNamespace,
-							 false, /* no replacement */
+							 replace,	/* maybe replacement */
 							 false, /* doesn't return a set */
 							 finaltype, /* returnType */
 							 GetUserId(),	/* proowner */
 							 INTERNALlanguageId,	/* languageObjectId */
 							 InvalidOid,	/* no validator */
-							 "aggregate_dummy", /* placeholder proc */
+							 "aggregate_dummy", /* placeholder (no such proc) */
 							 NULL,	/* probin */
+							 NULL,	/* prosqlbody */
 							 PROKIND_AGGREGATE,
 							 false, /* security invoker (currently not
 									 * definable for agg) */
@@ -632,6 +638,7 @@ AggregateCreate(const char *aggName,
 							 parameterDefaults, /* parameterDefaults */
 							 PointerGetDatum(NULL), /* trftypes */
 							 PointerGetDatum(NULL), /* proconfig */
+							 InvalidOid,	/* no prosupport */
 							 1, /* procost */
 							 0);	/* prorows */
 	procOid = myself.objectId;
@@ -639,12 +646,15 @@ AggregateCreate(const char *aggName,
 	/*
 	 * Okay to create the pg_aggregate entry.
 	 */
+	aggdesc = table_open(AggregateRelationId, RowExclusiveLock);
+	tupDesc = aggdesc->rd_att;
 
 	/* initialize nulls and values */
 	for (i = 0; i < Natts_pg_aggregate; i++)
 	{
 		nulls[i] = false;
 		values[i] = (Datum) NULL;
+		replaces[i] = true;
 	}
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
 	values[Anum_pg_aggregate_aggkind - 1] = CharGetDatum(aggKind);
@@ -675,99 +685,128 @@ AggregateCreate(const char *aggName,
 	else
 		nulls[Anum_pg_aggregate_aggminitval - 1] = true;
 
-	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
-	tupDesc = aggdesc->rd_att;
+	if (replace)
+		oldtup = SearchSysCache1(AGGFNOID, ObjectIdGetDatum(procOid));
+	else
+		oldtup = NULL;
 
-	tup = heap_form_tuple(tupDesc, values, nulls);
-	CatalogTupleInsert(aggdesc, tup);
+	if (HeapTupleIsValid(oldtup))
+	{
+		Form_pg_aggregate oldagg = (Form_pg_aggregate) GETSTRUCT(oldtup);
 
-	heap_close(aggdesc, RowExclusiveLock);
+		/*
+		 * If we're replacing an existing entry, we need to validate that
+		 * we're not changing anything that would break callers. Specifically
+		 * we must not change aggkind or aggnumdirectargs, which affect how an
+		 * aggregate call is treated in parse analysis.
+		 */
+		if (aggKind != oldagg->aggkind)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("cannot change routine kind"),
+					 (oldagg->aggkind == AGGKIND_NORMAL ?
+					  errdetail("\"%s\" is an ordinary aggregate function.", aggName) :
+					  oldagg->aggkind == AGGKIND_ORDERED_SET ?
+					  errdetail("\"%s\" is an ordered-set aggregate.", aggName) :
+					  oldagg->aggkind == AGGKIND_HYPOTHETICAL ?
+					  errdetail("\"%s\" is a hypothetical-set aggregate.", aggName) :
+					  0)));
+		if (numDirectArgs != oldagg->aggnumdirectargs)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("cannot change number of direct arguments of an aggregate function")));
+
+		replaces[Anum_pg_aggregate_aggfnoid - 1] = false;
+		replaces[Anum_pg_aggregate_aggkind - 1] = false;
+		replaces[Anum_pg_aggregate_aggnumdirectargs - 1] = false;
+
+		tup = heap_modify_tuple(oldtup, tupDesc, values, nulls, replaces);
+		CatalogTupleUpdate(aggdesc, &tup->t_self, tup);
+		ReleaseSysCache(oldtup);
+	}
+	else
+	{
+		tup = heap_form_tuple(tupDesc, values, nulls);
+		CatalogTupleInsert(aggdesc, tup);
+	}
+
+	table_close(aggdesc, RowExclusiveLock);
 
 	/*
 	 * Create dependencies for the aggregate (above and beyond those already
 	 * made by ProcedureCreate).  Note: we don't need an explicit dependency
 	 * on aggTransType since we depend on it indirectly through transfn.
-	 * Likewise for aggmTransType using the mtransfunc, if it exists.
+	 * Likewise for aggmTransType using the mtransfn, if it exists.
+	 *
+	 * If we're replacing an existing definition, ProcedureCreate deleted all
+	 * our existing dependencies, so we have to do the same things here either
+	 * way.
 	 */
 
+	addrs = new_object_addresses();
+
 	/* Depends on transition function */
-	referenced.classId = ProcedureRelationId;
-	referenced.objectId = transfn;
-	referenced.objectSubId = 0;
-	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	ObjectAddressSet(referenced, ProcedureRelationId, transfn);
+	add_exact_object_address(&referenced, addrs);
 
 	/* Depends on final function, if any */
 	if (OidIsValid(finalfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = finalfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, finalfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on combine function, if any */
 	if (OidIsValid(combinefn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = combinefn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, combinefn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on serialization function, if any */
 	if (OidIsValid(serialfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = serialfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, serialfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on deserialization function, if any */
 	if (OidIsValid(deserialfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = deserialfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, deserialfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on forward transition function, if any */
 	if (OidIsValid(mtransfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = mtransfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, mtransfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on inverse transition function, if any */
 	if (OidIsValid(minvtransfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = minvtransfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, minvtransfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on final function, if any */
 	if (OidIsValid(mfinalfn))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = mfinalfn;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, mfinalfn);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Depends on sort operator, if any */
 	if (OidIsValid(sortop))
 	{
-		referenced.classId = OperatorRelationId;
-		referenced.objectId = sortop;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, OperatorRelationId, sortop);
+		add_exact_object_address(&referenced, addrs);
 	}
 
+	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
+	free_object_addresses(addrs);
 	return myself;
 }
 
@@ -807,7 +846,7 @@ lookup_agg_function(List *fnName,
 	 * the function.
 	 */
 	fdresult = func_get_detail(fnName, NIL, NIL,
-							   nargs, input_types, false, false,
+							   nargs, input_types, false, false, false,
 							   &fnOid, rettype, &retset,
 							   &nvargs, &vatype,
 							   &true_oid_array, NULL);
