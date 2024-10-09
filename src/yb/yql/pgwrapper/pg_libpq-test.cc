@@ -981,7 +981,7 @@ TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
   ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
   for (int i = 1; i <= FLAGS_num_iter; i++) {
     LOG(INFO) << "ITERATION " << i;
-    BumpCatalogVersion(1, &conn);
+    BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER");
     LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
     uint64_t ver;
     ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));

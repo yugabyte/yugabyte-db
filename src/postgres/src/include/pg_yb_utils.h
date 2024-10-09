@@ -561,6 +561,11 @@ extern int yb_parallel_range_size;
  */
 extern bool yb_enable_fkey_catcache;
 
+/*
+ * Enable the nop alter role statement optimization.
+ */
+extern bool yb_enable_nop_alter_role_optimization;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

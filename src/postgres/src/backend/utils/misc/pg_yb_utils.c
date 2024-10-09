@@ -1359,6 +1359,7 @@ bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
 bool yb_enable_fkey_catcache = true;
+bool yb_enable_nop_alter_role_optimization = true;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

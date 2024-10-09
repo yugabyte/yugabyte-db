@@ -38,7 +38,8 @@ class LibPqTestBase : public PgWrapperTestBase {
       bool simple_query_protocol = false);
   void SerializableColoringHelper(int min_duration_seconds = 0);
   static bool TransactionalFailure(const Status& status);
-  static void BumpCatalogVersion(int num_versions, PGConn* conn);
+  static void BumpCatalogVersion(int num_versions, PGConn* conn,
+                                 const std::string& alter_value = "");
   static void UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* options);
 };
 
