@@ -17,41 +17,10 @@
 
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/flags.h"
 
 using namespace yb::size_literals;
 
-// Maximum size of RPC should be larger than size of consensus batch
-// At each layer, we embed the "message" from the previous layer.
-// In order to send three strings of 64, the request from cql/redis will be larger
-// than that because we will have overheads from that layer.
-// Hence, we have a limit of 254MB at the consensus layer.
-// The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
-DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
-    "The maximum size of a message of any RPC that the server will accept. The sum of "
-    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
-
 DECLARE_uint32(protobuf_message_total_bytes_limit);
-
-namespace {
-
-bool RpcMaxMessageSizeValidator(const char* flag_name, uint64_t value) {
-  // This validation depends on the value of: protobuf_message_total_bytes_limit.
-  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-
-  if (value >= FLAGS_protobuf_message_total_bytes_limit) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be less than protobuf_message_total_bytes_limit "
-        << FLAGS_protobuf_message_total_bytes_limit;
-    return false;
-  }
-
-  return true;
-}
-
-} // namespace
-
-DEFINE_validator(rpc_max_message_size, &RpcMaxMessageSizeValidator);
 
 using google::protobuf::internal::WireFormatLite;
 using google::protobuf::io::CodedOutputStream;

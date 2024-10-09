@@ -57,11 +57,12 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
     opts.extra_tserver_flags.push_back("--vmodule=pg_cron*=4");
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
+
     opts.extra_tserver_flags.push_back(
         Format("--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=$0", kJobListRefreshInterval));
+    opts.extra_tserver_flags.push_back("--pg_cron_leadership_refresh_sec=1");
     opts.extra_tserver_flags.push_back(
         Format("--pg_cron_leader_lease_sec=$0", kJobListRefreshInterval));
-    opts.extra_tserver_flags.push_back("--pg_cron_leadership_refresh_sec=1");
 
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());

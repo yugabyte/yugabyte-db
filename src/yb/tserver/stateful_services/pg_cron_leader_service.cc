@@ -23,6 +23,8 @@
 
 using namespace std::chrono_literals;
 
+#include "yb/util/flag_validators.h"
+
 DECLARE_bool(enable_pg_cron);
 
 DEFINE_RUNTIME_uint32(pg_cron_leader_lease_sec, 60,
@@ -34,25 +36,13 @@ DEFINE_RUNTIME_uint32(pg_cron_leadership_refresh_sec, 10,
 
 DEFINE_test_flag(bool, pg_cron_fail_setting_last_minute, false, "Fail setting the last minute");
 
+DEFINE_validator(pg_cron_leadership_refresh_sec,
+    FLAG_LT_FLAG_VALIDATOR(pg_cron_leader_lease_sec));
+
+DEFINE_validator(pg_cron_leader_lease_sec,
+    FLAG_GT_FLAG_VALIDATOR(pg_cron_leadership_refresh_sec));
+
 DECLARE_uint64(max_clock_skew_usec);
-
-namespace {
-bool ValidateLeadershipRefreshSec(const char* flag_name, uint32 value) {
-  // This validation depends on the value of other flag(s): pg_cron_leader_lease_sec.
-  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-
-  if (value >= FLAGS_pg_cron_leader_lease_sec) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be less than pg_cron_leader_lease_sec " << FLAGS_pg_cron_leader_lease_sec;
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
-
-DEFINE_validator(pg_cron_leadership_refresh_sec, &ValidateLeadershipRefreshSec);
 
 namespace yb {
 namespace stateful_service {

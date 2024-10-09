@@ -205,7 +205,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    ASSERT_STR_CONTAINS(resp.msg(), "Must be at least 1");
+    ASSERT_STR_CONTAINS(resp.msg(), "Must be greater than 0");
     ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 

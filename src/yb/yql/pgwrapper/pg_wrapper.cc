@@ -38,6 +38,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -309,15 +310,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
 
-static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
-  if (value != "database" && value != "tablet") {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";
-    return false;
-  }
-  return true;
-}
-
-DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
