@@ -32,7 +32,7 @@ Your app is ready to be deployed!
 The maps in Yugaware are generated using TileMill and mbTiles project and uploaded to S3, from where they are downloaded into /public folder during the build process.
 To generate your own Map tiles, do the following -
 
-1. Download TileMill or build from source https://tilemill-project.github.io/tilemill/
+1. Download TileMill or build from source https://tilemill-project.github.io/tilemill/docs/install/
 2. Create Outline World Map , customize styles using CartoCSS http://tilemill-project.github.io/tilemill/docs/manual/carto/
 3. Export to .mbTiles file (choose zoom level, center, tile quality etc. all of which will affect the size of your output)
 4. Use mbutil to generate base map pngs.
