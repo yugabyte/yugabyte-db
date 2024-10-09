@@ -89,9 +89,11 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-{{<lead>}}
+{{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
 Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+{{</lead>}}
 
+{{<lead link="../../reference/configuration/yb-tserver/#ysql">}}
 Learn more about [YSQL flags](../../reference/configuration/yb-tserver/#ysql) for configuring YB-TServer.
 {{</lead>}}
 

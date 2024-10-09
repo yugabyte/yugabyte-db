@@ -75,8 +75,8 @@ The _pg_stat_activity_ view shows detailed information about active sessions, in
 The pg_stat_activity view is not based on any specific tables. Instead, it provides real-time information about the current activity of each session based on internal data structures. This includes information such as the user, current query, state of the query (active, idle, and more), and other session-level information.
 {{</note>}}
 
-{{<lead link="../../explore/observability/pg-stat-activity">}}
-To learn more about how the pg_stat_activity can be used to monitor live queries, see [View live queries](../../explore/observability/pg-stat-activity).
+{{<lead link="../../explore/observability/pg-stat-activity/">}}
+Learn how to use pg_stat_activity to monitor live queries in [View live queries](../../explore/observability/pg-stat-activity/).
 {{</lead>}}
 
 ## Table activity
@@ -92,8 +92,12 @@ The pg_locks view doesn't have a documented view definition that you can directl
 {{</note>}}
 
 {{<tip>}}
-[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock. To learn more about how pg_locks can be used to get insights on transaction locks, see [Lock insights](../../explore/observability/pg-locks).
+[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
 {{</tip>}}
+
+{{<lead link="../../explore/observability/pg-locks/">}}
+Learn how pg_locks can be used to get insights on transaction locks in [Lock insights](../../explore/observability/pg-locks/).
+{{</lead>}}
 
 ## Stored procedures
 
@@ -111,7 +115,7 @@ By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are a
 {{</note>}}
 
 {{<lead link="../../explore/query-1-performance/pg-stat-statements/">}}
-To understand how to improve query performance using these stats, see [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
+Learn how to improve query performance using these stats in [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
 {{</lead>}}
 
 ## Data statistics

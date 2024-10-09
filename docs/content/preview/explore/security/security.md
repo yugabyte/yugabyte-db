@@ -49,7 +49,7 @@ You can choose the method to use to authenticate a particular client connection 
 YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL and YCQL APIs.
 
 {{<lead link="../../../secure/authentication/">}}
-To learn more about authentication in YugabyteDB, see [Authentication methods](../../../secure/authentication/).
+To learn about authentication in YugabyteDB, see [Authentication methods](../../../secure/authentication/).
 {{</lead>}}
 
 ## Authorization
@@ -57,7 +57,7 @@ To learn more about authentication in YugabyteDB, see [Authentication methods](.
 YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles.
 
 {{<lead link="../../../secure/authorization/">}}
-To learn more about authorization in YugabyteDB, see [Role-based access control](../../../secure/authorization/).
+To learn about authorization in YugabyteDB, see [Role-based access control](../../../secure/authorization/).
 {{</lead>}}
 
 ### Roles
@@ -160,7 +160,7 @@ Learn more about [Encryption in transit](../../../secure/tls-encryption/) in Yug
 [Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest (that is, stored on disk), is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
 
 {{<lead link="../../../secure/encryption-at-rest/">}}
-Learn more about [Encryption at rest](../../../secure/encryption-at-rest) in YugabyteDB.
+Learn about [Encryption at rest](../../../secure/encryption-at-rest) in YugabyteDB.
 {{</lead>}}
 
 ### Column-level encryption
@@ -174,7 +174,7 @@ yugabyte=# INSERT INTO employees VALUES (1, 'joe', '56 grove st',  20000, PGP_SY
 ```
 
 {{<lead link="../../../secure/column-level-encryption/">}}
-Learn more about [column-level encryption](../../../secure/column-level-encryption/) in YugabyteDB.
+Learn about [column-level encryption](../../../secure/column-level-encryption/) in YugabyteDB.
 {{</lead>}}
 
 ## Auditing
@@ -184,7 +184,7 @@ Use audit logging to produce audit logs needed to comply with government, financ
 You enable audit logging using the `--ysql_pg_conf_csv` YB-TServer flag.
 
 {{<lead link="../../../secure/audit-logging/">}}
-Learn more about [audit logging](../../../secure/audit-logging/) in YugabyteDB.
+Learn about [audit logging](../../../secure/audit-logging/) in YugabyteDB.
 {{</lead>}}
 
 ### Session logging
@@ -198,12 +198,12 @@ yugabyte=# SET pgaudit.log = 'read, ddl';
 ```
 
 {{<lead link="../../../secure/audit-logging/session-audit-logging-ysql/">}}
-Learn more about [Session-Level Audit Logging in YSQL](../../../secure/audit-logging/session-audit-logging-ysql/).
+Learn about [Session-Level Audit Logging in YSQL](../../../secure/audit-logging/session-audit-logging-ysql/).
 {{</lead>}}
 
 ### Object logging
 
-Object logging logs statements that affect a particular relation, and is intended to be a finer-grained replacement for session-level logging. It may not make sense to use them in conjunction, but you could, for example, use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
+Object logging logs statements that affect a particular relation, and is intended to be a finer-grained replacement for session-level logging. It may not make sense to use them in conjunction, but you could for example use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
 
 YugabyteDB implements object-level audit logging by reusing the PostgreSQL role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation (such as `TABLE` or `VIEW`) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
 
@@ -214,7 +214,7 @@ yugabyte=# SET pgaudit.role = 'auditor';
 ```
 
 {{<lead link="../../../secure/audit-logging/object-audit-logging-ysql/">}}
-Learn more about [Object-Level Audit Logging in YSQL](../../../secure/audit-logging/object-audit-logging-ysql/).
+Learn about [Object-Level Audit Logging in YSQL](../../../secure/audit-logging/object-audit-logging-ysql/).
 {{</lead>}}
 
 ## Restrict network access

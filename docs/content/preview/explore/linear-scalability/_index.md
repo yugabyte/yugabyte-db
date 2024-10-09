@@ -84,8 +84,8 @@ For best results, keep steady state resource usage under 60%, and take strong ac
 
 [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
 
-{{<lead link="../observability">}}
-Learn about the various metrics than you can monitor in [Observability](../observability).
+{{<lead link="../observability/">}}
+Learn about the various metrics than you can monitor in [Observability](../observability/).
 {{</lead>}}
 
 ## Learn more
