@@ -140,10 +140,14 @@ public class RegionHandler {
     if (provider.getCloudCode().equals(CloudType.aws)
         && provider.getAllAccessKeys() != null
         && provider.getAllAccessKeys().size() > 0) {
-      String keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
-      log.info(
-          String.format("Deleting keyPair %s from region %s", keyPairName, regionUUID.toString()));
-      awsCloudImpl.deleteKeyPair(provider, region, keyPairName);
+      AccessKey key = AccessKey.getLatestKey(provider.getUuid());
+      if (!key.getKeyInfo().skipKeyValidateAndUpload) {
+        String keyPairName = key.getKeyCode();
+        log.info(
+            String.format(
+                "Deleting keyPair %s from region %s", keyPairName, regionUUID.toString()));
+        awsCloudImpl.deleteKeyPair(provider, region, keyPairName);
+      }
     }
     return region;
   }
