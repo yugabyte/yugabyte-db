@@ -4028,8 +4028,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	/* Suppress use of the target index while rebuilding it */
 	SetReindexProcessing(heapId, indexId);
 
-	if (IsYugaByteEnabled() && IsSystemRelation(heapRelation))
-		YbTruncate(iRel);
+	if (YbUseUnsafeTruncate(heapRelation))
+		YbUnsafeTruncate(iRel);
 	else
 	{
 		/* Create a new physical relation for the index */
