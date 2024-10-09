@@ -201,9 +201,12 @@
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
-      StandardOutput=append:{{ .DataDir }}/prometheus.log
-      StandardError=append:{{ .DataDir }}/prometheus.log
       OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
+      {{ $systemdLog := systemdLogMethod }}
+      {{ if ne $systemdLog "" }}
+      StandardOutput={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
+      StandardError={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
+      {{ end }}
 
       [Install]
       WantedBy=multi-user.target
