@@ -41,7 +41,7 @@ type: indexpage
 
   {{<index/item
     title="Handle disk full"
-    body="What to do when you run out of disk space."
+    body="What to do when you are running out of disk space."
     href="disk-full/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
