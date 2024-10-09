@@ -80,11 +80,11 @@ Please refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues
 
 Quickly create independent copies of your database for data recovery, development, and testing
 
-#### [pg_cron extension](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=pg_cron%20extension,-TP)
+#### [pg_cron extension](https://docs.yugabyte.com/preview/explore/ysql-language-features/pg-extensions/extension-pgcron/)
 
 With pg_cron, you can schedule YSQL commands using familiar cron syntax, including jobs on intervals as fine as seconds
 
-#### [Semi-automatic xCluster replication](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.23/#highlights:~:text=semi%2Dautomatic%20xcluster%20replication,-TP)
+#### [Semi-automatic xCluster replication](https://docs.yugabyte.com/preview/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/)
 
 Simplifies the management of YSQL transactional xCluster replication by operating at the database level instead of the table level.
 
