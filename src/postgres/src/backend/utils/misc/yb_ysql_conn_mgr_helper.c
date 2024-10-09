@@ -599,6 +599,7 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 void
 DeleteSharedMemory(int client_shmem_key)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	elog(DEBUG5, "Deleting the shared memory with key %d", client_shmem_key);
 
 	/* Shared memory related to the client id will be removed */
@@ -612,6 +613,7 @@ DeleteSharedMemory(int client_shmem_key)
 	}
 
 	yb_logical_client_shmem_key = -1;
+#endif
 }
 
 void
@@ -778,8 +780,19 @@ YbCreateClientId(void)
 		return;
 	}
 
-	/* Create a shared memory block for a client connection */
-	int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+	/*
+	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
+	 * is enabled. Otherwise send 1 for every logical client and disable the code to delete the
+	 * shared memory block in DeleteSharedMemory() based on YB_GUC_SUPPORT_VIA_SHMEM.
+	 * TODO (mkumar) GH #24350 Don't send errhint packet if YB_GUC_SUPPORT_VIA_SHMEM
+	 * 			mode is not enabled.
+	*/
+	int new_client_id =
+	#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+		yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+	#else
+		1;
+	#endif
 	if (new_client_id > 0)
 		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
 	else
