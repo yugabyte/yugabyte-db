@@ -1,0 +1,30 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT 1 AS num;
+ num 
+-----
+   1
+(1 row)
+
+SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                                                    query
+----------------------------------------------------------------------------------------------------------------------------------------------
+ RESET ROLE;SET SESSION AUTHORIZATION DEFAULT;RESET ALL
+ SELECT $1 AS num
+ SELECT pg_stat_monitor_reset();
+ SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+ SET intervalstyle=E'postgres_verbose';SET application_name=E'pg_regress/yb_pg_basic';SET datestyle=E'Postgres, MDY';SET timezone=E'PST8PDT';
+(5 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

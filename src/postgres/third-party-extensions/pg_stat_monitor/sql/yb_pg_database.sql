@@ -20,7 +20,7 @@ SELECT * FROM t1,t2 WHERE t1.a = t2.b;
 \c db2
 SELECT * FROM t3,t4 WHERE t3.c = t4.d;
 
-SELECT datname, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+SELECT datname, query FROM pg_stat_monitor ORDER BY datname, query COLLATE "C";
 SELECT pg_stat_monitor_reset();
 
 \c db1

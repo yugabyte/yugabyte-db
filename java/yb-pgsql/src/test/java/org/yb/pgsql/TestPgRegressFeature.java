@@ -48,6 +48,7 @@ public class TestPgRegressFeature extends BasePgRegressTest {
 
   @Test
   public void testPgRegressFeature() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_feature_serial_schedule");
   }
 }

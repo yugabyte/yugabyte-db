@@ -26,6 +26,7 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
 
   @Test
   public void schedule() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_stat_monitor"),
                      "yb_schedule");

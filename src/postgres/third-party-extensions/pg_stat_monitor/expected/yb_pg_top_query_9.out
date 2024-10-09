@@ -1,0 +1,56 @@
+CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS
+$$
+BEGIN
+	return (select $1 + $2);
+END; $$ language plpgsql;
+CREATE OR REPLACE function add2(int, int) RETURNS int as
+$$
+BEGIN
+	return add($1,$2);
+END;
+$$ language plpgsql;
+SELECT add2(1,2);
+ add2
+------
+    3
+(1 row)
+
+-- https://github.com/yugabyte/yugabyte-db/issues/11801
+-- TODO: Top query has run to run variability in YB
+-- SELECT query, top_query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                                                      query
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS                                                                                     +
+ $$                                                                                                                                              +
+ BEGIN                                                                                                                                           +
+         return (select $1 + $2);                                                                                                                +
+ END; $$ language plpgsql;
+ CREATE OR REPLACE function add2(int, int) RETURNS int as                                                                                        +
+ $$                                                                                                                                              +
+ BEGIN                                                                                                                                           +
+         return add($1,$2);                                                                                                                      +
+ END;                                                                                                                                            +
+ $$ language plpgsql;
+ RESET ROLE;SET SESSION AUTHORIZATION DEFAULT;RESET ALL
+ SELECT (select $1 + $2)
+ SELECT add2($1,$2)
+ SELECT pg_stat_monitor_reset();
+ SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+ SET intervalstyle=E'postgres_verbose';SET application_name=E'pg_regress/yb_pg_top_query';SET datestyle=E'Postgres, MDY';SET timezone=E'PST8PDT';
+(8 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;
