@@ -2406,6 +2406,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_nop_alter_role_optimization", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable nop alter role statement optimization to avoid catalog version "
+						 "increment if the alter role statement does not involve any change."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_nop_alter_role_optimization,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
