@@ -227,7 +227,7 @@ var createRestoreCmd = &cobra.Command{
 				}
 
 				restoreCtx := formatter.Context{
-					Command: "create",
+					Command: "list",
 					Output:  os.Stdout,
 					Format:  restore.NewRestoreFormat(viper.GetString("output")),
 				}
