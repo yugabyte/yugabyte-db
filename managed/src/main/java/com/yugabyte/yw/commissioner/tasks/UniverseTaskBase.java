@@ -64,6 +64,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
@@ -100,6 +101,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails;
@@ -211,7 +213,9 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -695,7 +699,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     TaskType taskType = getTaskExecutor().getTaskType(getClass());
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     boolean isResumeOrDelete =
-        (taskType == TaskType.ResumeUniverse || taskType == TaskType.DestroyUniverse);
+        (taskType == TaskType.ResumeUniverse
+            || taskType == TaskType.DestroyUniverse
+            || taskType == TaskType.ResumeXClusterUniverses);
     if (universeDetails.universePaused && !isResumeOrDelete) {
       String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
       log.error(msg);
@@ -775,7 +781,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         boolean isResumeOrDelete =
-            (owner == TaskType.ResumeUniverse || owner == TaskType.DestroyUniverse);
+            (owner == TaskType.ResumeUniverse
+                || owner == TaskType.DestroyUniverse
+                || owner == TaskType.ResumeXClusterUniverses);
         if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
           log.error(msg);
@@ -6091,6 +6099,115 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               task.initialize(params);
               subTaskGroup.addSubTask(task);
             });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createUpdateUniverseFieldsTask(Consumer<Universe> fieldModifer) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseFields");
+    UpdateUniverseFields.Params params = new UpdateUniverseFields.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.fieldModifier = fieldModifer;
+    UpdateUniverseFields task = createTask(UpdateUniverseFields.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public Collection<NodeDetails> getActiveUniverseNodes(Universe universe) {
+    Collection<NodeDetails> activeNodes = new HashSet<>();
+    for (NodeDetails node : universe.getNodes()) {
+      NodeTaskParams nodeParams = new NodeTaskParams();
+      nodeParams.setUniverseUUID(universe.getUniverseUUID());
+      nodeParams.nodeName = node.nodeName;
+      nodeParams.nodeUuid = node.nodeUuid;
+      nodeParams.azUuid = node.azUuid;
+      nodeParams.placementUuid = node.placementUuid;
+
+      if (instanceExists(nodeParams)) {
+        activeNodes.add(node);
+      }
+    }
+    return activeNodes;
+  }
+
+  public void createPauseUniverseTasks(Universe universe, UUID customerUUID) {
+
+    // Set taskParams for universer uuid
+    preTaskActions();
+
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> clusterMap =
+        universe.getUniverseDetails().clusters.stream()
+            .collect(Collectors.toMap(c -> c.uuid, c -> c));
+
+    Set<NodeDetails> tserverNodes =
+        universe.getTServers().stream()
+            .filter(tserverNode -> tserverNode.state == NodeDetails.NodeState.Live)
+            .collect(Collectors.toSet());
+    Set<NodeDetails> masterNodes =
+        universe.getMasters().stream()
+            .filter(masterNode -> masterNode.state == NodeDetails.NodeState.Live)
+            .collect(Collectors.toSet());
+
+    for (NodeDetails node : Sets.union(masterNodes, tserverNodes)) {
+      if (!node.disksAreMountedByUUID) {
+        UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
+        createUpdateMountedDisksTask(
+            node, node.getInstanceType(), cluster.userIntent.getDeviceInfoForNode(node));
+      }
+    }
+
+    // Stop yb-controller processes on nodes
+    if (universe.isYbcEnabled()) {
+      createStopYbControllerTasks(tserverNodes)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+    }
+
+    createSetNodeStateTasks(tserverNodes, NodeState.Stopping)
+        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+    createStopServerTasks(tserverNodes, ServerType.TSERVER, false)
+        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+    createSetNodeStateTasks(masterNodes, NodeState.Stopping);
+    createStopMasterTasks(masterNodes).setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+    if (!universe.getUniverseDetails().isImportedUniverse()) {
+      // Create tasks to pause the existing nodes.
+      Collection<NodeDetails> activeUniverseNodes = getActiveUniverseNodes(universe);
+      createPauseServerTasks(universe, activeUniverseNodes) // Pass in filtered nodes
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+    }
+    createSwamperTargetUpdateTask(false);
+    // Remove alert definition files.
+    createUnivManageAlertDefinitionsTask(false).setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+
+    createMarkSourceMetricsTask(universe, MetricSourceState.INACTIVE)
+        .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+
+    createUpdateUniverseFieldsTask(
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.universePaused = true;
+          for (NodeDetails node : universeDetails.nodeDetailsSet) {
+            if (node.isMaster || node.isTserver) {
+              node.disksAreMountedByUUID = true;
+            }
+          }
+          u.setUniverseDetails(universeDetails);
+        });
+  }
+
+  public SubTaskGroup createMarkSourceMetricsTask(Universe universe, MetricSourceState state) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MarkSourceMetrics");
+    MarkSourceMetric.Params params = new MarkSourceMetric.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.customerUUID = (Customer.get(universe.getCustomerId()).getUuid());
+    params.metricState = state;
+    MarkSourceMetric task = createTask(MarkSourceMetric.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

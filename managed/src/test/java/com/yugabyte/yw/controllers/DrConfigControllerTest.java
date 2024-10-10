@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -103,6 +104,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private BootstrapBackupParams backupRequestParams;
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
+  private DrConfigController drConfigController;
+
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
         Json.parse(
@@ -161,6 +164,19 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();
+
+    drConfigController =
+        new DrConfigController(
+            mockCommissioner,
+            mockMetricQueryHelper,
+            mockBackupHelper,
+            mockCustomerConfigService,
+            mockYBClientService,
+            null,
+            mockXClusterUniverseService,
+            mockAutoFlagUtil,
+            mockXClusterScheduler,
+            null);
   }
 
   @Test
@@ -701,5 +717,92 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testResume() {
     testToggleState("resume");
+  }
+
+  @Test
+  public void testPauseUniversesPrechecks() {
+    DrConfig drConfig = createDefaultDrConfig();
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+
+    // XClusterConfig not in running state.
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            drConfigController.pauseUniversesPrechecks(
+                xClusterConfig, sourceUniverse, targetUniverse));
+    xClusterConfig.setStatus(XClusterConfigStatusType.Running);
+    xClusterConfig.update();
+
+    // Precheck should succeed.
+    try {
+      drConfigController.pauseUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
+    } catch (Exception e) {
+      fail();
+    }
+
+    // One universe is paused already.
+    sourceUniverse.getUniverseDetails().universePaused = true;
+    sourceUniverse.save();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            drConfigController.pauseUniversesPrechecks(
+                xClusterConfig, sourceUniverse, targetUniverse));
+    sourceUniverse.getUniverseDetails().universePaused = false;
+    sourceUniverse.save();
+
+    // XCluster is already paused.
+    xClusterConfig.setPaused(true);
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            drConfigController.pauseUniversesPrechecks(
+                xClusterConfig, sourceUniverse, targetUniverse));
+  }
+
+  @Test
+  public void testResumeUniversesPrechecks() {
+    DrConfig drConfig = createDefaultDrConfig();
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    sourceUniverse.getUniverseDetails().universePaused = true;
+    sourceUniverse.save();
+    targetUniverse.getUniverseDetails().universePaused = true;
+    targetUniverse.save();
+
+    // XClusterConfig is not paused.
+    xClusterConfig.setStatus(XClusterConfigStatusType.Running);
+    xClusterConfig.setPaused(false);
+    xClusterConfig.update();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            drConfigController.resumeUniversesPrechecks(
+                xClusterConfig, sourceUniverse, targetUniverse));
+    xClusterConfig.setPaused(true);
+
+    // Precheck should succeed.
+    try {
+      drConfigController.resumeUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
+    } catch (Exception e) {
+      fail();
+    }
+
+    // One universe is not paused.
+    sourceUniverse.getUniverseDetails().universePaused = false;
+    sourceUniverse.save();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            drConfigController.resumeUniversesPrechecks(
+                xClusterConfig, sourceUniverse, targetUniverse));
+  }
+
+  public DrConfig createDefaultDrConfig() {
+    return DrConfig.create(
+        "testing",
+        sourceUniverse.getUniverseUUID(),
+        targetUniverse.getUniverseUUID(),
+        backupRequestParams,
+        Set.of("db1Id"));
   }
 }

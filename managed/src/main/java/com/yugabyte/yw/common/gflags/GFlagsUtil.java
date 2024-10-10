@@ -175,6 +175,7 @@ public class GFlagsUtil {
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
   public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
+  public static final String LOG_MIN_SECONDS_TO_RETAIN = "log_min_seconds_to_retain";
 
   public static final String ALLOWED_PREVIEW_FLAGS_CSV = "allowed_preview_flags_csv";
 

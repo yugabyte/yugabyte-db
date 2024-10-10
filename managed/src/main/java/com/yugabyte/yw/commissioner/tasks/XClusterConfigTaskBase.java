@@ -11,6 +11,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
@@ -46,6 +48,7 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -57,6 +60,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -177,6 +181,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Failed,
         ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
+  }
+
+  public static enum XClusterUniverseAction {
+    PAUSE,
+    RESUME
   }
 
   protected XClusterConfigTaskBase(
@@ -2488,6 +2497,62 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               dbIds.size(), foundDbIds.size(), missingDbIds));
     }
     return requestedTableInfoList;
+  }
+
+  protected void createUpdateWalRetentionTasks(Universe universe, XClusterUniverseAction action) {
+    List<NodeDetails> tServerNodes = universe.getTServersInPrimaryCluster();
+
+    createSetFlagInMemoryTasks(
+        tServerNodes,
+        ServerType.TSERVER,
+        (node, params) -> {
+          params.force = true;
+          if (action == XClusterUniverseAction.PAUSE) {
+            params.gflags =
+                Collections.singletonMap(
+                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
+          } else if (action == XClusterUniverseAction.RESUME) {
+            Map<String, String> oldGFlags =
+                GFlagsUtil.getGFlagsForNode(
+                    node,
+                    ServerType.TSERVER,
+                    universe.getUniverseDetails().getPrimaryCluster(),
+                    universe.getUniverseDetails().clusters);
+            params.gflags =
+                Collections.singletonMap(
+                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN,
+                    oldGFlags.containsKey(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
+                        ? oldGFlags.get(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
+                        : "900");
+          }
+        });
+
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
+    for (NodeDetails nodeDetails : tServerNodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent,
+              nodeDetails,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.GFlags,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              nodeDetails,
+              ServerType.TSERVER,
+              universe.getUniverseDetails().getPrimaryCluster(),
+              universe.getUniverseDetails().clusters);
+      if (action == XClusterUniverseAction.PAUSE) {
+        params.gflags.put(
+            GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
+      }
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
   }
 
   // DR methods.
