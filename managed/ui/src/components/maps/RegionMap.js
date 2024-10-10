@@ -107,7 +107,7 @@ export default class RegionMap extends Component {
         zoomControl={false}
         className="yb-region-map"
         minZoom={1}
-        maxZoom={5}
+        maxZoom={3}
         touchZoom={false}
         scrollWheelZoom={false}
         doubleClickZoom={false}
