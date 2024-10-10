@@ -170,7 +170,7 @@ command_aggregate_cursor_first_page(PG_FUNCTION_ARGS)
 {
 	Datum database = PG_GETARG_DATUM(0);
 	pgbson *aggregationSpec = PG_GETARG_PGBSON(1);
-	int64_t cursorId = PG_GETARG_INT64(2);
+	int64_t cursorId = PG_ARGISNULL(2) ? 0 : PG_GETARG_INT64(2);
 
 	bool generateCursorParams = true;
 	QueryData queryData = GenerateFirstPageQueryData();
@@ -194,7 +194,7 @@ command_find_cursor_first_page(PG_FUNCTION_ARGS)
 {
 	Datum database = PG_GETARG_DATUM(0);
 	pgbson *findSpec = PG_GETARG_PGBSON(1);
-	int64_t cursorId = PG_GETARG_INT64(2);
+	int64_t cursorId = PG_ARGISNULL(2) ? 0 : PG_GETARG_INT64(2);
 
 	/* Parse the find spec for the purposes of query execution */
 	QueryData queryData = GenerateFirstPageQueryData();
