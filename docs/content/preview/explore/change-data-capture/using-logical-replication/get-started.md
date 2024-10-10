@@ -371,7 +371,7 @@ In a production environment, you would typically either use the Kafka tools to m
     - `plugin.name` - [Plugin](../key-concepts/#output-plugin) to be used for replication.
     - `slot.name` - Name of the [replication slot](../key-concepts/#replication-slot).
 
-    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector/#connector-properties).
+    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector-properties).
 
 1. Open a new terminal and use the `curl` command to register the YugabyteDB connector.
 
