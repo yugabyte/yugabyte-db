@@ -20,7 +20,7 @@ export const REACT_TROUBLESHOOT_API_PROD_URL =
   process.env.REACT_TROUBLESHOOT_API_PROD_URL ?? `https://10.9.15.156:8443/api`;
 
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
-  ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
+  ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/yba-updated-map`
   : '/static/map';
 
 // get SSO flag from global config loaded in index.html before UI app started
