@@ -172,8 +172,10 @@ typedef struct Port
 	bool 		yb_is_auth_passthrough_req;
 
 	/*
-	 * To be used during Authentication Passthrough (authentication of logical connections),
-	 * it identifies whether the logical connection is encrypted.
+	 * To be used for the authentication of logical connections from the
+	 * connection manager either via auth passthrough or the special
+	 * authentication backend.
+	 * It identifies whether the logical connection is encrypted.
 	 */
 	bool 		yb_is_ssl_enabled_in_logical_conn;
 

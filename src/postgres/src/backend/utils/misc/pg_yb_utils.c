@@ -977,11 +977,19 @@ YBInitPostgresBackend(
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
-		if (yb_ash_enable_infra)
-			YbAshInit();
 
-		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-			YbQueryDiagnosticsInstallHook();
+		/*
+		 * The auth-backend doesn't execute user queries. So we don't need ASH
+		 * and query diagnostics.
+		 */
+		if (!YbIsAuthBackend())
+		{
+			if (yb_ash_enable_infra)
+				YbAshInit();
+
+			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+				YbQueryDiagnosticsInstallHook();
+		}
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -5516,6 +5524,11 @@ bool YbUseFastBackwardScan() {
 bool YbIsYsqlConnMgrWarmupModeEnabled()
 {
 	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
+}
+
+bool YbIsAuthBackend()
+{
+	return yb_is_auth_backend;
 }
 
 /* Used in YB to check if an attribute is a key column. */
