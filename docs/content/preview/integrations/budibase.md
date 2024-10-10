@@ -31,5 +31,5 @@ You are all set to use data from YugabyteDB in your Budibase application.
 
 ## Learn more
 
-- [Order management application using Budibase on YuagbyteDB](https://www.yugabyte.com/blog/low-code-no-code-with-budibase-and-yugabytedb/)
+- [Order management application using Budibase on YugabyteDB](https://www.yugabyte.com/blog/low-code-no-code-with-budibase-and-yugabytedb/)
 - [Budibase documentation](https://docs.budibase.com/docs/what-is-budibase)

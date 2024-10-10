@@ -51,26 +51,24 @@ CDC in YugabyteDB provides the following guarantees.
 
 The YugabyteDB logical replication feature makes use of PostgreSQL concepts like replication slot, publication, replica identity, and so on. Understanding these key concepts is crucial for setting up and managing a logical replication environment effectively.
 
-{{<lead link="./key-concepts">}}
-To know more about the key concepts of YugabyteDB CDC with logical replication, see [Key concepts](./key-concepts).
+{{<lead link="./key-concepts/">}}
+Review [key concepts](./key-concepts) of YugabyteDB CDC with logical replication.
 {{</lead>}}
 
 ## Getting started
 
 Get started with YugabyteDB logical replication using the YugabyteDB Connector.
 
-{{<lead link="./get-started">}}
-
-To learn how get started with the connector, see [Get started](./get-started).
-
+{{<lead link="./get-started/">}}
+[Get started](./get-started) using the connector.
 {{</lead>}}
 
 ## Monitoring
 
 You can monitor the activities and status of the deployed connectors using the http end points provided by YugabyteDB.
 
-{{<lead link="./monitor">}}
-To know more about how to monitor your CDC setup, see [Monitor](./monitor/).
+{{<lead link="./monitor/">}}
+Learn how to [monitor](./monitor/) your CDC setup.
 {{</lead>}}
 
 ## YugabyteDB Connector
@@ -78,7 +76,7 @@ To know more about how to monitor your CDC setup, see [Monitor](./monitor/).
 To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the YugabyteDB Connector, which is based on the Debezium platform. The connector is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
 {{<lead link="./yugabytedb-connector/">}}
-To understand how the various features and configuration of the connector, see [YugabyteDB Connector](./yugabytedb-connector/).
+For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/).
 {{</lead>}}
 
 ## Limitations

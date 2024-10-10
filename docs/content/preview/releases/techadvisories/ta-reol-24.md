@@ -65,7 +65,7 @@ For more details, refer to [Releases](../../ybdb-releases/#releases).
 
 **Scenario 1**
 
-Suppose you are running YugabyteDB Anywhere earlier than the latest v2.18, with universes running YuagbyteDB database earlier than the latest v2.14.
+Suppose you are running YugabyteDB Anywhere earlier than the latest v2.18, with universes running YugabyteDB database earlier than the latest v2.14.
 
 If you want to upgrade YugabyteDB Anywhere to the latest v2.18 or v2.20, and only upgrade database nodes to v2.14, do the following:
 
