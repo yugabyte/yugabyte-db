@@ -26,6 +26,7 @@
       "save": "Save",
       "confirm": "Confirm",
       "close": "Close",
+      "modalClose": "Close and don't show again",
       "cancel": "Cancel",
       "yes": "Yes",
       "no": "No",
@@ -753,7 +754,20 @@
         "noAlerts": "No alerts available",
         "comingsoon": "This feature is coming soon",
         "underReplicated": "Under-Replicated",
-        "unavailable": "Unavailable"
+        "unavailable": "Unavailable",
+        "gettingStarted": {
+          "tryYugabyteVoyager": "Wondering how to load data into your cluster? Try our data migration application <0>{{voyagerText}}</0>, designed to move data to YugabyteDB quickly and securely.",
+          "getStartedSteps": {
+              "createCluster": "Create a cluster",
+              "createClusterDesc": "Create a YugabyteDB cluster to get started",
+              "loadCluster": "Load data into your cluster",
+              "loadClusterDesc": "Migrate your databases into the cluster using <0>{{migrationLink}}</0>",
+              "ybVoyager": "YugabyteDB Voyager →",
+              "header": "Get Started",
+              "outOfSteps": " of 2 Done"
+            }
+        }
+
       },
       "tables": {
         "numTables": "{{count}} Table",
