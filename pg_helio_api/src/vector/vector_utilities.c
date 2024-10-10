@@ -450,10 +450,9 @@ GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
 	{
 		const char *accessMethodName = get_am_name(accessMethodOid);
 		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
-						errmsg("Unsupported vector search operator"),
+						errmsg("Unsupported vector index type: %s", accessMethodName),
 						errdetail_log(
-							"Unsupported vector index type: %s, operatorFamilyOid: %u",
-							accessMethodName, operatorFamilyOid)));
+							"Unsupported vector index type: %s", accessMethodName)));
 	}
 
 	return operatorOid;

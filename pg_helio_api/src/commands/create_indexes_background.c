@@ -98,6 +98,7 @@ static const SkippableError SkippableErrors[] = {
 	{ ERRCODE_HELIO_DUPLICATEKEY /* Postgres ERRCODE_HELIO_DUPLICATEKEY */, NULL },
 	{ 2600, "column cannot have more than 2000 dimensions for ivfflat index" },
 	{ 2600, "column cannot have more than 2000 dimensions for hnsw index" },
+	{ 2600, "vector dimension cannot be larger than 2000 dimensions for diskann index" },
 	{ 261 /* Postgres ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "index row size " },
 	{ 261 /* ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "memory required is " },
 	{ ERRCODE_HELIO_CANNOTCREATEINDEX, "unsupported language: " },

@@ -232,8 +232,9 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_CREATE_INDEX_VECTOR_COS] = "create_index_vector_cos",
 	[FEATURE_CREATE_INDEX_VECTOR_IP] = "create_index_vector_ip",
 	[FEATURE_CREATE_INDEX_VECTOR_L2] = "create_index_vector_l2",
-	[FEATURE_CREATE_INDEX_VECTOR_TYPE_IVFFLAT] = "create_index_vector_type_ivfflat",
+	[FEATURE_CREATE_INDEX_VECTOR_TYPE_DISKANN] = "create_index_vector_type_diskann",
 	[FEATURE_CREATE_INDEX_VECTOR_TYPE_HNSW] = "create_index_vector_type_hnsw",
+	[FEATURE_CREATE_INDEX_VECTOR_TYPE_IVFFLAT] = "create_index_vector_type_ivfflat",
 
 	/* Feature Mapping region - Query Operators */
 	[FEATURE_QUERY_OPERATOR_GEOINTERSECTS] = "query_operator_geointersects",
@@ -278,8 +279,9 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_SAMPLE] = "sample",
 	[FEATURE_STAGE_SEARCH] = "search",
 	[FEATURE_STAGE_SEARCH_VECTOR] = "search_vector",
-	[FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT] = "search_vector_ivfflat",
+	[FEATURE_STAGE_SEARCH_VECTOR_DISKANN] = "search_vector_diskann",
 	[FEATURE_STAGE_SEARCH_VECTOR_HNSW] = "search_vector_hnsw",
+	[FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT] = "search_vector_ivfflat",
 	[FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER] = "search_vector_pre_filter",
 	[FEATURE_STAGE_SET] = "set",
 	[FEATURE_STAGE_SETWINDOWFIELDS] = "setWindowFields",

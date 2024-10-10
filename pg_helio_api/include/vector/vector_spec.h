@@ -51,7 +51,7 @@ typedef struct VectorKindSpecifiedOptions
 { } VectorKindSpecifiedOptions;
 
 /*
- * Options specific to Cosmos specific indexing
+ * Index options specific to cosmosSearchOptions
  * for vector and text search support.
  */
 typedef struct
@@ -67,6 +67,30 @@ typedef struct
 	VectorKindSpecifiedOptions *vectorOptions;
 } CosmosSearchOptions;
 
+typedef struct VectorSearchOptions
+{
+	/* it's the query spec pgbson that we pass to the bson_extract_vector() method to get the float[] vector. */
+	pgbson *searchSpecPgbson;
+
+	/* the length of the query vector */
+	int32_t queryVectorLength;
+
+	/* search path*/
+	char *searchPath;
+
+	/* query result count */
+	int32_t resultCount;
+
+	/* search param pgbson e.g. {"efSearch": 10} or {"nProbes": 10} */
+	pgbson *searchParamPgbson;
+
+	/* filter bson */
+	bson_value_t filterBson;
+
+	/* The vector access method oid */
+	Oid vectorAccessMethodOid;
+} VectorSearchOptions;
+
 /*
  * Function pointers for parsing and validating
  * vector index creation specs on coordinator.
@@ -75,13 +99,14 @@ typedef void (*ParseIndexCreationSpecFunc)(bson_iter_t *indexDefDocIter,
 										   CosmosSearchOptions *cosmosSearchOptions);
 
 typedef char *
-(*GenerateIndexParamStringFunc)(const CosmosSearchOptions *searchOptions);
+(*GenerateIndexParamStringFunc)(const CosmosSearchOptions *cosmosSearchOptions);
 
 /*
  * Function pointers for parsing and validating
  * vector index search specs on coordinator.
  */
-typedef pgbson *(*ParseIndexSearchSpecFunc)(const pgbson *vectorSearchSpecPgbson);
+typedef pgbson *(*ParseIndexSearchSpecFunc)(const
+											VectorSearchOptions *vectorSearchOptions);
 
 /*
  * Function pointers for planner and custom scan

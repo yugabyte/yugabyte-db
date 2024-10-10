@@ -78,13 +78,13 @@ static void ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 static void ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 								  CosmosSearchOptions *cosmosSearchOptions);
 
-static char * GenerateIVFIndexParamStr(const CosmosSearchOptions *searchOptions);
+static char * GenerateIVFIndexParamStr(const CosmosSearchOptions *cosmosSearchOptions);
 
-static char * GenerateHNSWIndexParamStr(const CosmosSearchOptions *searchOptions);
+static char * GenerateHNSWIndexParamStr(const CosmosSearchOptions *cosmosSearchOptions);
 
-static pgbson * ParseIVFIndexSearchSpec(const pgbson *vectorSearchSpecPgbson);
+static pgbson * ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions);
 
-static pgbson * ParseHNSWIndexSearchSpec(const pgbson *vectorSearchSpecPgbson);
+static pgbson * ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions);
 
 static Oid GetIVFSimilarityOpOidByFamilyOid(Oid operatorFamilyOid);
 
@@ -430,12 +430,12 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 
 static char *
-GenerateIVFIndexParamStr(const CosmosSearchOptions *searchOptions)
+GenerateIVFIndexParamStr(const CosmosSearchOptions *cosmosSearchOptions)
 {
-	Assert(searchOptions->indexKindStr == VectorIndexDefinitionArray[0].kindName);
+	Assert(cosmosSearchOptions->indexKindStr == VectorIndexDefinitionArray[0].kindName);
 
 	VectorIVFIndexOptions *vectorOptions =
-		(VectorIVFIndexOptions *) searchOptions->vectorOptions;
+		(VectorIVFIndexOptions *) cosmosSearchOptions->vectorOptions;
 	StringInfo paramStr = makeStringInfo();
 
 	appendStringInfo(paramStr, "lists = %d", vectorOptions->numLists);
@@ -445,12 +445,12 @@ GenerateIVFIndexParamStr(const CosmosSearchOptions *searchOptions)
 
 
 static char *
-GenerateHNSWIndexParamStr(const CosmosSearchOptions *searchOptions)
+GenerateHNSWIndexParamStr(const CosmosSearchOptions *cosmosSearchOptions)
 {
-	Assert(searchOptions->indexKindStr == VectorIndexDefinitionArray[1].kindName);
+	Assert(cosmosSearchOptions->indexKindStr == VectorIndexDefinitionArray[1].kindName);
 
 	VectorHNSWIndexOptions *vectorOptions =
-		(VectorHNSWIndexOptions *) searchOptions->vectorOptions;
+		(VectorHNSWIndexOptions *) cosmosSearchOptions->vectorOptions;
 	StringInfo paramStr = makeStringInfo();
 
 	appendStringInfo(paramStr, "m = %d, ef_construction = %d",
@@ -470,10 +470,11 @@ GenerateHNSWIndexParamStr(const CosmosSearchOptions *searchOptions)
  * Parse the options for the IVF index search on coordinator.
  */
 static pgbson *
-ParseIVFIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
+ParseIVFIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 {
 	ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT);
 
+	pgbson *vectorSearchSpecPgbson = vectorSearchOptions->searchSpecPgbson;
 	bson_iter_t specIter;
 	PgbsonInitIterator(vectorSearchSpecPgbson, &specIter);
 
@@ -534,7 +535,7 @@ ParseIVFIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
  * Parse the options for the HNSW index search on coordinator.
  */
 static pgbson *
-ParseHNSWIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
+ParseHNSWIndexSearchSpec(const VectorSearchOptions *vectorSearchOptions)
 {
 	if (!EnableVectorHNSWIndex)
 	{
@@ -547,6 +548,8 @@ ParseHNSWIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
 	}
 
 	ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_HNSW);
+
+	pgbson *vectorSearchSpecPgbson = vectorSearchOptions->searchSpecPgbson;
 
 	bson_iter_t specIter;
 	PgbsonInitIterator(vectorSearchSpecPgbson, &specIter);

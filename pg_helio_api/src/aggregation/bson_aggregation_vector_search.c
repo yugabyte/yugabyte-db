@@ -62,31 +62,6 @@ typedef enum VectorSearchSpecType
 } VectorSearchSpecType;
 
 
-typedef struct VectorSearchOptions
-{
-	/* it's the query spec pgbson that we pass to the bson_extract_vector() method to get the float[] vector. */
-	pgbson *searchSpecPgbson;
-
-	/* the length of the query vector */
-	int32_t queryVectorLength;
-
-	/* search path*/
-	char *searchPath;
-
-	/* query result count */
-	int32_t resultCount;
-
-	/* search param pgbson e.g. {"efSearch": 10} or {"nProbes": 10} */
-	pgbson *searchParamPgbson;
-
-	/* filter bson */
-	bson_value_t filterBson;
-
-	/* The vector access method oid */
-	Oid vectorAccessMethodOid;
-} VectorSearchOptions;
-
-
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -1065,7 +1040,6 @@ CheckVectorIndexAndGenerateSortExpr(Query *query,
 static void
 ParseAndValidateIndexSpecificOptions(VectorSearchOptions *vectorSearchOptions)
 {
-	/* Parse the index specific options */
 	Assert(vectorSearchOptions->vectorAccessMethodOid != InvalidOid);
 
 	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
@@ -1078,7 +1052,7 @@ ParseAndValidateIndexSpecificOptions(VectorSearchOptions *vectorSearchOptions)
 
 	/* Parse the index specific options */
 	pgbson *searchParamPgbson = definition->parseIndexSearchSpecFunc(
-		vectorSearchOptions->searchSpecPgbson);
+		vectorSearchOptions);
 	if (searchParamPgbson != NULL)
 	{
 		vectorSearchOptions->searchParamPgbson = searchParamPgbson;
