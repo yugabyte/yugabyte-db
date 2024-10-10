@@ -16,7 +16,7 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="Check processes"
+    title="Check servers"
     body="Check the status and accessibility of YugabyteDB nodes."
     href="check-processes/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
@@ -40,15 +40,15 @@ type: indexpage
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
   {{<index/item
-    title="Review common error messages"
-    body="Familiarize yourself with error messages that are common to all YugabytDB components."
-    href="trouble-common/"
+    title="Handle disk full"
+    body="What to do when you are running out of disk space."
+    href="disk-full/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
   {{<index/item
-    title="Handle disk full"
-    body="What to do when you run out of disk space."
-    href="disk-full/"
+    title="Review common error messages"
+    body="Familiarize yourself with error messages that are common to all YugabytDB components."
+    href="trouble-common/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
 {{</index/block>}}
