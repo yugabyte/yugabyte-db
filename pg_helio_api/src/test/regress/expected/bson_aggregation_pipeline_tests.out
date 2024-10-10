@@ -744,15 +744,30 @@ SELECT helio_api.insert_one('db', 'aggregation_pipeline', '{ "_id": 7, "a": "som
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
-ERROR:  function helio_api_catalog.bson_extract_vector(bson, text) does not exist
-LINE 1: ... public.vector_cosine_ops) WITH (lists = 2) WHERE helio_api_...
-                                                             ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-QUERY:  CREATE INDEX documents_rum_index_3501 ON helio_data.documents_3500 USING ivfflat(CAST(helio_api_catalog.bson_extract_vector(document, 'v'::text) AS public.vector(3)) public.vector_cosine_ops) WITH (lists = 2) WHERE helio_api_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+                                                                                   document                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+(1 row)
+
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: document, ((public.vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+   ->  Sort
+         Output: document, ((public.vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         Sort Key: ((public.vector(helio_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector))
+         ->  Seq Scan on helio_data.documents_3500 collection
+               Output: document, (public.vector(helio_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+               Filter: (helio_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)
+(8 rows)
+
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v", "filter": {"a": "some sentence"} }  } } ], "cursor": {} }');
 ERROR:  $filter is not supported for vector search yet.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v", "filter": "some sentence" }  } } ], "cursor": {} }');
@@ -765,33 +780,52 @@ ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 2 }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+                                                                                      document                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+(2 rows)
+
 COMMIT;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+                                                                                      document                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+(2 rows)
+
 COMMIT;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v" }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+                                                                                      document                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "some sentence", "v" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : "some other sentence", "v" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "0.10000000000000000555" } ] }
+(2 rows)
+
 COMMIT;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 10000000 }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+ERROR:  $nProbes must be less than or equal to 32768.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": -5 }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+ERROR:  $nProbes must be greater than or equal to 1.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": "5" }  } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+ERROR:  $nProbes must be an integer value.
 -- numLists > data size, pgvector will generate randomized centroids, using original vector data to query
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline", "index": "foo_1"}');
-ERROR:  index not found with name [foo_1]
+                         retval                          
+---------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+(1 row)
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 10000, "similarity": "COS", "dimensions": 3 } } ] }', true);
-ERROR:  function helio_api_catalog.bson_extract_vector(bson, text) does not exist
-LINE 1: ...lic.vector_cosine_ops) WITH (lists = 10000) WHERE helio_api_...
-                                                             ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-QUERY:  CREATE INDEX documents_rum_index_3502 ON helio_data.documents_3500 USING ivfflat(CAST(helio_api_catalog.bson_extract_vector(document, 'v'::text) AS public.vector(3)) public.vector_cosine_ops) WITH (lists = 10000) WHERE helio_api_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+ERROR:  memory required is 394 MB, maintenance_work_mem is 64 MB
+CONTEXT:  SQL statement "CREATE INDEX documents_rum_index_3502 ON helio_data.documents_3500 USING ivfflat(CAST(helio_api_internal.bson_extract_vector(document, 'v'::text) AS public.vector(3)) public.vector_cosine_ops) WITH (lists = 10000) WHERE helio_api_internal.bson_extract_vector(document, 'v'::text) IS NOT NULL"
 ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
@@ -1299,13 +1333,15 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
 -- Vector search with empty vector field
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_empty_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "vectorIndex", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 5, "similarity": "COS", "dimensions": 3 } } ] }', true);
 NOTICE:  creating collection
-ERROR:  function helio_api_catalog.bson_extract_vector(bson, text) does not exist
-LINE 1: ... public.vector_cosine_ops) WITH (lists = 5) WHERE helio_api_...
-                                                             ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-QUERY:  CREATE INDEX documents_rum_index_3508 ON helio_data.documents_3503 USING ivfflat(CAST(helio_api_catalog.bson_extract_vector(document, 'v'::text) AS public.vector(3)) public.vector_cosine_ops) WITH (lists = 5) WHERE helio_api_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
-NOTICE:  creating collection
                               insert_one                              
 ----------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -1332,7 +1368,7 @@ SELECT helio_api.insert_one('db', 'aggregation_pipeline_empty_vector', '{ "_id":
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+ERROR:  query requires search score metadata, but it is not available
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
@@ -1340,7 +1376,7 @@ ANALYZE;
 BEGIN;
 SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
-ERROR:  Similarity index was not found for a vector similarity search query.
+ERROR:  query requires search score metadata, but it is not available
 EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_empty_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v", "nProbes": 5 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
@@ -1392,11 +1428,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                           QUERY PLAN                          
 --------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on documents_3505 collection
-         Recheck Cond: (shard_key_value = '3505'::bigint)
+   ->  Bitmap Heap Scan on documents_3504 collection
+         Recheck Cond: (shard_key_value = '3504'::bigint)
          Filter: (random() < '1'::double precision)
          ->  Bitmap Index Scan on _id_
-               Index Cond: (shard_key_value = '3505'::bigint)
+               Index Cond: (shard_key_value = '3504'::bigint)
 (6 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_pipeline_samplerate", "pipeline": [ { "$match": { "$sampleRate": 0 } }, {"$count": "count"} ], "cursor": {} }');
@@ -1409,11 +1445,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                           QUERY PLAN                          
 --------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on documents_3505 collection
-         Recheck Cond: (shard_key_value = '3505'::bigint)
+   ->  Bitmap Heap Scan on documents_3504 collection
+         Recheck Cond: (shard_key_value = '3504'::bigint)
          Filter: (random() < '0'::double precision)
          ->  Bitmap Index Scan on _id_
-               Index Cond: (shard_key_value = '3505'::bigint)
+               Index Cond: (shard_key_value = '3504'::bigint)
 (6 rows)
 
 /* sampleRate will random select document, use greater than 0 to make sure slice of documents is selected */
@@ -1428,11 +1464,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
 --------------------------------------------------------------------
  Subquery Scan on agg_stage_2
    ->  Aggregate
-         ->  Bitmap Heap Scan on documents_3505 collection
-               Recheck Cond: (shard_key_value = '3505'::bigint)
+         ->  Bitmap Heap Scan on documents_3504 collection
+               Recheck Cond: (shard_key_value = '3504'::bigint)
                Filter: (random() < '0.5'::double precision)
                ->  Bitmap Index Scan on _id_
-                     Index Cond: (shard_key_value = '3505'::bigint)
+                     Index Cond: (shard_key_value = '3504'::bigint)
 (7 rows)
 
 /* test shard case */
@@ -1452,7 +1488,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                      QUERY PLAN                     
 ----------------------------------------------------
  Aggregate
-   ->  Seq Scan on documents_3505 collection
+   ->  Seq Scan on documents_3504 collection
          Filter: (random() < '1'::double precision)
 (3 rows)
 
@@ -1466,7 +1502,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "agg
                      QUERY PLAN                     
 ----------------------------------------------------
  Aggregate
-   ->  Seq Scan on documents_3505 collection
+   ->  Seq Scan on documents_3504 collection
          Filter: (random() < '0'::double precision)
 (3 rows)
 

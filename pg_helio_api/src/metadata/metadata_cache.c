@@ -62,6 +62,9 @@ static Oid GetBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorN
 							   Oid rightTypeOid);
 static Oid GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *operatorName,
 								   Oid rightTypeOid);
+static Oid GetBinaryOperatorFunctionIdWithSchema(Oid *operatorFuncId, char *operatorName,
+												 Oid leftTypeOid, Oid rightTypeOid,
+												 char *schemaName);
 static Oid GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									   Oid leftTypeOid, Oid rightTypeOid);
 static Oid GetInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
@@ -4382,8 +4385,10 @@ BsonOrderByPartitionFunctionOid(void)
 Oid
 ApiCatalogBsonExtractVectorFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonExtractVectorFunctionId,
-									   "bson_extract_vector", BsonTypeId(), TEXTOID);
+	return GetBinaryOperatorFunctionIdWithSchema(
+		&Cache.ApiCatalogBsonExtractVectorFunctionId,
+		"bson_extract_vector", BsonTypeId(),
+		TEXTOID, ApiCatalogToApiInternalSchemaName);
 }
 
 
@@ -4393,8 +4398,10 @@ ApiCatalogBsonExtractVectorFunctionId(void)
 Oid
 ApiBsonSearchParamFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.ApiBsonSearchParamFunctionId,
-									   "bson_search_param", BsonTypeId(), BsonTypeId());
+	return GetBinaryOperatorFunctionIdWithSchema(&Cache.ApiBsonSearchParamFunctionId,
+												 "bson_search_param", BsonTypeId(),
+												 BsonTypeId(),
+												 ApiCatalogToApiInternalSchemaName);
 }
 
 
@@ -4408,7 +4415,7 @@ ApiBsonDocumentAddScoreFieldFunctionId(void)
 
 	if (Cache.ApiBsonDocumentAddScoreFieldFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(ApiCatalogToApiInternalSchemaName),
 											makeString(
 												"bson_document_add_score_field"));
 		Oid paramOids[2] = { BsonTypeId(), FLOAT8OID };
@@ -5693,18 +5700,19 @@ GetInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 
 
 /*
- * GetBinaryOperatorFunctionId is a helper function for getting and caching the OID
+ * GetBinaryOperatorFunctionIdWithSchema is a helper function for getting and caching the OID
  * of a <functionName> <leftTypeOid> <rightTypeOid> operator.
  */
 static Oid
-GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
-							Oid leftTypeOid, Oid rightTypeOid)
+GetBinaryOperatorFunctionIdWithSchema(Oid *operatorFuncId, char *operatorName,
+									  Oid leftTypeOid, Oid rightTypeOid,
+									  char *schemaName)
 {
 	InitializeHelioApiExtensionCache();
 
 	if (*operatorFuncId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(schemaName),
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
 		bool missingOK = false;
@@ -5714,6 +5722,20 @@ GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 	}
 
 	return *operatorFuncId;
+}
+
+
+/*
+ * GetBinaryOperatorFunctionId is a helper function for getting and caching the OID
+ * of a <functionName> <leftTypeOid> <rightTypeOid> operator.
+ */
+static Oid
+GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
+							Oid leftTypeOid, Oid rightTypeOid)
+{
+	return GetBinaryOperatorFunctionIdWithSchema(operatorFuncId, operatorName,
+												 leftTypeOid, rightTypeOid,
+												 ApiCatalogSchemaName);
 }
 
 

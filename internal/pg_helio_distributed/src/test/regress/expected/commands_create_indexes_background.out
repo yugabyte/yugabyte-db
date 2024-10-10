@@ -745,15 +745,15 @@ CALL helio_distributed_test_helpers.create_indexes_background(
 -- test skippable error test
 CALL helio_distributed_test_helpers.create_indexes_background('db', '{ "createIndexes": "ValidateVectorSearchAsync", "indexes": [ { "name": "largeVectorIndex", "key": { "largevector": "cosmosSearch"}, "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 2001 } } ] }');
 NOTICE:  creating collection
-                                                                                                                    retval                                                                                                                    | ok 
+                                                                                                       retval                                                                                                       | ok 
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "function helio_api_catalog.bson_extract_vector(helio_core.bson, text) does not exist", "code" : { "$numberInt" : "52461700" } } }, "ok" : { "$numberInt" : "0" } } | f
+ { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "column cannot have more than 2000 dimensions for ivfflat index", "code" : { "$numberInt" : "2600" } } }, "ok" : { "$numberInt" : "0" } } | f
 (1 row)
 
 CALL helio_distributed_test_helpers.create_indexes_background('db', '{ "createIndexes": "ValidateVectorSearchAsync", "indexes": [ { "name": "largeVectorIndex", "key": { "largevector": "cosmosSearch"}, "cosmosSearchOptions": { "kind": "vector-hnsw", "similarity": "COS", "dimensions": 2001 } } ] }');
-                                                                                                                                                                                                                                                                                                                                                                                                          retval                                                                                                                                                                                                                                                                                                                                                                                                           | ok 
+                                                                                                     retval                                                                                                      | ok 
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { \"v\" : 2, \"key\" : { \"largevector\" : \"cosmosSearch\" }, \"name\" : \"largeVectorIndex\", \"cosmosSearchOptions\" : { \"kind\" : \"vector-hnsw\", \"similarity\" : \"COS\", \"dimensions\" : 2001 } }, existing index: { \"v\" : 2, \"key\" : { \"largevector\" : \"cosmosSearch\" }, \"name\" : \"largeVectorIndex\", \"cosmosSearchOptions\" : { \"kind\" : \"vector-ivf\", \"numLists\" : 100, \"similarity\" : \"COS\", \"dimensions\" : 2001 } }", "code" : { "$numberInt" : "587202589" } } }, "ok" : { "$numberInt" : "0" } } | f
+ { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "column cannot have more than 2000 dimensions for hnsw index", "code" : { "$numberInt" : "2600" } } }, "ok" : { "$numberInt" : "0" } } | f
 (1 row)
 
 -- test another skippable error

@@ -122,3 +122,16 @@ test: commands_create_indexes_background
 test: commands_create_indexes_pfe_b commands_create_indexes commands_create_drop_indexes_a
 test: bson_get_indexes_a commands_create_indexes_pfe_a commands_crud_ignore_common_spec_fields
 test: write_commands_batching conflicting_indexes
+
+test: bson_aggregation_pipeline_tests_vector_mongo
+test: bson_aggregation_pipeline_tests_vector_hnsw
+test: bson_aggregation_pipeline_tests_vector_ivf
+test: list_metadata_cursor_tests
+test: commands_validate
+test: schema_validation_insert
+test: schema_validation
+test: bson_aggregation_pipeline_operator_locf
+test: bson_index_truncation_nested_object_tests
+test: commands_create_view_tests
+test: commands_insert
+test: setwindowfields_and_group_compliance

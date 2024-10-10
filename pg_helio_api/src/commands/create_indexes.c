@@ -4427,7 +4427,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		/* Add WHERE bson_extract_vector(document, path) IS NOT NULL predicate to allow search queries with the same clause to use the index */
 		appendStringInfo(cmdStr,
 						 " WHERE %s.bson_extract_vector(document, %s::text) IS NOT NULL",
-						 ApiCatalogSchemaName, quote_literal_cstr(keyPath));
+						 ApiCatalogToApiInternalSchemaName, quote_literal_cstr(keyPath));
 	}
 	else if (indexDef->key->has2dIndex)
 	{

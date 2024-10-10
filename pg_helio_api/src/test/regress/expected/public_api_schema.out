@@ -36,7 +36,8 @@
  helio_api | update                               | record           | p_database_name text, p_update helio_core.bson, p_insert_documents helio_core.bsonsequence DEFAULT NULL::helio_core.bsonsequence, p_transaction_id text DEFAULT NULL::text, OUT p_result helio_core.bson, OUT p_success boolean | func
  helio_api | update_user                          | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | users_info                           | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
-(33 rows)
+ helio_api | validate                             | helio_core.bson  | database text, validatespec helio_core.bson, OUT document helio_core.bson                                                                                                                                                       | func
+(34 rows)
 
 \df helio_api_catalog.*
                                                                                                 List of functions

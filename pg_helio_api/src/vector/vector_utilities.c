@@ -251,7 +251,7 @@ GenerateVectorIndexExprStr(const char *keyPath,
 
 	appendStringInfo(indexExprStr,
 					 "CAST(%s.bson_extract_vector(document, %s::text) AS public.vector(%d)) public.%s",
-					 ApiCatalogSchemaName, quote_literal_cstr(keyPath),
+					 ApiCatalogToApiInternalSchemaName, quote_literal_cstr(keyPath),
 					 searchOptions->commonOptions.numDimensions,
 					 options);
 	return indexExprStr->data;
