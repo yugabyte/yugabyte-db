@@ -5,7 +5,7 @@ trigger:
   batch: true
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'windows-2022'
 
 variables:
   tempBranchName: 'temp-branch-for-sync-pipeline'
@@ -14,24 +14,34 @@ variables:
 steps:
 - checkout: self
   persistCredentials: true
-- script: |
-    set -euo pipefail
+- powershell: |
+    $ErrorActionPreference = 'Stop'
 
     git remote add azure-devops https://$(System.AccessToken)@$(INTERNAL_REPO_URL)
-    git fetch azure-devops > /dev/null 2>&1
+    git fetch azure-devops | Out-Null
 
     git checkout -b $(tempBranchName)
 
-    echo "Pushing Branch $(branchName) ..."
+    Write-Host "Pushing Branch $(branchName) ..."
 
-    if ! git show-ref --verify --quiet refs/remotes/azure-devops/$(branchName); then
-      # If the branch does not exist in the remote, create it
+    $branchExists = git ls-remote --heads azure-devops $(branchName)
+    if (-not $branchExists) {
+      Write-Host "Branch $(branchName) does not exist in Azure DevOps. Creating it ..."
       git push -u azure-devops $(tempBranchName):$(branchName)
-    elif [ "$(branchName)" == "main" ]; then
-      # If the branch is main, push it without force
+    }
+    elseif ("$(branchName)" -eq "main") {
+      Write-Host "Branch $(branchName) is main. Pushing to main ..."
       git push azure-devops $(tempBranchName):$(branchName)
-    else
-      # Otherwise, force push the branch
+    }
+    else {
+      Write-Host "Branch $(branchName) exists in Azure DevOps. Forcing push ..."
       git push -f azure-devops $(tempBranchName):$(branchName)
-    fi
+    }
   displayName: 'Push to Azure DevOps'
+- task: PoliCheck@2
+  inputs:
+    targetType: 'F'
+    targetArgument: '$(Build.SourcesDirectory)'
+    result: 'PolicheckOutput'
+    optionsFC: '1'
+    optionsXS: '1'
