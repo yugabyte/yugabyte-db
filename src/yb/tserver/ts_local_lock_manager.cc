@@ -76,6 +76,7 @@ class TSLocalLockManager::Impl {
     });
 
     if (req.release_all_locks()) {
+      VLOG(2) << "Release all locks for host/session id " << yb::ToString(session_pair);
       object_lock_manager_.Unlock(session_pair);
       return Status::OK();
     }
