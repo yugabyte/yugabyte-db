@@ -294,7 +294,6 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
           installYbcOnThePods(
-              universe.getName(),
               replicaTservers,
               true,
               ybcSoftwareVersion,
@@ -306,7 +305,6 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
           installYbcOnThePods(
-              universe.getName(),
               primaryTservers,
               false,
               ybcSoftwareVersion,

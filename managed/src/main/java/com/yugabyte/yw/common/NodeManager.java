@@ -1402,6 +1402,10 @@ public class NodeManager extends DevopsBase {
         }
         break;
       case YbcGFlags:
+        subcommand.add("--package");
+        subcommand.add(ybServerPackage);
+        subcommand.add("--ybc_package");
+        subcommand.add(ybcPackage);
         subcommand.add("--ybc_flags");
         subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
         subcommand.add("--configure_ybc");
@@ -1409,6 +1413,8 @@ public class NodeManager extends DevopsBase {
         subcommand.add(ybcDir);
         subcommand.add("--tags");
         subcommand.add("override_ybc_gflags");
+        subcommand.add("--tags");
+        subcommand.add("reinstall-ybc");
         break;
       default:
         break;

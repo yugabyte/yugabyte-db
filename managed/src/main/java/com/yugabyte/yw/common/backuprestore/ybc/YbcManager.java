@@ -112,7 +112,7 @@ public class YbcManager {
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
-  private static final int MAX_RETRIES = 10;
+  private static final int MAX_SHORT_RETRIES = 10;
   private static final int MAX_NUM_RETRIES = 20;
   private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
   private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
@@ -554,7 +554,7 @@ public class YbcManager {
           BackupServiceTaskDeleteRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskDeleteResponse taskDeleteResponse = null;
       int numRetries = 0;
-      while (numRetries < MAX_RETRIES) {
+      while (numRetries < MAX_SHORT_RETRIES) {
         taskDeleteResponse = ybcClient.backupServiceTaskDelete(taskDeleteRequest);
         if (!taskDeleteResponse.getStatus().getCode().equals(ControllerStatus.IN_PROGRESS)) {
           break;
@@ -609,7 +609,7 @@ public class YbcManager {
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
       int numRetries = 0;
-      while (numRetries < MAX_RETRIES) {
+      while (numRetries < MAX_SHORT_RETRIES) {
         downloadSuccessMarkerResultResponse =
             ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
         if (!(downloadSuccessMarkerResultResponse
@@ -1087,6 +1087,10 @@ public class YbcManager {
   }
 
   public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet) {
+    waitForYbc(universe, nodeDetailsSet, MAX_NUM_RETRIES);
+  }
+
+  public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet, int numRetries) {
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String errMsg = "";
@@ -1122,14 +1126,14 @@ public class YbcManager {
                 "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
             Duration duration = Duration.ofMillis(waitTimeInMillis);
             Thread.sleep(duration.toMillis());
-            if (numTries <= MAX_NUM_RETRIES) {
+            if (numTries <= numRetries) {
               LOG.info("Node IP: {} Ping not complete. Continuing", nodeIp);
               continue;
             }
           }
-          if (numTries > MAX_NUM_RETRIES) {
+          if (numTries > numRetries) {
             LOG.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
-            errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
+            errMsg = String.format("Exceeded max retries: %s", numRetries);
             isYbcConfigured = false;
             break;
           } else if (pingResp.getSequence() != seqNum) {
@@ -1204,7 +1208,7 @@ public class YbcManager {
     params.enableYEDIS = userIntent.enableYEDIS;
 
     params.setEnableYbc(universe.getUniverseDetails().isEnableYbc());
-    params.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+    params.setYbcSoftwareVersion(getStableYbcVersion());
     params.installYbc = universe.getUniverseDetails().installYbc;
     params.setYbcInstalled(universe.getUniverseDetails().isYbcInstalled());
     params.ybcGflags = gflags;
