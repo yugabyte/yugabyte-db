@@ -15,7 +15,7 @@ import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserP
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
-  'Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.';
+  'Note! Changing the client to node root certificate may cause the client to lose connection, please update the certificate used in your client application.';
 const NODE_TO_NODE_ROTATE_MSG = 'Note! You are changing the node to node root certificate.';
 
 const CREATE_NEW_CERTIFICATE = 'create-new-certificate';
