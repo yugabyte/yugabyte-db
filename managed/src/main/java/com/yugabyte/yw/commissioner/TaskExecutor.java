@@ -679,7 +679,7 @@ public class TaskExecutor {
             anyEx = (anyEx != null) ? anyEx : e.getCause();
             removeCompletedSubTask(iter, runnableSubTask, e.getCause());
             // Call parent task abort if abortOnFailure set.
-            if (abortOnFailure) {
+            if (abortOnFailure && !ignoreErrors) {
               runnableTask.setAbortTime(Instant.now());
               runnableTask.cancelWaiterIfAborted();
             }
