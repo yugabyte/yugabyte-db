@@ -61,7 +61,8 @@ export default class NodeDetailsTable extends Component {
       currentUniverse,
       providers,
       isDedicatedNodes,
-      isKubernetesCluster
+      isKubernetesCluster,
+      accessKeys
     } = this.props;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
@@ -302,6 +303,8 @@ export default class NodeDetailsTable extends Component {
           clusterType={clusterType}
           isKubernetes={isKubernetes}
           isOnPremManuallyProvisioned={isOnPremManuallyProvisioned}
+          cluster={cluster}
+          accessKeys={accessKeys}
         />
       );
     };

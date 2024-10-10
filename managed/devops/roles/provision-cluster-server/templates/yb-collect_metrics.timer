@@ -3,8 +3,8 @@ Description=Yugabyte collect metrics
 Requires=yb-collect_metrics.service
 
 [Timer]
-{% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
-User={{ user_name }}
+{% set use_system_level_systemd = use_system_level_systemd | default(false) %}
+{% if ((ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))) or use_system_level_systemd == 'True') %}User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 Unit=yb-collect_metrics.service

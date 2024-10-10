@@ -8,6 +8,8 @@ import { YBLabel, YBSelectField } from '../../../../../../components';
 import { AccessKey, UniverseFormData } from '../../../utils/dto';
 import { ACCESS_KEY_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
+import { YBProvider } from '../../../../../../../components/configRedesign/providerRedesign/types';
+import { ProviderCode } from '../../../../../../../components/configRedesign/providerRedesign/constants';
 
 const useStyles = makeStyles((theme) => ({
   overrideMuiSelectMenu: {
@@ -44,23 +46,19 @@ export const AccessKeysField = ({ disabled, isEditMode }: AccessKeysFieldProps):
     const accessKeys = allAccessKeys.data.filter(
       (item: AccessKey) => item?.idKey?.providerUUID === provider?.uuid
     );
-    if (!isEditMode) {
-      if (accessKeys?.length) {
-        setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
-      } else {
-        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
-      }
+    if (accessKeys?.length) {
+      setValue(ACCESS_KEY_FIELD, accessKeys[0]?.idKey.keyCode, { shouldValidate: true });
+    } else {
+      setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
     }
   }, [provider]);
 
   //only first time
   useEffectOnce(() => {
-    if (!isEditMode) {
-      if (accessKeysList?.length && provider?.uuid) {
-        setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
-      } else {
-        setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
-      }
+    if (accessKeysList?.length && provider?.uuid) {
+      setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
+    } else {
+      setValue(ACCESS_KEY_FIELD, null, { shouldValidate: true });
     }
   });
 
@@ -73,11 +71,12 @@ export const AccessKeysField = ({ disabled, isEditMode }: AccessKeysFieldProps):
         <YBSelectField
           className={`${classes.defaultTextBox} ${helperClasses.overrideMuiSelectMenu}`}
           rules={{
-            required: !disabled
-              ? (t('universeForm.validation.required', {
-                  field: t('universeForm.advancedConfig.accessKey')
-                }) as string)
-              : ''
+            required:
+              !disabled && !provider.isOnPremManuallyProvisioned
+                ? (t('universeForm.validation.required', {
+                    field: t('universeForm.advancedConfig.accessKey')
+                  }) as string)
+                : ''
           }}
           inputProps={{
             'data-testid': 'AccessKeysField-Select'

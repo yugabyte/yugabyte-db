@@ -36,7 +36,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { t } = useTranslation();
   const isLargeDevice = useMediaQuery('(min-width:1400px)');
 
-  const provider: YBProvider = useWatch({ name: PROVIDER_FIELD });
+  const provider = useWatch({ name: PROVIDER_FIELD });
 
   const providerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.providerScope(provider?.uuid),
