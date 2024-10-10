@@ -56,6 +56,9 @@ version_menu_pagelinks = true
   version = "v2.23 (Preview)"
 [[versions]]
   url = "/stable"
+  version = "v2024.2 (STS)"
+[[versions]]
+  url = "/v2024.1"
   version = "v2024.1 (STS)"
 [[versions]]
   url = "/v2.20"
