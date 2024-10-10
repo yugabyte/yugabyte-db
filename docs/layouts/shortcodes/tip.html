@@ -1,4 +1,14 @@
-<div class="admonition tip">
-<p class="admonition-title">{{ .Get "title" }}</p>
-{{ .Inner | .Page.RenderString }}
+<div class="admonition callout tip">
+	<div class="icon">{{- readFile "static/icons/callout/tip.svg" | safeHTML -}}</div>
+  <div class="content-area">
+		{{- if .Params -}}
+			{{- if .Params.title -}}
+				<div class="heading">
+					<span class="admonition-title">{{ .Get "title" }}</span>
+				</div>
+			{{- end -}}
+		{{- end -}}
+
+		<div class="desc">{{ .Inner | .Page.RenderString }}</div>
+	</div>
 </div>
