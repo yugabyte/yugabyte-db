@@ -6159,7 +6159,7 @@ void CatalogManager::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocks(
@@ -6172,7 +6172,7 @@ void CatalogManager::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
 }
 
 void CatalogManager::ExportObjectLockInfo(
