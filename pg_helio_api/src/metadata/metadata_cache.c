@@ -120,6 +120,8 @@ PGDLLEXPORT char *ApiToApiInternalSchemaName = "helio_api_internal";
 
 PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "helio_api_internal";
 
+PGDLLEXPORT char *HelioApiInternalSchemaName = "helio_api_internal";
+
 typedef struct HelioApiOidCacheData
 {
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */
@@ -1705,7 +1707,7 @@ BsonGeonearDistanceRangeOperatorId(void)
 
 	if (Cache.BsonGeonearDistanceRangeOperatorId == InvalidOid)
 	{
-		List *operatorNameList = list_make2(makeString("helio_api_internal"),
+		List *operatorNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("@|><|"));
 
 		Cache.BsonGeonearDistanceRangeOperatorId =
@@ -1850,7 +1852,7 @@ Oid
 BsonExprWithLetFunctionId(void)
 {
 	return GetOperatorFunctionIdThreeArgs(&Cache.BsonExprWithLetFunctionId,
-										  "helio_api_internal",
+										  HelioApiInternalSchemaName,
 										  "bson_dollar_expr", HelioCoreBsonTypeId(),
 										  HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
 }
@@ -2622,7 +2624,7 @@ BsonDensifyRangeWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyRangeWindowFunctionOid,
-										"helio_api_internal",
+										HelioApiInternalSchemaName,
 										"bson_densify_range", nargs, argTypes,
 										missingOk);
 }
@@ -2635,7 +2637,7 @@ BsonDensifyPartitionWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyPartitionWindowFunctionOid,
-										"helio_api_internal",
+										HelioApiInternalSchemaName,
 										"bson_densify_partition", nargs, argTypes,
 										missingOk);
 }
@@ -2648,7 +2650,7 @@ BsonDensifyFullWindowFunctionOid(void)
 	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyFullWindowFunctionOid,
-										"helio_api_internal",
+										HelioApiInternalSchemaName,
 										"bson_densify_full", nargs, argTypes,
 										missingOk);
 }
@@ -2684,7 +2686,7 @@ UpdateWorkerFunctionOid(void)
 
 	if (Cache.UpdateWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("update_worker"));
 		Oid paramOids[6] = {
 			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
@@ -2707,7 +2709,7 @@ InsertWorkerFunctionOid(void)
 
 	if (Cache.InsertWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("insert_worker"));
 		Oid paramOids[6] = {
 			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
@@ -2730,7 +2732,7 @@ DeleteWorkerFunctionOid(void)
 
 	if (Cache.DeleteWorkerFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("delete_worker"));
 		Oid paramOids[6] = {
 			INT8OID, INT8OID, REGCLASSOID, HelioCoreBsonTypeId(),
@@ -3025,7 +3027,7 @@ BsonDollarAddFieldsWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarAddFieldsWithLetFunctionOid,
-		"helio_api_internal", "bson_dollar_add_fields",
+		HelioApiInternalSchemaName, "bson_dollar_add_fields",
 		HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
 }
@@ -3056,7 +3058,7 @@ BsonDollarProjectWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarProjectWithLetFunctionOid,
-		"helio_api_internal", "bson_dollar_project",
+		HelioApiInternalSchemaName, "bson_dollar_project",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId());
 }
@@ -3067,7 +3069,7 @@ BsonDollarLookupExpressionEvalMergeOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarLookupExpressionEvalMergeOid,
-		"helio_api_internal", "bson_dollar_lookup_expression_eval_merge",
+		HelioApiInternalSchemaName, "bson_dollar_lookup_expression_eval_merge",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId());
 }
@@ -3085,7 +3087,7 @@ BsonDollarInverseMatchFunctionId()
 
 	Oid result = GetSchemaFunctionIdWithNargs(
 		&Cache.ApiCatalogBsonDollarInverseMatchFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_dollar_inverse_match", nargs, argTypes,
 		missingOk);
 
@@ -3130,7 +3132,7 @@ BsonDollarProjectFindWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonDollarProjectFindWithLetFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_dollar_project_find",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId());
@@ -3144,7 +3146,7 @@ BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 
 	if (Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_handle_when_matched"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), INT4OID };
@@ -3165,7 +3167,7 @@ BsonDollarMergeAddObjectIdFunctionOid(void)
 
 	if (Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_add_object_id"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
@@ -3186,7 +3188,7 @@ BsonDollarMergeGenerateObjectId(void)
 
 	if (Cache.ApiInternalBsonDollarMergeGenerateObjectId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_generate_object_id"));
 		Oid paramOids[1] = { BsonTypeId() };
@@ -3231,7 +3233,7 @@ BsonDollarMergeJoinFunctionOid(void)
 
 	if (Cache.ApiInternalBsonDollarMergeJoinFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_join"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
@@ -3296,7 +3298,7 @@ BsonDollarReplaceRootWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarReplaceRootWithLetFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_dollar_replace_root",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId());
@@ -3349,7 +3351,7 @@ Oid
 BsonRankFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonRankFunctionOid,
-							 "helio_api_internal", "bson_rank");
+							 HelioApiInternalSchemaName, "bson_rank");
 }
 
 
@@ -3357,7 +3359,7 @@ Oid
 BsonDenseRankFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDenseRankFunctionOid,
-							 "helio_api_internal", "bson_dense_rank");
+							 HelioApiInternalSchemaName, "bson_dense_rank");
 }
 
 
@@ -3365,7 +3367,7 @@ Oid
 BsonDocumentNumberFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDocumentNumberFunctionOid,
-							 "helio_api_internal", "bson_document_number");
+							 HelioApiInternalSchemaName, "bson_document_number");
 }
 
 
@@ -3374,7 +3376,7 @@ BsonShiftFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonShiftFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_shift",
 		BsonTypeId(), INT4OID,
 		BsonTypeId());
@@ -3396,7 +3398,7 @@ BsonLinearFillFunctionOid(void)
 
 	if (Cache.ApiCatalogBsonLinearFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("bson_linear_fill"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
 		bool missingOK = false;
@@ -3416,7 +3418,7 @@ BsonLocfFillFunctionOid(void)
 
 	if (Cache.ApiCatalogBsonLocfFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("bson_locf_fill"));
 		Oid paramOids[1] = { BsonTypeId() };
 		bool missingOK = false;
@@ -3436,7 +3438,7 @@ BsonConstFillFunctionOid(void)
 
 	if (Cache.BsonConstFillFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("bson_const_fill"));
 		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
 		bool missingOK = false;
@@ -3454,7 +3456,7 @@ BsonIntegralAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonIntegralAggregateFunctionOid,
-		"helio_api_internal", "bsonintegral");
+		HelioApiInternalSchemaName, "bsonintegral");
 }
 
 
@@ -3463,7 +3465,7 @@ BsonDerivativeAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonDerivativeAggregateFunctionOid,
-		"helio_api_internal", "bsonderivative");
+		HelioApiInternalSchemaName, "bsonderivative");
 }
 
 
@@ -3480,7 +3482,7 @@ BsonCovariancePopAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonCovariancePopAggregateFunctionOid,
-		"helio_api_internal", "bsoncovariancepop");
+		HelioApiInternalSchemaName, "bsoncovariancepop");
 }
 
 
@@ -3489,7 +3491,7 @@ BsonCovarianceSampAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonCovarianceSampAggregateFunctionOid,
-		"helio_api_internal", "bsoncovariancesamp");
+		HelioApiInternalSchemaName, "bsoncovariancesamp");
 }
 
 
@@ -3568,7 +3570,7 @@ BsonExpMovingAvgAggregateFunctionOid(void)
 
 	if (Cache.ApiCatalogBsonExpMovingAvgAggregateFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("bson_exp_moving_avg"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
 		bool missingOK = false;
@@ -3602,7 +3604,7 @@ BsonMergeObjectsOnSortedFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMergeObjectsOnSortedFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_merge_objects_on_sorted");
 }
 
@@ -3611,7 +3613,7 @@ Oid
 BsonMergeObjectsFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonMergeObjectsFunctionOid,
-									  "helio_api_internal", "bson_merge_objects");
+									  HelioApiInternalSchemaName, "bson_merge_objects");
 }
 
 
@@ -3640,7 +3642,7 @@ GetBsonFirstNLastNAggregateFunctionOid(Oid *function, bool allArgs, char *aggreg
 	String *schemaName;
 	if (allArgs)
 	{
-		schemaName = makeString("helio_api_internal");
+		schemaName = makeString(HelioApiInternalSchemaName);
 	}
 	else
 	{
@@ -3719,7 +3721,7 @@ GetBsonFirstNLastNOnSortedAggregateFunctionOid(Oid *function, bool allArgs,
 	String *schemaName;
 	if (allArgs)
 	{
-		schemaName = makeString("helio_api_internal");
+		schemaName = makeString(HelioApiInternalSchemaName);
 	}
 	else
 	{
@@ -3936,7 +3938,7 @@ BsonMaxNAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMaxNAggregateFunctionOid,
-		"helio_api_internal", "bsonmaxn");
+		HelioApiInternalSchemaName, "bsonmaxn");
 }
 
 
@@ -3945,7 +3947,7 @@ BsonMinNAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonMinNAggregateFunctionOid,
-		"helio_api_internal", "bsonminn");
+		HelioApiInternalSchemaName, "bsonminn");
 }
 
 
@@ -3954,7 +3956,7 @@ BsonStdDevPopAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonStdDevPopAggregateFunctionOid,
-		"helio_api_internal", "bsonstddevpop");
+		HelioApiInternalSchemaName, "bsonstddevpop");
 }
 
 
@@ -3963,7 +3965,7 @@ BsonStdDevSampAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonStdDevSampAggregateFunctionOid,
-		"helio_api_internal", "bsonstddevsamp");
+		HelioApiInternalSchemaName, "bsonstddevsamp");
 }
 
 
@@ -3971,7 +3973,7 @@ Oid
 BsonAddToSetAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonAddToSetAggregateFunctionOid,
-									  "helio_api_internal", "bson_add_to_set");
+									  HelioApiInternalSchemaName, "bson_add_to_set");
 }
 
 
@@ -4042,7 +4044,7 @@ BsonDollarLookupJoinFilterFunctionOid(void)
 
 	if (Cache.BsonDollarLookupJoinFilterFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString("bson_dollar_lookup_join_filter"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
 		bool missingOK = false;
@@ -4133,7 +4135,7 @@ BsonExpressionGetWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonExpressionGetWithLetFunctionOid,
-		"helio_api_internal", "bson_expression_get",
+		HelioApiInternalSchemaName, "bson_expression_get",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
 }
 
@@ -4143,7 +4145,7 @@ BsonExpressionPartitionGetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid,
-		"helio_api_internal", "bson_expression_partition_get",
+		HelioApiInternalSchemaName, "bson_expression_partition_get",
 		BsonTypeId(), BsonTypeId(), BOOLOID);
 }
 
@@ -4156,7 +4158,7 @@ BsonExpressionPartitionByFieldsGetFunctionOid(void)
 	bool missingOk = false;
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.BsonExpressionPartitionByFieldsGetFunctionOid,
-		"helio_api_internal",
+		HelioApiInternalSchemaName,
 		"bson_expression_partition_by_fields_get", nargs,
 		argTypes,
 		missingOk);
@@ -4168,7 +4170,7 @@ BsonExpressionPartitionGetWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFourArgs(
 		&Cache.ApiCatalogBsonExpressionPartitionGetWithLetFunctionOid,
-		"helio_api_internal", "bson_expression_partition_get",
+		HelioApiInternalSchemaName, "bson_expression_partition_get",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
 }
 
@@ -4188,7 +4190,7 @@ BsonExpressionMapWithLetFunctionOid(void)
 {
 	return GetOperatorFunctionIdFiveArgs(
 		&Cache.ApiCatalogBsonExpressionMapWithLetFunctionOid,
-		"helio_api_internal", "bson_expression_map",
+		HelioApiInternalSchemaName, "bson_expression_map",
 		HelioCoreBsonTypeId(), TEXTOID, HelioCoreBsonTypeId(), BOOLOID,
 		HelioCoreBsonTypeId());
 }
@@ -4363,7 +4365,7 @@ BsonOrderByPartitionFunctionOid(void)
 
 	if (Cache.BsonOrderByPartitionFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(
 												"bson_orderby_partition"));
 		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
@@ -5791,7 +5793,7 @@ GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName
 
 	if (*operatorFuncId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
+		List *functionNameList = list_make2(makeString(HelioApiInternalSchemaName),
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
 

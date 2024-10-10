@@ -921,9 +921,9 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 	}
 
 	/* Also check for helio_api explicitly */
-	if (strcmp(ApiInternalSchemaName, "helio_api_internal") != 0)
+	if (strcmp(ApiInternalSchemaName, HelioApiInternalSchemaName) != 0)
 	{
-		commandName = DetectApiSchemaCommand(query, "helio_api_internal", activity,
+		commandName = DetectApiSchemaCommand(query, HelioApiInternalSchemaName, activity,
 											 commandWriter);
 		if (commandName != NULL)
 		{

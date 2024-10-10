@@ -25,6 +25,7 @@ extern PGDLLIMPORT char *ApiCatalogSchemaName;
 extern PGDLLIMPORT char *ApiToApiInternalSchemaName;
 extern PGDLLIMPORT char *ApiCatalogToApiInternalSchemaName;
 extern PGDLLIMPORT char *PostgisSchemaName;
+extern PGDLLIMPORT char *HelioApiInternalSchemaName;
 
 extern MemoryContext HelioApiMetadataCacheContext;
 

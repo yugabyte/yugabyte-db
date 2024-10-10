@@ -916,9 +916,10 @@ CallInsertWorkerForInsertOne(MongoCollection *collection, int64 shardKeyHash,
 	Oid argTypes[6] = { INT8OID, INT8OID, REGCLASSOID, BYTEAOID, BYTEAOID, TEXTOID };
 
 	const char *updateQuery = FormatSqlQuery(
-		" SELECT helio_api_internal.insert_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
+		" SELECT %s.insert_worker($1, $2, $3, $4::helio_core.bson, $5::helio_core.bsonsequence, $6) FROM %s.documents_"
 		UINT64_FORMAT " WHERE shard_key_value = %ld",
-		ApiDataSchemaName, collection->collectionId, shardKeyHash);
+		HelioApiInternalSchemaName, ApiDataSchemaName, collection->collectionId,
+		shardKeyHash);
 
 	argValues[0] = UInt64GetDatum(collection->collectionId);
 
