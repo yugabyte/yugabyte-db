@@ -127,7 +127,13 @@ Deadlock detected errors can be retried by the client. See [Client-side retry](.
 
 ## 42XXX - Syntax Error or Access Rule Violation
 
-Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions. Retrying these errors will likely have no effect unless the respective issue is fixed. Here are some of the errors.
+Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions.
+
+{{<warning>}}
+Retrying these errors will likely have no effect unless the respective issue is fixed.
+{{</warning>}}
+
+Here are some of the errors.
 
 | Code  |                                          Issue                                          |
 | ----- | --------------------------------------------------------------------------------------- |
