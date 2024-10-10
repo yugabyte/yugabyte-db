@@ -5,7 +5,7 @@ linkTitle:
   The "if" statement
 description: Describes the syntax and semantics of the PL/pgSQL "if" statement. [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: if-statement
     parent: compound-statements
     weight: 20

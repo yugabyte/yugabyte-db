@@ -4,7 +4,7 @@ headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the properties of an existing role.
 menu:
-  stable:
+  stable_api:
     parent: api-cassandra
     weight: 1210
 type: docs

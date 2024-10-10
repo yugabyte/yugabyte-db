@@ -4,7 +4,7 @@ headerTitle: Representing different kinds of graph in a SQL database
 linkTitle: Graph representation
 description: This section shows how to represent different kinds of graph in a SQL database,
 menu:
-  preview:
+  preview_api:
     identifier: graph-representation
     parent: traversing-general-graphs
     weight: 10

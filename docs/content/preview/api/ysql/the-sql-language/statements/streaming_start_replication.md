@@ -4,7 +4,7 @@ headerTitle: START_REPLICATION
 linkTitle: START_REPLICATION
 description: Use the START_REPLICATION statement to start streaming from a replication slot.
 menu:
-  preview:
+  preview_api:
     identifier: streaming_start_replication
     parent: statements
 type: docs

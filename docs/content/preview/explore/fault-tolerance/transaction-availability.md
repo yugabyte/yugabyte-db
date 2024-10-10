@@ -30,7 +30,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
 
     ![Local three node cluster](/images/explore/local_cluster_setup.svg)
 
-1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
+1. Connect to your universe using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
 
 1. Create a tablespace to ensure that the leaders for the keys in the example transaction are located in node-2 as follows:
 

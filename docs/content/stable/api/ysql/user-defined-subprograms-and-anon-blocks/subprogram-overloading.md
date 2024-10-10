@@ -4,7 +4,7 @@ headerTitle: Subprogram overloading
 linkTitle: Subprogram overloading
 description: Describes how subprogram overloading works [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: subprogram-overloading
     parent: user-defined-subprograms-and-anon-blocks
     weight: 40

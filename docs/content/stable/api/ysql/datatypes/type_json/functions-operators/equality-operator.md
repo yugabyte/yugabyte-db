@@ -4,7 +4,7 @@ headerTitle: = (equality operator)
 linkTitle: = (equality)
 description: Test if two jsonb values are equal using the JSON equality operator (=).
 menu:
-  stable:
+  stable_api:
     identifier: equality-operator
     parent: json-functions-operators
     weight: 15

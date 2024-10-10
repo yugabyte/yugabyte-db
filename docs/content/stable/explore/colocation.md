@@ -131,7 +131,7 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 
 {{< /warning >}}
 
-To check if a table is colocated or not, you can use the [`\d`](../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+To check if a table is colocated or not, you can use the [`\d`](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../api/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
 
 ```sql
 select is_colocated from yb_table_properties('table_name'::regclass);

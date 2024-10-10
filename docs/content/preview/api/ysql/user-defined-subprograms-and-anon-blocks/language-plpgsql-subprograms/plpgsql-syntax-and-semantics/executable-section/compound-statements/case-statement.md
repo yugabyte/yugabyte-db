@@ -5,7 +5,7 @@ linkTitle:
   The "case" statement
 description: Describes the syntax and semantics of the PL/pgSQL "case" statement. [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: case-statement
     parent: compound-statements
     weight: 30

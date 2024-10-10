@@ -84,7 +84,7 @@ The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCC
     done
     ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create a table using the following schema:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../api/ysqlsh/) shell, and create a table using the following schema:
 
     ```sql
     create table test_copy ( h1 int, r1 int, v1 int, primary key (h1, r1));

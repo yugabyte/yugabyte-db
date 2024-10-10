@@ -201,7 +201,7 @@ yb-tserver-0  2/2       Running   0          12s
 
 ## Connect to the database
 
-Connect to your cluster using [ysqlsh](../../admin/ysqlsh/), and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Connect to your cluster using [ysqlsh](../../api/ysqlsh/), and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 1. To start ysqlsh with kubectl, run the following command:
 

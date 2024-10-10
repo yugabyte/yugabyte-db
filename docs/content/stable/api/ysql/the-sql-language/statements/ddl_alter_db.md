@@ -4,7 +4,7 @@ headerTitle: ALTER DATABASE
 linkTitle: ALTER DATABASE
 description: Use the ALTER DATABASE statement to redefine the attributes of a database.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_alter_db
     parent: statements
 type: docs

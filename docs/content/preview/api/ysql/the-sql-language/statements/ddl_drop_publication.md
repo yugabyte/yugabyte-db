@@ -4,7 +4,7 @@ headerTitle: DROP PUBLICATION
 linkTitle: DROP PUBLICATION
 description: Use the DROP PUBLICATION statement to remove a publication from a database.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_drop_publication
     parent: statements
 aliases:

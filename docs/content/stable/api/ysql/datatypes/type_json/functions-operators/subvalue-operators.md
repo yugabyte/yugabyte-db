@@ -4,7 +4,7 @@ headerTitle: "-> and ->> and #> and #>> (JSON subvalue operators)"
 linkTitle: "->, ->>, #>, #>> (JSON subvalues)"
 description: Read a JSON value at a specified path.
 menu:
-  stable:
+  stable_api:
     identifier: subvalue-operators
     parent: json-functions-operators
     weight: 12

@@ -5,7 +5,7 @@ linkTitle: Operators
 description: Describes the date and time operators. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  preview:
+  preview_api:
     identifier: date-time-operators
     parent: api-ysql-datatypes-datetime
     weight: 80

@@ -5,7 +5,7 @@ headerTitle: Functions for linear regression analysis
 description: Describes the functionality of the covar_pop(), covar_samp(), corr(), and regr_%() family of YSQL aggregate functions for linear regression analysis
 image: /images/section_icons/api/subsection.png
 menu:
-  stable:
+  stable_api:
     identifier: linear-regression
     parent: aggregate-function-syntax-semantics
     weight: 50

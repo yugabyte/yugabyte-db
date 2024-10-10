@@ -4,8 +4,10 @@ headerTitle: ysqlsh meta-command examples
 linkTitle: Examples
 description: YSQL shell meta-command examples.
 headcontent: Examples of ysqlsh meta-commands
+aliases:
+  - /preview/admin/ysqlsh-meta-examples/
 menu:
-  stable:
+  preview:
     identifier: ysqlsh-meta-examples
     parent: ysqlsh-meta-commands
     weight: 20

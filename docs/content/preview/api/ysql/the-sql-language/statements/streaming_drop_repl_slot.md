@@ -4,7 +4,7 @@ headerTitle: DROP_REPLICATION_SLOT
 linkTitle: DROP_REPLICATION_SLOT
 description: Use the DROP_REPLICATION_SLOT statement to drop an existing replication slot.
 menu:
-  preview:
+  preview_api:
     identifier: streaming_drop_repl_slot
     parent: statements
 type: docs

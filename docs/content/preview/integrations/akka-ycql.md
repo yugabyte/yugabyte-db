@@ -296,7 +296,7 @@ Note that it can take some time to view the output as all the keyspaces and tabl
 
 ### Verify the integration using ycqlsh
 
-Run [ycqlsh](../../admin/ycqlsh/) to connect to your database using the YCQL API as follows:
+Run [ycqlsh](../../api/ycqlsh/) to connect to your database using the YCQL API as follows:
 
 ```sh
 ./bin/ycqlsh localhost

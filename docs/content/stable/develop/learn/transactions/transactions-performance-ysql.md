@@ -97,7 +97,7 @@ When an application takes a long time between two statements in a transaction or
 FATAL:  25P03: terminating connection due to idle-in-transaction timeout
 ```
 
-By default, the `idle_in_transaction_session_timeout` is set to `0`. You can set the timeout to a specific value in [ysqlsh](../../../../admin/ysqlsh/#starting-ysqlsh) using the following command:
+By default, the `idle_in_transaction_session_timeout` is set to `0`. You can set the timeout to a specific value in [ysqlsh](../../../../api/ysqlsh/#starting-ysqlsh) using the following command:
 
 ```plpgsql
 SET idle_in_transaction_session_timeout = '10s';

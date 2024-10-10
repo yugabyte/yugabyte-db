@@ -4,7 +4,7 @@ headerTitle: CREATE PUBLICATION
 linkTitle: CREATE PUBLICATION
 description: Use the CREATE PUBLICATION statement to create a publication in a database.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_create_publication
     parent: statements
 type: docs

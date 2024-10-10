@@ -301,7 +301,7 @@ successfully created account b2b51f94-b021-4fb8-ba33-219cd0aea3c1
 
 ### Verify the integration using ysqlsh
 
-Run [ysqlsh](../../admin/ysqlsh/) to connect to your database using the YSQL API as follows:
+Run [ysqlsh](../../api/ysqlsh/) to connect to your database using the YSQL API as follows:
 
 ```sh
 ./bin/ysqlsh -h localhost

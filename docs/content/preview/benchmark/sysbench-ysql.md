@@ -33,7 +33,7 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 
 This installs the sysbench utility in `/usr/local/bin`.
 
-Make sure you have the [YSQL shell](../../admin/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
+Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh

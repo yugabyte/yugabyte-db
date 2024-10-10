@@ -7,11 +7,7 @@ headcontent: Shell for interacting with the YugabyteDB YCQL API
 aliases:
   - /develop/tools/cqlsh/
   - /preview/develop/tools/cqlsh/
-menu:
-  preview:
-    identifier: ycqlsh
-    parent: admin
-    weight: 20
+  - /preview/admin/ycqlsh/
 rightNav:
   hideH4: true
 type: docs
@@ -29,19 +25,7 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 ### Installation
 
-ycqlsh is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
-
-If you prefer, you can install a standalone version using a shell script:
-
-```sh
-curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-```
-
-If you have `wget`, you can use the following:
-
-```sh
-wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-```
+ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
 
 ### Starting ycqlsh
 

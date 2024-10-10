@@ -58,7 +58,7 @@ $ npm install
 
 ## Set up the database connection
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell using the following command:
 
 ```sh
 $ ./bin/ysqlsh

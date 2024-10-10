@@ -4,7 +4,7 @@ headerTitle: Doing SQL from PL/pgSQL
 linkTitle: Doing SQL from PL/pgSQL
 description: Describes the syntax and semantics of the various PL/pgSQL statements for doing SQL from PL/pgSQL [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: doing-sql-from-plpgsql
     parent: basic-statements
     weight: 50

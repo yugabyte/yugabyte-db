@@ -4,7 +4,7 @@ headerTitle: Date and time data types (DATE, TIME, and TIMESTAMP)
 linkTitle: DATE, TIME, and TIMESTAMP
 description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify dates and time.
 menu:
-  preview:
+  preview_api:
     parent: api-cassandra
     weight: 1450
 aliases:

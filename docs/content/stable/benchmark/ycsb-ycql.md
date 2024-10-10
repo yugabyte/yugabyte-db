@@ -61,7 +61,7 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Ensure that you have the YCQL shell [ycqlsh](../../admin/ycqlsh/) and that its location is included in the `PATH` variable, as follows:
+Ensure that you have the YCQL shell [ycqlsh](../../api/ycqlsh/) and that its location is included in the `PATH` variable, as follows:
 
 ```sh
 $ export PATH=$PATH:/path/to/ycqlsh

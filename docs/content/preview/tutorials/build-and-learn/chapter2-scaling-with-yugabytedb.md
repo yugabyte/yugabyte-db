@@ -70,7 +70,7 @@ For a complete list of ports, refer to the [default ports](../../../reference/co
 
 Next, open a database connection and run a few SQL requests:
 
-1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../admin/ysqlsh/) command-line tool:
+1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../api/ysqlsh/) command-line tool:
 
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done

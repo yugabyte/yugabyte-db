@@ -4,7 +4,7 @@ headerTitle: ALTER DOMAIN
 linkTitle: ALTER DOMAIN
 description: Use the ALTER DOMAIN statement to change the definition of a domain.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_alter_domain
     parent: statements
 aliases:

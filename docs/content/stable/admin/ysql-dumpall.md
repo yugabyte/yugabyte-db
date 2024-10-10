@@ -249,4 +249,4 @@ The database to which you connect is not important because the script file creat
 ## See Also
 
 - [ysql_dump](../ysql-dump/)
-- [ysqlsh](../ysqlsh/)
+- [ysqlsh](../../api/ysqlsh/)

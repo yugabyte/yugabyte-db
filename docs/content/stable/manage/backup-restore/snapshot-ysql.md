@@ -94,7 +94,7 @@ To mitigate these issues, consider storing backups outside of the cluster, in ch
 
 To move a snapshot to external storage, gather all the relevant files from all the nodes and copy them along with the additional metadata required for restoring on a different cluster, as follows:
 
-1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../admin/ysqlsh/):
+1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../api/ysqlsh/):
 
     ```sql
     SELECT yb_catalog_version();
@@ -167,7 +167,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     DROP DATABASE IF EXISTS <database_name>;
     ```
 
-1. Retrieve the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../admin/ycqlsh/) tool by executing the following command:
+1. Retrieve the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../api/ycqlsh/) tool by executing the following command:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 --echo-all --file=<database_name>_schema.sql

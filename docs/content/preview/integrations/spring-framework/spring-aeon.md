@@ -33,7 +33,7 @@ In this walkthrough, you will:
 
 - Git
 - YugabyteDB Aeon cluster
-  - Your computer IP address must be in an [IP allow list](../../cloud-secure-clusters/add-connections/)
+  - Your computer IP address must be in an [IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/)
 
 ## Clone the Spring Data YugabyteDB PetClinic application
 

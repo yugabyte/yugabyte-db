@@ -4,7 +4,7 @@ headerTitle: The PL/pgSQL declaration section
 linkTitle: Declaration section
 description: Describes the syntax and semantics of the PL/pgSQL declaration section. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: declaration-section
     parent: plpgsql-syntax-and-semantics
     weight: 10

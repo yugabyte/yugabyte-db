@@ -153,7 +153,7 @@ The following example demonstrates how to use a database clone to recover from a
         --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
     ```
 
-1. Start [ysqlsh](../../../admin/ysqlsh/) and create the database:
+1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:
 
     ```sh
     ./bin/ysqlsh

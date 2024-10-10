@@ -4,7 +4,7 @@ headerTitle: PL/pgSQL's "create" time and execution model
 linkTitle: Create-time and execution model
 description: Describes the model for creating and executing PL/pgSQL subprograms. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: plpgsql-execution-model
     parent: language-plpgsql-subprograms
     weight: 10

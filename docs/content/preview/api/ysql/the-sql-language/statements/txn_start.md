@@ -4,7 +4,7 @@ headerTitle: START TRANSACTION
 linkTitle: START TRANSACTION
 description: Use the `START TRANSACTION` statement to start a transaction with the default (or specified) isolation level.
 menu:
-  preview:
+  preview_api:
     identifier: txn_start
     parent: statements
 aliases:

@@ -48,7 +48,7 @@ With YugabyteDB downloaded on your machine, create a cluster and seed it with da
     ./path/to/bin/yugabyted start
     ```
 
-1. Connect to the cluster using [ysqlsh](../../../admin/ysqlsh/).
+1. Connect to the cluster using [ysqlsh](../../../api/ysqlsh/).
 
     ```sh
     ./path/to/bin/ysqlsh -U yugabyte

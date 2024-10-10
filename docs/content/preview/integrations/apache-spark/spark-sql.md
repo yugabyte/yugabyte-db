@@ -67,7 +67,7 @@ The Spark prompt should be available as `spark-sql>`.
 
 Create the database and table you will read and write to as follows:
 
-1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../api/ysqlsh/) shell to read and write directly to the database as follows:
 
      ```sh
      ./bin/ysqlsh

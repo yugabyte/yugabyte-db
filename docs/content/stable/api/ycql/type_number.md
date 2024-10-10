@@ -4,7 +4,7 @@ headerTitle: Non-integer
 linkTitle: Non-integer
 description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers.
 menu:
-  stable:
+  stable_api:
     parent: api-cassandra
     weight: 1430
 type: docs

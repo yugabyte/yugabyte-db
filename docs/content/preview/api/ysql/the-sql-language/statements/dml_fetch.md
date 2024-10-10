@@ -4,7 +4,7 @@ headerTitle: FETCH
 linkTitle: FETCH
 description: Use the FETCH statement to fetch one or several rows from a cursor.
 menu:
-  preview:
+  preview_api:
     identifier: dml_fetch
     parent: statements
 type: docs
