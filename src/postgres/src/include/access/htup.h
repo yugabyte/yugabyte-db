@@ -4,7 +4,7 @@
  *	  POSTGRES heap tuple definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/htup.h
@@ -65,7 +65,7 @@ typedef struct HeapTupleData
 	ItemPointerData t_self;		/* SelfItemPointer */
 	Oid			t_tableOid;		/* table the tuple came from */
 	Datum 		t_ybctid;		/* virtual column ybctid */
-#define FIELDNO_HEAPTUPLEDATA_DATA 3
+#define FIELDNO_HEAPTUPLEDATA_DATA 4
 	HeapTupleHeader t_data;		/* -> tuple header and data */
 } HeapTupleData;
 
@@ -82,21 +82,9 @@ typedef HeapTupleData *HeapTuple;
 extern CommandId HeapTupleHeaderGetCmin(HeapTupleHeader tup);
 extern CommandId HeapTupleHeaderGetCmax(HeapTupleHeader tup);
 extern void HeapTupleHeaderAdjustCmax(HeapTupleHeader tup,
-						  CommandId *cmax, bool *iscombo);
+									  CommandId *cmax, bool *iscombo);
 
 /* Prototype for HeapTupleHeader accessors in heapam.c */
 extern TransactionId HeapTupleGetUpdateXid(HeapTupleHeader tuple);
-
-/* Copy ybctid from a source tuple to a new / destination tuple */
-#define HEAPTUPLE_COPY_YBCTID(src, dest)                            \
-    do {                                                            \
-        if (IsYugaByteEnabled()) {                                  \
-            dest = (src == 0) ? 0 :                                 \
-                PointerGetDatum(cstring_to_text_with_len(VARDATA_ANY(src), \
-                                                         VARSIZE_ANY_EXHDR(src))); \
-        } else {                                                    \
-            dest = 0;                                               \
-        }                                                           \
-    } while (false)
 
 #endif							/* HTUP_H */

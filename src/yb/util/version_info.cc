@@ -40,6 +40,7 @@
 #include <rapidjson/istreamwrapper.h>
 #include <rapidjson/writer.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
@@ -177,6 +178,17 @@ Status VersionInfo::ReadVersionDataFromFile() {
                                       "build_clean_repo", d["build_clean_repo"].GetType()));
   } else {
     version_data->pb.set_build_clean_repo(d["build_clean_repo"] == "true");
+  }
+
+  if (d.HasMember("ysql_major_version")) {
+    SCHECK(
+        d["ysql_major_version"].IsString(), IllegalState,
+        Format(
+            "Key $0 is of invalid type $1", "ysql_major_version",
+            d["ysql_major_version"].GetType()));
+
+    version_data->pb.set_ysql_major_version(
+        make_unsigned(atoi(d["ysql_major_version"].GetString())));
   }
 
   std::atomic_store_explicit(&version_data_,

@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Principal;
+import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -54,9 +56,12 @@ import io.ebean.DB;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -124,7 +129,7 @@ public class AppInit {
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
-
+      setYbaVersion(ConfigHelper.getCurrentVersion(environment));
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
@@ -200,7 +205,6 @@ public class AppInit {
         for (ExtraMigration m : ExtraMigration.getAll()) {
           m.run(extraMigrationManager);
         }
-
         // Import new local releases into release metadata
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
@@ -234,6 +238,8 @@ public class AppInit {
           log.debug("skipping fetch latest arm build for cloud enabled deployment");
         }
 
+        updateSensitiveGflagsforRedaction(gFlagsValidation);
+
         // initialize prometheus exports
         DefaultExports.initialize();
 
@@ -241,6 +247,7 @@ public class AppInit {
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
         taskManager.handlePendingConsistencyTasks();
+        taskManager.handleAutoRetryAbortedTasks();
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
@@ -312,8 +319,6 @@ public class AppInit {
           log.info("Completed initialization in " + elapsedStr + " seconds.");
         }
 
-        setYbaVersion(ConfigHelper.getCurrentVersion(environment));
-
         // Fix up DB paths again to handle any new files (ybc) that moved during AppInit.
         if (config.getBoolean("yb.fixPaths")) {
           log.debug("Fixing up file paths a second time.");
@@ -332,5 +337,20 @@ public class AppInit {
   // Workaround for some tests with H2 database.
   public static boolean isH2Db() {
     return IS_H2_DB.get();
+  }
+
+  private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (Release release : Release.getAll()) {
+      // Extract sensitive flags and cache in DB for later use.
+      if (release.getSensitiveGflags() == null) {
+        release.setSensitiveGflags(
+            gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
+        release.save();
+      }
+      sensitiveGflags.addAll(release.getSensitiveGflags());
+    }
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 }

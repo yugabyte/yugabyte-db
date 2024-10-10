@@ -672,8 +672,8 @@ public class PlacementInfoUtil {
                 if (available + occupied + willBeFreed < requiredNumber) {
                   errors.add(
                       String.format(
-                          "Couldn't find %d nodes of type %s in %s zone "
-                              + "(%d is free and %d currently occupied)",
+                          "Couldn't find %d node(s) of type %s in %s zone "
+                              + "(%d free and %d currently occupied)",
                           requiredNumber,
                           cluster.userIntent.getInstanceType(az.uuid),
                           availabilityZone.getName(),
@@ -747,7 +747,10 @@ public class PlacementInfoUtil {
                   });
         } else {
           throw new IllegalStateException(
-              "Couldn't find " + deltaNodes + " nodes of type " + userIntent.getBaseInstanceType());
+              "Couldn't find "
+                  + deltaNodes
+                  + " node(s) of type "
+                  + userIntent.getBaseInstanceType());
         }
       }
       changed = false;
@@ -2426,8 +2429,12 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
+      String instanceType = userIntent.getBaseInstanceType();
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "No AZ found across regions: " + userIntent.regionList);
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Couldn't find available nodes with type %s for given regions: %s",
+              instanceType, userIntent.regionList.toString()));
     }
 
     int numZones = Math.min(intentZones, userIntent.replicationFactor);
@@ -2462,7 +2469,6 @@ public class PlacementInfoUtil {
           if (!excludedRegions.contains(regUUID)) {
             multimap.putAll(regUUID, azs);
           }
-          ;
         });
     while (!multimap.isEmpty()) {
       for (UUID regionUUID : new ArrayList<>(multimap.keySet())) {

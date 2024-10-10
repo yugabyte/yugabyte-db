@@ -33,6 +33,8 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/rpc/poller.h"
 
 #include "yb/server/clock.h"
@@ -394,7 +396,10 @@ class TransactionParticipant::Impl
                                              db_.key_bounds,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
-                                             rocksdb::kDefaultQueryId);
+                                             rocksdb::kDefaultQueryId,
+                                             /* file_filter = */ nullptr,
+                                             /* iterate_upper_bound = */ nullptr,
+                                             rocksdb::CacheRestartBlockKeys::kFalse);
     for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
       ++result.num_intents;
       // Count number of transaction, by counting metadata records.
@@ -567,7 +572,7 @@ class TransactionParticipant::Impl
         cdc_sdk_min_checkpoint_op_id_ != OpId::Invalid()) {
       min_checkpoint = cdc_sdk_min_checkpoint_op_id_;
     } else {
-      VLOG(1) << "Tablet peer checkpoint is expired with the current time: "
+      VLOG(4) << "Tablet peer checkpoint is expired with the current time: "
               << ToSeconds(CoarseMonoClock::Now().time_since_epoch()) << " expiration time: "
               << ToSeconds(cdc_sdk_min_checkpoint_op_id_expiration_.time_since_epoch())
               << " checkpoint op_id: " << cdc_sdk_min_checkpoint_op_id_;
@@ -586,6 +591,8 @@ class TransactionParticipant::Impl
       }
     }
 
+    VLOG_WITH_PREFIX(2) << "Running txns: " << transactions_.size()
+                        << ", returning HybridTime::kInvalid for min start time among running txns";
     return HybridTime::kInvalid;
   }
 
@@ -732,25 +739,26 @@ class TransactionParticipant::Impl
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
-    auto txn_status = operation->request()->status();
-    if (txn_status == TransactionStatus::APPLYING) {
-      HandleApplying(std::move(operation), term);
-      return;
+    switch (operation->request()->status()) {
+      case TransactionStatus::PROMOTING:
+        HandlePromoting(std::move(operation), term);
+        return;
+      case TransactionStatus::APPLYING:
+        HandleApplying(std::move(operation), term);
+        return;
+      case TransactionStatus::IMMEDIATE_CLEANUP:
+        HandleCleanup(std::move(operation), term, CleanupType::kImmediate);
+        return;
+      case TransactionStatus::GRACEFUL_CLEANUP:
+        HandleCleanup(std::move(operation), term, CleanupType::kGraceful);
+        return;
+      default: {
+        auto error_status = STATUS_FORMAT(
+            InvalidArgument, "Unexpected status in transaction participant Handle: $0", *operation);
+        LOG_WITH_PREFIX(DFATAL) << error_status;
+        operation->CompleteWithStatus(error_status);
+      }
     }
-
-    if (txn_status == TransactionStatus::IMMEDIATE_CLEANUP ||
-        txn_status == TransactionStatus::GRACEFUL_CLEANUP) {
-      auto cleanup_type = txn_status == TransactionStatus::IMMEDIATE_CLEANUP
-          ? CleanupType::kImmediate
-          : CleanupType::kGraceful;
-      HandleCleanup(std::move(operation), term, cleanup_type);
-      return;
-    }
-
-    auto error_status = STATUS_FORMAT(
-        InvalidArgument, "Unexpected status in transaction participant Handle: $0", *operation);
-    LOG_WITH_PREFIX(DFATAL) << error_status;
-    operation->CompleteWithStatus(error_status);
   }
 
   Status ProcessReplicated(const ReplicatedData& data) {
@@ -765,17 +773,22 @@ class TransactionParticipant::Impl
       return id.status();
     }
 
-    if (data.state.status() == TransactionStatus::APPLYING) {
-      return ReplicatedApplying(*id, data);
-    } else if (data.state.status() == TransactionStatus::ABORTED) {
-      return ReplicatedAborted(*id, data);
+    switch (data.state.status()) {
+      case TransactionStatus::PROMOTING:
+        return ReplicatedPromoting(*id, data);
+      case TransactionStatus::APPLYING:
+        return ReplicatedApplying(*id, data);
+      case TransactionStatus::ABORTED:
+        return ReplicatedAborted(*id, data);
+      default: {
+        auto status = STATUS_FORMAT(
+            InvalidArgument,
+            "Unexpected status in transaction participant ProcessReplicated: $0, $1",
+            data.op_id, data.state);
+        LOG_WITH_PREFIX(DFATAL) << status;
+        return status;
+      }
     }
-
-    auto status = STATUS_FORMAT(
-        InvalidArgument, "Unexpected status in transaction participant ProcessReplicated: $0, $1",
-        data.op_id, data.state);
-    LOG_WITH_PREFIX(DFATAL) << status;
-    return status;
   }
 
   Status Cleanup(TransactionIdApplyOpIdMap&& txns, TransactionStatusManager* status_manager) {
@@ -1375,12 +1388,23 @@ class TransactionParticipant::Impl
         std::max(ignore_all_transactions_started_before_, limit);
   }
 
-  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+  TransactionStatusResult DoUpdateTransactionStatusLocation(
+      RunningTransaction& transaction, const TabletId& new_status_tablet) REQUIRES(mutex_) {
+    const auto& metadata = transaction.metadata();
+    VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
+                        << metadata.transaction_id << " from tablet " << metadata.status_tablet
+                        << " to " << new_status_tablet;
+    transaction.UpdateTransactionStatusLocation(new_status_tablet);
+    return TransactionStatusResult{
+        TransactionStatus::PROMOTED, transaction.last_known_status_hybrid_time(),
+        transaction.last_known_aborted_subtxn_set(), new_status_tablet};
+  }
+
+  Status ApplyUpdateTransactionStatusLocation(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
 
-    TransactionMetadata metadata;
     TransactionStatusResult txn_status_res;
     {
       std::lock_guard lock(mutex_);
@@ -1398,21 +1422,45 @@ class TransactionParticipant::Impl
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
                              PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
-      metadata = transaction->metadata();
-      VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
-                          << metadata.transaction_id << " from tablet " << metadata.status_tablet
-                          << " to " << new_status_tablet;
-      transaction->UpdateTransactionStatusLocation(new_status_tablet);
+      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
-      txn_status_res = TransactionStatusResult{
-          TransactionStatus::PROMOTED, transaction->last_known_status_hybrid_time(),
-          transaction->last_known_aborted_subtxn_set(), new_status_tablet};
     }
 
     if (wait_queue_) {
       wait_queue_->SignalPromoted(transaction_id, std::move(txn_status_res));
     }
-    return std::move(metadata);
+    return Status::OK();
+  }
+
+  Status ReplicateUpdateTransactionStatusLocation(
+      const TransactionId& transaction_id, const TabletId& new_status_tablet) {
+    RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
+    MinRunningNotifier min_running_notifier(&applier_);
+
+    TransactionStatusResult txn_status_res;
+    {
+      std::lock_guard lock(mutex_);
+
+      auto it = transactions_.find(transaction_id);
+      // Can happen during bootstrap where aborted transactions were not loaded.
+      if (it == transactions_.end()) {
+        return Status::OK();
+      }
+
+      auto& transaction = *it;
+      // Leader has already applied the update.
+      if (transaction->metadata().status_tablet == new_status_tablet) {
+        return Status::OK();
+      }
+
+      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+      TransactionsModifiedUnlocked(&min_running_notifier);
+    }
+
+    if (wait_queue_) {
+      wait_queue_->SignalPromoted(transaction_id, std::move(txn_status_res));
+    }
+    return Status::OK();
   }
 
   void RecordConflictResolutionKeysScanned(int64_t num_keys) {
@@ -1905,6 +1953,7 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
+      VLOG_WITH_PREFIX(3) << "Transaction status update: " << AsString(info);
       if ((**it).UpdateStatus(
           info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
           info.aborted_subtxn_set, info.expected_deadlock_status)) {
@@ -1920,6 +1969,29 @@ class TransactionParticipant::Impl
     }
   }
 
+  void SubmitUpdateTransaction(
+      std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    WARN_NOT_OK(
+        participant_context_.SubmitUpdateTransaction(std::move(operation), term),
+        Format("Could not submit transaction status update operation: $0", operation->ToString()));
+  }
+
+  Status DoHandlePromoting(tablet::UpdateTxnOperation* operation) {
+    const auto& request = *operation->request();
+    auto id = VERIFY_RESULT(FullyDecodeTransactionId(request.transaction_id()));
+    return ApplyUpdateTransactionStatusLocation(id, request.tablets().front().ToBuffer());
+  }
+
+  void HandlePromoting(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    auto status = DoHandlePromoting(operation.get());
+    if (!status.ok()) {
+      operation->CompleteWithStatus(status);
+      return;
+    }
+
+    SubmitUpdateTransaction(std::move(operation), term);
+  }
+
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     if (RandomActWithProbability(GetAtomicFlag(
         &FLAGS_TEST_transaction_ignore_applying_probability))) {
@@ -1929,12 +2001,7 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(Status::OK());
       return;
     }
-    auto operation_state = operation->ToString();
-    Status submit_status = participant_context_.SubmitUpdateTransaction(std::move(operation), term);
-    if (!submit_status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Could not submit transaction status update operation: "
-                               << operation_state << ", status: " << submit_status;
-    }
+    SubmitUpdateTransaction(std::move(operation), term);
   }
 
   void HandleCleanup(
@@ -1963,6 +2030,16 @@ class TransactionParticipant::Impl
     };
     WARN_NOT_OK(ProcessCleanup(data, cleanup_type), "Process cleanup failed");
     operation->CompleteWithStatus(Status::OK());
+  }
+
+  Status ReplicatedPromoting(const TransactionId& id, const ReplicatedData& data) {
+    // data.state.tablets contains only new status tablet.
+    if (data.state.tablets().size() != 1) {
+      return STATUS_FORMAT(InvalidArgument,
+                           "Expected only one tablet during PROMOTING, state received: $0",
+                           data.state);
+    }
+    return ReplicateUpdateTransactionStatusLocation(id, data.state.tablets().front().ToBuffer());
   }
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
@@ -2044,6 +2121,8 @@ class TransactionParticipant::Impl
       CheckForAbortedTransactions();
     }
     CleanupStatusResolvers();
+
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Finished";
   }
 
   void PollWaitQueue() {
@@ -2561,9 +2640,9 @@ void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit
   impl_->IgnoreAllTransactionsStartedBefore(limit);
 }
 
-Result<TransactionMetadata> TransactionParticipant::UpdateTransactionStatusLocation(
+Status TransactionParticipant::UpdateTransactionStatusLocation(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
-  return impl_->UpdateTransactionStatusLocation(transaction_id, new_status_tablet);
+  return impl_->ApplyUpdateTransactionStatusLocation(transaction_id, new_status_tablet);
 }
 
 const TabletId& TransactionParticipant::tablet_id() const {

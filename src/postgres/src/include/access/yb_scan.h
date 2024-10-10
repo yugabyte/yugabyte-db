@@ -28,7 +28,8 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/itup.h"
-#include "nodes/relation.h"
+#include "access/relation.h"
+#include "nodes/pathnodes.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/sampling.h"
@@ -149,11 +150,26 @@ typedef struct YbScanDescData
 {
 #define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2) /* A pair of lower/upper bounds per column max */
 
+	/* Base of a scan descriptor - Currently it is used either by postgres::heap or Yugabyte.
+	 * It contains basic information that defines a scan.
+	 * - Relation: Which table to scan.
+	 * - Keys: Scan conditions.
+	 *   In YB ScanKey could be one of two types:
+	 *   o key for regular column
+	 *   o key which represents the yb_hash_code function.
+	 *   The keys array holds keys of both types.
+	 *   All regular keys go before keys for yb_hash_code.
+	 *   Keys in range [0, nkeys) are regular keys.
+	 *   Keys in range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code
+	 *   Such separation allows to process regular and non-regular keys independently.
+	 */
+	TableScanDescData rs_base;
+
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement handle;
 	bool is_exec_done;
 
-	Relation relation;
+	/* Secondary index used in this scan. */
 	Relation index;
 
 	/*
@@ -179,6 +195,7 @@ typedef struct YbScanDescData
 	 */
 	bool all_ordinary_keys_bound;
 
+	/* Destination for queried data from Yugabyte database */
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
 
@@ -213,23 +230,6 @@ typedef struct YbScanDescData
 	YBParallelPartitionKeys pscan;
 } YbScanDescData;
 
-typedef struct YbScanDescData *YbScanDesc;
-
-struct YbSysScanBaseData;
-
-typedef struct YbSysScanBaseData *YbSysScanBase;
-
-typedef struct YbSysScanVirtualTable
-{
-	HeapTuple (*next)(YbSysScanBase);
-	void (*end)(YbSysScanBase);
-} YbSysScanVirtualTable;
-
-typedef struct YbSysScanBaseData
-{
-	YbSysScanVirtualTable *vtable;
-} YbSysScanBaseData;
-
 extern void ybc_free_ybscan(YbScanDesc ybscan);
 
 /*
@@ -254,13 +254,13 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
  * Access to YB-stored system catalogs (mirroring API from heapam.c)
  * We will do a YugaByte scan instead of a heap scan.
  */
-extern HeapScanDesc ybc_heap_beginscan(Relation relation,
-                                       Snapshot snapshot,
-                                       int nkeys,
-                                       ScanKey key,
-									   bool temp_snap);
-extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
-extern void ybc_heap_endscan(HeapScanDesc scanDesc);
+extern TableScanDesc ybc_heap_beginscan(Relation relation,
+										Snapshot snapshot,
+										int nkeys,
+										ScanKey key,
+										uint32 flags);
+extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
+extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
 extern void
 YbBindDatumToColumn(YBCPgStatement stmt,
@@ -352,6 +352,9 @@ extern Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
  */
 #define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
 
+/* OID for function "yb_hash_code" */
+#define YB_HASH_CODE_OID 8020
+
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
@@ -360,12 +363,18 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 											Cost *total_cost);
 
 /*
- * Fetch a single tuple by the ybctid.
+ * Fetch a single row for given ybctid into a slot.
+ * This API is needed for reading data via index.
  */
-extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
-extern HTSU_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
-												 LockWaitPolicy wait_policy, EState* estate);
+extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
+								LockWaitPolicy wait_policy, EState* estate);
+/*
+ * Fetch a single row for given ybctid into a heap-tuple.
+ * This API is needed for reading data from a catalog (system table).
+ */
+extern bool YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple);
 extern void YBCFlushTupleLocks();
+extern void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
 
 /*
  * ANALYZE support: sampling of table data

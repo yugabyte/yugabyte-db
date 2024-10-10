@@ -1995,6 +1995,15 @@ void ExternalMiniCluster::RemoveExtraFlagOnTServers(const std::string& flag) {
   }
 }
 
+Status ExternalMiniCluster::AddAndSetExtraFlag(const std::string& flag, const std::string& value) {
+  for (const auto& daemon : daemons()) {
+    daemon->AddExtraFlag(flag, value);
+    RETURN_NOT_OK_PREPEND(
+        SetFlag(daemon, flag, value), Format("Failed to set flag on $0", daemon->id()));
+  }
+
+  return Status::OK();
+}
 
 uint16_t ExternalMiniCluster::AllocateFreePort() {
   // This will take a file lock ensuring the port does not get claimed by another thread/process

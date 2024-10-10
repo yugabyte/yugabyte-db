@@ -57,10 +57,6 @@ Status PgDml::AppendTargetPB(PgExpr* target) {
                       IllegalState, "Combining aggregate and non aggregate targets");
   }
 
-  if (target->is_system()) {
-    has_system_targets_ = true;
-  }
-
   if (is_aggregate) {
     auto aggregate = down_cast<PgAggregateOperator*>(target);
     aggregate->set_index(narrow_cast<int>(targets_.size()));
@@ -201,6 +197,11 @@ void PgDml::ColRefsToPB() {
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::BindColumn(int attr_num, PgExpr* attr_value) {
+  // Convert to wire protocol. See explanation in pg_system_attr.h.
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kPGInternalYBTupleId)) {
+    attr_num = static_cast<int>(PgSystemAttrNum::kYBTupleId);
+  }
+
   if (secondary_index_query_) {
     // Bind by secondary key.
     return secondary_index_query_->BindColumn(attr_num, attr_value);
@@ -225,12 +226,12 @@ Status PgDml::BindColumn(int attr_num, PgExpr* attr_value) {
   return Status::OK();
 }
 
-Status PgDml::ANNBindVector(PgExpr *query_vec) {
+Status PgDml::ANNBindVector(int vec_att_no, PgExpr *query_vec) {
   if (secondary_index_query_) {
-    return secondary_index_query_->ANNBindVector(query_vec);
+    return secondary_index_query_->ANNBindVector(vec_att_no, query_vec);
   }
 
-  return down_cast<PgDmlRead*>(this)->ANNBindVector(query_vec);
+  return down_cast<PgDmlRead*>(this)->ANNBindVector(vec_att_no, query_vec);
 }
 
 Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {

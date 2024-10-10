@@ -176,7 +176,7 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
       << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
-bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
+bool MetricEntity::TEST_ContainsMetricName(const std::string& metric_name) const {
   std::lock_guard l(lock_);
   for (const MetricMap::value_type& val : metric_map_) {
     if (val.first->name() == metric_name) {
@@ -184,6 +184,15 @@ bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const 
     }
   }
   return false;
+}
+
+Result<std::string> MetricEntity::TEST_GetAttributeFromMap(const std::string& key) const {
+  std::lock_guard l(lock_);
+  auto it = attributes_.find(key);
+  if (it == attributes_.end()) {
+    return STATUS_FORMAT(NotFound, "Key $0 not found in attributes_ map", key);
+  }
+  return it->second;
 }
 
 MetricEntity::MetricMap MetricEntity::GetFilteredMetricMap(
@@ -301,6 +310,10 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   } else if (strcmp(prototype_->name(), kCdcsdkMetricEntityName) == 0) {
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+    auto it = attrs.find("slot_name");
+    if (it != attrs.end() && !it->second.empty()) {
+      prometheus_attr["slot_name"] = it->second;
+    }
     aggregation_levels = kStreamLevel;
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];

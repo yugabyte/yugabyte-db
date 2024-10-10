@@ -2,7 +2,7 @@
  *
  * rmtree.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,6 +19,12 @@
 
 #include <unistd.h>
 #include <sys/stat.h>
+
+#ifndef FRONTEND
+#define pg_log_warning(...) elog(WARNING, __VA_ARGS__)
+#else
+#include "common/logging.h"
+#endif
 
 
 /*
@@ -62,7 +68,7 @@ rmtree(const char *path, bool rmtopdir)
 		 * This is not an academic possibility. One scenario where this
 		 * happens is when bgwriter has a pending unlink request for a file in
 		 * a database that's being dropped. In dropdb(), we call
-		 * ForgetDatabaseFsyncRequests() to flush out any such pending unlink
+		 * ForgetDatabaseSyncRequests() to flush out any such pending unlink
 		 * requests, but because that's asynchronous, it's not guaranteed that
 		 * the bgwriter receives the message in time.
 		 */
@@ -70,13 +76,8 @@ rmtree(const char *path, bool rmtopdir)
 		{
 			if (errno != ENOENT)
 			{
-#ifndef FRONTEND
-				elog(WARNING, "could not stat file or directory \"%s\": %m",
-					 pathbuf);
-#else
-				fprintf(stderr, _("could not stat file or directory \"%s\": %s\n"),
-						pathbuf, strerror(errno));
-#endif
+				pg_log_warning("could not stat file or directory \"%s\": %m",
+							   pathbuf);
 				result = false;
 			}
 			continue;
@@ -97,13 +98,8 @@ rmtree(const char *path, bool rmtopdir)
 			{
 				if (errno != ENOENT)
 				{
-#ifndef FRONTEND
-					elog(WARNING, "could not remove file or directory \"%s\": %m",
-						 pathbuf);
-#else
-					fprintf(stderr, _("could not remove file or directory \"%s\": %s\n"),
-							pathbuf, strerror(errno));
-#endif
+					pg_log_warning("could not remove file or directory \"%s\": %m",
+								   pathbuf);
 					result = false;
 				}
 			}
@@ -114,13 +110,8 @@ rmtree(const char *path, bool rmtopdir)
 	{
 		if (rmdir(path) != 0)
 		{
-#ifndef FRONTEND
-			elog(WARNING, "could not remove file or directory \"%s\": %m",
-				 path);
-#else
-			fprintf(stderr, _("could not remove file or directory \"%s\": %s\n"),
-					path, strerror(errno));
-#endif
+			pg_log_warning("could not remove file or directory \"%s\": %m",
+						   path);
 			result = false;
 		}
 	}

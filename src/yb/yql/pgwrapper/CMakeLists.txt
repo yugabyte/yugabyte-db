@@ -109,6 +109,7 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_t
     geo_transactions_test_base pg_locks_test_base rocksdb_tools ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
+ADD_YB_TEST(clockbound_clock-test)
 ADD_YB_TEST(colocation-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)

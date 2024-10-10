@@ -7,13 +7,13 @@
  * data types are shippable to a remote server for execution --- that is,
  * do they exist and have the same behavior remotely as they do locally?
  * Built-in objects are generally considered shippable.  Other objects can
- * be shipped if they are white-listed by the user.
+ * be shipped if they are declared as such by the user.
  *
  * Note: there are additional filter rules that prevent shipping mutable
  * functions or functions using nonportable collations.  Those considerations
  * need not be accounted for here.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/postgres_fdw/shippable.c
@@ -23,14 +23,12 @@
 
 #include "postgres.h"
 
-#include "postgres_fdw.h"
-
 #include "access/transam.h"
 #include "catalog/dependency.h"
+#include "postgres_fdw.h"
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
-
 
 /* Hash table for caching the results of shippability lookups */
 static HTAB *ShippableCacheHash = NULL;
@@ -95,7 +93,6 @@ InitializeShippableCache(void)
 	HASHCTL		ctl;
 
 	/* Create the hash table. */
-	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(ShippableCacheKey);
 	ctl.entrysize = sizeof(ShippableCacheEntry);
 	ShippableCacheHash =
@@ -113,7 +110,7 @@ InitializeShippableCache(void)
  *
  * Right now "shippability" is exclusively a function of whether the object
  * belongs to an extension declared by the user.  In the future we could
- * additionally have a whitelist of functions/operators declared one at a time.
+ * additionally have a list of functions/operators declared one at a time.
  */
 static bool
 lookup_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
@@ -137,7 +134,7 @@ lookup_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 /*
  * Return true if given object is one of PostgreSQL's built-in objects.
  *
- * We use FirstBootstrapObjectId as the cutoff, so that we only consider
+ * We use FirstGenbkiObjectId as the cutoff, so that we only consider
  * objects with hand-assigned OIDs to be "built in", not for instance any
  * function or type defined in the information_schema.
  *
@@ -154,7 +151,7 @@ lookup_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 bool
 is_builtin(Oid objectId)
 {
-	return (objectId < FirstBootstrapObjectId);
+	return (objectId < FirstGenbkiObjectId);
 }
 
 /*

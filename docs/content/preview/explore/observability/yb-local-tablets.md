@@ -3,7 +3,8 @@ title: View metadata for YSQL/YCQL/system tablets on a server
 linkTitle: Tablet metadata
 description: View metadata for YSQL, YCQL, and system tablets on a server.
 headerTitle: View metadata for YSQL/YCQL/system tablets on a server
-badges: tp
+tags:
+  feature: tech-preview
 menu:
   preview:
     identifier: yb-local-tablets

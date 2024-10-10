@@ -404,8 +404,11 @@ if(IS_GCC)
     # unnecessary. This does not happen in debug.
     # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
     ADD_CXX_FLAGS("-Wno-uninitialized")
-
-    # Also the use-after-free detector complains about Boost multi index container.
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$" AND
+      "${YB_BUILD_TYPE}" STREQUAL "release")
+    # Also the use-after-free detector complains about Boost multi index container in both GCC 12
+    # and GCC 13.
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
@@ -624,7 +627,7 @@ endif()
 function(ADD_THIRDPARTY_LIB LIB_NAME)
   set(options)
   set(one_value_args SHARED_LIB STATIC_LIB)
-  set(multi_value_args DEPS)
+  set(multi_value_args DEPS INCLUDE_DIRS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -648,6 +651,11 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
   if(ARG_DEPS)
     set_target_properties(${LIB_NAME}
       PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+  endif()
+
+  if (ARG_INCLUDE_DIRS)
+    target_include_directories(${LIB_NAME}
+      SYSTEM INTERFACE "${ARG_INCLUDE_DIRS}")
   endif()
 
   # Set up an "exported variant" for this thirdparty library (see "Visibility"

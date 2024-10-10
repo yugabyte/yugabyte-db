@@ -32,6 +32,7 @@ class UniverseReplicationInfo;
 class XClusterSafeTimeService;
 struct XClusterInboundReplicationGroupStatus;
 class XClusterConsumerReplicationStatusPB;
+struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
  public:
@@ -174,6 +175,9 @@ class XClusterTargetManager {
       const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
       const LeaderEpoch& epoch);
 
+  Status SetupUniverseReplication(
+      XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch);
+
   Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check);
 
@@ -192,6 +196,11 @@ class XClusterTargetManager {
   Status DeleteUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
       bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
+      const LeaderEpoch& epoch);
+
+  Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
       const LeaderEpoch& epoch);
 
  private:

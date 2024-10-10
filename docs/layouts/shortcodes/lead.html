@@ -1,18 +1,26 @@
-{{- $leadIcon := "fa-light fa-magnifying-glass-arrow-right" -}}
-{{- if .Params.icon -}}
-{{- $leadIcon = .Params.icon -}}
+{{- $admonition_classes := "admonition callout topic" -}}
+{{- $is_clickable := false -}}
+{{- if .Params -}}
+  {{- if .Params.link -}}
+    {{- $admonition_classes = "admonition callout topic clickable" -}}
+    {{- $is_clickable = true -}}
+  {{- end -}}
 {{- end -}}
 
-<div class="admonition lead">
-  {{- if .Params.link -}}
-  <a href="{{ .Params.link }}" title="{{ .Params.title }}" class="clickable"></a>
-  {{- end -}}
+<div class="{{- $admonition_classes -}}">
+  <div class="icon">{{- readFile "static/icons/callout/open-book.svg" | safeHTML -}}</div>
+  <div class="content-area">
+    <div class="desc">
+      {{- .Inner | .Page.RenderString -}}
+      {{- if $is_clickable -}}
+        <span class="end-icon">
+          <i class="fa-solid fa-arrow-right"></i>
+        </span>
+      {{- end -}}
+    </div>
+  </div>
 
-  {{- if (in $leadIcon "/") -}}
-  <img class="icon" src="{{ $leadIcon }}">
-  {{- else -}}
-  <i class="{{- $leadIcon -}}"></i>
+  {{- if $is_clickable -}}
+    <a href="{{ .Params.link }}" class="callout-link"></a>
   {{- end -}}
-  <p class="admonition-title">{{ .Get "title" }}</p>
-  {{ .Inner | .Page.RenderString }}
 </div>

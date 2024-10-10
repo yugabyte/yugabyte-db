@@ -36,6 +36,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -140,20 +141,36 @@ public class ReleasesUtils {
   }
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
+    // Best effort to get sha256 from url
+    String sha256 = null;
+    try {
+      URL shaUrl = new URL(url.toString() + ".sha");
+      Scanner sc = new Scanner(shaUrl.openStream());
+      sha256 = sc.hasNext() ? sc.next() : null;
+      log.debug("found sha256 {} from url {}", sha256, shaUrl.toString());
+    } catch (Exception e) {
+      log.warn("failed to open sha url ", e);
+    }
+    ExtractedMetadata em = new ExtractedMetadata();
     try {
       if (isHelmChart(url.getFile())) {
         try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-          return metadataFromHelmChart(stream);
+          em = metadataFromHelmChart(stream);
+          em.sha256 = sha256;
+          return em;
         }
       }
       try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-        return versionMetadataFromInputStream(stream);
+        em = versionMetadataFromInputStream(stream);
+        em.sha256 = sha256;
+        return em;
       }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
-      ExtractedMetadata em = metadataFromName(url.getFile());
+      em = metadataFromName(url.getFile());
       em.releaseTag = tagFromName(url.toString());
+      em.sha256 = sha256;
       return em;
     } catch (IOException e) {
       log.error("failed to open url " + url.toString());
@@ -175,7 +192,9 @@ public class ReleasesUtils {
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
           tarInput.read(fileContent, 0, fileContent.length);
-          log.trace("read version_metadata.json string: {}", new String(fileContent));
+          if (log.isTraceEnabled()) {
+            log.trace("read version_metadata.json string: {}", new String(fileContent));
+          }
           JsonNode node = Json.parse(fileContent);
           metadata.minimumYbaVersion = getAndValidateYbaMinimumVersion(node);
           metadata.yb_type = Release.YbType.YBDB;

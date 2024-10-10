@@ -32,6 +32,7 @@
 #include "access/hash.h"
 #include "commands/explain.h"
 #include "common/file_perm.h"
+#include "common/pg_prng.h"
 #include "common/pg_yb_common.h"
 #include "funcapi.h"
 #include "pg_yb_utils.h"
@@ -189,8 +190,6 @@ YbQueryDiagnosticsShmemInit(void)
 	if (!found)
 	{
 		/* First time through ... */
-		LWLockRegisterTranche(LWTRANCHE_YB_QUERY_DIAGNOSTICS,
-							  "yb_query_diagnostics bundles_in_progress hash lock");
 		LWLockInitialize(bundles_in_progress_lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS);
 	}
@@ -214,8 +213,6 @@ YbQueryDiagnosticsShmemInit(void)
 
 		MemSet(bundles_completed->bundles, 0, sizeof(BundleInfo) * bundles_completed->max_entries);
 
-		LWLockRegisterTranche(LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER,
-							  "query_diagnostics_circular_buffer_lock");
 		LWLockInitialize(&bundles_completed->lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
 	}
@@ -538,8 +535,8 @@ YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 													NULL);
 
 	if (entry)
-		current_query_sampled = (random() < (entry->metadata.params.explain_sample_rate / 100.0) *
-								 MAX_RANDOM_VALUE);
+		current_query_sampled = (pg_prng_double(&pg_global_prng_state) <
+								 entry->metadata.params.explain_sample_rate / 100.0);
 	else
 		current_query_sampled = false;
 
@@ -1031,7 +1028,7 @@ DumpToFile(const char *path, const char *file_name, const char *data, char *desc
 			snprintf(description, YB_QD_DESCRIPTION_LEN,
 					 "out of file descriptors: %m; release and retry");
 
-		else if(FileWrite(file, (char *)data, strlen(data),
+		else if(FileWrite(file, (char *)data, strlen(data), 0,
 						  WAIT_EVENT_DATA_FILE_WRITE) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %m");
 

@@ -200,7 +200,7 @@ WHERE mid = 12;
 
 SELECT m.title || ' ' || m.author || ' ' || m.abstract || ' ' || d.body AS document
 FROM messages m, docs d
-WHERE mid = did AND mid = 12;
+WHERE m.mid = d.did AND m.mid = 12;
 </programlisting>
    </para>
 
@@ -275,7 +275,7 @@ SELECT 'fat &amp; cow'::tsquery @@ 'a fat cat sat on a mat and ate a fat rat'::t
 
 <programlisting>
 SELECT to_tsvector('fat cats ate fat rats') @@ to_tsquery('fat &amp; rat');
- ?column? 
+ ?column?
 ----------
  t
 </programlisting>
@@ -284,7 +284,7 @@ SELECT to_tsvector('fat cats ate fat rats') @@ to_tsquery('fat &amp; rat');
 
 <programlisting>
 SELECT 'fat cats ate fat rats'::tsvector @@ to_tsquery('fat &amp; rat');
- ?column? 
+ ?column?
 ----------
  f
 </programlisting>
@@ -335,12 +335,12 @@ text @@ text
 
 <programlisting>
 SELECT to_tsvector('fatal error') @@ to_tsquery('fatal &lt;-&gt; error');
- ?column? 
+ ?column?
 ----------
  t
 
 SELECT to_tsvector('error is not fatal') @@ to_tsquery('fatal &lt;-&gt; error');
- ?column? 
+ ?column?
 ----------
  f
 </programlisting>
@@ -357,12 +357,12 @@ SELECT to_tsvector('error is not fatal') @@ to_tsquery('fatal &lt;-&gt; error');
 
 <programlisting>
 SELECT phraseto_tsquery('cats ate rats');
-       phraseto_tsquery        
+       phraseto_tsquery
 -------------------------------
  'cat' &lt;-&gt; 'ate' &lt;-&gt; 'rat'
 
 SELECT phraseto_tsquery('the cats ate the rats');
-       phraseto_tsquery        
+       phraseto_tsquery
 -------------------------------
  'cat' &lt;-&gt; 'ate' &lt;2&gt; 'rat'
 </programlisting>
@@ -620,15 +620,17 @@ CREATE INDEX pgweb_idx ON pgweb USING GIN (to_tsvector('english', title || ' ' |
 
    <para>
     Another approach is to create a separate <type>tsvector</type> column
-    to hold the output of <function>to_tsvector</function>.  This example is a
+    to hold the output of <function>to_tsvector</function>.  To keep this
+    column automatically up to date with its source data, use a stored
+    generated column.  This example is a
     concatenation of <literal>title</literal> and <literal>body</literal>,
     using <function>coalesce</function> to ensure that one field will still be
     indexed when the other is <literal>NULL</literal>:
 
 <programlisting>
-ALTER TABLE pgweb ADD COLUMN textsearchable_index_col tsvector;
-UPDATE pgweb SET textsearchable_index_col =
-     to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body,''));
+ALTER TABLE pgweb
+    ADD COLUMN textsearchable_index_col tsvector
+               GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))) STORED;
 </programlisting>
 
     Then we create a <acronym>GIN</acronym> index to speed up the search:
@@ -646,14 +648,6 @@ WHERE textsearchable_index_col @@ to_tsquery('create &amp; table')
 ORDER BY last_mod_date DESC
 LIMIT 10;
 </programlisting>
-   </para>
-
-   <para>
-    When using a separate column to store the <type>tsvector</type>
-    representation,
-    it is necessary to create a trigger to keep the <type>tsvector</type>
-    column current anytime <literal>title</literal> or <literal>body</literal> changes.
-    <xref linkend="textsearch-update-triggers"/> explains how to do that.
    </para>
 
    <para>
@@ -834,7 +828,7 @@ to_tsquery(<optional> <replaceable class="parameter">config</replaceable> <type>
 
 <screen>
 SELECT to_tsquery('english', 'The &amp; Fat &amp; Rats');
-  to_tsquery   
+  to_tsquery
 ---------------
  'fat' &amp; 'rat'
 </screen>
@@ -845,7 +839,7 @@ SELECT to_tsquery('english', 'The &amp; Fat &amp; Rats');
 
 <screen>
 SELECT to_tsquery('english', 'Fat | Rats:AB');
-    to_tsquery    
+    to_tsquery
 ------------------
  'fat' | 'rat':AB
 </screen>
@@ -854,7 +848,7 @@ SELECT to_tsquery('english', 'Fat | Rats:AB');
 
 <screen>
 SELECT to_tsquery('supern:*A &amp; star:A*B');
-        to_tsquery        
+        to_tsquery
 --------------------------
  'supern':*A &amp; 'star':*AB
 </screen>
@@ -903,7 +897,7 @@ plainto_tsquery(<optional> <replaceable class="parameter">config</replaceable> <
 
 <screen>
 SELECT plainto_tsquery('english', 'The Fat Rats');
- plainto_tsquery 
+ plainto_tsquery
 -----------------
  'fat' &amp; 'rat'
 </screen>
@@ -914,12 +908,12 @@ SELECT plainto_tsquery('english', 'The Fat Rats');
 
 <screen>
 SELECT plainto_tsquery('english', 'The Fat &amp; Rats:C');
-   plainto_tsquery   
+   plainto_tsquery
 ---------------------
  'fat' &amp; 'rat' &amp; 'c'
 </screen>
 
-    Here, all the input punctuation was discarded as being space symbols.
+    Here, all the input punctuation was discarded.
    </para>
 
    <indexterm>
@@ -975,16 +969,16 @@ websearch_to_tsquery(<optional> <replaceable class="parameter">config</replaceab
     syntax in which simple unformatted text is a valid query.
     Unlike <function>plainto_tsquery</function>
     and <function>phraseto_tsquery</function>, it also recognizes certain
-    operators. Moreover, this function should never raise syntax errors,
+    operators. Moreover, this function will never raise syntax errors,
     which makes it possible to use raw user-supplied input for search.
     The following syntax is supported:
+
     <itemizedlist  spacing="compact" mark="bullet">
      <listitem>
        <para>
         <literal>unquoted text</literal>: text not inside quote marks will be
         converted to terms separated by <literal>&amp;</literal> operators, as
-        if processed by
-        <function>plainto_tsquery</function>.
+        if processed by <function>plainto_tsquery</function>.
       </para>
      </listitem>
      <listitem>
@@ -996,18 +990,26 @@ websearch_to_tsquery(<optional> <replaceable class="parameter">config</replaceab
      </listitem>
      <listitem>
       <para>
-       <literal>OR</literal>: logical or will be converted to
+       <literal>OR</literal>: the word <quote>or</quote> will be converted to
        the <literal>|</literal> operator.
       </para>
      </listitem>
      <listitem>
       <para>
-       <literal>-</literal>: the logical not operator, converted to the
+       <literal>-</literal>: a dash will be converted to
        the <literal>!</literal> operator.
       </para>
      </listitem>
     </itemizedlist>
+
+    Other punctuation is ignored.  So
+    like <function>plainto_tsquery</function>
+    and <function>phraseto_tsquery</function>,
+    the <function>websearch_to_tsquery</function> function will not
+    recognize <type>tsquery</type> operators, weight labels, or prefix-match
+    labels in its input.
    </para>
+
    <para>
     Examples:
 <screen>
@@ -1301,64 +1303,75 @@ ts_headline(<optional> <replaceable class="parameter">config</replaceable> <type
     <itemizedlist  spacing="compact" mark="bullet">
      <listitem>
       <para>
-       <literal>StartSel</literal>, <literal>StopSel</literal>: the strings with
-       which to delimit query words appearing in the document, to distinguish
-       them from other excerpted words.  You must double-quote these strings
-       if they contain spaces or commas.
+       <literal>MaxWords</literal>, <literal>MinWords</literal> (integers):
+       these numbers determine the longest and shortest headlines to output.
+       The default values are 35 and 15.
       </para>
      </listitem>
      <listitem>
       <para>
-       <literal>MaxWords</literal>, <literal>MinWords</literal>: these numbers
-       determine the longest and shortest headlines to output.
+       <literal>ShortWord</literal> (integer): words of this length or less
+       will be dropped at the start and end of a headline, unless they are
+       query terms.  The default value of three eliminates common English
+       articles.
       </para>
      </listitem>
      <listitem>
       <para>
-       <literal>ShortWord</literal>: words of this length or less will be
-       dropped at the start and end of a headline. The default
-       value of three eliminates common English articles.
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       <literal>HighlightAll</literal>: Boolean flag;  if
+       <literal>HighlightAll</literal> (boolean): if
        <literal>true</literal> the whole document will be used as the
-       headline, ignoring the preceding three parameters.
+       headline, ignoring the preceding three parameters.  The default
+       is <literal>false</literal>.
       </para>
      </listitem>
      <listitem>
       <para>
-       <literal>MaxFragments</literal>: maximum number of text excerpts
-       or fragments to display.  The default value of zero selects a
-       non-fragment-oriented headline generation method.  A value greater than
-       zero selects fragment-based headline generation.  This method
-       finds text fragments with as many query words as possible and
-       stretches those fragments around the query words.  As a result
-       query words are close to the middle of each fragment and have words on
-       each side. Each fragment will be of at most <literal>MaxWords</literal> and
-       words of length <literal>ShortWord</literal> or less are dropped at the start
-       and end of each fragment. If not all query words are found in the
-       document, then a single fragment of the first <literal>MinWords</literal>
-       in the document will be displayed.
+       <literal>MaxFragments</literal> (integer): maximum number of text
+       fragments to display.  The default value of zero selects a
+       non-fragment-based headline generation method.  A value greater
+       than zero selects fragment-based headline generation (see below).
       </para>
      </listitem>
      <listitem>
       <para>
-       <literal>FragmentDelimiter</literal>: When more than one fragment is
-       displayed, the fragments will be separated by this string.
+       <literal>StartSel</literal>, <literal>StopSel</literal> (strings):
+       the strings with which to delimit query words appearing in the
+       document, to distinguish them from other excerpted words.  The
+       default values are <quote><literal>&lt;b&gt;</literal></quote> and
+       <quote><literal>&lt;/b&gt;</literal></quote>, which can be suitable
+       for HTML output.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>FragmentDelimiter</literal> (string): When more than one
+       fragment is displayed, the fragments will be separated by this string.
+       The default is <quote><literal> ... </literal></quote>.
       </para>
      </listitem>
     </itemizedlist>
 
     These option names are recognized case-insensitively.
-    Any unspecified options receive these defaults:
+    You must double-quote string values if they contain spaces or commas.
+   </para>
 
-<programlisting>
-StartSel=&lt;b&gt;, StopSel=&lt;/b&gt;,
-MaxWords=35, MinWords=15, ShortWord=3, HighlightAll=FALSE,
-MaxFragments=0, FragmentDelimiter=" ... "
-</programlisting>
+   <para>
+    In non-fragment-based headline
+    generation, <function>ts_headline</function> locates matches for the
+    given <replaceable class="parameter">query</replaceable> and chooses a
+    single one to display, preferring matches that have more query words
+    within the allowed headline length.
+    In fragment-based headline generation, <function>ts_headline</function>
+    locates the query matches and splits each match
+    into <quote>fragments</quote> of no more than <literal>MaxWords</literal>
+    words each, preferring fragments with more query words, and when
+    possible <quote>stretching</quote> fragments to include surrounding
+    words.  The fragment-based mode is thus more useful when the query
+    matches span large sections of the document, or when it's desirable to
+    display multiple matches.
+    In either mode, if no query matches can be identified, then a single
+    fragment of the first <literal>MinWords</literal> words in the document
+    will be displayed.
    </para>
 
    <para>
@@ -1370,25 +1383,24 @@ SELECT ts_headline('english',
 is to find all documents containing given query terms
 and return them in order of their similarity to the
 query.',
-  to_tsquery('query &amp; similarity'));
-                        ts_headline                         
+  to_tsquery('english', 'query &amp; similarity'));
+                        ts_headline
 ------------------------------------------------------------
- containing given &lt;b&gt;query&lt;/b&gt; terms
- and return them in order of their &lt;b&gt;similarity&lt;/b&gt; to the
+ containing given &lt;b&gt;query&lt;/b&gt; terms                       +
+ and return them in order of their &lt;b&gt;similarity&lt;/b&gt; to the+
  &lt;b&gt;query&lt;/b&gt;.
 
 SELECT ts_headline('english',
-  'The most common type of search
-is to find all documents containing given query terms
-and return them in order of their similarity to the
-query.',
-  to_tsquery('query &amp; similarity'),
-  'StartSel = &lt;, StopSel = &gt;');
-                      ts_headline                      
--------------------------------------------------------
- containing given &lt;query&gt; terms
- and return them in order of their &lt;similarity&gt; to the
- &lt;query&gt;.
+  'Search terms may occur
+many times in a document,
+requiring ranking of the search matches to decide which
+occurrences to display in the result.',
+  to_tsquery('english', 'search &amp; term'),
+  'MaxFragments=10, MaxWords=7, MinWords=3, StartSel=&lt;&lt;, StopSel=&gt;&gt;');
+                        ts_headline
+------------------------------------------------------------
+ &lt;&lt;Search&gt;&gt; &lt;&lt;terms&gt;&gt; may occur                            +
+ many times ... ranking of the &lt;&lt;search&gt;&gt; matches to decide
 </screen>
    </para>
 
@@ -1611,9 +1623,9 @@ query.',
 
 <screen>
 SELECT to_tsquery('fat') &lt;-&gt; to_tsquery('cat | rat');
-             ?column?
------------------------------------
- 'fat' &lt;-&gt; 'cat' | 'fat' &lt;-&gt; 'rat'
+          ?column?
+----------------------------
+ 'fat' &lt;-&gt; ( 'cat' | 'rat' )
 </screen>
       </para>
      </listitem>
@@ -1633,7 +1645,7 @@ SELECT to_tsquery('fat') &lt;-&gt; to_tsquery('cat | rat');
      <listitem>
       <para>
        Returns a query that searches for a match to the first given query
-       followed by a match to the second given query at a distance of at
+       followed by a match to the second given query at a distance of exactly
        <replaceable>distance</replaceable> lexemes, using
        the <literal>&lt;<replaceable>N</replaceable>&gt;</literal>
        <type>tsquery</type> operator.  For example:
@@ -1701,10 +1713,15 @@ SELECT numnode('foo &amp; bar'::tsquery);
        or only negated terms.  For example:
 
 <screen>
+SELECT querytree(to_tsquery('defined'));
+ querytree
+-----------
+ 'defin'
+
 SELECT querytree(to_tsquery('!defined'));
  querytree
 -----------
-
+ T
 </screen>
       </para>
      </listitem>
@@ -1773,7 +1790,7 @@ SELECT ts_rewrite('a &amp; b'::tsquery, 'a'::tsquery, 'c'::tsquery);
       <listitem>
        <para>
         This form of <function>ts_rewrite</function> accepts a starting
-        <replaceable>query</replaceable> and a SQL <replaceable>select</replaceable> command, which
+        <replaceable>query</replaceable> and an SQL <replaceable>select</replaceable> command, which
         is given as a text string.  The <replaceable>select</replaceable> must yield two
         columns of <type>tsquery</type> type.  For each row of the
         <replaceable>select</replaceable> result, occurrences of the first column value
@@ -1810,7 +1827,7 @@ CREATE TABLE aliases (t tsquery primary key, s tsquery);
 INSERT INTO aliases VALUES(to_tsquery('supernovae'), to_tsquery('supernovae|sn'));
 
 SELECT ts_rewrite(to_tsquery('supernovae &amp; crab'), 'SELECT * FROM aliases');
-           ts_rewrite            
+           ts_rewrite
 ---------------------------------
  'crab' &amp; ( 'supernova' | 'sn' )
 </screen>
@@ -1823,7 +1840,7 @@ SET s = to_tsquery('supernovae|sn &amp; !nebulae')
 WHERE t = to_tsquery('supernovae');
 
 SELECT ts_rewrite(to_tsquery('supernovae &amp; crab'), 'SELECT * FROM aliases');
-                 ts_rewrite                  
+                 ts_rewrite
 ---------------------------------------------
  'crab' &amp; ( 'supernova' | 'sn' &amp; !'nebula' )
 </screen>
@@ -1857,6 +1874,14 @@ SELECT ts_rewrite('a &amp; b'::tsquery,
     <secondary>for updating a derived tsvector column</secondary>
    </indexterm>
 
+   <note>
+    <para>
+     The method described in this section has been obsoleted by the use of
+     stored generated columns, as described in <xref
+     linkend="textsearch-tables-index"/>.
+    </para>
+   </note>
+
    <para>
     When using a separate column to store the <type>tsvector</type> representation
     of your documents, it is necessary to create a trigger to update the
@@ -1866,8 +1891,8 @@ SELECT ts_rewrite('a &amp; b'::tsquery,
    </para>
 
 <synopsis>
-tsvector_update_trigger(<replaceable class="parameter">tsvector_column_name</replaceable>, <replaceable class="parameter">config_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
-tsvector_update_trigger_column(<replaceable class="parameter">tsvector_column_name</replaceable>, <replaceable class="parameter">config_column_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
+tsvector_update_trigger(<replaceable class="parameter">tsvector_column_name</replaceable>,&zwsp; <replaceable class="parameter">config_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
+tsvector_update_trigger_column(<replaceable class="parameter">tsvector_column_name</replaceable>,&zwsp; <replaceable class="parameter">config_column_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
 </synopsis>
 
    <para>
@@ -1890,12 +1915,12 @@ tsvector_update_trigger(tsv, 'pg_catalog.english', title, body);
 INSERT INTO messages VALUES('title here', 'the body text is here');
 
 SELECT * FROM messages;
-   title    |         body          |            tsv             
+   title    |         body          |            tsv
 ------------+-----------------------+----------------------------
  title here | the body text is here | 'bodi':4 'text':5 'titl':1
 
 SELECT title, body FROM messages WHERE tsv @@ to_tsquery('title &amp; body');
-   title    |         body          
+   title    |         body
 ------------+-----------------------
  title here | the body text is here
 </screen>
@@ -1949,7 +1974,7 @@ CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
     explicitly when creating <type>tsvector</type> values inside triggers,
     so that the column's contents will not be affected by changes to
     <varname>default_text_search_config</varname>.  Failure to do this is likely to
-    lead to problems such as search results changing after a dump and reload.
+    lead to problems such as search results changing after a dump and restore.
    </para>
 
   </sect2>
@@ -2049,6 +2074,9 @@ LIMIT 10;
   <table id="textsearch-default-parser">
    <title>Default Parser's Token Types</title>
    <tgroup cols="3">
+    <colspec colname="col1" colwidth="2*"/>
+    <colspec colname="col2" colwidth="2*"/>
+    <colspec colname="col3" colwidth="3*"/>
     <thead>
      <row>
       <entry>Alias</entry>
@@ -2190,9 +2218,9 @@ LIMIT 10;
 
    <para>
     <literal>email</literal> does not support all valid email characters as
-    defined by RFC 5322.  Specifically, the only non-alphanumeric
-    characters supported for email user names are period, dash, and
-    underscore.
+    defined by <ulink url="https://tools.ietf.org/html/rfc5322">RFC 5322</ulink>.
+    Specifically, the only non-alphanumeric characters supported for
+    email user names are period, dash, and underscore.
    </para>
   </note>
 
@@ -2203,7 +2231,7 @@ LIMIT 10;
 
 <screen>
 SELECT alias, description, token FROM ts_debug('foo-bar-beta1');
-      alias      |               description                |     token     
+      alias      |               description                |     token
 -----------------+------------------------------------------+---------------
  numhword        | Hyphenated word, letters and digits      | foo-bar-beta1
  hword_asciipart | Hyphenated word part, all ASCII          | foo
@@ -2219,7 +2247,7 @@ SELECT alias, description, token FROM ts_debug('foo-bar-beta1');
 
 <screen>
 SELECT alias, description, token FROM ts_debug('http://example.com/stuff/index.html');
-  alias   |  description  |            token             
+  alias   |  description  |            token
 ----------+---------------+------------------------------
  protocol | Protocol head | http://
  url      | URL           | example.com/stuff/index.html
@@ -2251,7 +2279,7 @@ SELECT alias, description, token FROM ts_debug('http://example.com/stuff/index.h
 
     <listitem>
      <para>
-      Linguistic - Ispell dictionaries try to reduce input words to a
+      Linguistic &mdash; Ispell dictionaries try to reduce input words to a
       normalized form; stemmer dictionaries remove word endings
      </para>
     </listitem>
@@ -2391,7 +2419,7 @@ ALTER TEXT SEARCH CONFIGURATION astro_en
     positions in <type>tsvector</type>, which in turn affect ranking:
 
 <screen>
-SELECT to_tsvector('english','in the list of stop words');
+SELECT to_tsvector('english', 'in the list of stop words');
         to_tsvector
 ----------------------------
  'list':3 'stop':5 'word':6
@@ -2401,12 +2429,12 @@ SELECT to_tsvector('english','in the list of stop words');
     calculated for documents with and without stop words are quite different:
 
 <screen>
-SELECT ts_rank_cd (to_tsvector('english','in the list of stop words'), to_tsquery('list &amp; stop'));
+SELECT ts_rank_cd (to_tsvector('english', 'in the list of stop words'), to_tsquery('list &amp; stop'));
  ts_rank_cd
 ------------
        0.05
 
-SELECT ts_rank_cd (to_tsvector('english','list stop words'), to_tsquery('list &amp; stop'));
+SELECT ts_rank_cd (to_tsvector('english', 'list stop words'), to_tsquery('list &amp; stop'));
  ts_rank_cd
 ------------
         0.1
@@ -2465,12 +2493,12 @@ CREATE TEXT SEARCH DICTIONARY public.simple_dict (
     Now we can test our dictionary:
 
 <screen>
-SELECT ts_lexize('public.simple_dict','YeS');
+SELECT ts_lexize('public.simple_dict', 'YeS');
  ts_lexize
 -----------
  {yes}
 
-SELECT ts_lexize('public.simple_dict','The');
+SELECT ts_lexize('public.simple_dict', 'The');
  ts_lexize
 -----------
  {}
@@ -2486,12 +2514,12 @@ SELECT ts_lexize('public.simple_dict','The');
 <screen>
 ALTER TEXT SEARCH DICTIONARY public.simple_dict ( Accept = false );
 
-SELECT ts_lexize('public.simple_dict','YeS');
+SELECT ts_lexize('public.simple_dict', 'YeS');
  ts_lexize
 -----------
 
 
-SELECT ts_lexize('public.simple_dict','The');
+SELECT ts_lexize('public.simple_dict', 'The');
  ts_lexize
 -----------
  {}
@@ -2543,7 +2571,7 @@ SELECT ts_lexize('public.simple_dict','The');
 
 <screen>
 SELECT * FROM ts_debug('english', 'Paris');
-   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes 
+   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes
 -----------+-----------------+-------+----------------+--------------+---------
  asciiword | Word, all ASCII | Paris | {english_stem} | english_stem | {pari}
 
@@ -2557,7 +2585,7 @@ ALTER TEXT SEARCH CONFIGURATION english
     WITH my_synonym, english_stem;
 
 SELECT * FROM ts_debug('english', 'Paris');
-   alias   |   description   | token |       dictionaries        | dictionary | lexemes 
+   alias   |   description   | token |       dictionaries        | dictionary | lexemes
 -----------+-----------------+-------+---------------------------+------------+---------
  asciiword | Word, all ASCII | Paris | {my_synonym,english_stem} | my_synonym | {paris}
 </screen>
@@ -2605,7 +2633,7 @@ indices index*
     Then we will get these results:
 <screen>
 mydb=# CREATE TEXT SEARCH DICTIONARY syn (template=synonym, synonyms='synonym_sample');
-mydb=# SELECT ts_lexize('syn','indices');
+mydb=# SELECT ts_lexize('syn', 'indices');
  ts_lexize
 -----------
  {index}
@@ -2613,25 +2641,25 @@ mydb=# SELECT ts_lexize('syn','indices');
 
 mydb=# CREATE TEXT SEARCH CONFIGURATION tst (copy=simple);
 mydb=# ALTER TEXT SEARCH CONFIGURATION tst ALTER MAPPING FOR asciiword WITH syn;
-mydb=# SELECT to_tsvector('tst','indices');
+mydb=# SELECT to_tsvector('tst', 'indices');
  to_tsvector
 -------------
  'index':1
 (1 row)
 
-mydb=# SELECT to_tsquery('tst','indices');
+mydb=# SELECT to_tsquery('tst', 'indices');
  to_tsquery
 ------------
  'index':*
 (1 row)
 
 mydb=# SELECT 'indexes are very useful'::tsvector;
-            tsvector             
+            tsvector
 ---------------------------------
  'are' 'indexes' 'useful' 'very'
 (1 row)
 
-mydb=# SELECT 'indexes are very useful'::tsvector @@ to_tsquery('tst','indices');
+mydb=# SELECT 'indexes are very useful'::tsvector @@ to_tsquery('tst', 'indices');
  ?column?
 ----------
  t
@@ -2874,7 +2902,7 @@ SELECT plainto_tsquery('supernova star');
     url="https://www.cs.hmc.edu/~geoff/ispell.html">Ispell</ulink>.
     Also, some more modern dictionary file formats are supported &mdash; <ulink
     url="https://en.wikipedia.org/wiki/MySpell">MySpell</ulink> (OO &lt; 2.0.1)
-    and <ulink url="https://sourceforge.net/projects/hunspell/">Hunspell</ulink>
+    and <ulink url="https://hunspell.github.io/">Hunspell</ulink>
     (OO &gt;= 2.0.2).  A large list of dictionaries is available on the <ulink
     url="https://wiki.openoffice.org/wiki/Dictionaries">OpenOffice
     Wiki</ulink>.
@@ -3079,7 +3107,7 @@ largehearted
     The <application>Snowball</application> dictionary template is based on a project
     by Martin Porter, inventor of the popular Porter's stemming algorithm
     for the English language.  Snowball now provides stemming algorithms for
-    many languages (see the <ulink url="http://snowballstem.org/">Snowball
+    many languages (see the <ulink url="https://snowballstem.org/">Snowball
     site</ulink> for more information).  Each algorithm understands how to
     reduce common variant forms of words to a base, or stem, spelling within
     its language.  A Snowball dictionary requires a <literal>language</literal>
@@ -3326,32 +3354,32 @@ ts_debug(<optional> <replaceable class="parameter">config</replaceable> <type>re
    Here is a simple example:
 
 <screen>
-SELECT * FROM ts_debug('english','a fat  cat sat on a mat - it ate a fat rats');
-   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes 
+SELECT * FROM ts_debug('english', 'a fat  cat sat on a mat - it ate a fat rats');
+   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes
 -----------+-----------------+-------+----------------+--------------+---------
  asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | fat   | {english_stem} | english_stem | {fat}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | cat   | {english_stem} | english_stem | {cat}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | sat   | {english_stem} | english_stem | {sat}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | on    | {english_stem} | english_stem | {}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | mat   | {english_stem} | english_stem | {mat}
- blank     | Space symbols   |       | {}             |              | 
- blank     | Space symbols   | -     | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
+ blank     | Space symbols   | -     | {}             |              |
  asciiword | Word, all ASCII | it    | {english_stem} | english_stem | {}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | ate   | {english_stem} | english_stem | {ate}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | fat   | {english_stem} | english_stem | {fat}
- blank     | Space symbols   |       | {}             |              | 
+ blank     | Space symbols   |       | {}             |              |
  asciiword | Word, all ASCII | rats  | {english_stem} | english_stem | {rat}
 </screen>
   </para>
@@ -3377,13 +3405,13 @@ ALTER TEXT SEARCH CONFIGURATION public.english
 </programlisting>
 
 <screen>
-SELECT * FROM ts_debug('public.english','The Brightest supernovaes');
-   alias   |   description   |    token    |         dictionaries          |   dictionary   |   lexemes   
+SELECT * FROM ts_debug('public.english', 'The Brightest supernovaes');
+   alias   |   description   |    token    |         dictionaries          |   dictionary   |   lexemes
 -----------+-----------------+-------------+-------------------------------+----------------+-------------
  asciiword | Word, all ASCII | The         | {english_ispell,english_stem} | english_ispell | {}
- blank     | Space symbols   |             | {}                            |                | 
+ blank     | Space symbols   |             | {}                            |                |
  asciiword | Word, all ASCII | Brightest   | {english_ispell,english_stem} | english_ispell | {bright}
- blank     | Space symbols   |             | {}                            |                | 
+ blank     | Space symbols   |             | {}                            |                |
  asciiword | Word, all ASCII | supernovaes | {english_ispell,english_stem} | english_stem   | {supernova}
 </screen>
 
@@ -3416,13 +3444,13 @@ SELECT * FROM ts_debug('public.english','The Brightest supernovaes');
 
 <screen>
 SELECT alias, token, dictionary, lexemes
-FROM ts_debug('public.english','The Brightest supernovaes');
-   alias   |    token    |   dictionary   |   lexemes   
+FROM ts_debug('public.english', 'The Brightest supernovaes');
+   alias   |    token    |   dictionary   |   lexemes
 -----------+-------------+----------------+-------------
  asciiword | The         | english_ispell | {}
- blank     |             |                | 
+ blank     |             |                |
  asciiword | Brightest   | english_ispell | {bright}
- blank     |             |                | 
+ blank     |             |                |
  asciiword | supernovaes | english_stem   | {supernova}
 </screen>
   </para>
@@ -3488,7 +3516,7 @@ ts_token_type(<replaceable class="parameter">parser_oid</replaceable> <type>oid<
 
 <screen>
 SELECT * FROM ts_token_type('default');
- tokid |      alias      |               description                
+ tokid |      alias      |               description
 -------+-----------------+------------------------------------------
      1 | asciiword       | Word, all ASCII
      2 | word            | Word, all letters
@@ -3564,7 +3592,7 @@ SELECT ts_lexize('english_stem', 'a');
      where this can be confusing:
 
 <screen>
-SELECT ts_lexize('thesaurus_astro','supernovae stars') is null;
+SELECT ts_lexize('thesaurus_astro', 'supernovae stars') is null;
  ?column?
 ----------
  t
@@ -3590,7 +3618,7 @@ SELECT plainto_tsquery('supernovae stars');
  </sect1>
 
  <sect1 id="textsearch-indexes">
-  <title>GIN and GiST Index Types</title>
+  <title>Preferred Index Types for Text Search</title>
 
   <indexterm zone="textsearch-indexes">
    <primary>text search</primary>
@@ -3599,10 +3627,16 @@ SELECT plainto_tsquery('supernovae stars');
 
   <para>
    There are two kinds of indexes that can be used to speed up full text
-   searches.
+   searches:
+   <link linkend="gin"><acronym>GIN</acronym></link> and
+   <link linkend="gist"><acronym>GiST</acronym></link>.
    Note that indexes are not mandatory for full text searching, but in
    cases where a column is searched on a regular basis, an index is
    usually desirable.
+  </para>
+
+  <para>
+   To create such an index, do one of:
 
    <variablelist>
 
@@ -3635,7 +3669,7 @@ SELECT plainto_tsquery('supernovae stars');
       <tertiary>text search</tertiary>
      </indexterm>
 
-      <literal>CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable> USING GIST (<replaceable>column</replaceable>);</literal>
+      <literal>CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable> USING GIST (<replaceable>column</replaceable> [ { DEFAULT | tsvector_ops } (siglen = <replaceable>number</replaceable>) ] );</literal>
      </term>
 
      <listitem>
@@ -3643,6 +3677,8 @@ SELECT plainto_tsquery('supernovae stars');
        Creates a GiST (Generalized Search Tree)-based index.
        The <replaceable>column</replaceable> can be of <type>tsvector</type> or
        <type>tsquery</type> type.
+       Optional integer parameter <literal>siglen</literal> determines
+       signature length in bytes (see below for details).
       </para>
      </listitem>
     </varlistentry>
@@ -3666,12 +3702,23 @@ SELECT plainto_tsquery('supernovae stars');
    to check the actual table row to eliminate such false matches.
    (<productname>PostgreSQL</productname> does this automatically when needed.)
    GiST indexes are lossy because each document is represented in the
-   index by a fixed-length signature. The signature is generated by hashing
+   index by a fixed-length signature.  The signature length in bytes is determined
+   by the value of the optional integer parameter <literal>siglen</literal>.
+   The default signature length (when <literal>siglen</literal> is not specified) is
+   124 bytes, the maximum signature length is 2024 bytes. The signature is generated by hashing
    each word into a single bit in an n-bit string, with all these bits OR-ed
    together to produce an n-bit document signature.  When two words hash to
    the same bit position there will be a false match.  If all words in
    the query have matches (real or false) then the table row must be
-   retrieved to see if the match is correct.
+   retrieved to see if the match is correct.  Longer signatures lead to a more
+   precise search (scanning a smaller fraction of the index and fewer heap
+   pages), at the cost of a larger index.
+  </para>
+
+  <para>
+   A GiST index can be covering, i.e., use the <literal>INCLUDE</literal>
+   clause.  Included columns can have data types without any GiST operator
+   class.  Included attributes will be stored uncompressed.
   </para>
 
   <para>
@@ -3695,7 +3742,7 @@ SELECT plainto_tsquery('supernovae stars');
    allows the implementation of very fast searches with online update.
    Partitioning can be done at the database level using table inheritance,
    or by distributing documents over
-   servers and collecting external search results, e.g. via <link
+   servers and collecting external search results, e.g., via <link
    linkend="ddl-foreign-data">Foreign Data</link> access.
    The latter is possible because ranking functions use
    only local information.
@@ -3752,14 +3799,14 @@ SELECT plainto_tsquery('supernovae stars');
 <screen>
 =&gt; \dF russian
             List of text search configurations
-   Schema   |  Name   |            Description             
+   Schema   |  Name   |            Description
 ------------+---------+------------------------------------
  pg_catalog | russian | configuration for russian language
 
 =&gt; \dF+ russian
 Text search configuration "pg_catalog.russian"
 Parser: "pg_catalog.default"
-      Token      | Dictionaries 
+      Token      | Dictionaries
 -----------------+--------------
  asciihword      | english_stem
  asciiword       | english_stem
@@ -3792,25 +3839,38 @@ Parser: "pg_catalog.default"
       List text search dictionaries (add <literal>+</literal> for more detail).
 <screen>
 =&gt; \dFd
-                            List of text search dictionaries
-   Schema   |      Name       |                        Description                        
+                             List of text search dictionaries
+   Schema   |      Name       |                        Description
 ------------+-----------------+-----------------------------------------------------------
+ pg_catalog | arabic_stem     | snowball stemmer for arabic language
+ pg_catalog | armenian_stem   | snowball stemmer for armenian language
+ pg_catalog | basque_stem     | snowball stemmer for basque language
+ pg_catalog | catalan_stem    | snowball stemmer for catalan language
  pg_catalog | danish_stem     | snowball stemmer for danish language
  pg_catalog | dutch_stem      | snowball stemmer for dutch language
  pg_catalog | english_stem    | snowball stemmer for english language
  pg_catalog | finnish_stem    | snowball stemmer for finnish language
  pg_catalog | french_stem     | snowball stemmer for french language
  pg_catalog | german_stem     | snowball stemmer for german language
+ pg_catalog | greek_stem      | snowball stemmer for greek language
+ pg_catalog | hindi_stem      | snowball stemmer for hindi language
  pg_catalog | hungarian_stem  | snowball stemmer for hungarian language
+ pg_catalog | indonesian_stem | snowball stemmer for indonesian language
+ pg_catalog | irish_stem      | snowball stemmer for irish language
  pg_catalog | italian_stem    | snowball stemmer for italian language
+ pg_catalog | lithuanian_stem | snowball stemmer for lithuanian language
+ pg_catalog | nepali_stem     | snowball stemmer for nepali language
  pg_catalog | norwegian_stem  | snowball stemmer for norwegian language
  pg_catalog | portuguese_stem | snowball stemmer for portuguese language
  pg_catalog | romanian_stem   | snowball stemmer for romanian language
  pg_catalog | russian_stem    | snowball stemmer for russian language
+ pg_catalog | serbian_stem    | snowball stemmer for serbian language
  pg_catalog | simple          | simple dictionary: just lower case and check for stopword
  pg_catalog | spanish_stem    | snowball stemmer for spanish language
  pg_catalog | swedish_stem    | snowball stemmer for swedish language
+ pg_catalog | tamil_stem      | snowball stemmer for tamil language
  pg_catalog | turkish_stem    | snowball stemmer for turkish language
+ pg_catalog | yiddish_stem    | snowball stemmer for yiddish language
 </screen>
      </para>
     </listitem>
@@ -3824,21 +3884,21 @@ Parser: "pg_catalog.default"
 <screen>
 =&gt; \dFp
         List of text search parsers
-   Schema   |  Name   |     Description     
+   Schema   |  Name   |     Description
 ------------+---------+---------------------
  pg_catalog | default | default word parser
 =&gt; \dFp+
     Text search parser "pg_catalog.default"
-     Method      |    Function    | Description 
+     Method      |    Function    | Description
 -----------------+----------------+-------------
- Start parse     | prsd_start     | 
- Get next token  | prsd_nexttoken | 
- End parse       | prsd_end       | 
- Get headline    | prsd_headline  | 
- Get token types | prsd_lextype   | 
+ Start parse     | prsd_start     |
+ Get next token  | prsd_nexttoken |
+ End parse       | prsd_end       |
+ Get headline    | prsd_headline  |
+ Get token types | prsd_lextype   |
 
         Token types for parser "pg_catalog.default"
-   Token name    |               Description                
+   Token name    |               Description
 -----------------+------------------------------------------
  asciihword      | Hyphenated word, all ASCII
  asciiword       | Word, all ASCII
@@ -3877,7 +3937,7 @@ Parser: "pg_catalog.default"
 <screen>
 =&gt; \dFt
                            List of text search templates
-   Schema   |   Name    |                        Description                        
+   Schema   |   Name    |                        Description
 ------------+-----------+-----------------------------------------------------------
  pg_catalog | ispell    | ispell dictionary
  pg_catalog | simple    | simple dictionary: just lower case and check for stopword
@@ -3900,7 +3960,7 @@ Parser: "pg_catalog.default"
    text search features are:
    <itemizedlist  spacing="compact" mark="bullet">
     <listitem>
-     <para>The length of each lexeme must be less than 2K bytes</para>
+     <para>The length of each lexeme must be less than 2 kilobytes</para>
     </listitem>
     <listitem>
      <para>The length of a <type>tsvector</type> (lexemes + positions) must be

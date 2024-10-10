@@ -1,25 +1,52 @@
 -- Creating an index on a partitioned table makes the partitions
 -- automatically get the index
 create table idxpart (a int, b int, c text) partition by range (a);
+-- relhassubclass of a partitioned index is false before creating any partition.
+-- It will be set after the first partition is created.
+create index idxpart_idx on idxpart (a);
+select relhassubclass from pg_class where relname = 'idxpart_idx';
+ relhassubclass 
+----------------
+ f
+(1 row)
+
+-- Check that partitioned indexes are present in pg_indexes.
+select indexdef from pg_indexes where indexname like 'idxpart_idx%';
+                            indexdef                             
+-----------------------------------------------------------------
+ CREATE INDEX idxpart_idx ON ONLY public.idxpart USING btree (a)
+(1 row)
+
+drop index idxpart_idx;
 create table idxpart1 partition of idxpart for values from (0) to (10);
 create table idxpart2 partition of idxpart for values from (10) to (100)
 	partition by range (b);
 create table idxpart21 partition of idxpart2 for values from (0) to (100);
+-- Even with partitions, relhassubclass should not be set if a partitioned
+-- index is created only on the parent.
+create index idxpart_idx on only idxpart(a);
+select relhassubclass from pg_class where relname = 'idxpart_idx';
+ relhassubclass 
+----------------
+ f
+(1 row)
+
+drop index idxpart_idx;
 create index on idxpart (a);
-select relname, relkind, inhparent::regclass
+select relname, relkind, relhassubclass, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname     | relkind |   inhparent    
------------------+---------+----------------
- idxpart         | p       | 
- idxpart1        | r       | 
- idxpart1_a_idx  | i       | idxpart_a_idx
- idxpart2        | p       | 
- idxpart21       | r       | 
- idxpart21_a_idx | i       | idxpart2_a_idx
- idxpart2_a_idx  | I       | idxpart_a_idx
- idxpart_a_idx   | I       | 
+     relname     | relkind | relhassubclass |   inhparent    
+-----------------+---------+----------------+----------------
+ idxpart         | p       | t              | 
+ idxpart1        | r       | f              | 
+ idxpart1_a_idx  | i       | f              | idxpart_a_idx
+ idxpart2        | p       | t              | 
+ idxpart21       | r       | f              | 
+ idxpart21_a_idx | i       | f              | idxpart2_a_idx
+ idxpart2_a_idx  | I       | t              | idxpart_a_idx
+ idxpart_a_idx   | I       | t              | 
 (8 rows)
 
 drop table idxpart;
@@ -94,6 +121,24 @@ Partition of: idxparti2
 No partition constraint
 btree, for table "public.idxpart1"
 
+-- Forbid ALTER TABLE when attaching or detaching an index to a partition.
+create index idxpart_c on only idxpart (c);
+create index idxpart1_c on idxpart1 (c);
+alter table idxpart_c attach partition idxpart1_c for values from (10) to (20);
+ERROR:  "idxpart_c" is not a partitioned table
+alter index idxpart_c attach partition idxpart1_c;
+select relname, relpartbound from pg_class
+  where relname in ('idxpart_c', 'idxpart1_c')
+  order by relname;
+  relname   | relpartbound 
+------------+--------------
+ idxpart1_c | 
+ idxpart_c  | 
+(2 rows)
+
+alter table idxpart_c detach partition idxpart1_c;
+ERROR:  ALTER action DETACH PARTITION cannot be performed on relation "idxpart_c"
+DETAIL:  This operation is not supported for partitioned indexes.
 drop table idxpart;
 -- If a partition already has an index, don't create a duplicative one
 create table idxpart (a int, b int) partition by range (a, b);
@@ -110,16 +155,16 @@ Partition of: idxpart FOR VALUES FROM (0, 0) TO (10, 10)
 Indexes:
     "idxpart1_a_b_idx" btree (a, b)
 
-select relname, relkind, inhparent::regclass
+select relname, relkind, relhassubclass, inhparent::regclass
     from pg_class left join pg_index ix on (indexrelid = oid)
 	left join pg_inherits on (ix.indexrelid = inhrelid)
 	where relname like 'idxpart%' order by relname;
-     relname      | relkind |    inhparent    
-------------------+---------+-----------------
- idxpart          | p       | 
- idxpart1         | r       | 
- idxpart1_a_b_idx | i       | idxpart_a_b_idx
- idxpart_a_b_idx  | I       | 
+     relname      | relkind | relhassubclass |    inhparent    
+------------------+---------+----------------+-----------------
+ idxpart          | p       | t              | 
+ idxpart1         | r       | f              | 
+ idxpart1_a_b_idx | i       | f              | idxpart_a_b_idx
+ idxpart_a_b_idx  | I       | t              | 
 (4 rows)
 
 drop table idxpart;
@@ -130,6 +175,8 @@ create table idxpart1 partition of idxpart for values from (0) to (10);
 drop index idxpart1_a_idx;	-- no way
 ERROR:  cannot drop index idxpart1_a_idx because index idxpart_a_idx requires it
 HINT:  You can drop index idxpart_a_idx instead.
+drop index concurrently idxpart_a_idx;	-- unsupported
+ERROR:  cannot drop partitioned index "idxpart_a_idx" concurrently
 drop index idxpart_a_idx;	-- both indexes go away
 select relname, relkind from pg_class
   where relname like 'idxpart%' order by relname;
@@ -150,6 +197,24 @@ select relname, relkind from pg_class
 (2 rows)
 
 drop table idxpart;
+-- DROP behavior with temporary partitioned indexes
+create temp table idxpart_temp (a int) partition by range (a);
+create index on idxpart_temp(a);
+create temp table idxpart1_temp partition of idxpart_temp
+  for values from (0) to (10);
+drop index idxpart1_temp_a_idx; -- error
+ERROR:  cannot drop index idxpart1_temp_a_idx because index idxpart_temp_a_idx requires it
+HINT:  You can drop index idxpart_temp_a_idx instead.
+-- non-concurrent drop is enforced here, so it is a valid case.
+drop index concurrently idxpart_temp_a_idx;
+select relname, relkind from pg_class
+  where relname like 'idxpart_temp%' order by relname;
+   relname    | relkind 
+--------------+---------
+ idxpart_temp | p
+(1 row)
+
+drop table idxpart_temp;
 -- ALTER INDEX .. ATTACH, error cases
 create table idxpart (a int, b int) partition by range (a, b);
 create table idxpart1 partition of idxpart for values from (0, 0) to (10, 10);
@@ -240,7 +305,7 @@ Indexes:
     "idxpart1_a_idx" btree (a)
 
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
@@ -285,7 +350,7 @@ where indexrelid::regclass::text like 'idxpart%'
 -- attaching idxpart22 is not enough to set idxpart22_a_idx valid ...
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
@@ -299,7 +364,7 @@ Number of partitions: 2 (Use \d+ to list them.)
 create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
@@ -313,7 +378,7 @@ drop table idxpart;
 -- When a table is attached a partition and it already has an index, a
 -- duplicate index should not get created, but rather the index becomes
 -- attached to the parent's index.
-create table idxpart (a int, b int, c text) partition by range (a);
+create table idxpart (a int, b int, c text, d bool) partition by range (a);
 create index idxparti on idxpart (a);
 create index idxparti2 on idxpart (b, c);
 create table idxpart1 (like idxpart including indexes);
@@ -324,6 +389,7 @@ create table idxpart1 (like idxpart including indexes);
  a      | integer |           |          | 
  b      | integer |           |          | 
  c      | text    |           |          | 
+ d      | boolean |           |          | 
 Indexes:
     "idxpart1_a_idx" btree (a)
     "idxpart1_b_c_idx" btree (b, c)
@@ -350,6 +416,7 @@ alter table idxpart attach partition idxpart1 for values from (0) to (10);
  a      | integer |           |          | 
  b      | integer |           |          | 
  c      | text    |           |          | 
+ d      | boolean |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" btree (a)
@@ -368,6 +435,68 @@ select relname, relkind, inhparent::regclass
  idxparti         | I       | 
  idxparti2        | I       | 
 (6 rows)
+
+-- While here, also check matching when creating an index after the fact.
+create index on idxpart1 ((a+b)) where d = true;
+\d idxpart1
+              Table "public.idxpart1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
+ d      | boolean |           |          | 
+Partition of: idxpart FOR VALUES FROM (0) TO (10)
+Indexes:
+    "idxpart1_a_idx" btree (a)
+    "idxpart1_b_c_idx" btree (b, c)
+    "idxpart1_expr_idx" btree ((a + b)) WHERE d = true
+
+select relname, relkind, inhparent::regclass
+    from pg_class left join pg_index ix on (indexrelid = oid)
+	left join pg_inherits on (ix.indexrelid = inhrelid)
+	where relname like 'idxpart%' order by relname;
+      relname      | relkind | inhparent 
+-------------------+---------+-----------
+ idxpart           | p       | 
+ idxpart1          | r       | 
+ idxpart1_a_idx    | i       | idxparti
+ idxpart1_b_c_idx  | i       | idxparti2
+ idxpart1_expr_idx | i       | 
+ idxparti          | I       | 
+ idxparti2         | I       | 
+(7 rows)
+
+create index idxparti3 on idxpart ((a+b)) where d = true;
+\d idxpart1
+              Table "public.idxpart1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
+ d      | boolean |           |          | 
+Partition of: idxpart FOR VALUES FROM (0) TO (10)
+Indexes:
+    "idxpart1_a_idx" btree (a)
+    "idxpart1_b_c_idx" btree (b, c)
+    "idxpart1_expr_idx" btree ((a + b)) WHERE d = true
+
+select relname, relkind, inhparent::regclass
+    from pg_class left join pg_index ix on (indexrelid = oid)
+	left join pg_inherits on (ix.indexrelid = inhrelid)
+	where relname like 'idxpart%' order by relname;
+      relname      | relkind | inhparent 
+-------------------+---------+-----------
+ idxpart           | p       | 
+ idxpart1          | r       | 
+ idxpart1_a_idx    | i       | idxparti
+ idxpart1_b_c_idx  | i       | idxparti2
+ idxpart1_expr_idx | i       | idxparti3
+ idxparti          | I       | 
+ idxparti2         | I       | 
+ idxparti3         | I       | 
+(8 rows)
 
 drop table idxpart;
 -- Verify that attaching an invalid index does not mark the parent index valid.
@@ -501,6 +630,30 @@ select relname, relkind from pg_class where relname like 'idxpart%' order by rel
 ---------+---------
 (0 rows)
 
+create table idxpart (a int, b int, c int) partition by range(a);
+create index on idxpart(c);
+create table idxpart1 partition of idxpart for values from (0) to (250);
+create table idxpart2 partition of idxpart for values from (250) to (500);
+alter table idxpart detach partition idxpart2;
+\d idxpart2
+              Table "public.idxpart2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Indexes:
+    "idxpart2_c_idx" btree (c)
+
+alter table idxpart2 drop column c;
+\d idxpart2
+              Table "public.idxpart2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+
+drop table idxpart, idxpart2;
 -- Verify that expression indexes inherit correctly
 create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (like idxpart);
@@ -708,7 +861,7 @@ create table idxpart (col_keep int) partition by range (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-               Table "public.idxpart"
+         Partitioned table "public.idxpart"
   Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
  col_keep | integer |           |          | 
@@ -751,7 +904,7 @@ create index on idxpart1 (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-               Table "public.idxpart"
+         Partitioned table "public.idxpart"
   Column  |  Type   | Collation | Nullable | Default 
 ----------+---------+-----------+----------+---------
  col_keep | integer |           |          | 
@@ -790,7 +943,7 @@ drop table idxpart;
 -- Verify that it works to add primary key / unique to partitioned tables
 create table idxpart (a int primary key, b int) partition by range (a);
 \d idxpart
-              Table "public.idxpart"
+        Partitioned table "public.idxpart"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           | not null | 
@@ -819,16 +972,16 @@ Indexes:
 drop table idxpart;
 -- Failing to use the full partition key is not allowed
 create table idxpart (a int unique, b int) partition by range (a, b);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int unique) partition by range (a, b);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "a" which is part of the partition key.
 create table idxpart (a int primary key, b int) partition by range (b, a);
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int primary key) partition by range (b, a);
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "a" which is part of the partition key.
 -- OK if you use them in some other order
 create table idxpart (a int, b int, c text, primary key  (a, b, c)) partition by range (b, c, a);
@@ -848,11 +1001,11 @@ DETAIL:  UNIQUE constraints cannot be used when partition keys include expressio
 -- use ALTER TABLE to add a primary key
 create table idxpart (a int, b int, c text) partition by range (a, b);
 alter table idxpart add primary key (a);	-- not an incomplete one though
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
-              Table "public.idxpart"
+        Partitioned table "public.idxpart"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           | not null | 
@@ -879,11 +1032,11 @@ drop table idxpart;
 -- use ALTER TABLE to add a unique constraint
 create table idxpart (a int, b int) partition by range (a, b);
 alter table idxpart add unique (a);			-- not an incomplete one though
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add unique (b, a);		-- this works
 \d idxpart
-              Table "public.idxpart"
+        Partitioned table "public.idxpart"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
@@ -929,7 +1082,7 @@ drop table idxpart;
 create table idxpart (a int, b int, primary key (a)) partition by range (a);
 create table idxpart2 partition of idxpart
 for values from (0) to (1000) partition by range (b); -- fail
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart2" lacks column "b" which is part of the partition key.
 drop table idxpart;
 -- Ditto for the ATTACH PARTITION case
@@ -937,7 +1090,7 @@ create table idxpart (a int unique, b int) partition by range (a);
 create table idxpart1 (a int not null, b int, unique (a, b))
   partition by range (a, b);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart1" lacks column "b" which is part of the partition key.
 DROP TABLE idxpart, idxpart1;
 -- Multi-layer partitioning works correctly in this case:
@@ -1048,6 +1201,21 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
 (2 rows)
 
 drop table idxpart;
+-- Related to the above scenario: ADD PRIMARY KEY on the parent mustn't
+-- automatically propagate NOT NULL to child columns.
+create table idxpart (a int) partition by range (a);
+create table idxpart0 (like idxpart);
+alter table idxpart0 add unique (a);
+alter table idxpart attach partition idxpart0 default;
+alter table only idxpart add primary key (a);  -- fail, no NOT NULL constraint
+ERROR:  constraint must be added to child tables too
+DETAIL:  Column "a" of relation "idxpart0" is not already NOT NULL.
+HINT:  Do not specify the ONLY keyword.
+alter table idxpart0 alter column a set not null;
+alter table only idxpart add primary key (a);  -- now it works
+alter table idxpart0 alter column a drop not null;  -- fail, pkey needs it
+ERROR:  column "a" is marked NOT NULL in parent table
+drop table idxpart;
 -- if a partition has a unique index without a constraint, does not attach
 -- automatically; creates a new index instead.
 create table idxpart (a int, b int) partition by range (a);
@@ -1114,239 +1282,6 @@ select tableoid::regclass, * from idxpart order by a;
 (8 rows)
 
 drop table idxpart;
--- test fastpath mechanism for index insertion
-create table fastpath (a int, b text, c numeric);
-create unique index fpindex1 on fastpath(a);
-insert into fastpath values (1, 'b1', 100.00);
-insert into fastpath values (1, 'b1', 100.00); -- unique key check
-ERROR:  duplicate key value violates unique constraint "fpindex1"
-DETAIL:  Key (a)=(1) already exists.
-truncate fastpath;
-insert into fastpath select generate_series(1,10000), 'b', 100;
--- vacuum the table so as to improve chances of index-only scans. we can't
--- guarantee if index-only scans will be picked up in all cases or not, but
--- that fuzziness actually helps the test.
-vacuum fastpath;
-set enable_seqscan to false;
-set enable_bitmapscan to false;
-select sum(a) from fastpath where a = 6456;
- sum  
-------
- 6456
-(1 row)
-
-select sum(a) from fastpath where a >= 5000 and a < 5700;
-   sum   
----------
- 3744650
-(1 row)
-
--- drop the only index on the table and compute hashes for
--- a few queries which orders the results in various different ways.
-drop index fpindex1;
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
--- now create a multi-column index with both column asc
-create index fpindex2 on fastpath(a, b);
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
--- again, vacuum here either forces index-only scans or creates fuzziness
-vacuum fastpath;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
--- same queries with a different kind of index now. the final result must not
--- change irrespective of what kind of index we have.
-drop index fpindex2;
-create index fpindex3 on fastpath(a desc, b asc);
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
-vacuum fastpath;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
--- repeat again
-drop index fpindex3;
-create index fpindex4 on fastpath(a asc, b desc);
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
-vacuum fastpath;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
--- and again, this time indexing by (b, a). Note that column "b" has non-unique
--- values.
-drop index fpindex4;
-create index fpindex5 on fastpath(b asc, a desc);
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
-vacuum fastpath;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
--- one last time
-drop index fpindex5;
-create index fpindex6 on fastpath(b desc, a desc);
-truncate fastpath;
-insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
-vacuum fastpath;
-select md5(string_agg(a::text, b order by a, b asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-select md5(string_agg(a::text, b order by a desc, b desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 6167a852b3e0679886b84a5405b5b53d
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a desc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- dfcf2bd5e5fea8397d47b2fd14618d31
-(1 row)
-
-select md5(string_agg(a::text, b order by b, a asc)) from fastpath
-	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
-               md5                
-----------------------------------
- 2ca216010a558a52d7df12f76dfc77ab
-(1 row)
-
-drop table fastpath;
 -- intentionally leave some objects around
 create table idxpart (a int) partition by range (a);
 create table idxpart1 partition of idxpart for values from (0) to (100);
@@ -1360,6 +1295,29 @@ alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 create index on idxpart (a);
 create table idxpart_another (a int, b int, primary key (a, b)) partition by range (a);
 create table idxpart_another_1 partition of idxpart_another for values from (0) to (100);
+create table idxpart3 (c int, b int, a int) partition by range (a);
+alter table idxpart3 drop column b, drop column c;
+create table idxpart31 partition of idxpart3 for values from (1000) to (1200);
+create table idxpart32 partition of idxpart3 for values from (1200) to (1400);
+alter table idxpart attach partition idxpart3 for values from (1000) to (2000);
+-- More objects intentionally left behind, to verify some pg_dump/pg_upgrade
+-- behavior; see https://postgr.es/m/20190321204928.GA17535@alvherre.pgsql
+create schema regress_indexing;
+set search_path to regress_indexing;
+create table pk (a int primary key) partition by range (a);
+create table pk1 partition of pk for values from (0) to (1000);
+create table pk2 (b int, a int);
+alter table pk2 drop column b;
+alter table pk2 alter a set not null;
+alter table pk attach partition pk2 for values from (1000) to (2000);
+create table pk3 partition of pk for values from (2000) to (3000);
+create table pk4 (like pk);
+alter table pk attach partition pk4 for values from (3000) to (4000);
+create table pk5 (like pk) partition by range (a);
+create table pk51 partition of pk5 for values from (4000) to (4500);
+create table pk52 partition of pk5 for values from (4500) to (5000);
+alter table pk attach partition pk5 for values from (4000) to (5000);
+reset search_path;
 -- Test that covering partitioned indexes work in various cases
 create table covidxpart (a int, b int) partition by list (a);
 create unique index on covidxpart (a) include (b);
@@ -1385,7 +1343,7 @@ insert into covidxpart values (4, 1);
 ERROR:  duplicate key value violates unique constraint "covidxpart4_a_b_idx"
 DETAIL:  Key (a)=(4) already exists.
 create unique index on covidxpart (b) include (a); -- should fail
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "covidxpart" lacks column "a" which is part of the partition key.
 -- check that detaching a partition also detaches the primary key constraint
 create table parted_pk_detach_test (a int primary key) partition by list (a);
@@ -1402,3 +1360,64 @@ ERROR:  cannot drop inherited constraint "parted_uniq_detach_test1_a_key" of rel
 alter table parted_uniq_detach_test detach partition parted_uniq_detach_test1;
 alter table parted_uniq_detach_test1 drop constraint parted_uniq_detach_test1_a_key;
 drop table parted_uniq_detach_test, parted_uniq_detach_test1;
+-- check that dropping a column takes with it any partitioned indexes
+-- depending on it.
+create table parted_index_col_drop(a int, b int, c int)
+  partition by list (a);
+create table parted_index_col_drop1 partition of parted_index_col_drop
+  for values in (1) partition by list (a);
+-- leave this partition without children.
+create table parted_index_col_drop2 partition of parted_index_col_drop
+  for values in (2) partition by list (a);
+create table parted_index_col_drop11 partition of parted_index_col_drop1
+  for values in (1);
+create index on parted_index_col_drop (b);
+create index on parted_index_col_drop (c);
+create index on parted_index_col_drop (b, c);
+alter table parted_index_col_drop drop column c;
+\d parted_index_col_drop
+ Partitioned table "public.parted_index_col_drop"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+Partition key: LIST (a)
+Indexes:
+    "parted_index_col_drop_b_idx" btree (b)
+Number of partitions: 2 (Use \d+ to list them.)
+
+\d parted_index_col_drop1
+ Partitioned table "public.parted_index_col_drop1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+Partition of: parted_index_col_drop FOR VALUES IN (1)
+Partition key: LIST (a)
+Indexes:
+    "parted_index_col_drop1_b_idx" btree (b)
+Number of partitions: 1 (Use \d+ to list them.)
+
+\d parted_index_col_drop2
+ Partitioned table "public.parted_index_col_drop2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+Partition of: parted_index_col_drop FOR VALUES IN (2)
+Partition key: LIST (a)
+Indexes:
+    "parted_index_col_drop2_b_idx" btree (b)
+Number of partitions: 0
+
+\d parted_index_col_drop11
+      Table "public.parted_index_col_drop11"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+Partition of: parted_index_col_drop1 FOR VALUES IN (1)
+Indexes:
+    "parted_index_col_drop11_b_idx" btree (b)
+
+drop table parted_index_col_drop;

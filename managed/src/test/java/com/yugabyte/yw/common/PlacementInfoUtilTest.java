@@ -3660,7 +3660,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     PlacementInfoUtil.updateUniverseDefinition(
                         params, customer.getId(), rrCluster.uuid, CREATE))
             .getMessage();
-    assertEquals("Couldn't find 1 nodes of type " + rrUserIntent.instanceType, errorMessage);
+    assertEquals("Couldn't find 1 node(s) of type " + rrUserIntent.instanceType, errorMessage);
   }
 
   @Test
@@ -3776,9 +3776,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                         EDIT))
             .getMessage();
     assertEquals(
-        "Couldn't find 2 nodes of type "
+        "Couldn't find 2 node(s) of type "
             + ApiUtils.UTIL_INST_TYPE
-            + " in z2 zone (0 is free and 1 currently occupied)",
+            + " in z2 zone (0 free and 1 currently occupied)",
         errorMessage);
   }
 

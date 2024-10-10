@@ -53,6 +53,7 @@ typedef struct YbParentScanData
 {
 	YbSysScanBaseData base;
 	YbPgInheritsCacheEntry parent_cache_entry;
+	List *tuples;
 	ListCell *current_tuple;
 } YbParentScanData;
 
@@ -86,8 +87,8 @@ yb_parent_get_next(YbSysScanBase parent_scan)
 	ListCell *ret = scan->current_tuple;
 	if (ret == NULL)
 		return NULL;
-	scan->current_tuple = lnext(scan->current_tuple);
-	return ret->data.ptr_value;
+	scan->current_tuple = lnext(scan->tuples, scan->current_tuple);
+	return lfirst(ret);
 }
 
 static void
@@ -129,7 +130,8 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 		YbParentScan scan = palloc0(sizeof(YbParentScanData));
 		scan->parent_cache_entry =
 			GetYbPgInheritsCacheEntry(DatumGetObjectId(key[0].sk_argument));
-		scan->current_tuple = list_head(scan->parent_cache_entry->childTuples);
+		scan->tuples = scan->parent_cache_entry->childTuples;
+		scan->current_tuple = list_head(scan->tuples);
 		return YbInitSysScanDesc(&scan->base, &yb_parent_scan);
 	}
 

@@ -44,6 +44,11 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
 </synopsis>
  </refsynopsisdiv>
 
+<!--
+CAUTION: remember to keep create_user.sgml and create_group.sgml
+in sync when changing the above synopsis!
+-->
+
  <refsect1>
   <title>Description</title>
 
@@ -114,11 +119,11 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
       <listitem>
        <para>
         These clauses determine whether a role will be permitted to
-        create new roles (that is, execute <command>CREATE ROLE</command>).
-        A role with <literal>CREATEROLE</literal> privilege can also alter
-        and drop other roles.
-        If not specified,
-        <literal>NOCREATEROLE</literal> is the default.
+        create, alter, drop, comment on, change the security label for,
+        and grant or revoke membership in other roles.
+        See <xref linkend='role-creation' /> for more details about what
+        capabilities are conferred by this privilege.
+        If not specified, <literal>NOCREATEROLE</literal> is the default.
        </para>
       </listitem>
      </varlistentry>
@@ -157,7 +162,7 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
         If not specified,
         <literal>NOLOGIN</literal> is the default, except when
         <command>CREATE ROLE</command> is invoked through its alternative spelling
-        <xref linkend="sql-createuser"/>.
+        <link linkend="sql-createuser"><command>CREATE USER</command></link>.
        </para>
       </listitem>
      </varlistentry>
@@ -337,8 +342,8 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
   <title>Notes</title>
 
   <para>
-   Use <xref linkend="sql-alterrole"/> to
-   change the attributes of a role, and <xref linkend="sql-droprole"/>
+   Use <link linkend="sql-alterrole"><command>ALTER ROLE</command></link> to
+   change the attributes of a role, and <link linkend="sql-droprole"><command>DROP ROLE</command></link>
    to remove a role.  All the attributes
    specified by <command>CREATE ROLE</command> can be modified by later
    <command>ALTER ROLE</command> commands.
@@ -347,13 +352,13 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
   <para>
    The preferred way to add and remove members of roles that are being
    used as groups is to use
-   <xref linkend="sql-grant"/> and
-   <xref linkend="sql-revoke"/>.
+   <link linkend="sql-grant"><command>GRANT</command></link> and
+   <link linkend="sql-revoke"><command>REVOKE</command></link>.
   </para>
 
   <para>
    The <literal>VALID UNTIL</literal> clause defines an expiration time for a
-   password only, not for the role <foreignphrase>per se</foreignphrase>.  In
+   password only, not for the role per se.  In
    particular, the expiration time is not enforced when logging in using
    a non-password-based authentication method.
   </para>
@@ -366,7 +371,7 @@ CREATE ROLE <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
    a member of a role with <literal>CREATEDB</literal> privilege does not immediately
    grant the ability to create databases, even if <literal>INHERIT</literal> is set;
    it would be necessary to become that role via
-   <xref linkend="sql-set-role"/> before
+   <link linkend="sql-set-role"><command>SET ROLE</command></link> before
    creating a database.
   </para>
 

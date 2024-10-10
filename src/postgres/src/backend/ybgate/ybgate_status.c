@@ -94,7 +94,7 @@ YbgStatusCreate()
 	YbgMemoryContext old_ctx;
 	YbgStatus		status;
 
-	error_ctx = CreateThreadLocalMemoryContext(NULL, "DocDBErrorContext");
+	error_ctx = CreateThreadLocalCurrentMemoryContext(NULL, "DocDBErrorContext");
 	old_ctx = SetThreadLocalCurrentMemoryContext(error_ctx);
 	status = (YbgStatus) palloc0(sizeof(YbgStatusData));
 	status->error_ctx = error_ctx;

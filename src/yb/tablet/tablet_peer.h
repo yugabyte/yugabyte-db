@@ -432,6 +432,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool is_under_cdc_sdk_replication();
 
+  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
+
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
       const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);

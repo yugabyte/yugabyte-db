@@ -51,9 +51,13 @@ public class TroubleshootingPlatform extends Model {
   private String metricsUrl;
 
   @NotNull
-  @ApiModelProperty(value = "API Token", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "YBA API Token", accessMode = READ_WRITE)
   @Encrypted
   private String apiToken;
+
+  @ApiModelProperty(value = "TP API Token", accessMode = READ_WRITE)
+  @Encrypted
+  private String tpApiToken;
 
   @NotNull
   @ApiModelProperty(value = "Metrics Scrape Period Seconds", accessMode = READ_WRITE)

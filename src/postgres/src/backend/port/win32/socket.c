@@ -3,7 +3,7 @@
  * socket.c
  *	  Microsoft Windows Win32 Socket Functions
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32/socket.c
@@ -47,8 +47,8 @@ int			pgwin32_noblock = 0;
  *
  * Note: where there is a direct correspondence between a WSAxxx error code
  * and a Berkeley error symbol, this mapping is actually a no-op, because
- * in win32.h we redefine the network-related Berkeley error symbols to have
- * the values of their WSAxxx counterparts.  The point of the switch is
+ * in win32_port.h we redefine the network-related Berkeley error symbols to
+ * have the values of their WSAxxx counterparts.  The point of the switch is
  * mostly to translate near-miss error codes into something that's sensible
  * in the Berkeley universe.
  */
@@ -120,23 +120,36 @@ TranslateSocketError(void)
 		case WSAEADDRNOTAVAIL:
 			errno = EADDRNOTAVAIL;
 			break;
-		case WSAEHOSTUNREACH:
 		case WSAEHOSTDOWN:
+			errno = EHOSTDOWN;
+			break;
+		case WSAEHOSTUNREACH:
 		case WSAHOST_NOT_FOUND:
-		case WSAENETDOWN:
-		case WSAENETUNREACH:
-		case WSAENETRESET:
 			errno = EHOSTUNREACH;
+			break;
+		case WSAENETDOWN:
+			errno = ENETDOWN;
+			break;
+		case WSAENETUNREACH:
+			errno = ENETUNREACH;
+			break;
+		case WSAENETRESET:
+			errno = ENETRESET;
 			break;
 		case WSAENOTCONN:
 		case WSAESHUTDOWN:
 		case WSAEDISCON:
 			errno = ENOTCONN;
 			break;
+		case WSAETIMEDOUT:
+			errno = ETIMEDOUT;
+			break;
 		default:
 			ereport(NOTICE,
-					(errmsg_internal("unrecognized win32 socket error code: %d", WSAGetLastError())));
+					(errmsg_internal("unrecognized win32 socket error code: %d",
+									 WSAGetLastError())));
 			errno = EINVAL;
+			break;
 	}
 }
 
@@ -618,7 +631,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	if (r != WAIT_TIMEOUT && r != WAIT_IO_COMPLETION && r != (WAIT_OBJECT_0 + numevents))
 	{
 		/*
-		 * We scan all events, even those not signalled, in case more than one
+		 * We scan all events, even those not signaled, in case more than one
 		 * event has been tagged but Wait.. can only return one.
 		 */
 		WSANETWORKEVENTS resEvents;
@@ -627,7 +640,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 		{
 			ZeroMemory(&resEvents, sizeof(resEvents));
 			if (WSAEnumNetworkEvents(sockets[i], events[i], &resEvents) != 0)
-				elog(ERROR, "failed to enumerate network events: error code %u",
+				elog(ERROR, "failed to enumerate network events: error code %d",
 					 WSAGetLastError());
 			/* Read activity? */
 			if (readfds && FD_ISSET(sockets[i], readfds))
@@ -689,40 +702,4 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	if (writefds)
 		memcpy(writefds, &outwritefds, sizeof(fd_set));
 	return nummatches;
-}
-
-
-/*
- * Return win32 error string, since strerror can't
- * handle winsock codes
- */
-static char wserrbuf[256];
-const char *
-pgwin32_socket_strerror(int err)
-{
-	static HANDLE handleDLL = INVALID_HANDLE_VALUE;
-
-	if (handleDLL == INVALID_HANDLE_VALUE)
-	{
-		handleDLL = LoadLibraryEx("netmsg.dll", NULL, DONT_RESOLVE_DLL_REFERENCES | LOAD_LIBRARY_AS_DATAFILE);
-		if (handleDLL == NULL)
-			ereport(FATAL,
-					(errmsg_internal("could not load netmsg.dll: error code %lu", GetLastError())));
-	}
-
-	ZeroMemory(&wserrbuf, sizeof(wserrbuf));
-	if (FormatMessage(FORMAT_MESSAGE_IGNORE_INSERTS |
-					  FORMAT_MESSAGE_FROM_SYSTEM |
-					  FORMAT_MESSAGE_FROM_HMODULE,
-					  handleDLL,
-					  err,
-					  MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
-					  wserrbuf,
-					  sizeof(wserrbuf) - 1,
-					  NULL) == 0)
-	{
-		/* Failed to get id */
-		sprintf(wserrbuf, "unrecognized winsock error %d", err);
-	}
-	return wserrbuf;
 }

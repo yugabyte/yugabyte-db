@@ -108,6 +108,8 @@ class CDCSDKTabletMetrics {
   // Last sent physical time is used for calculating sent lag micros
   scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_last_sent_physicaltime;
 
+  Result<std::string> TEST_GetAttribute(const std::string& key) const;
+
  private:
   scoped_refptr<MetricEntity> entity_;
 };

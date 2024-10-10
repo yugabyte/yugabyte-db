@@ -106,12 +106,17 @@ class TabletBootstrapStateManager {
   // Find the valid bootstrap state file from disk and delete other versions.
   Status DoInit();
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
   TabletId tablet_id_;
 
   bool has_file_on_disk_ = false;
   FsManager* fs_manager_ = nullptr;
   std::string dir_;
   TabletBootstrapState bootstrap_state_;
+  std::string log_prefix_;
 
   static constexpr char kSuffixNew[] = ".NEW";
   static constexpr char kTabletBootstrapStateFileName[] = "retryable_requests";

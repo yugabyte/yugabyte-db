@@ -12,8 +12,6 @@ REGRESS = file_fdw
 
 SHLIB_LINK = -L$(YB_BUILD_ROOT)/lib -lyb_pggate
 
-EXTRA_CLEAN = sql/file_fdw.sql expected/file_fdw.out
-
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

@@ -21,6 +21,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_status.h"
+#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
@@ -755,6 +756,14 @@ Status XClusterManager::SetupUniverseReplication(
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
 }
 
+Status XClusterManager::SetupUniverseReplication(
+    XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
+  SCHECK(
+      !data.automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+  return XClusterTargetManager::SetupUniverseReplication(std::move(data), epoch);
+}
+
 /*
  * Checks if the universe replication setup has completed.
  * Returns Status::OK() if this call succeeds, and uses resp->done() to determine if the setup has
@@ -833,6 +842,18 @@ Status XClusterManager::DeleteUniverseReplication(
             << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Status XClusterManager::AddTableToReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+    const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "Adding table " << source_table_id << " to replication group "
+            << replication_group_id
+            << (target_table_id ? " with target table " + *target_table_id : "");
+
+  return XClusterTargetManager::AddTableToReplicationGroup(
+      replication_group_id, source_table_id, bootstrap_id, target_table_id, epoch);
 }
 
 Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {

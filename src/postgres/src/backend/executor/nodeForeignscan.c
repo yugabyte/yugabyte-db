@@ -3,7 +3,7 @@
  * nodeForeignscan.c
  *	  Routines to support scans of foreign tables
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,6 +38,9 @@ static bool ForeignRecheck(ForeignScanState *node, TupleTableSlot *slot);
  *		ForeignNext
  *
  *		This is a workhorse for ExecForeignScan
+ *
+ * When Yugabyte is acting as foreign DB, its scan will write ybctid to "TupleTableSlot->tts_tid".
+ * Postgres then access the slot data.
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -51,7 +54,15 @@ ForeignNext(ForeignScanState *node)
 	/* Call the Iterate function in short-lived context */
 	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 	if (plan->operation != CMD_SELECT)
+	{
+		/*
+		 * direct modifications cannot be re-evaluated, so shouldn't get here
+		 * during EvalPlanQual processing
+		 */
+		Assert(node->ss.ps.state->es_epq_active == NULL);
+
 		slot = node->fdwroutine->IterateDirectModify(node);
+	}
 	else
 		/*
 		 * YB note: for YB FDW, see comment in ybcIterateForeignScan for why
@@ -61,19 +72,12 @@ ForeignNext(ForeignScanState *node)
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
-	 * If any system columns are requested, we have to force the tuple into
-	 * physical-tuple form to avoid "cannot extract system attribute from
-	 * virtual tuple" errors later.  We also insert a valid value for
-	 * tableoid, which is the only actually-useful system column.
+	 * Insert valid value into tableoid, the only actually-useful system
+	 * column.
 	 */
 	if (plan->fsSystemCol && !TupIsNull(slot))
 	{
-		HeapTuple	tup = ExecMaterializeSlot(slot);
-
-		tup->t_tableOid = RelationGetRelid(node->ss.ss_currentRelation);
-		if (IsYugaByteEnabled()) {
-			tup->t_ybctid = slot->tts_ybctid;
-		}
+		slot->tts_tableOid = RelationGetRelid(node->ss.ss_currentRelation);
 	}
 
 	return slot;
@@ -126,6 +130,15 @@ static TupleTableSlot *
 ExecForeignScan(PlanState *pstate)
 {
 	ForeignScanState *node = castNode(ForeignScanState, pstate);
+	ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
+
+	/*
+	 * Ignore direct modifications when EvalPlanQual is active --- they are
+	 * irrelevant for EvalPlanQual rechecking
+	 */
+	if (estate->es_epq_active != NULL && plan->operation != CMD_SELECT)
+		return NULL;
 
 	return ExecScan(&node->ss,
 					(ExecScanAccessMtd) ForeignNext,
@@ -143,7 +156,7 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	ForeignScanState *scanstate;
 	Relation	currentRelation = NULL;
 	Index		scanrelid = node->scan.scanrelid;
-	Index		tlistvarno;
+	int			tlistvarno;
 	FdwRoutine *fdwroutine;
 
 	/* check for unsupported flags */
@@ -165,8 +178,8 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
 	/*
-	 * open the base relation, if any, and acquire an appropriate lock on it;
-	 * also acquire function pointers from the FDW's handler
+	 * open the scan relation, if any; also acquire function pointers from the
+	 * FDW's handler
 	 */
 	if (scanrelid > 0)
 	{
@@ -188,8 +201,9 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	{
 		TupleDesc	scan_tupdesc;
 
-		scan_tupdesc = ExecTypeFromTL(node->fdw_scan_tlist, false);
-		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc);
+		scan_tupdesc = ExecTypeFromTL(node->fdw_scan_tlist);
+		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
+							  &TTSOpsHeapTuple);
 		/* Node's targetlist will contain Vars with varno = INDEX_VAR */
 		tlistvarno = INDEX_VAR;
 	}
@@ -199,10 +213,15 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 
 		/* don't trust FDWs to return tuples fulfilling NOT NULL constraints */
 		scan_tupdesc = CreateTupleDescCopy(RelationGetDescr(currentRelation));
-		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc);
+		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
+							  &TTSOpsHeapTuple);
 		/* Node's targetlist will contain Vars with varno = scanrelid */
 		tlistvarno = scanrelid;
 	}
+
+	/* Don't know what an FDW might return */
+	scanstate->ss.ps.scanopsfixed = false;
+	scanstate->ss.ps.scanopsset = true;
 
 	/*
 	 * Initialize result slot, type and projection.
@@ -219,10 +238,38 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 		ExecInitQual(node->fdw_recheck_quals, (PlanState *) scanstate);
 
 	/*
+	 * Determine whether to scan the foreign relation asynchronously or not;
+	 * this has to be kept in sync with the code in ExecInitAppend().
+	 */
+	scanstate->ss.ps.async_capable = (((Plan *) node)->async_capable &&
+									  estate->es_epq_active == NULL);
+
+	/*
 	 * Initialize FDW-related state.
 	 */
 	scanstate->fdwroutine = fdwroutine;
 	scanstate->fdw_state = NULL;
+
+	/*
+	 * For the FDW's convenience, look up the modification target relation's
+	 * ResultRelInfo.  The ModifyTable node should have initialized it for us,
+	 * see ExecInitModifyTable.
+	 *
+	 * Don't try to look up the ResultRelInfo when EvalPlanQual is active,
+	 * though.  Direct modifications cannot be re-evaluated as part of
+	 * EvalPlanQual.  The lookup wouldn't work anyway because during
+	 * EvalPlanQual processing, EvalPlanQual only initializes the subtree
+	 * under the ModifyTable, and doesn't run ExecInitModifyTable.
+	 */
+	if (node->resultRelation > 0 && estate->es_epq_active == NULL)
+	{
+		if (estate->es_result_relations == NULL ||
+			estate->es_result_relations[node->resultRelation - 1] == NULL)
+		{
+			elog(ERROR, "result relation not initialized");
+		}
+		scanstate->resultRelInfo = estate->es_result_relations[node->resultRelation - 1];
+	}
 
 	/* Initialize any outer plan. */
 	if (outerPlan(node))
@@ -233,7 +280,19 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	 * Tell the FDW to initialize the scan.
 	 */
 	if (node->operation != CMD_SELECT)
-		fdwroutine->BeginDirectModify(scanstate, eflags);
+	{
+		/*
+		 * Direct modifications cannot be re-evaluated by EvalPlanQual, so
+		 * don't bother preparing the FDW.
+		 *
+		 * In case of an inherited UPDATE/DELETE with foreign targets there
+		 * can be direct-modify ForeignScan nodes in the EvalPlanQual subtree,
+		 * so we need to ignore such ForeignScan nodes during EvalPlanQual
+		 * processing.  See also ExecForeignScan/ExecReScanForeignScan.
+		 */
+		if (estate->es_epq_active == NULL)
+			fdwroutine->BeginDirectModify(scanstate, eflags);
+	}
 	else
 		fdwroutine->BeginForeignScan(scanstate, eflags);
 
@@ -250,10 +309,14 @@ void
 ExecEndForeignScan(ForeignScanState *node)
 {
 	ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
 
 	/* Let the FDW shut down */
 	if (plan->operation != CMD_SELECT)
-		node->fdwroutine->EndDirectModify(node);
+	{
+		if (estate->es_epq_active == NULL)
+			node->fdwroutine->EndDirectModify(node);
+	}
 	else
 		node->fdwroutine->EndForeignScan(node);
 
@@ -268,10 +331,6 @@ ExecEndForeignScan(ForeignScanState *node)
 	if (node->ss.ps.ps_ResultTupleSlot)
 		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
-	/* close the relation. */
-	if (node->ss.ss_currentRelation)
-		ExecCloseScanRelation(node->ss.ss_currentRelation);
 }
 
 /* ----------------------------------------------------------------
@@ -283,7 +342,16 @@ ExecEndForeignScan(ForeignScanState *node)
 void
 ExecReScanForeignScan(ForeignScanState *node)
 {
+	ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
 	PlanState  *outerPlan = outerPlanState(node);
+
+	/*
+	 * Ignore direct modifications when EvalPlanQual is active --- they are
+	 * irrelevant for EvalPlanQual rechecking
+	 */
+	if (estate->es_epq_active != NULL && plan->operation != CMD_SELECT)
+		return;
 
 	node->fdwroutine->ReScanForeignScan(node);
 
@@ -396,4 +464,52 @@ ExecShutdownForeignScan(ForeignScanState *node)
 
 	if (fdwroutine->ShutdownForeignScan)
 		fdwroutine->ShutdownForeignScan(node);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecAsyncForeignScanRequest
+ *
+ *		Asynchronously request a tuple from a designed async-capable node
+ * ----------------------------------------------------------------
+ */
+void
+ExecAsyncForeignScanRequest(AsyncRequest *areq)
+{
+	ForeignScanState *node = (ForeignScanState *) areq->requestee;
+	FdwRoutine *fdwroutine = node->fdwroutine;
+
+	Assert(fdwroutine->ForeignAsyncRequest != NULL);
+	fdwroutine->ForeignAsyncRequest(areq);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecAsyncForeignScanConfigureWait
+ *
+ *		In async mode, configure for a wait
+ * ----------------------------------------------------------------
+ */
+void
+ExecAsyncForeignScanConfigureWait(AsyncRequest *areq)
+{
+	ForeignScanState *node = (ForeignScanState *) areq->requestee;
+	FdwRoutine *fdwroutine = node->fdwroutine;
+
+	Assert(fdwroutine->ForeignAsyncConfigureWait != NULL);
+	fdwroutine->ForeignAsyncConfigureWait(areq);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecAsyncForeignScanNotify
+ *
+ *		Callback invoked when a relevant event has occurred
+ * ----------------------------------------------------------------
+ */
+void
+ExecAsyncForeignScanNotify(AsyncRequest *areq)
+{
+	ForeignScanState *node = (ForeignScanState *) areq->requestee;
+	FdwRoutine *fdwroutine = node->fdwroutine;
+
+	Assert(fdwroutine->ForeignAsyncNotify != NULL);
+	fdwroutine->ForeignAsyncNotify(areq);
 }

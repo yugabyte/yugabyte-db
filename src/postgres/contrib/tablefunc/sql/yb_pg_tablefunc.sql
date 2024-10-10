@@ -4,7 +4,9 @@ CREATE EXTENSION tablefunc;
 -- normal_rand()
 -- no easy way to do this for regression testing
 --
-SELECT avg(normal_rand)::int FROM normal_rand(100, 250, 0.2);
+SELECT avg(normal_rand)::int, count(*) FROM normal_rand(100, 250, 0.2);
+-- negative number of tuples
+SELECT avg(normal_rand)::int, count(*) FROM normal_rand(-1, 250, 0.2);
 
 --
 -- crosstab()
@@ -143,8 +145,14 @@ SELECT * FROM crosstab_out(
 --
 
 -- test connectby with text based hierarchy
-CREATE TABLE connectby_text(keyid text, parent_keyid text, pos int);
-\copy connectby_text from 'data/connectby_text.data'
+CREATE TABLE connectby_text(keyid text, parent_keyid text, pos int, ybsort serial, PRIMARY KEY (ybsort ASC));
+\copy connectby_text(keyid, parent_keyid, pos) from 'data/connectby_text.data'
+
+-- with branch, without orderby
+SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0, '~') AS t(keyid text, parent_keyid text, level int, branch text);
+
+-- without branch, without orderby
+SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'row2', 0) AS t(keyid text, parent_keyid text, level int);
 
 -- with branch, with orderby
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2', 0, '~') AS t(keyid text, parent_keyid text, level int, branch text, pos int) ORDER BY t.pos;
@@ -153,14 +161,14 @@ SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2'
 SELECT * FROM connectby('connectby_text', 'keyid', 'parent_keyid', 'pos', 'row2', 0) AS t(keyid text, parent_keyid text, level int, pos int) ORDER BY t.pos;
 
 -- test connectby with int based hierarchy
-CREATE TABLE connectby_int(keyid int, parent_keyid int);
-\copy connectby_int from 'data/connectby_int.data'
+CREATE TABLE connectby_int(keyid int, parent_keyid int, ybsort serial, PRIMARY KEY (ybsort ASC));
+\copy connectby_int(keyid, parent_keyid) from 'data/connectby_int.data'
 
 -- with branch
-SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid int, parent_keyid int, level int, branch text) ORDER BY t.branch;
+SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid int, parent_keyid int, level int, branch text);
 
 -- without branch
-SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int) ORDER BY t.keyid;
+SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
 
 -- recursion detection
 INSERT INTO connectby_int VALUES(10,9);
@@ -171,7 +179,7 @@ INSERT INTO connectby_int VALUES(9,11);
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid int, parent_keyid int, level int, branch text);
 
 -- infinite recursion failure avoided by depth limit
-SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 4, '~') AS t(keyid int, parent_keyid int, level int, branch text) ORDER BY t.branch;
+SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 4, '~') AS t(keyid int, parent_keyid int, level int, branch text);
 
 -- should fail as first two columns must have the same type
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid text, parent_keyid int, level int, branch text);
@@ -191,10 +199,10 @@ SELECT * FROM connectby('connectby_int', 'NULL::int, NULL::int; --', 'parent_key
 
 -- test for falsely detected recursion
 DROP TABLE connectby_int;
-CREATE TABLE connectby_int(keyid int, parent_keyid int);
+CREATE TABLE connectby_int(keyid int, parent_keyid int, ybsort serial, PRIMARY KEY (ybsort ASC));
 INSERT INTO connectby_int VALUES(11,NULL);
 INSERT INTO connectby_int VALUES(10,11);
 INSERT INTO connectby_int VALUES(111,11);
 INSERT INTO connectby_int VALUES(1,111);
 -- this should not fail due to recursion detection
-SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '11', 0, '-') AS t(keyid int, parent_keyid int, level int, branch text) ORDER BY t.branch;
+SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '11', 0, '-') AS t(keyid int, parent_keyid int, level int, branch text);

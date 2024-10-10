@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -38,9 +39,9 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
     log.info("Started {} task for univ uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = getUniverse();
     try {
-      // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      universe = lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null);
+      // Lock the universe but don't freeze it because this task doesn't perform critical updates to
+      // universe metadata.
+      universe = lockUniverse(-1 /* expectedUniverseVersion */);
 
       // Get expected LB config
       Map<LoadBalancerPlacement, LoadBalancerConfig> newLbMap =
@@ -61,6 +62,9 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
             updateUniverse(u, taskParams());
           };
       saveUniverseDetails(updater);
+
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       getRunnableTask().runSubTasks();
     } catch (Exception e) {

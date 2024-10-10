@@ -125,13 +125,13 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
 
       // Get the regions that are removed and added.
       const regionAdded = differenceWith(
-        cloudList.regionList,
         afterCloudVal!.regionList,
+        cloudList.regionList,
         (a, b) => a.code === b.code
       );
       const regionRemoved = differenceWith(
-        afterCloudVal!.regionList,
         cloudList.regionList,
+        afterCloudVal!.regionList,
         (a, b) => a.code === b.code
       );
 

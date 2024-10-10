@@ -19,6 +19,12 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
+
 PG_FUNCTION_INFO_V1(orafce_to_char_int4);
 PG_FUNCTION_INFO_V1(orafce_to_char_int8);
 PG_FUNCTION_INFO_V1(orafce_to_char_float4);
@@ -169,6 +175,9 @@ orafce_to_number(PG_FUNCTION_ARGS)
 	struct lconv *lconv = PGLC_localeconv();
 	Numeric		res;
 	char	   *p;
+
+	if (VARSIZE_ANY_EXHDR(arg0) == 0)
+		PG_RETURN_NULL();
 
 	buf = text_to_cstring(arg0);
 
@@ -407,6 +416,106 @@ TO_MULTI_BYTE_EUCJP[95] =
 #endif
 };
 
+static const char *
+TO_MULTI_BYTE__EUCCN[95] =
+{
+	"\241\241",
+	"\243\241",
+	"\243\242",
+	"\243\243",
+	"\243\244",
+	"\243\245",
+	"\243\246",
+	"\243\247",
+	"\243\250",
+	"\243\251",
+	"\243\252",
+	"\243\253",
+	"\243\254",
+	"\243\255",
+	"\243\256",
+	"\243\257",
+	"\243\260",
+	"\243\261",
+	"\243\262",
+	"\243\263",
+	"\243\264",
+	"\243\265",
+	"\243\266",
+	"\243\267",
+	"\243\270",
+	"\243\271",
+	"\243\272",
+	"\243\273",
+	"\243\274",
+	"\243\275",
+	"\243\276",
+	"\243\277",
+	"\243\300",
+	"\243\301",
+	"\243\302",
+	"\243\303",
+	"\243\304",
+	"\243\305",
+	"\243\306",
+	"\243\307",
+	"\243\310",
+	"\243\311",
+	"\243\312",
+	"\243\313",
+	"\243\314",
+	"\243\315",
+	"\243\316",
+	"\243\317",
+	"\243\320",
+	"\243\321",
+	"\243\322",
+	"\243\323",
+	"\243\324",
+	"\243\325",
+	"\243\326",
+	"\243\327",
+	"\243\330",
+	"\243\331",
+	"\243\332",
+	"\243\333",
+	"\243\334",
+	"\243\335",
+	"\243\336",
+	"\243\337",
+	"\243\340",
+	"\243\341",
+	"\243\342",
+	"\243\343",
+	"\243\344",
+	"\243\345",
+	"\243\346",
+	"\243\347",
+	"\243\350",
+	"\243\351",
+	"\243\352",
+	"\243\353",
+	"\243\354",
+	"\243\355",
+	"\243\356",
+	"\243\357",
+	"\243\360",
+	"\243\361",
+	"\243\362",
+	"\243\363",
+	"\243\364",
+	"\243\365",
+	"\243\366",
+	"\243\367",
+	"\243\370",
+	"\243\371",
+	"\243\372",
+	"\243\373",
+	"\243\374",
+	"\243\375",
+	"\243\376",
+};
+
 Datum
 orafce_to_multi_byte(PG_FUNCTION_ARGS)
 {
@@ -437,6 +546,9 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 		case PG_EUC_JP:
 		case PG_EUC_JIS_2004:
 			map = TO_MULTI_BYTE_EUCJP;
+			break;
+		case PG_EUC_CN:
+			map = TO_MULTI_BYTE__EUCCN;
 			break;
 		/*
 		 * TODO: Add converter for encodings.
@@ -518,6 +630,9 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 		case PG_EUC_JIS_2004:
 			map = TO_MULTI_BYTE_EUCJP;
 			break;
+		case PG_EUC_CN:
+			map = TO_MULTI_BYTE__EUCCN;
+			break;
 		/*
 		 * TODO: Add converter for encodings.
 		 */
@@ -533,7 +648,7 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 	dst = (text *) palloc0(VARHDRSZ + srclen);
 	d = VARDATA(dst);
 
-	while (*s && (s - VARDATA_ANY(src) < srclen))
+	while (s - VARDATA_ANY(src) < srclen)
 	{
 		char   *u = s;
 		int		clen;
@@ -679,8 +794,7 @@ pg_unicode_to_server(pg_wchar c, unsigned char *s)
 	if (orafce_Utf8ToServerConvProc == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("conversion between %s and %s is not supported",
-						pg_enc2name_tbl[PG_UTF8].name,
+				 errmsg("conversion between UTF8 and %s is not supported",
 						GetDatabaseEncodingName())));
 
 	/* Construct UTF-8 source string */
@@ -924,4 +1038,11 @@ invalid_pair:
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid Unicode surrogate pair")));
+
+#if defined(_MSC_VER)
+
+	/* be MSVC quiet */
+	return 0;
+
+#endif
 }

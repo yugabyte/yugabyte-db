@@ -263,7 +263,8 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
         VERIFY_RESULT(conn.Fetch("SELECT reltuples FROM pg_class WHERE oid = "
                                   + std::to_string(table_oid)));
       if (PQntuples(res.get()) > 0) {
-        table_tuple_count_[table_id] = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
+        float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
+        table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
         VLOG(4) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
                 << " reltuples";
       }

@@ -7,7 +7,7 @@
  *	  transfer pending entries into the regular index structure.  This
  *	  wins because bulk insertion is much more efficient than retail.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,19 +20,20 @@
 
 #include "access/gin_private.h"
 #include "access/ginxlog.h"
-#include "access/xloginsert.h"
 #include "access/xlog.h"
-#include "commands/vacuum.h"
+#include "access/xloginsert.h"
 #include "catalog/pg_am.h"
+#include "commands/vacuum.h"
 #include "miscadmin.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-#include "utils/acl.h"
+#include "port/pg_bitutils.h"
 #include "postmaster/autovacuum.h"
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
+#include "utils/rel.h"
 
 /* GUC parameter */
 int			gin_pending_list_limit = 0;
@@ -246,7 +247,7 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 	 * tree, so it conflicts with all serializable scans.  All scans acquire a
 	 * predicate lock on the metabuffer to represent that.
 	 */
-	CheckForSerializableConflictIn(index, NULL, metabuffer);
+	CheckForSerializableConflictIn(index, NULL, GIN_METAPAGE_BLKNO);
 
 	if (collector->sumsize + collector->ntuples * sizeof(ItemIdData) > GinListPageSize)
 	{
@@ -284,9 +285,6 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		memset(&sublist, 0, sizeof(GinMetaPageData));
 		makeSublist(index, collector->tuples, collector->ntuples, &sublist);
 
-		if (needWal)
-			XLogBeginInsert();
-
 		/*
 		 * metapage was unlocked, see above
 		 */
@@ -306,6 +304,9 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 
 			metadata->nPendingPages = sublist.nPendingPages;
 			metadata->nPendingHeapTuples = sublist.nPendingHeapTuples;
+
+			if (needWal)
+				XLogBeginInsert();
 		}
 		else
 		{
@@ -334,7 +335,10 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 			metadata->nPendingHeapTuples += sublist.nPendingHeapTuples;
 
 			if (needWal)
+			{
+				XLogBeginInsert();
 				XLogRegisterBuffer(1, buffer, REGBUF_STANDARD);
+			}
 		}
 	}
 	else
@@ -360,10 +364,10 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 
 		data.ntuples = collector->ntuples;
 
+		START_CRIT_SECTION();
+
 		if (needWal)
 			XLogBeginInsert();
-
-		START_CRIT_SECTION();
 
 		/*
 		 * Increase counter of heap tuples
@@ -487,17 +491,33 @@ ginHeapTupleFastCollect(GinState *ginstate,
 								&nentries, &categories);
 
 	/*
+	 * Protect against integer overflow in allocation calculations
+	 */
+	if (nentries < 0 ||
+		collector->ntuples + nentries > MaxAllocSize / sizeof(IndexTuple))
+		elog(ERROR, "too many entries for GIN index");
+
+	/*
 	 * Allocate/reallocate memory for storing collected tuples
 	 */
 	if (collector->tuples == NULL)
 	{
-		collector->lentuples = nentries * ginstate->origTupdesc->natts;
+		/*
+		 * Determine the number of elements to allocate in the tuples array
+		 * initially.  Make it a power of 2 to avoid wasting memory when
+		 * resizing (since palloc likes powers of 2).
+		 */
+		collector->lentuples = pg_nextpower2_32(Max(16, nentries));
 		collector->tuples = (IndexTuple *) palloc(sizeof(IndexTuple) * collector->lentuples);
 	}
-
-	while (collector->ntuples + nentries > collector->lentuples)
+	else if (collector->lentuples < collector->ntuples + nentries)
 	{
-		collector->lentuples *= 2;
+		/*
+		 * Advance lentuples to the next suitable power of 2.  This won't
+		 * overflow, though we could get to a value that exceeds
+		 * MaxAllocSize/sizeof(IndexTuple), causing an error in repalloc.
+		 */
+		collector->lentuples = pg_nextpower2_32(collector->ntuples + nentries);
 		collector->tuples = (IndexTuple *) repalloc(collector->tuples,
 													sizeof(IndexTuple) * collector->lentuples);
 	}
@@ -990,7 +1010,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 
 	/*
 	 * As pending list pages can have a high churn rate, it is desirable to
-	 * recycle them immediately to the FreeSpace Map when ordinary backends
+	 * recycle them immediately to the FreeSpaceMap when ordinary backends
 	 * clean the list.
 	 */
 	if (fsm_vac && fill_fsm)
@@ -1008,7 +1028,7 @@ Datum
 gin_clean_pending_list(PG_FUNCTION_ARGS)
 {
 	Oid			indexoid = PG_GETARG_OID(0);
-	Relation	indexRel = index_open(indexoid, AccessShareLock);
+	Relation	indexRel = index_open(indexoid, RowExclusiveLock);
 	IndexBulkDeleteResult stats;
 	GinState	ginstate;
 
@@ -1045,7 +1065,7 @@ gin_clean_pending_list(PG_FUNCTION_ARGS)
 	initGinState(&ginstate, indexRel);
 	ginInsertCleanup(&ginstate, true, true, true, &stats);
 
-	index_close(indexRel, AccessShareLock);
+	index_close(indexRel, RowExclusiveLock);
 
 	PG_RETURN_INT64((int64) stats.pages_deleted);
 }

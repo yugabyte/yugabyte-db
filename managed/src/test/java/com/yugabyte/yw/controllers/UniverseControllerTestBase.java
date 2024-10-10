@@ -146,6 +146,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockReleasesUtils = mock(ReleasesUtils.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
 
+    when(mockRuntimeConfig.getString("yb.metrics.scrape_interval")).thenReturn("10s");
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
     when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);

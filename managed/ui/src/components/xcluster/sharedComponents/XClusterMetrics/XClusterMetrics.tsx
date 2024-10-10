@@ -25,6 +25,7 @@ import {
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
+  getIsTransactionalAtomicityEnabled,
   getMetricTimeRange,
   getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
@@ -209,7 +210,8 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeLagMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
+      enabled:
+        !!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type),
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -249,7 +251,8 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeSkewMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
+      enabled:
+        !!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type),
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -300,7 +303,7 @@ export const XClusterMetrics = ({
   //              Tracking with PLAT-11663
   if (
     configReplicationLagMetricQuery.isError ||
-    (xClusterConfig.type === XClusterConfigType.TXN &&
+    (getIsTransactionalAtomicityEnabled(xClusterConfig.type) &&
       (consumerSafeTimeLagMetricsQuery.isError || consumerSafeTimeSkewMetricsQuery.isError))
   ) {
     return (
@@ -348,7 +351,7 @@ export const XClusterMetrics = ({
 
   const refetchMetrics = () => {
     configReplicationLagMetricQuery.refetch();
-    if (!!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN) {
+    if (!!targetUniverseQuery.data && getIsTransactionalAtomicityEnabled(xClusterConfig.type)) {
       consumerSafeTimeLagMetricsQuery.refetch();
       consumerSafeTimeSkewMetricsQuery.refetch();
     }
@@ -494,7 +497,7 @@ export const XClusterMetrics = ({
             </>
           }
         />
-        {xClusterConfig.type === XClusterConfigType.TXN && (
+        {getIsTransactionalAtomicityEnabled(xClusterConfig.type) && (
           <>
             <YBMetricGraph
               metric={consumerSafeTimeLagMetrics}

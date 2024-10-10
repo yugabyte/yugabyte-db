@@ -337,9 +337,9 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
 
   // INSERT multiple rows, and the mutation count is greater than analyze threshold to trigger
   // ANALYZE.
-  // The initial value of reltuples for a newly created table is 0, so the initial
+  // The initial value of reltuples for a newly created table is -1 (unknown), and its initial
   // analyze threshold is 1.
-  ASSERT_OK(WaitForTableReltuples(conn, table_name, 0));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, -1));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 100) AS s",
                                table_name));
 
@@ -375,18 +375,18 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeMultiTablesMultiDBs) {
   // The initial analyze threshold for all three tables are 10.
   // INSERT multiple rows, and the mutation counts of all three tables are less than
   // their analyze thresholds.
-  ASSERT_OK(WaitForTableReltuples(conn, table1_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn, table2_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn2, table3_name, 0));
+  ASSERT_OK(WaitForTableReltuples(conn, table1_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, table2_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn2, table3_name, -1));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 9) AS s",
                                table1_name));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 9) AS s",
                                table2_name));
   ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 9) AS s",
                                table3_name));
-  ASSERT_OK(WaitForTableReltuples(conn, table1_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn, table2_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn2, table3_name, 0));
+  ASSERT_OK(WaitForTableReltuples(conn, table1_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, table2_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn2, table3_name, -1));
 
   // INSERT more rows into three tables to make their mutation counts greater than
   // their analyze thresholds to trigger ANALYZE.
@@ -436,11 +436,11 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeTableRenameAndDelete) {
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_for_deletion));
 
-  // The initial value of reltuples for any newly created table is 0, so the initial
+  // The initial value of reltuples for a newly created table is -1 (unknown), and its initial
   // analyze threshold is 10.
   // INSERT one row to populate name cache in auto analyze service.
-  ASSERT_OK(WaitForTableReltuples(conn, table_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn, table_for_deletion, 0));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, table_for_deletion, -1));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table_name));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table_for_deletion));
   // Sleep for enough time to wait for auto analyze service populate name cache.
@@ -448,8 +448,8 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeTableRenameAndDelete) {
       FLAGS_ysql_node_level_mutation_reporting_interval_ms +
       FLAGS_ysql_cluster_level_mutation_persist_interval_ms * 2 + 5000 * kTimeMultiplier;
   std::this_thread::sleep_for(wait_for_name_cache_ms * 1ms);
-  ASSERT_OK(WaitForTableReltuples(conn, table_name, 0));
-  ASSERT_OK(WaitForTableReltuples(conn, table_for_deletion, 0));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, table_for_deletion, -1));
 
   // Rename a table to stale table name cache.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME TO $1", table_name, new_name));
@@ -480,33 +480,33 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeDatabaseRenameAndDelete) {
     auto conn2 = ASSERT_RESULT(ConnectToDB(dbname));
     ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name));
 
-    // The initial value of reltuples for a newly created table is 0, so the initial
+    // The initial value of reltuples for a newly created table is -1 (unknown), and its initial
     // analyze threshold is 10.
     // INSERT one row to populate name cache in auto analyze service.
-    ASSERT_OK(WaitForTableReltuples(conn2, table_name, 0));
+    ASSERT_OK(WaitForTableReltuples(conn2, table_name, -1));
     ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table_name));
     // Sleep for enough time to wait for auto analyze service populate name cache.
     auto wait_for_name_cache_ms =
         FLAGS_ysql_node_level_mutation_reporting_interval_ms +
         FLAGS_ysql_cluster_level_mutation_persist_interval_ms * 2 + 5000 * kTimeMultiplier;
     std::this_thread::sleep_for(wait_for_name_cache_ms * 1ms);
-    ASSERT_OK(WaitForTableReltuples(conn2, table_name, 0));
+    ASSERT_OK(WaitForTableReltuples(conn2, table_name, -1));
   }
   {
     auto conn2 = ASSERT_RESULT(ConnectToDB(dbname_for_deletion));
     ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name2));
 
-    // The initial value of reltuples for a newly created table is 0, so the initial
+    // The initial value of reltuples for a newly created table is -1 (unknown), and its initial
     // analyze threshold is 10.
     // INSERT one row to populate name cache in auto analyze service.
-    ASSERT_OK(WaitForTableReltuples(conn2, table_name2, 0));
+    ASSERT_OK(WaitForTableReltuples(conn2, table_name2, -1));
     ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table_name2));
     // Sleep for enough time to wait for auto analyze service populate name cache.
     auto wait_for_name_cache_ms =
         FLAGS_ysql_node_level_mutation_reporting_interval_ms +
         FLAGS_ysql_cluster_level_mutation_persist_interval_ms * 2 + 5000 * kTimeMultiplier;
     std::this_thread::sleep_for(wait_for_name_cache_ms * 1ms);
-    ASSERT_OK(WaitForTableReltuples(conn2, table_name2, 0));
+    ASSERT_OK(WaitForTableReltuples(conn2, table_name2, -1));
   }
 
   // Rename a created database to stale database name cache.

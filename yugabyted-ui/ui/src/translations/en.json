@@ -26,6 +26,7 @@
       "save": "Save",
       "confirm": "Confirm",
       "close": "Close",
+      "modalClose": "Close and don't show again",
       "cancel": "Cancel",
       "yes": "Yes",
       "no": "No",
@@ -753,7 +754,20 @@
         "noAlerts": "No alerts available",
         "comingsoon": "This feature is coming soon",
         "underReplicated": "Under-Replicated",
-        "unavailable": "Unavailable"
+        "unavailable": "Unavailable",
+        "gettingStarted": {
+          "tryYugabyteVoyager": "Wondering how to load data into your cluster? Try our data migration application <0>{{voyagerText}}</0>, designed to move data to YugabyteDB quickly and securely.",
+          "getStartedSteps": {
+              "createCluster": "Create a cluster",
+              "createClusterDesc": "Create a YugabyteDB cluster to get started",
+              "loadCluster": "Load data into your cluster",
+              "loadClusterDesc": "Migrate your databases into the cluster using <0>{{migrationLink}}</0>",
+              "ybVoyager": "YugabyteDB Voyager →",
+              "header": "Get Started",
+              "outOfSteps": " of 2 Done"
+            }
+        }
+
       },
       "tables": {
         "numTables": "{{count}} Table",
@@ -856,7 +870,7 @@
         "error": "Error",
         "total": "Total",
         "search": "Search",
-        "searchPlaceholder": "Search migration or target cluster UUID",
+        "searchPlaceholder": "Search migration...",
         "migrationType": "Migration Type",
         "sourceEngine": "Source Engine",
         "archiveMigrations": "Archive Migrations",
@@ -865,9 +879,12 @@
         "tabMigrations": "Migrations",
         "migrations": "Migrations",
         "migration": "Migration",
+        "migrationID": "Migration ID",
         "previous": "Previous",
         "nextStep": "Next: {{step}}",
         "sourceDatabase": "Source Database",
+        "source": "Source",
+        "availDiskLower": "disk available",
         "voyagerInstance": "Voyager Instance",
         "targetCluster": "Target Cluster",
         "progress": "Progress",
@@ -895,6 +912,14 @@
         "refreshing": "Refreshing",
         "getStarted": "Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.",
         "learnMore": "Learn more",
+        "newMigration": "New Migration",
+        "gettingStarted": {
+          "noMigrations": "You don't have any migrations",
+          "noMigrationsDesc": "Migrate your databases into the cluster using YugabyteDB Voyager, designed to move data to YugabyteDB quickly and securely.",
+          "learnMore": "Learn how to prepare your migration",
+          "refreshNote": "Refresh the page after connecting to your Voyager instance to see your migrations.",
+          "migrateDatabase": "Migrate Database"
+        },  
         "sourceDBSidePanel": {
           "sourceDatabase": "Source Database",
           "hostname": "Hostname",
@@ -909,23 +934,26 @@
         "listColumns": {
           "general": "General",
           "migrationUUID": "Migration UUID",
-          "migrationType": "Migration type",
-          "sourceDatabase": "Source database",
-          "hostname": "Host name",
-          "hostIpAddrPort": "Host IP address & port",
-          "engineVersion": "Engine & version",
+          "migrationType": "Migration Type",
+          "sourceDatabase": "Source Database",
+          "source": "Source",
+          "hostname": "Host Name",
+          "hostIpAddrPort": "Host IP Address & Port",
+          "engineVersion": "Engine & Version",
           "database": "Database",
           "schema": "Schema",
-          "voyagerInstance": "Voyager instance",
+          "voyagerInstance": "Voyager Instance",
           "machineIP": "Machine IP",
           "os": "OS",
-          "availableDiskSpace": "Available disk space",
-          "exportDirectory": "Export directory",
-          "targetDatabase": "Target database",
+          "availableDiskSpace": "Available Disk Space",
+          "exportDirectory": "Export Directory",
+          "targetDatabase": "Target Database",
+          "targetCluster": "Target Cluster",
           "clusterUUID": "Cluster UUID",
           "ybaOrYbm": "YBA or YBM",
           "complexity": "Complexity",
-          "progress": "Progress"
+          "progress": "Progress",
+          "startedOn": "Started On"
         },
         "voyagerSidePanel": {
           "voyagerInstance": "Voyager Instance",
@@ -933,6 +961,7 @@
           "os": "OS",
           "totalDiskSpace": "Total Disk Space",
           "usedDiskSpace": "Used Disk Space",
+          "availDiskSpace": "Available Disk Space",
           "exportDirectory": "Export Directory",
           "exportedSchemaLocation": "Exported Schema Location"
         },
@@ -953,6 +982,13 @@
           "tabAssessmentDetails": "Assessment Details",
           "tabAssessmentResults": "Assessment Results",
           "tabComplexityOverview": "Complexity Overview",
+          "installVoyager": "Install Voyager",
+          "installVoyagerDesc": "Install YugabyteDB Voyager on the cluster.",
+          "specificVersion": "Install a specific version of yb-voyager on your machine using the following command:",
+          "installVoyagerLearn": "Learn more about installing Voyager",
+          "assessMigration": "Assess Migration",
+          "assessMigrationDesc": "Assess the source database to be migrated to check for database compatibility, evaluate cluster size requirements, and estimate migration complexity.",
+          "assessMigrationLearn": "Learn more about migration assessment",
           "summary": {
             "heading": "Summary",
             "migrationComplexity": "Migration Complexity",

@@ -1,8 +1,6 @@
 <?xml version='1.0'?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
-                version='1.0'
-                xmlns="http://www.w3.org/TR/xhtml1/transitional"
-                exclude-result-prefixes="#default">
+                version='1.0'>
 
 <xsl:import href="http://docbook.sourceforge.net/release/xsl/current/htmlhelp/htmlhelp.xsl"/>
 <xsl:include href="stylesheet-common.xsl" />
@@ -10,8 +8,10 @@
 <!-- Parameters -->
 <xsl:param name="htmlhelp.use.hhk" select="'1'"/>
 
+<xsl:param name="base.dir" select="'htmlhelp/'"></xsl:param>
 <xsl:param name="html.stylesheet" select="'stylesheet.css'"></xsl:param>
 <xsl:param name="use.id.as.filename" select="'1'"></xsl:param>
+<xsl:param name="manifest.in.base.dir" select="1"/>
 <xsl:param name="make.valid.html" select="1"></xsl:param>
 <xsl:param name="generate.id.attributes" select="1"></xsl:param>
 <xsl:param name="generate.legalnotice.link" select="1"></xsl:param>
@@ -36,6 +36,12 @@
     <xsl:call-template name="anchor"/>
     <xsl:apply-templates/>
   </span><br/>
+</xsl:template>
+
+
+<!-- strip directory name from image filerefs -->
+<xsl:template match="imagedata/@fileref">
+ <xsl:value-of select="substring-after(., '/')"/>
 </xsl:template>
 
 </xsl:stylesheet>

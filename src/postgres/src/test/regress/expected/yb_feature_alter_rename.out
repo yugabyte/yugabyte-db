@@ -72,17 +72,17 @@ alter database test_rename rename to test_rename2;
 alter database test_rename2 rename to postgres; -- fail
 ERROR:  database "postgres" already exists
 \l
-                                   List of databases
-      Name       |  Owner   | Encoding | Collate |    Ctype    |   Access privileges   
------------------+----------+----------+---------+-------------+-----------------------
- postgres        | postgres | UTF8     | C       | en_US.UTF-8 | 
- system_platform | postgres | UTF8     | C       | en_US.UTF-8 | 
- template0       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
-                 |          |          |         |             | postgres=CTc/postgres
- template1       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
-                 |          |          |         |             | postgres=CTc/postgres
- test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 | 
- test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 | 
- yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 | 
+                                                  List of databases
+      Name       |  Owner   | Encoding | Collate |    Ctype    | ICU Locale | Locale Provider |   Access privileges
+-----------------+----------+----------+---------+-------------+------------+-----------------+-----------------------
+ postgres        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ system_platform | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ template0       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
+                 |          |          |         |             |            |                 | postgres=CTc/postgres
+ template1       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
+                 |          |          |         |             |            |                 | postgres=CTc/postgres
+ test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
 (7 rows)
 

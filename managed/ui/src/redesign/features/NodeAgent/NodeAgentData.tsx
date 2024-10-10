@@ -158,6 +158,12 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     setOpenNodeAgentDialog(true);
   };
 
+  const formatError = (cell: any, row: any) => {
+    const rowError = row.lastError;
+    const rowErrorCode =  rowError?.code
+    return <span>{rowErrorCode}</span>;
+  };
+
   return (
     <Box>
       <YBPanelItem
@@ -223,6 +229,13 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               columnClassName={'yb-table-cell yb-table-cell-align'}
             >
               <span className={helperClasses.columnName}>{'Agent Status'}</span>
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataFormat={formatError}
+              width="15%"
+              columnClassName={'yb-table-cell yb-table-cell-align'}
+            >
+              <span className={helperClasses.columnName}>{'Error'}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
               width="15%"

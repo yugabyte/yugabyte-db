@@ -31,7 +31,7 @@
     plan to match the query structure and the properties of the data
     is absolutely critical for good performance, so the system includes
     a complex <firstterm>planner</firstterm> that tries to choose good plans.
-    You can use the <xref linkend="sql-explain"/> command
+    You can use the <link linkend="sql-explain"><command>EXPLAIN</command></link> command
     to see what query plan the planner creates for any query.
     Plan-reading is an art that requires some experience to master,
     but this section attempts to cover the basics.
@@ -229,7 +229,7 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 7000;
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100;
 
                                   QUERY PLAN
-------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------
  Bitmap Heap Scan on tenk1  (cost=5.07..229.20 rows=101 width=244)
    Recheck Cond: (unique1 &lt; 100)
    -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0)
@@ -256,7 +256,7 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100;
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND stringu1 = 'xxx';
 
                                   QUERY PLAN
-------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------
  Bitmap Heap Scan on tenk1  (cost=5.04..229.43 rows=1 width=244)
    Recheck Cond: (unique1 &lt; 100)
    Filter: (stringu1 = 'xxx'::name)
@@ -280,7 +280,7 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND stringu1 = 'xxx';
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 = 42;
 
                                  QUERY PLAN
------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;----------
  Index Scan using tenk1_unique1 on tenk1  (cost=0.29..8.30 rows=1 width=244)
    Index Cond: (unique1 = 42)
 </screen>
@@ -291,7 +291,47 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 = 42;
     often see this plan type for queries that fetch just a single row.  It's
     also often used for queries that have an <literal>ORDER BY</literal> condition
     that matches the index order, because then no extra sorting step is needed
-    to satisfy the <literal>ORDER BY</literal>.
+    to satisfy the <literal>ORDER BY</literal>.  In this example, adding
+    <literal>ORDER BY unique1</literal> would use the same plan because the
+    index already implicitly provides the requested ordering.
+   </para>
+
+   <para>
+     The planner may implement an <literal>ORDER BY</literal> clause in several
+     ways.  The above example shows that such an ordering clause may be
+     implemented implicitly.  The planner may also add an explicit
+     <literal>sort</literal> step:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 ORDER BY unique1;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Sort  (cost=1109.39..1134.39 rows=10000 width=244)
+   Sort Key: unique1
+   ->  Seq Scan on tenk1  (cost=0.00..445.00 rows=10000 width=244)
+</screen>
+
+    If a part of the plan guarantees an ordering on a prefix of the
+    required sort keys, then the planner may instead decide to use an
+    <literal>incremental sort</literal> step:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 ORDER BY four, ten LIMIT 100;
+                                              QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------
+ Limit  (cost=521.06..538.05 rows=100 width=244)
+   ->  Incremental Sort  (cost=521.06..2220.95 rows=10000 width=244)
+         Sort Key: four, ten
+         Presorted Key: four
+         ->  Index Scan using index_tenk1_on_four on tenk1  (cost=0.29..1510.08 rows=10000 width=244)
+</screen>
+
+    Compared to regular sorts, sorting incrementally allows returning tuples
+    before the entire result set has been sorted, which particularly enables
+    optimizations with <literal>LIMIT</literal> queries.  It may also reduce
+    memory usage and the likelihood of spilling sorts to disk, but it comes at
+    the cost of the increased overhead of splitting the result set into multiple
+    sorting batches.
    </para>
 
    <para>
@@ -303,7 +343,7 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 = 42;
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000;
 
                                      QUERY PLAN
--------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;------------------
  Bitmap Heap Scan on tenk1  (cost=25.08..60.21 rows=10 width=244)
    Recheck Cond: ((unique1 &lt; 100) AND (unique2 &gt; 9000))
    -&gt;  BitmapAnd  (cost=25.08..25.08 rows=10 width=0)
@@ -326,7 +366,7 @@ EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000;
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000 LIMIT 2;
 
                                      QUERY PLAN
--------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;------------------
  Limit  (cost=0.29..14.48 rows=2 width=244)
    -&gt;  Index Scan using tenk1_unique2 on tenk1  (cost=0.29..71.27 rows=10 width=244)
          Index Cond: (unique2 &gt; 9000)
@@ -356,7 +396,7 @@ FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 10 AND t1.unique2 = t2.unique2;
 
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------------
  Nested Loop  (cost=4.65..118.62 rows=10 width=488)
    -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244)
          Recheck Cond: (unique1 &lt; 10)
@@ -405,7 +445,7 @@ FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 10 AND t2.unique2 &lt; 10 AND t1.hundred &lt; t2.hundred;
 
                                          QUERY PLAN
----------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;--------------------------
  Nested Loop  (cost=4.65..49.46 rows=33 width=488)
    Join Filter: (t1.hundred &lt; t2.hundred)
    -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244)
@@ -453,7 +493,7 @@ FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
 
                                         QUERY PLAN
-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------------------
  Hash Join  (cost=230.47..713.98 rows=101 width=488)
    Hash Cond: (t2.unique2 = t1.unique2)
    -&gt;  Seq Scan on tenk2 t2  (cost=0.00..445.00 rows=10000 width=244)
@@ -484,7 +524,7 @@ FROM tenk1 t1, onek t2
 WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
 
                                         QUERY PLAN
-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------------------
  Merge Join  (cost=198.11..268.19 rows=10 width=488)
    Merge Cond: (t1.unique2 = t2.unique2)
    -&gt;  Index Scan using tenk1_unique2 on tenk1 t1  (cost=0.29..656.28 rows=101 width=244)
@@ -522,7 +562,7 @@ FROM tenk1 t1, onek t2
 WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
 
                                         QUERY PLAN
-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------------------
  Merge Join  (cost=0.56..292.65 rows=10 width=488)
    Merge Cond: (t1.unique2 = t2.unique2)
    -&gt;  Index Scan using tenk1_unique2 on tenk1 t1  (cost=0.29..656.28 rows=101 width=244)
@@ -556,7 +596,7 @@ FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 10 AND t1.unique2 = t2.unique2;
 
                                                            QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;--------------------------------------------------------------
  Nested Loop  (cost=4.65..118.62 rows=10 width=488) (actual time=0.128..0.377 rows=10 loops=1)
    -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244) (actual time=0.057..0.121 rows=10 loops=1)
          Recheck Cond: (unique1 &lt; 10)
@@ -600,7 +640,7 @@ FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2 ORDER BY t1.fivethous;
 
                                                                  QUERY PLAN
---------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------------------&zwsp;------
  Sort  (cost=717.34..717.59 rows=101 width=488) (actual time=7.761..7.774 rows=100 loops=1)
    Sort Key: t1.fivethous
    Sort Method: quicksort  Memory: 77kB
@@ -633,7 +673,7 @@ WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2 ORDER BY t1.fivethous;
 EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE ten &lt; 7;
 
                                                QUERY PLAN
----------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;--------------------------------------
  Seq Scan on tenk1  (cost=0.00..483.00 rows=7000 width=244) (actual time=0.016..5.107 rows=7000 loops=1)
    Filter: (ten &lt; 7)
    Rows Removed by Filter: 3000
@@ -656,7 +696,7 @@ EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE ten &lt; 7;
 EXPLAIN ANALYZE SELECT * FROM polygon_tbl WHERE f1 @&gt; polygon '(0.5,2.0)';
 
                                               QUERY PLAN
-------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-----------------------------------
  Seq Scan on polygon_tbl  (cost=0.00..1.05 rows=1 width=32) (actual time=0.044..0.044 rows=0 loops=1)
    Filter: (f1 @&gt; '((0.5,2))'::polygon)
    Rows Removed by Filter: 4
@@ -675,7 +715,7 @@ SET enable_seqscan TO off;
 EXPLAIN ANALYZE SELECT * FROM polygon_tbl WHERE f1 @&gt; polygon '(0.5,2.0)';
 
                                                         QUERY PLAN
---------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------
  Index Scan using gpolygonind on polygon_tbl  (cost=0.13..8.15 rows=1 width=32) (actual time=0.062..0.062 rows=0 loops=1)
    Index Cond: (f1 @&gt; '((0.5,2))'::polygon)
    Rows Removed by Index Recheck: 1
@@ -698,7 +738,7 @@ EXPLAIN ANALYZE SELECT * FROM polygon_tbl WHERE f1 @&gt; polygon '(0.5,2.0)';
 EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000;
 
                                                            QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;--------------------------------------------------------------
  Bitmap Heap Scan on tenk1  (cost=25.08..60.21 rows=10 width=244) (actual time=0.323..0.342 rows=10 loops=1)
    Recheck Cond: ((unique1 &lt; 100) AND (unique2 &gt; 9000))
    Buffers: shared hit=15
@@ -732,14 +772,15 @@ BEGIN;
 EXPLAIN ANALYZE UPDATE tenk1 SET hundred = hundred + 1 WHERE unique1 &lt; 100;
 
                                                            QUERY PLAN
---------------------------------------------------------------------------------------------------------------------------------
- Update on tenk1  (cost=5.07..229.46 rows=101 width=250) (actual time=14.628..14.628 rows=0 loops=1)
-   -&gt;  Bitmap Heap Scan on tenk1  (cost=5.07..229.46 rows=101 width=250) (actual time=0.101..0.439 rows=100 loops=1)
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------------
+ Update on tenk1  (cost=5.08..230.08 rows=0 width=0) (actual time=3.791..3.792 rows=0 loops=1)
+   -&gt;  Bitmap Heap Scan on tenk1  (cost=5.08..230.08 rows=102 width=10) (actual time=0.069..0.513 rows=100 loops=1)
          Recheck Cond: (unique1 &lt; 100)
-         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0) (actual time=0.043..0.043 rows=100 loops=1)
+         Heap Blocks: exact=90
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.05 rows=102 width=0) (actual time=0.036..0.037 rows=300 loops=1)
                Index Cond: (unique1 &lt; 100)
- Planning time: 0.079 ms
- Execution time: 14.727 ms
+ Planning Time: 0.113 ms
+ Execution Time: 3.850 ms
 
 ROLLBACK;
 </screen>
@@ -767,30 +808,30 @@ ROLLBACK;
 
 <screen>
 EXPLAIN UPDATE parent SET f2 = f2 + 1 WHERE f1 = 101;
-                                    QUERY PLAN
------------------------------------------------------------------------------------
- Update on parent  (cost=0.00..24.53 rows=4 width=14)
-   Update on parent
-   Update on child1
-   Update on child2
-   Update on child3
-   -&gt;  Seq Scan on parent  (cost=0.00..0.00 rows=1 width=14)
-         Filter: (f1 = 101)
-   -&gt;  Index Scan using child1_f1_key on child1  (cost=0.15..8.17 rows=1 width=14)
-         Index Cond: (f1 = 101)
-   -&gt;  Index Scan using child2_f1_key on child2  (cost=0.15..8.17 rows=1 width=14)
-         Index Cond: (f1 = 101)
-   -&gt;  Index Scan using child3_f1_key on child3  (cost=0.15..8.17 rows=1 width=14)
-         Index Cond: (f1 = 101)
+                                              QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------
+ Update on parent  (cost=0.00..24.59 rows=0 width=0)
+   Update on parent parent_1
+   Update on child1 parent_2
+   Update on child2 parent_3
+   Update on child3 parent_4
+   -&gt;  Result  (cost=0.00..24.59 rows=4 width=14)
+         -&gt;  Append  (cost=0.00..24.54 rows=4 width=14)
+               -&gt;  Seq Scan on parent parent_1  (cost=0.00..0.00 rows=1 width=14)
+                     Filter: (f1 = 101)
+               -&gt;  Index Scan using child1_pkey on child1 parent_2  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
+               -&gt;  Index Scan using child2_pkey on child2 parent_3  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
+               -&gt;  Index Scan using child3_pkey on child3 parent_4  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
 </screen>
 
     In this example the Update node needs to consider three child tables as
     well as the originally-mentioned parent table.  So there are four input
     scanning subplans, one per table.  For clarity, the Update node is
     annotated to show the specific target tables that will be updated, in the
-    same order as the corresponding subplans.  (These annotations are new as
-    of <productname>PostgreSQL</productname> 9.5; in prior versions the reader had to
-    intuit the target tables by inspecting the subplans.)
+    same order as the corresponding subplans.
    </para>
 
    <para>
@@ -856,7 +897,7 @@ EXPLAIN UPDATE parent SET f2 = f2 + 1 WHERE f1 = 101;
 EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000 LIMIT 2;
 
                                                           QUERY PLAN
--------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;------------------------------------------------------------
  Limit  (cost=0.29..14.71 rows=2 width=244) (actual time=0.177..0.249 rows=2 loops=1)
    -&gt;  Index Scan using tenk1_unique2 on tenk1  (cost=0.29..72.42 rows=10 width=244) (actual time=0.174..0.244 rows=2 loops=1)
          Index Cond: (unique2 &gt; 9000)
@@ -896,15 +937,16 @@ EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000
    </para>
 
    <para>
-    Generally, the <command>EXPLAIN</command> output will display details for
-    every plan node which was generated by the query planner.  However, there
-    are cases where the executor is able to determine that certain nodes are
-    not required; currently, the only node type to support this is the
-    <literal>Append</literal> node.  This node type has the ability to discard
-    subnodes which it is able to determine won't contain any records required
-    by the query.  It is possible to determine that nodes have been removed in
-    this way by the presence of a "Subplans Removed" property in the
-    <command>EXPLAIN</command> output.
+    Normally, <command>EXPLAIN</command> will display every plan node
+    created by the planner.  However, there are cases where the executor
+    can determine that certain nodes need not be executed because they
+    cannot produce any rows, based on parameter values that were not
+    available at planning time.  (Currently this can only happen for child
+    nodes of an Append or MergeAppend node that is scanning a partitioned
+    table.)  When this happens, those plan nodes are omitted from
+    the <command>EXPLAIN</command> output and a <literal>Subplans
+    Removed: <replaceable>N</replaceable></literal> annotation appears
+    instead.
    </para>
   </sect2>
 
@@ -1076,6 +1118,10 @@ WHERE tablename = 'road';
     <primary>pg_statistic_ext</primary>
    </indexterm>
 
+   <indexterm>
+    <primary>pg_statistic_ext_data</primary>
+   </indexterm>
+
    <para>
     It is common to see slow queries running bad execution plans because
     multiple columns used in the query clauses are correlated.
@@ -1099,12 +1145,12 @@ WHERE tablename = 'road';
 
    <para>
     Statistics objects are created using the
-    <xref linkend="sql-createstatistics"/> command.
+    <link linkend="sql-createstatistics"><command>CREATE STATISTICS</command></link> command.
     Creation of such an object merely creates a catalog entry expressing
     interest in the statistics.  Actual data collection is performed
     by <command>ANALYZE</command> (either a manual command, or background
     auto-analyze).  The collected values can be examined in the
-    <link linkend="catalog-pg-statistic-ext"><structname>pg_statistic_ext</structname></link>
+    <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
     catalog.
    </para>
 
@@ -1168,14 +1214,14 @@ WHERE tablename = 'road';
     <para>
      Here is an example of collecting functional-dependency statistics:
 <programlisting>
-CREATE STATISTICS stts (dependencies) ON zip, city FROM zipcodes;
+CREATE STATISTICS stts (dependencies) ON city, zip FROM zipcodes;
 
 ANALYZE zipcodes;
 
-SELECT stxname, stxkeys, stxdependencies
-  FROM pg_statistic_ext
+SELECT stxname, stxkeys, stxddependencies
+  FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid)
   WHERE stxname = 'stts';
- stxname | stxkeys |             stxdependencies               
+ stxname | stxkeys |             stxddependencies
 ---------+---------+------------------------------------------
  stts    | 1 5     | {"1 => 5": 1.000000, "5 => 1": 0.423130}
 (1 row)
@@ -1198,7 +1244,8 @@ SELECT stxname, stxkeys, stxdependencies
 
      <para>
       Functional dependencies are currently only applied when considering
-      simple equality conditions that compare columns to constant values.
+      simple equality conditions that compare columns to constant values,
+      and <literal>IN</literal> clauses with constant values.
       They are not used to improve estimates for equality conditions
       comparing two columns or comparing a column to an expression, nor for
       range clauses, <literal>LIKE</literal> or any other type of condition.
@@ -1258,14 +1305,14 @@ SELECT * FROM zipcodes WHERE city = 'San Francisco' AND zip = '90210';
      Continuing the previous example, the n-distinct counts in a
      table of ZIP codes might look like the following:
 <programlisting>
-CREATE STATISTICS stts2 (ndistinct) ON zip, state, city FROM zipcodes;
+CREATE STATISTICS stts2 (ndistinct) ON city, state, zip FROM zipcodes;
 
 ANALYZE zipcodes;
 
-SELECT stxkeys AS k, stxndistinct AS nd
-  FROM pg_statistic_ext
+SELECT stxkeys AS k, stxdndistinct AS nd
+  FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid)
   WHERE stxname = 'stts2';
--[ RECORD 1 ]--------------------------------------------------------
+-[ RECORD 1 ]------------------------------------------------------&zwsp;--
 k  | 1 2 5
 nd | {"1, 2": 33178, "1, 5": 33178, "2, 5": 27435, "1, 2, 5": 33178}
 (1 row)
@@ -1285,6 +1332,72 @@ nd | {"1, 2": 33178, "1, 5": 33178, "2, 5": 27435, "1, 2, 5": 33178}
      plans.  Otherwise, the <command>ANALYZE</command> cycles are just wasted.
     </para>
    </sect3>
+
+   <sect3>
+    <title>Multivariate MCV Lists</title>
+
+    <para>
+     Another type of statistic stored for each column are most-common value
+     lists.  This allows very accurate estimates for individual columns, but
+     may result in significant misestimates for queries with conditions on
+     multiple columns.
+    </para>
+
+    <para>
+     To improve such estimates, <command>ANALYZE</command> can collect MCV
+     lists on combinations of columns.  Similarly to functional dependencies
+     and n-distinct coefficients, it's impractical to do this for every
+     possible column grouping.  Even more so in this case, as the MCV list
+     (unlike functional dependencies and n-distinct coefficients) does store
+     the common column values.  So data is collected only for those groups
+     of columns appearing together in a statistics object defined with the
+     <literal>mcv</literal> option.
+    </para>
+
+    <para>
+     Continuing the previous example, the MCV list for a table of ZIP codes
+     might look like the following (unlike for simpler types of statistics,
+     a function is required for inspection of MCV contents):
+
+<programlisting>
+CREATE STATISTICS stts3 (mcv) ON city, state FROM zipcodes;
+
+ANALYZE zipcodes;
+
+SELECT m.* FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid),
+                pg_mcv_list_items(stxdmcv) m WHERE stxname = 'stts3';
+
+ index |         values         | nulls | frequency | base_frequency
+-------+------------------------+-------+-----------+----------------
+     0 | {Washington, DC}       | {f,f} |  0.003467 |        2.7e-05
+     1 | {Apo, AE}              | {f,f} |  0.003067 |        1.9e-05
+     2 | {Houston, TX}          | {f,f} |  0.002167 |       0.000133
+     3 | {El Paso, TX}          | {f,f} |     0.002 |       0.000113
+     4 | {New York, NY}         | {f,f} |  0.001967 |       0.000114
+     5 | {Atlanta, GA}          | {f,f} |  0.001633 |        3.3e-05
+     6 | {Sacramento, CA}       | {f,f} |  0.001433 |        7.8e-05
+     7 | {Miami, FL}            | {f,f} |    0.0014 |          6e-05
+     8 | {Dallas, TX}           | {f,f} |  0.001367 |        8.8e-05
+     9 | {Chicago, IL}          | {f,f} |  0.001333 |        5.1e-05
+   ...
+(99 rows)
+</programlisting>
+     This indicates that the most common combination of city and state is
+     Washington in DC, with actual frequency (in the sample) about 0.35%.
+     The base frequency of the combination (as computed from the simple
+     per-column frequencies) is only 0.0027%, resulting in two orders of
+     magnitude under-estimates.
+    </para>
+
+    <para>
+     It's advisable to create <acronym>MCV</acronym> statistics objects only
+     on combinations of columns that are actually used in conditions together,
+     and for which misestimation of the number of groups is resulting in bad
+     plans.  Otherwise, the <command>ANALYZE</command> and planning cycles
+     are just wasted.
+    </para>
+   </sect3>
+
   </sect2>
  </sect1>
 
@@ -1500,7 +1613,7 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
    <title>Use <command>COPY</command></title>
 
    <para>
-    Use <xref linkend="sql-copy"/> to load
+    Use <link linkend="sql-copy"><command>COPY</command></link> to load
     all the rows in one command, instead of using a series of
     <command>INSERT</command> commands.  The <command>COPY</command>
     command is optimized for loading large numbers of rows; it is less
@@ -1511,8 +1624,8 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
    </para>
 
    <para>
-    If you cannot use <command>COPY</command>, it might help to use <xref
-    linkend="sql-prepare"/> to create a
+    If you cannot use <command>COPY</command>, it might help to use <link
+    linkend="sql-prepare"><command>PREPARE</command></link> to create a
     prepared <command>INSERT</command> statement, and then use
     <command>EXECUTE</command> as many times as required.  This avoids
     some of the overhead of repeatedly parsing and planning
@@ -1535,8 +1648,8 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     needs to be written, because in case of an error, the files
     containing the newly loaded data will be removed anyway.
     However, this consideration only applies when
-    <xref linkend="guc-wal-level"/> is <literal>minimal</literal> for
-    non-partitioned tables as all commands must write WAL otherwise.
+    <xref linkend="guc-wal-level"/> is <literal>minimal</literal>
+    as all commands must write WAL otherwise.
    </para>
 
   </sect2>
@@ -1632,46 +1745,19 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     <xref linkend="guc-wal-level"/> to <literal>minimal</literal>,
     <xref linkend="guc-archive-mode"/> to <literal>off</literal>, and
     <xref linkend="guc-max-wal-senders"/> to zero.
-    But note that changing these settings requires a server restart.
+    But note that changing these settings requires a server restart,
+    and makes any base backups taken before unavailable for archive
+    recovery and standby server, which may lead to data loss.
    </para>
 
    <para>
-    Aside from avoiding the time for the archiver or WAL sender to
-    process the WAL data,
-    doing this will actually make certain commands faster, because they
-    are designed not to write WAL at all if <varname>wal_level</varname>
-    is <literal>minimal</literal>.  (They can guarantee crash safety more cheaply
-    by doing an <function>fsync</function> at the end than by writing WAL.)
-    This applies to the following commands:
-    <itemizedlist>
-     <listitem>
-      <para>
-       <command>CREATE TABLE AS SELECT</command>
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       <command>CREATE INDEX</command> (and variants such as
-       <command>ALTER TABLE ADD PRIMARY KEY</command>)
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       <command>ALTER TABLE SET TABLESPACE</command>
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       <command>CLUSTER</command>
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       <command>COPY FROM</command>, when the target table has been
-       created or truncated earlier in the same transaction
-      </para>
-     </listitem>
-    </itemizedlist>
+    Aside from avoiding the time for the archiver or WAL sender to process the
+    WAL data, doing this will actually make certain commands faster, because
+    they do not to write WAL at all if <varname>wal_level</varname>
+    is <literal>minimal</literal> and the current subtransaction (or top-level
+    transaction) created or truncated the table or index they change.  (They
+    can guarantee crash safety more cheaply by doing
+    an <function>fsync</function> at the end than by writing WAL.)
    </para>
   </sect2>
 
@@ -1680,7 +1766,7 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
 
    <para>
     Whenever you have significantly altered the distribution of data
-    within a table, running <xref linkend="sql-analyze"/> is strongly recommended. This
+    within a table, running <link linkend="sql-analyze"><command>ANALYZE</command></link> is strongly recommended. This
     includes bulk loading large amounts of data into the table.  Running
     <command>ANALYZE</command> (or <command>VACUUM ANALYZE</command>)
     ensures that the planner has up-to-date statistics about the
@@ -1695,11 +1781,11 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
   </sect2>
 
   <sect2 id="populate-pg-dump">
-   <title>Some Notes About <application>pg_dump</application></title>
+   <title>Some Notes about <application>pg_dump</application></title>
 
    <para>
     Dump scripts generated by <application>pg_dump</application> automatically apply
-    several, but not all, of the above guidelines.  To reload a
+    several, but not all, of the above guidelines.  To restore a
     <application>pg_dump</application> dump as quickly as possible, you need to
     do a few extra things manually.  (Note that these points apply while
     <emphasis>restoring</emphasis> a dump, not while <emphasis>creating</emphasis> it.
@@ -1813,14 +1899,14 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     much faster.  The following are configuration changes you can make
     to improve performance in such cases.  Except as noted below, durability
     is still guaranteed in case of a crash of the database software;
-    only abrupt operating system stoppage creates a risk of data loss
+    only an abrupt operating system crash creates a risk of data loss
     or corruption when these settings are used.
 
     <itemizedlist>
      <listitem>
       <para>
        Place the database cluster's data directory in a memory-backed
-       file system (i.e. <acronym>RAM</acronym> disk).  This eliminates all
+       file system (i.e., <acronym>RAM</acronym> disk).  This eliminates all
        database disk I/O, but limits data storage to the amount of
        available memory (and perhaps swap).
       </para>

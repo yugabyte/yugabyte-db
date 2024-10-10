@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2022: Julien Rouhaud
+ * Copyright (C) 2015-2024: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
 */
@@ -24,6 +24,8 @@
 #define HYPO_INDEX_NB_COLS		12	/* # of column hypopg() returns */
 #define HYPO_INDEX_CREATE_COLS	2	/* # of column hypopg_create_index()
 									 * returns */
+#define HYPO_HIDDEN_INDEX_COLS	1	/* # of column hypopg_hidden_indexes()
+                                     * returns */
 
 #if PG_VERSION_NUM >= 90600
 /* hardcode some bloom values, bloom.h is not exported */
@@ -111,6 +113,9 @@ typedef struct hypoIndex
 /* List of hypothetic indexes for current backend */
 extern List *hypoIndexes;
 
+/* List of hypothetical hidden existing indexes for current backend */
+extern List *hypoHiddenIndexes;
+
 /*--- Functions --- */
 
 void		hypo_index_reset(void);
@@ -121,6 +126,10 @@ PGDLLEXPORT Datum hypopg_drop_index(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hypopg_relation_size(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hypopg_get_indexdef(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hypopg_reset_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_hide_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_unhide_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_unhide_all_indexes(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_hidden_indexes(PG_FUNCTION_ARGS);
 
 extern explain_get_index_name_hook_type prev_explain_get_index_name_hook;
 hypoIndex *hypo_get_index(Oid indexId);
@@ -132,5 +141,6 @@ void		hypo_injectHypotheticalIndex(PlannerInfo *root,
 										 RelOptInfo *rel,
 										 Relation relation,
 										 hypoIndex * entry);
+void hypo_hideIndexes(RelOptInfo *rel);
 
 #endif

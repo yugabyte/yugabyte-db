@@ -645,7 +645,7 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
       auto it = InsertOrReturnExisting(
           &table_names_map,
           {TableSchemaNamePair(table_descriptor.name(), table_descriptor.pgschema_name()),
-           std::move(table_descriptor)});
+           table_descriptor});
       SCHECK(
           !it, AlreadyPresent,
           Format(

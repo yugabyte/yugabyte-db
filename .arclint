@@ -9,6 +9,7 @@
      "([.]txt$)",
      "(^src/odyssey/.*$)",
      "(^src/postgres/.*$)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
@@ -76,6 +77,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",

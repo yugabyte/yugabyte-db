@@ -1131,7 +1131,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
           && !lastTaskUuid.equals(details.placementModificationTaskUuid)) {
         // A new task has already started, wait for it to complete.
         TaskInfo taskInfo = TaskInfo.getOrBadRequest(details.placementModificationTaskUuid);
-        return CommissionerBaseTest.waitForTask(taskInfo.getTaskUUID());
+        return CommissionerBaseTest.waitForTask(taskInfo.getUuid());
       }
       CustomerTask customerTask = CustomerTask.getLastTaskByTargetUuid(universeUuid);
       if (!lastTaskUuid.equals(customerTask.getTaskUUID())) {

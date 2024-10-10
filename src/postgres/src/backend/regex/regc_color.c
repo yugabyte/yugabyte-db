@@ -936,7 +936,16 @@ okcolors(struct nfa *nfa,
 		}
 		else if (cd->nschrs == 0 && cd->nuchrs == 0)
 		{
-			/* parent empty, its arcs change color to subcolor */
+			/*
+			 * Parent is now empty, so just change all its arcs to the
+			 * subcolor, then free the parent.
+			 *
+			 * It is not obvious that simply relabeling the arcs like this is
+			 * OK; it appears to risk creating duplicate arcs.  We are
+			 * basically relying on the assumption that processing of a
+			 * bracket expression can't create arcs of both a color and its
+			 * subcolor between the bracket's endpoints.
+			 */
 			cd->sub = NOSUB;
 			scd = &cm->cd[sco];
 			assert(scd->nschrs > 0 || scd->nuchrs > 0);
@@ -977,6 +986,7 @@ colorchain(struct colormap *cm,
 {
 	struct colordesc *cd = &cm->cd[a->co];
 
+	assert(a->co >= 0);
 	if (cd->arcs != NULL)
 		cd->arcs->colorchainRev = a;
 	a->colorchain = cd->arcs;
@@ -994,6 +1004,7 @@ uncolorchain(struct colormap *cm,
 	struct colordesc *cd = &cm->cd[a->co];
 	struct arc *aa = a->colorchainRev;
 
+	assert(a->co >= 0);
 	if (aa == NULL)
 	{
 		assert(cd->arcs == a);
@@ -1012,6 +1023,9 @@ uncolorchain(struct colormap *cm,
 
 /*
  * rainbow - add arcs of all full colors (but one) between specified states
+ *
+ * If there isn't an exception color, we now generate just a single arc
+ * labeled RAINBOW, saving lots of arc-munging later on.
  */
 static void
 rainbow(struct nfa *nfa,
@@ -1025,6 +1039,13 @@ rainbow(struct nfa *nfa,
 	struct colordesc *end = CDEND(cm);
 	color		co;
 
+	if (but == COLORLESS)
+	{
+		newarc(nfa, type, RAINBOW, from, to);
+		return;
+	}
+
+	/* Gotta do it the hard way.  Skip subcolors, pseudocolors, and "but" */
 	for (cd = cm->cd, co = 0; cd < end && !CISERR(); cd++, co++)
 		if (!UNUSEDCOLOR(cd) && cd->sub != co && co != but &&
 			!(cd->flags & PSEUDO))
@@ -1034,25 +1055,50 @@ rainbow(struct nfa *nfa,
 /*
  * colorcomplement - add arcs of complementary colors
  *
+ * We add arcs of all colors that are not pseudocolors and do not match
+ * any of the "of" state's PLAIN outarcs.
+ *
  * The calling sequence ought to be reconciled with cloneouts().
  */
 static void
 colorcomplement(struct nfa *nfa,
 				struct colormap *cm,
 				int type,
-				struct state *of,	/* complements of this guy's PLAIN outarcs */
+				struct state *of,
 				struct state *from,
 				struct state *to)
 {
 	struct colordesc *cd;
 	struct colordesc *end = CDEND(cm);
 	color		co;
+	struct arc *a;
 
 	assert(of != from);
+
+	/* A RAINBOW arc matches all colors, making the complement empty */
+	if (findarc(of, PLAIN, RAINBOW) != NULL)
+		return;
+
+	/* Otherwise, transiently mark the colors that appear in of's out-arcs */
+	for (a = of->outs; a != NULL; a = a->outchain)
+	{
+		if (a->type == PLAIN)
+		{
+			assert(a->co >= 0);
+			cd = &cm->cd[a->co];
+			assert(!UNUSEDCOLOR(cd));
+			cd->flags |= COLMARK;
+		}
+	}
+
+	/* Scan colors, clear transient marks, add arcs for unmarked colors */
 	for (cd = cm->cd, co = 0; cd < end && !CISERR(); cd++, co++)
-		if (!UNUSEDCOLOR(cd) && !(cd->flags & PSEUDO))
-			if (findarc(of, PLAIN, co) == NULL)
-				newarc(nfa, type, co, from, to);
+	{
+		if (cd->flags & COLMARK)
+			cd->flags &= ~COLMARK;
+		else if (!UNUSEDCOLOR(cd) && !(cd->flags & PSEUDO))
+			newarc(nfa, type, co, from, to);
+	}
 }
 
 

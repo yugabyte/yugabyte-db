@@ -29,6 +29,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
@@ -125,6 +126,22 @@ func SplitInput(input string) []string {
 // RemoveQuotes removes the quotes around the input string & returns the raw string.
 func RemoveQuotes(input string) string {
 	return strings.Trim(input, "\"")
+}
+
+func SystemdLogMethod() string {
+	version, err := systemd.Version()
+	if err != nil {
+		log.Debug("Error determining systemd version: " + err.Error())
+		return ""
+	}
+	log.Debug("Detected OS with systemd version " + strconv.Itoa(version))
+	if version >= 240 {
+		return "append"
+	}
+	if version >= 236 {
+		return "file"
+	}
+	return ""
 }
 
 // Create or truncate a file at a relative path for the non-root case. Have to make the directory
@@ -846,7 +863,7 @@ func GetPostgresConnection(dbname string) (*sql.DB, string, error) {
 	return db, nonPwdConnStr, nil
 }
 
-// RunFromInstalled will return if yba-ctl is an "instanlled" yba-ctl or one locally executed
+// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl or one locally executed
 func RunFromInstalled() bool {
 	path, err := os.Executable()
 	if err != nil {
@@ -854,7 +871,7 @@ func RunFromInstalled() bool {
 	}
 
 	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
+		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)|(?:.*/yba-ctl/yba-ctl)")
 
 	if err != nil {
 		log.Fatal("could not compile regex: " + err.Error())

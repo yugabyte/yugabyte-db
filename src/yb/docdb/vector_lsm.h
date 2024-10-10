@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/dockv/key_bytes.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -31,6 +33,11 @@ struct VectorLSMSearchEntry {
   // base_table_key could be the encoded DocKey of the corresponding row in the base
   // (indexed) table, and the hybrid time of the vector insertion.
   KeyBuffer base_table_key;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        distance, (base_table_key, base_table_key.AsSlice().ToDebugHexString()));
+  }
 };
 
 struct VectorLSMSearchOptions {
@@ -60,15 +67,18 @@ struct VectorLSMTypes {
   using ChunkFactory = vectorindex::VectorIndexFactory<Vector, DistanceResult>;
   using SearchResults = std::vector<VectorLSMSearchEntry<DistanceResult>>;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
+  using InsertEntries = std::vector<InsertEntry>;
   using Options = VectorLSMOptions<Vector, DistanceResult>;
   using InsertRegistry = VectorLSMInsertRegistry<Vector, DistanceResult>;
   using SearchOptions = VectorLSMSearchOptions;
+  using VertexWithDistance = vectorindex::VertexWithDistance<DistanceResult>;
 };
+
+using BaseTableKeysBatch = std::vector<std::pair<vectorindex::VertexId, Slice>>;
 
 class VectorLSMKeyValueStorage {
  public:
-  virtual void StoreBaseTableKey(
-      vectorindex::VertexId vertex_id, const KeyBuffer& base_table_key) = 0;
+  virtual Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) = 0;
   virtual Result<KeyBuffer> ReadBaseTableKey(vectorindex::VertexId vertex_id) = 0;
 
   virtual ~VectorLSMKeyValueStorage() = default;
@@ -85,29 +95,34 @@ struct VectorLSMOptions {
   rpc::ThreadPool* insert_thread_pool;
 };
 
-template<vectorindex::IndexableVectorType Vector,
-         vectorindex::ValidDistanceResultType DistanceResult>
+template<vectorindex::IndexableVectorType VectorType,
+         vectorindex::ValidDistanceResultType DistanceResultType>
 class VectorLSM {
  public:
+  using DistanceResult = DistanceResultType;
+  using Vector = VectorType;
   using Types = VectorLSMTypes<Vector, DistanceResult>;
+  using Chunk = typename Types::Chunk;
   using ChunkPtr = typename Types::ChunkPtr;
   using ChunkFactory = typename Types::ChunkFactory;
   using SearchResults = typename Types::SearchResults;
   using InsertEntry = typename Types::InsertEntry;
+  using InsertEntries = typename Types::InsertEntries;
   using Options = typename Types::Options;
   using InsertRegistry = typename Types::InsertRegistry;
   using SearchOptions = typename Types::SearchOptions;
 
-  // storage_dir -- the directory to store vector index files in.
-  explicit VectorLSM(Options options);
+  VectorLSM();
+  ~VectorLSM();
 
-  Status Open();
+  Status Open(Options options);
 
-  Status Insert(std::vector<InsertEntry> entries);
+  Status Insert(std::vector<InsertEntry> entries, HybridTime write_time);
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
   size_t TEST_num_immutable_chunks() const;
+  bool TEST_HasBackgroundInserts() const;
 
  private:
   // Saves the current mutable chunk to disk and creates a new one.
@@ -115,7 +130,7 @@ class VectorLSM {
 
   Status CreateNewMutableChunk() REQUIRES(mutex_);
 
-  const Options options_;
+  Options options_;
   rocksdb::Env* const env_;
 
   size_t current_chunk_serial_no_ = 0;
@@ -125,5 +140,15 @@ class VectorLSM {
   size_t entries_in_mutable_chunks_ GUARDED_BY(mutex_) = 0;
   std::unique_ptr<InsertRegistry> insert_registry_;
 };
+
+template <template<class, class> class Factory, class VectorIndex>
+using MakeChunkFactory =
+    Factory<typename VectorIndex::Vector, typename VectorIndex::DistanceResult>;
+
+template<vectorindex::ValidDistanceResultType DistanceResult>
+void MergeChunkResults(
+    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& combined_results,
+    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& chunk_results,
+    size_t max_num_results);
 
 }  // namespace yb::docdb

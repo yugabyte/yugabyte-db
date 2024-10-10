@@ -4,7 +4,10 @@
 
 package util
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Environment variable fields
 const (
@@ -333,7 +336,7 @@ const (
 	// HashicorpVaultCertificateType type
 	HashicorpVaultCertificateType = "HashicorpVault"
 	// K8sCertManagerCertificateType type
-	K8sCertManagerCertificateType = "K8sCertManager"
+	K8sCertManagerCertificateType = "K8SCertManager"
 	// CustomCertHostPathCertificateType type
 	CustomCertHostPathCertificateType = "CustomCertHostPath"
 	// CustomServerCertCertificateType type
@@ -382,7 +385,9 @@ func YBARestrictFailedSubtasksVersions() []string {
 	return []string{"2.19.0.0"}
 }
 
-var awsInstanceWithEphemeralStorageOnly = []string{"i3.", "c5d.", "c6gd."}
+var awsInstanceWithEphemeralStorageOnly = []string{"g5.", "g6.", "g6e.", "gr6.",
+	"i3.", "i3en.", "i4g.", "i4i.", "im4gn.", "is4gen.", "p5.",
+	"p5e.", "trn1.", "trn1n.", "x1.", "x1e."}
 
 // AwsInstanceTypesWithEphemeralStorageOnly returns true if the instance
 // type has only ephemeral storage
@@ -392,7 +397,11 @@ func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
 			return true
 		}
 	}
-	return false
+
+	match := false
+	// instance types with a 'd' in the first part of their name
+	match, _ = regexp.MatchString("[^.]*d[^.]*\\..*", instanceType)
+	return match
 }
 
 // IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP

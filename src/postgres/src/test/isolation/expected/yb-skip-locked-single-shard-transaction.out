@@ -2,12 +2,16 @@ Parsed test spec with 2 sessions
 
 starting permutation: s1a s2a s1c s2c
 step s1a: SELECT * FROM test where k=1 FOR UPDATE;
-k              v
+k|v
+-+-
+1|1
+(1 row)
 
-1              1
 step s2a: SELECT * FROM test WHERE k=1 FOR UPDATE SKIP LOCKED;
-k              v
+k|v
+-+-
+(0 rows)
 
 step s1c: COMMIT;
-WARNING:  there is no transaction in progress
+s2: WARNING:  there is no transaction in progress
 step s2c: COMMIT;

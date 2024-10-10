@@ -1223,7 +1223,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
+  if (req->state().status() == TransactionStatus::APPLYING ||
+      req->state().status() == TransactionStatus::PROMOTING ||
+      cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
       participant->Handle(std::move(state), tablet.leader_term);
@@ -1416,27 +1418,8 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
     return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
   }
 
-  auto metadata = participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id());
-  if (!metadata.ok()) {
-    return metadata.status();
-  }
-
-  auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
-      tablet.tablet, nullptr);
-  auto* request = query->operation().AllocateRequest();
-  metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
-
-  query->set_callback([resp, context](const Status& status) {
-    if (!status.ok()) {
-      LOG(WARNING) << status;
-      SetupErrorAndRespond(resp->mutable_error(), status, context.get());
-    } else {
-      context->RespondSuccess();
-    }
-  });
-  tablet.peer->WriteAsync(std::move(query));
-
+  RETURN_NOT_OK(participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id()));
+  context->RespondSuccess();
   return Status::OK();
 }
 

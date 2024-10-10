@@ -1483,16 +1483,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " will be evaluated and returned",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<String> k8sUniverseDefaultServiceScope =
-      new ConfKeyInfo<>(
-          "yb.universe.default_service_scope_for_k8s",
-          ScopeType.GLOBAL,
-          "Default service scope for K8s universe",
-          "The default service scope for K8s service endpoints. Can be AZ/Namespaced. 'AZ' will"
-              + " create a service in each Availability zone, whereas 'Namespaced' will create one"
-              + " service per Namespace",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> numCloudYbaBackupsRetention =
       new ConfKeyInfo<>(
           "yb.auto_yba_backups.num_cloud_retention",
@@ -1502,4 +1492,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " retained in the storage bucket",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> autoRetryTasksOnYbaRestartTimeWindow =
+      new ConfKeyInfo<>(
+          "yb.task.auto_retry_on_yba_restart_time_window",
+          ScopeType.GLOBAL,
+          "Auto Retry Aborted Tasks on YBA Restart Time Window",
+          "On YBA startup, retry tasks automatically that were aborted due to YBA shutdown if time"
+              + " window is non-zero",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

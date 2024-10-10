@@ -943,7 +943,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<OpId> TabletPeer::MaxPersistentOpId() const {
-  auto flush_op_ids = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  auto tablet = shared_tablet();
+  if (!tablet) {
+    // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
+    return OpId::Min();
+  }
+  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
   return OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
 }
 
@@ -1234,6 +1239,16 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   }
   RETURN_NOT_OK(metadata->set_namespace_id(namespace_id));
   return namespace_id;
+}
+
+HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
+  auto tablet_result = shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
+    return HybridTime::kInitial;
+  }
+  return (*tablet_result)->GetMinStartHTRunningTxnsOrLeaderSafeTime();
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(

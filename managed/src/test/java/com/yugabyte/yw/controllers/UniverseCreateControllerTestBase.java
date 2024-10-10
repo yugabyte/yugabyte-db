@@ -1324,7 +1324,11 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     bodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
 
     Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(bodyJson));
-    assertInternalServerError(result, "No AZ found across regions: [" + r.getUuid() + "]");
+    assertInternalServerError(
+        result,
+        "Couldn't find available nodes with type a-instance for given regions: ["
+            + r.getUuid()
+            + "]");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -1425,7 +1429,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     taskParams.getPrimaryCluster().userIntent.numNodes += 5;
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
-    assertBadRequest(result, "Couldn't find 4 nodes of type type.small");
+    assertBadRequest(result, "Couldn't find 4 node(s) of type type.small");
     assertAuditEntry(0, customer.getUuid());
   }
 

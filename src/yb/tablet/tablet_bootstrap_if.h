@@ -178,6 +178,7 @@ struct BootstrapTabletData {
   bool bootstrap_retryable_requests = true;
   consensus::ConsensusMetadata* consensus_meta = nullptr;
   log::PreLogRolloverCallback pre_log_rollover_callback = {};
+  log::MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {};
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

@@ -3,7 +3,7 @@
  * pg_shseclabel.h
  *	  definition of the "shared security label" system catalog (pg_shseclabel)
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_shseclabel.h
@@ -25,10 +25,11 @@
  *		typedef struct FormData_pg_shseclabel
  * ----------------
  */
-CATALOG(pg_shseclabel,3592,SharedSecLabelRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(4066,SharedSecLabelRelation_Rowtype_Id) BKI_WITHOUT_OIDS BKI_SCHEMA_MACRO
+CATALOG(pg_shseclabel,3592,SharedSecLabelRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(4066,SharedSecLabelRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			objoid;			/* OID of the shared object itself */
-	Oid			classoid;		/* OID of table containing the shared object */
+	Oid			classoid BKI_LOOKUP(pg_class);	/* OID of table containing the
+												 * shared object */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	text		provider BKI_FORCE_NOT_NULL;	/* name of label provider */
@@ -37,5 +38,9 @@ CATALOG(pg_shseclabel,3592,SharedSecLabelRelationId) BKI_SHARED_RELATION BKI_ROW
 } FormData_pg_shseclabel;
 
 typedef FormData_pg_shseclabel * Form_pg_shseclabel;
+
+DECLARE_TOAST_WITH_MACRO(pg_shseclabel, 4060, 4061, PgShseclabelToastTable, PgShseclabelToastIndex);
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_shseclabel_object_index, 3593, SharedSecLabelObjectIndexId, on pg_shseclabel using btree(objoid oid_ops, classoid oid_ops, provider text_ops));
 
 #endif							/* PG_SHSECLABEL_H */

@@ -69,7 +69,7 @@ SIMSIMD_PUBLIC void simsimd_kabsch_bf16_accurate(simsimd_bf16_t const* a, simsim
 #endif
 
 // This file is part of the simsimd inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/ashvardanian/simsimd
-// Git tag: v5.1.0
+// Git repo: https://github.com/yugabyte/simsimd
+// Git tag: v5.4.3-yb-1
 //
 // See also src/inline-thirdparty/README.md.

@@ -27,6 +27,14 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         Json.toJson(formData));
   }
 
+  protected Result getDrConfig(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "GET",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID,
+        user.createAuthToken());
+  }
+
   protected Result setDatabasesDrConfig(UUID drConfigUUID, DrConfigSetDatabasesForm formData) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         app,
@@ -85,6 +93,26 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         app,
         "GET",
         "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/safetime",
+        user.createAuthToken());
+  }
+
+  protected Result pauseUniverses(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "POST",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/pause_universes",
+        user.createAuthToken());
+  }
+
+  protected Result resumeUniverses(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "POST",
+        "/api/customers/"
+            + customer.getUuid()
+            + "/dr_configs/"
+            + drConfigUUID
+            + "/resume_universes",
         user.createAuthToken());
   }
 

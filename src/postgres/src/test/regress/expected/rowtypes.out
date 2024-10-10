@@ -118,12 +118,18 @@ select * from people;
 (1 row)
 
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);
+update quadtable set q.c1.r = 12 where f1 = 2;
+update quadtable set q.c1 = 12;  -- error, type mismatch
+ERROR:  subfield "c1" is of type complex but expression is of type integer
+LINE 1: update quadtable set q.c1 = 12;
+                             ^
+HINT:  You will need to rewrite or cast the expression.
 select * from quadtable;
  f1 |             q             
 ----+---------------------------
   1 | ("(3.3,4.4)","(5.5,6.6)")
-  2 | ("(,4.4)","(5.5,6.6)")
  44 | ("(55,)","(,66)")
+  2 | ("(12,4.4)","(5.5,6.6)")
 (3 rows)
 
 -- The object here is to ensure that toasted references inside
@@ -294,6 +300,105 @@ order by thousand, tenthous;
       999 |     9999
 (25 rows)
 
+explain (costs off)
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Sort
+   Sort Key: thousand, tenthous
+   ->  Bitmap Heap Scan on tenk1
+         Filter: (ROW(thousand, tenthous, four) > ROW(998, 5000, 3))
+         ->  Bitmap Index Scan on tenk1_thous_tenthous
+               Index Cond: (ROW(thousand, tenthous) >= ROW(998, 5000))
+(6 rows)
+
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous;
+ thousand | tenthous | four 
+----------+----------+------
+      998 |     5998 |    2
+      998 |     6998 |    2
+      998 |     7998 |    2
+      998 |     8998 |    2
+      998 |     9998 |    2
+      999 |      999 |    3
+      999 |     1999 |    3
+      999 |     2999 |    3
+      999 |     3999 |    3
+      999 |     4999 |    3
+      999 |     5999 |    3
+      999 |     6999 |    3
+      999 |     7999 |    3
+      999 |     8999 |    3
+      999 |     9999 |    3
+(15 rows)
+
+explain (costs off)
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Index Only Scan using tenk1_thous_tenthous on tenk1
+   Index Cond: (ROW(thousand, tenthous) > ROW(998, 5000))
+(2 rows)
+
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+ thousand | tenthous 
+----------+----------
+      998 |     5998
+      998 |     6998
+      998 |     7998
+      998 |     8998
+      998 |     9998
+      999 |      999
+      999 |     1999
+      999 |     2999
+      999 |     3999
+      999 |     4999
+      999 |     5999
+      999 |     6999
+      999 |     7999
+      999 |     8999
+      999 |     9999
+(15 rows)
+
+explain (costs off)
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Sort
+   Sort Key: thousand, hundred
+   ->  Bitmap Heap Scan on tenk1
+         Filter: (ROW(998, 5000) < ROW(thousand, hundred))
+         ->  Bitmap Index Scan on tenk1_thous_tenthous
+               Index Cond: (thousand >= 998)
+(6 rows)
+
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred;
+ thousand | hundred 
+----------+---------
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+      999 |      99
+(10 rows)
+
 -- Test case for bug #14010: indexed row comparisons fail with nulls
 create temp table test_table (a text, b text);
 insert into test_table values ('a', 'b');
@@ -336,6 +441,45 @@ where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
               123 | 456
  4567890123456789 | 123
 (2 rows)
+
+-- Check ability to select columns from an anonymous rowtype
+select (row(1, 2.0)).f1;
+ f1 
+----
+  1
+(1 row)
+
+select (row(1, 2.0)).f2;
+ f2  
+-----
+ 2.0
+(1 row)
+
+select (row(1, 2.0)).nosuch;  -- fail
+ERROR:  could not identify column "nosuch" in record data type
+LINE 1: select (row(1, 2.0)).nosuch;
+                ^
+select (row(1, 2.0)).*;
+ f1 | f2  
+----+-----
+  1 | 2.0
+(1 row)
+
+select (r).f1 from (select row(1, 2.0) as r) ss;
+ f1 
+----
+  1
+(1 row)
+
+select (r).f3 from (select row(1, 2.0) as r) ss;  -- fail
+ERROR:  could not identify column "f3" in record data type
+LINE 1: select (r).f3 from (select row(1, 2.0) as r) ss;
+                ^
+select (r).* from (select row(1, 2.0) as r) ss;
+ f1 | f2  
+----+-----
+  1 | 2.0
+(1 row)
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
@@ -667,6 +811,17 @@ select row(1, '(1,2)')::testtype6 *<> row(1, '(1,3)')::testtype6;
  t
 (1 row)
 
+-- anonymous rowtypes in coldeflists
+select q.a, q.b = row(2), q.c = array[row(3)], q.d = row(row(4)) from
+    unnest(array[row(1, row(2), array[row(3)], row(row(4))),
+                 row(2, row(3), array[row(4)], row(row(5)))])
+      as q(a int, b record, c record[], d record);
+ a | ?column? | ?column? | ?column? 
+---+----------+----------+----------
+ 1 | t        | t        | t
+ 2 | f        | f        | f
+(2 rows)
+
 drop type testtype1, testtype2, testtype3, testtype4, testtype5, testtype6;
 --
 -- Test case derived from bug #5716: check multiple uses of a rowtype result
@@ -855,18 +1010,8 @@ select row_to_json(i) from int8_tbl i;
  {"q1":4567890123456789,"q2":-4567890123456789}
 (5 rows)
 
+-- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
 select row_to_json(i) from int8_tbl i(x,y);
-                 row_to_json                  
-----------------------------------------------
- {"x":123,"y":456}
- {"x":123,"y":4567890123456789}
- {"x":4567890123456789,"y":123}
- {"x":4567890123456789,"y":4567890123456789}
- {"x":4567890123456789,"y":-4567890123456789}
-(5 rows)
-
-create temp view vv1 as select * from int8_tbl;
-select row_to_json(i) from vv1 i;
                   row_to_json                   
 ------------------------------------------------
  {"q1":123,"q2":456}
@@ -876,16 +1021,7 @@ select row_to_json(i) from vv1 i;
  {"q1":4567890123456789,"q2":-4567890123456789}
 (5 rows)
 
-select row_to_json(i) from vv1 i(x,y);
-                 row_to_json                  
-----------------------------------------------
- {"x":123,"y":456}
- {"x":123,"y":4567890123456789}
- {"x":4567890123456789,"y":123}
- {"x":4567890123456789,"y":4567890123456789}
- {"x":4567890123456789,"y":-4567890123456789}
-(5 rows)
-
+-- in these examples, we'll report the exposed column names of the subselect:
 select row_to_json(ss) from
   (select q1, q2 from int8_tbl) as ss;
                   row_to_json                   
@@ -1037,7 +1173,7 @@ from (values (1,row(1,2)), (1,row(null,null)), (1,null),
 (6 rows)
 
 explain (verbose, costs off)
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
@@ -1050,7 +1186,7 @@ select r, r is null as isnull, r is not null as isnotnull from r;
            Output: "*VALUES*".column1, "*VALUES*".column2
 (5 rows)
 
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
@@ -1067,7 +1203,7 @@ select r, r is null as isnull, r is not null as isnotnull from r;
 --
 -- Tests for component access / FieldSelect
 --
-CREATE TABLE compositetable(a text, b text) WITH OIDS;
+CREATE TABLE compositetable(a text, b text);
 INSERT INTO compositetable(a, b) VALUES('fa', 'fb');
 -- composite type columns can't directly be accessed (error)
 SELECT d.a FROM (SELECT compositetable AS d FROM compositetable) s;
@@ -1081,15 +1217,15 @@ SELECT (d).a, (d).b FROM (SELECT compositetable AS d FROM compositetable) s;
  fa | fb
 (1 row)
 
--- oids can't be accessed in composite types (error)
-SELECT (d).oid FROM (SELECT compositetable AS d FROM compositetable) s;
-ERROR:  column "oid" not found in data type compositetable
-LINE 1: SELECT (d).oid FROM (SELECT compositetable AS d FROM composi...
+-- system columns can't be accessed in composite types (error)
+SELECT (d).ctid FROM (SELECT compositetable AS d FROM compositetable) s;
+ERROR:  column "ctid" not found in data type compositetable
+LINE 1: SELECT (d).ctid FROM (SELECT compositetable AS d FROM compos...
                 ^
 -- accessing non-existing column in NULL datum errors out
-SELECT (NULL::compositetable).nonexistant;
-ERROR:  column "nonexistant" not found in data type compositetable
-LINE 1: SELECT (NULL::compositetable).nonexistant;
+SELECT (NULL::compositetable).nonexistent;
+ERROR:  column "nonexistent" not found in data type compositetable
+LINE 1: SELECT (NULL::compositetable).nonexistent;
                 ^
 -- existing column in a NULL composite yield NULL
 SELECT (NULL::compositetable).a;

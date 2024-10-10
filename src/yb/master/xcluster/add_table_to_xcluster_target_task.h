@@ -67,7 +67,8 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
   scoped_refptr<UniverseReplicationInfo> universe_;
   std::shared_ptr<client::XClusterRemoteClientHolder> remote_client_;
   XClusterManagerIf& xcluster_manager_;
-  bool is_db_scoped_ = false;
+  const bool is_db_scoped_;
+  const bool is_automatic_ddl_mode_;
 };
 
 }  // namespace master

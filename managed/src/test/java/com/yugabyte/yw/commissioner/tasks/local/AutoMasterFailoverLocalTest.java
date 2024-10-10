@@ -153,7 +153,7 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
           universe.getUniverseUUID(), pickedTserverNode, UniverseTaskBase.ServerType.TSERVER);
     }
     taskInfo =
-        waitForNextTask(universe.getUniverseUUID(), taskInfo.getTaskUUID(), Duration.ofMinutes(5));
+        waitForNextTask(universe.getUniverseUUID(), taskInfo.getUuid(), Duration.ofMinutes(5));
     assertEquals(TaskType.SyncMasterAddresses, taskInfo.getTaskType());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(false, isMasterProcessRunning(pickedMasterNode.getNodeName()));

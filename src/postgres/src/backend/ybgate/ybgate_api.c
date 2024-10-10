@@ -40,6 +40,8 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
+#include "utils/array.h"
+#include "utils/acl.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/rowtypes.h"
@@ -79,7 +81,7 @@ YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	*memctx = CreateThreadLocalMemoryContext(parent, name);
+	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
 
 	PG_STATUS_OK();
 }
@@ -168,6 +170,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			Oid			funcid;
 			Oid			inputcollid;
 			List	   *args;
+			int			nargs;
 			ListCell   *lc;
 
 			/* Get the (underlying) function info. */
@@ -186,13 +189,14 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 				inputcollid = op_expr->inputcollid;
 			}
 
+			nargs = list_length(args);
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
-			FunctionCallInfoData fcinfo;
+			FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(nargs));
 
 			fmgr_info(funcid, flinfo);
-			InitFunctionCallInfoData(fcinfo,
+			InitFunctionCallInfoData(*fcinfo,
 									 flinfo,
-									 list_length(args),
+									 nargs,
 									 inputcollid,
 									 NULL,
 									 NULL);
@@ -200,19 +204,19 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			foreach(lc, args)
 			{
 				Expr *arg = (Expr *) lfirst(lc);
-				fcinfo.arg[i] = evalExpr(ctx, arg, &fcinfo.argnull[i]);
+				fcinfo->args[i].value = evalExpr(ctx, arg, &fcinfo->args[i].isnull);
 				/*
 				 * Strict functions are guaranteed to return NULL if any of
 				 * their arguments are NULL.
 				 */
-				if (flinfo->fn_strict && fcinfo.argnull[i]) {
+				if (flinfo->fn_strict && fcinfo->args[i].isnull) {
 					*is_null = true;
 					return (Datum) 0;
 				}
 				i++;
 			}
-			Datum result = FunctionCallInvoke(&fcinfo);
-			*is_null = fcinfo.isnull;
+			Datum result = FunctionCallInvoke(fcinfo);
+			*is_null = fcinfo->isnull;
 			return result;
 		}
 		case T_ScalarArrayOpExpr:
@@ -246,33 +250,33 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			}
 			/* Now get the operation function */
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
-			FunctionCallInfoData fcinfo;
+			FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(2));
 			fmgr_info(saop_expr->opfuncid, flinfo);
-			InitFunctionCallInfoData(fcinfo,
+			InitFunctionCallInfoData(*fcinfo,
 									 flinfo,
 									 2 /* list_length(saop_expr->args) */,
 									 saop_expr->inputcollid,
 									 NULL,
 									 NULL);
-			fcinfo.arg[0] =
-				evalExpr(ctx, linitial(saop_expr->args), &fcinfo.argnull[0]);
+			fcinfo->args[0].value =
+				evalExpr(ctx, linitial(saop_expr->args), &fcinfo->args[0].isnull);
 			/* Strict function with null argument does not need to be evaluated */
-			if (flinfo->fn_strict && fcinfo.argnull[0]) {
+			if (flinfo->fn_strict && fcinfo->args[0].isnull) {
 				*is_null = true;
 				return (Datum) 0;
 			}
 			*is_null = false;
 			for (int i = 0; i < array_len; i++)
 			{
-				fcinfo.arg[1] = elems[i];
-				fcinfo.argnull[1] = nulls[i];
-				if (flinfo->fn_strict && fcinfo.argnull[1])
+				fcinfo->args[1].value = elems[i];
+				fcinfo->args[1].isnull = nulls[i];
+				if (flinfo->fn_strict && fcinfo->args[1].isnull)
 				{
 					*is_null = true;
 					continue;
 				}
-				bool result = (bool) FunctionCallInvoke(&fcinfo);
-				if (fcinfo.isnull)
+				bool result = (bool) FunctionCallInvoke(fcinfo);
+				if (fcinfo->isnull)
 				{
 					*is_null = true;
 					continue;
@@ -499,6 +503,13 @@ YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *d
 	PG_STATUS_OK();
 }
 
+/* YB_TODO(Deepthi@yugabyte)
+ * - Postgres 13 has added some new types. Need to update this function accordingly.
+ * - It'd be best if you use the table "static const YBCPgTypeEntity YbTypeEntityTable[]". Just
+ *   as the attributes that you need, such as (elmlen, elmbyval, ...), and fill the table with
+ *   their values. That way, when upgrading we don't have to seek for location of datatypes every
+ *   where and update the info.
+ */
 YbgStatus YbgSplitArrayDatum(uint64_t datum,
 							 const int type,
 							 uint64_t **result_datum_array,
@@ -538,21 +549,23 @@ struct YbgReservoirStateData {
 	ReservoirStateData rs;
 };
 
-YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs)
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate_s0, uint64_t randstate_s1, YbgReservoirState *yb_rs)
 {
 	PG_SETUP_ERROR_REPORTING();
 	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
 	rstate->rs.W = rstate_w;
-	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
+	rstate->rs.randstate.s0 = randstate_s0;
+	rstate->rs.randstate.s1 = randstate_s1;
 	*yb_rs = rstate;
 	PG_STATUS_OK();
 }
 
-YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate_s0, uint64_t *randstate_s1)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*rstate_w = yb_rs->rs.W;
-	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
+	*randstate_s0 = yb_rs->rs.randstate.s0;
+	*randstate_s1 = yb_rs->rs.randstate.s1;
 	PG_STATUS_OK();
 }
 
@@ -560,7 +573,7 @@ YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 {
 	PG_SETUP_ERROR_REPORTING();
 	ReservoirState rs = &yb_rs->rs;
-	*value = sampler_random_fract(rs->randstate);
+	*value = sampler_random_fract(&rs->randstate);
 	PG_STATUS_OK();
 }
 
@@ -718,7 +731,7 @@ DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts)
 	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
 	Oid				tupType = HeapTupleHeaderGetTypeId(rec);
 	int32			tupTypmod = HeapTupleHeaderGetTypMod(rec);
-	TupleDesc		tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc		tupdesc = CreateTupleDesc(natts, attrs);
 	finfo->fn_extra = MemoryContextAlloc(GetCurrentMemoryContext(),
 										 offsetof(RecordIOData, columns) +
 											 natts * sizeof(ColumnIOData));
@@ -742,6 +755,7 @@ char *
 GetOutFuncName(const int pg_data_type)
 {
 	char *func_name;
+
 	switch (pg_data_type)
 	{
 		case BOOLOID:
@@ -771,9 +785,6 @@ GetOutFuncName(const int pg_data_type)
 		case TEXTOID:
 			func_name = "textout";
 			break;
-		case OIDOID:
-			func_name = "oidout";
-			break;
 		case TIDOID:
 			func_name = "tidout";
 			break;
@@ -788,21 +799,6 @@ GetOutFuncName(const int pg_data_type)
 			break;
 		case XMLOID:
 			func_name = "xml_out";
-			break;
-		case PGNODETREEOID:
-			func_name = "pg_node_tree_out";
-			break;
-		case PGNDISTINCTOID:
-			func_name = "pg_ndistinct_out";
-			break;
-		case PGDEPENDENCIESOID:
-			func_name = "pg_dependencies_out";
-			break;
-		case PGDDLCOMMANDOID:
-			func_name = "pg_ddl_command_out";
-			break;
-		case SMGROID:
-			func_name = "smgrout";
 			break;
 		case POINTOID:
 			func_name = "point_out";
@@ -919,7 +915,7 @@ GetOutFuncName(const int pg_data_type)
 			func_name = "jsonb_out";
 			break;
 		case TXID_SNAPSHOTOID:
-			func_name = "txid_snapshot_out";
+			func_name = "pg_snapshot_out";
 			break;
 		case RECORDOID:
 			func_name = "record_out";
@@ -936,17 +932,11 @@ GetOutFuncName(const int pg_data_type)
 		case TRIGGEROID:
 			func_name = "trigger_out";
 			break;
-		case EVTTRIGGEROID:
-			func_name = "event_trigger_out";
-			break;
 		case LANGUAGE_HANDLEROID:
 			func_name = "language_handler_out";
 			break;
 		case INTERNALOID:
 			func_name = "internal_out";
-			break;
-		case OPAQUEOID:
-			func_name = "opaque_out";
 			break;
 		case ANYELEMENTOID:
 			func_name = "anyelement_out";
@@ -1086,15 +1076,6 @@ GetOutFuncName(const int pg_data_type)
 		case FLOAT8ARRAYOID:
 			func_name = "float8out";
 			break;
-		case ABSTIMEARRAYOID:
-			func_name = "abstimeout";
-			break;
-		case RELTIMEARRAYOID:
-			func_name = "reltimeout";
-			break;
-		case TINTERVALARRAYOID:
-			func_name = "tintervalout";
-			break;
 		case ACLITEMARRAYOID:
 			func_name = "aclitemout";
 			break;
@@ -1186,7 +1167,7 @@ GetOutFuncName(const int pg_data_type)
 			func_name = "jsonb_out";
 			break;
 		case TXID_SNAPSHOTARRAYOID:
-			func_name = "txid_snapshot_out";
+			func_name = "pg_snapshot_out";
 			break;
 		case RECORDARRAYOID:
 			func_name = "record_out";
@@ -1215,6 +1196,8 @@ GetOutFuncName(const int pg_data_type)
 		case INT8RANGEARRAYOID:
 			func_name = "int8out";
 			break;
+		default:
+			func_name = NULL;
 	}
 	return func_name;
 }
@@ -1229,7 +1212,7 @@ GetRecordTypeId(uintptr_t datum)
 uintptr_t
 HeapFormTuple(void *attrs, size_t natts, uintptr_t *values, bool *nulls)
 {
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	PG_RETURN_HEAPTUPLEHEADER(heap_form_tuple(tupdesc, values, nulls)->t_data);
 }
 
@@ -1243,7 +1226,7 @@ HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
 	tuple.t_data = rec;
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 }

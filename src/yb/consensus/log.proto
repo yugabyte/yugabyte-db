@@ -134,4 +134,11 @@ message LogSegmentFooterPB {
   // Offset of the first index block. Absence means there is no log index stored in this log
   // segment.
   optional int64 index_start_offset = 5;
+  // Minimum start time of running transactions right before closing of the log segment. It can be
+  // either of the following values:
+  // 1. Minimum start HT of running txns (if any)
+  // 2. Tablet leader safe time
+  // 3. HybridTime::kInitial if both the previous values were HybridTime::kInvalid or not
+  // fetched successfully.
+  optional uint64 min_start_time_running_txns = 6;
 }

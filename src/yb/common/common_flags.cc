@@ -70,6 +70,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
 TAG_FLAG(ysql_enable_db_catalog_version_mode, advanced);
 TAG_FLAG(ysql_enable_db_catalog_version_mode, hidden);
 
+DEFINE_test_flag(bool, ysql_enable_db_logical_client_version_mode, true,
+    "Enable the per database logical client version mode, a DDL statement that only "
+    "affects the current database will only increment catalog version for "
+    "the current database.");
+
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
     " out of the RPC timeout to respond back to client. If margin is zero, client will determine"
@@ -164,7 +169,7 @@ bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
   // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (yb::std_util::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
+  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "Must be less than consensus_max_batch_size_bytes "
         << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
@@ -209,7 +214,7 @@ TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
 
 // The flag is used both in DocRowwiseIterator and at PG side (needed for Cost Based Optimizer).
 // But it is not tagged with kPg as it would be used both for YSQL and YCQL (refer to GH #22371).
-DEFINE_NON_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
+DEFINE_NON_RUNTIME_bool(use_fast_backward_scan, true,
     "Use backward scan optimization to build a row in the reverse order for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
@@ -227,11 +232,16 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup
                         "stream.");
 TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_update_optimization_infra, false,
-                               "Enables optimizations of YSQL UPDATE queries. This includes "
-                               "(but not limited to) skipping redundant secondary index updates "
-                               "and redundant constraint checks.");
-TAG_FLAG(ysql_yb_update_optimization_infra, advanced);
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted, false, true,
+                            "Enables optimizations of YSQL UPDATE queries. This includes "
+                            "(but not limited to) skipping redundant secondary index updates "
+                            "and redundant constraint checks.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
+                       "Enables the comparison of old and new values of columns specified in the "
+                       "SET clause of YSQL UPDATE queries to skip redundant secondary index "
+                       "updates and redundant constraint checks.");
+TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
 
 namespace yb {
 

@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
@@ -48,6 +50,7 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -59,6 +62,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -210,6 +214,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig, TaskType.EditDrConfig));
     DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
         State.Failed, ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
+  }
+
+  public static enum XClusterUniverseAction {
+    PAUSE,
+    RESUME
   }
 
   protected XClusterConfigTaskBase(
@@ -1838,6 +1847,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param ybService The YBClientService used for communication with the YB client.
    * @param tableIds The set of table IDs to verify.
    * @param configType The configuration type.
+   * @param tableType The table type.
    * @param sourceUniverseUUID The UUID of the source universe.
    * @param sourceTableInfoList The list of table information from the source universe.
    * @param targetUniverseUUID The UUID of the target universe.
@@ -1849,6 +1859,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static void verifyTablesNotInReplication(
       YBClientService ybService,
       Set<String> tableIds,
+      XClusterConfig.TableType tableType,
       XClusterConfig.ConfigType configType,
       UUID sourceUniverseUUID,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
@@ -1878,6 +1889,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         getClusterConfig(ybService, sourceUniverse);
     CatalogEntityInfo.SysClusterConfigEntryPB targetClusterConfig =
         getClusterConfig(ybService, targetUniverse);
+
+    sourceTableInfoList =
+        tableType.equals(XClusterConfig.TableType.YSQL)
+            ? TableInfoUtil.getYsqlTables(sourceTableInfoList)
+            : TableInfoUtil.getYcqlTables(sourceTableInfoList);
+    targetTableInfoList =
+        tableType.equals(XClusterConfig.TableType.YSQL)
+            ? TableInfoUtil.getYsqlTables(targetTableInfoList)
+            : TableInfoUtil.getYcqlTables(targetTableInfoList);
 
     Map<String, String> sourceTableIdToTargetTableIdMap =
         getSourceTableIdTargetTableIdMap(sourceTableInfoList, targetTableInfoList);
@@ -2018,6 +2038,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     ReplicationClusterData replicationClusterData = null;
     try {
       replicationClusterData = collectReplicationClusterData(ybClientService, xClusterConfig);
+      XClusterConfig.TableType tableType = xClusterConfig.getTableType();
+      replicationClusterData.sourceTableInfoList =
+          tableType.equals(XClusterConfig.TableType.YSQL)
+              ? TableInfoUtil.getYsqlTables(replicationClusterData.sourceTableInfoList)
+              : TableInfoUtil.getYcqlTables(replicationClusterData.sourceTableInfoList);
+      replicationClusterData.targetTableInfoList =
+          tableType.equals(XClusterConfig.TableType.YSQL)
+              ? TableInfoUtil.getYsqlTables(replicationClusterData.targetTableInfoList)
+              : TableInfoUtil.getYcqlTables(replicationClusterData.targetTableInfoList);
     } catch (Exception e) {
       log.error(
           "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
@@ -2441,7 +2470,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             tableConfig -> {
               String targetTableId = sourceTableIdToTargetTableIdMap.get(tableConfig.getTableId());
               if (targetTableId == null) {
-                tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                if (xClusterConfig.getType().equals(ConfigType.Db)) {
+                  // For DB replication, new tables missing from the target are added to the
+                  // source outbound universe replication group and are in the INITIATED state.
+                  // Therefore, we need to set the status to ExtraTableOnSource instead of
+                  // DroppedFromTarget.
+                  tableConfig.setStatus(XClusterTableConfig.Status.ExtraTableOnSource);
+                } else {
+                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                }
               }
             });
 
@@ -2463,6 +2500,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                       .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
                       .findFirst();
               if (!existingTableConfig.isPresent()) {
+                if (xClusterConfig.getType().equals(ConfigType.Db)) {
+                  // For DB replication, extra tables on the source are in the INITIATED state and
+                  // part of the replication group. However, tables that were previously part of
+                  // replication but were dropped from the source are not in the replication group
+                  // and may appear as extra tables on the source. Therefore, we need to set the
+                  // status to DroppedFromTarget.
+                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+                }
                 xClusterConfig.addTableConfig(tableConfig);
               } else {
                 log.info(
@@ -2904,6 +2949,62 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               dbIds.size(), foundDbIds.size(), missingDbIds));
     }
     return requestedTableInfoList;
+  }
+
+  protected void createUpdateWalRetentionTasks(Universe universe, XClusterUniverseAction action) {
+    List<NodeDetails> tServerNodes = universe.getTServersInPrimaryCluster();
+
+    createSetFlagInMemoryTasks(
+        tServerNodes,
+        ServerType.TSERVER,
+        (node, params) -> {
+          params.force = true;
+          if (action == XClusterUniverseAction.PAUSE) {
+            params.gflags =
+                Collections.singletonMap(
+                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
+          } else if (action == XClusterUniverseAction.RESUME) {
+            Map<String, String> oldGFlags =
+                GFlagsUtil.getGFlagsForNode(
+                    node,
+                    ServerType.TSERVER,
+                    universe.getUniverseDetails().getPrimaryCluster(),
+                    universe.getUniverseDetails().clusters);
+            params.gflags =
+                Collections.singletonMap(
+                    GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN,
+                    oldGFlags.containsKey(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
+                        ? oldGFlags.get(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN)
+                        : "900");
+          }
+        });
+
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
+    for (NodeDetails nodeDetails : tServerNodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent,
+              nodeDetails,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.GFlags,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              nodeDetails,
+              ServerType.TSERVER,
+              universe.getUniverseDetails().getPrimaryCluster(),
+              universe.getUniverseDetails().clusters);
+      if (action == XClusterUniverseAction.PAUSE) {
+        params.gflags.put(
+            GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
+      }
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
   }
 
   // DR methods.

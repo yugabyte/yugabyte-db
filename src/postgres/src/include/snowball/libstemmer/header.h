@@ -23,7 +23,9 @@ struct among
 extern symbol * create_s(void);
 extern void lose_s(symbol * p);
 
-extern int skip_utf8(const symbol * p, int c, int lb, int l, int n);
+extern int skip_utf8(const symbol * p, int c, int limit, int n);
+
+extern int skip_b_utf8(const symbol * p, int c, int limit, int n);
 
 extern int in_grouping_U(struct SN_env * z, const unsigned char * s, int min, int max, int repeat);
 extern int in_grouping_b_U(struct SN_env * z, const unsigned char * s, int min, int max, int repeat);
@@ -53,5 +55,7 @@ extern int insert_v(struct SN_env * z, int bra, int ket, const symbol * p);
 
 extern symbol * slice_to(struct SN_env * z, symbol * p);
 extern symbol * assign_to(struct SN_env * z, symbol * p);
+
+extern int len_utf8(const symbol * p);
 
 extern void debug(struct SN_env * z, int number, int line_count);

@@ -604,6 +604,7 @@ public class XClusterConfigController extends AuthenticatedController {
       XClusterConfigTaskBase.verifyTablesNotInReplication(
           ybService,
           tableIdsToAdd,
+          xClusterConfig.getTableType(),
           xClusterConfig.getType(),
           xClusterConfig.getSourceUniverseUUID(),
           sourceTableInfoList,
@@ -1820,6 +1821,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,
         tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
         configType,
         sourceUniverse.getUniverseUUID(),
         sourceTableInfoList,

@@ -987,7 +987,7 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
 #if YB_TCMALLOC_ENABLED
 TEST_F(TabletServerTest, TestUntrackedMemory) {
   auto server_metric_entity = mini_server_->server()->metric_entity();
-  ASSERT_TRUE(server_metric_entity->TEST_ContainMetricName("untracked_memory"));
+  ASSERT_TRUE(server_metric_entity->TEST_ContainsMetricName("untracked_memory"));
 
   const size_t kBufferSize = 10_MB;
   std::unique_ptr<char[]> alloc(new char[kBufferSize]);

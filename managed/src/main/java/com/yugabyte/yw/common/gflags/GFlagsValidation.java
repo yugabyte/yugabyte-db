@@ -102,6 +102,30 @@ public class GFlagsValidation {
     this.releaseManager = releaseManager;
   }
 
+  /**
+   * Given a YBDB version, returns a set of JsonPaths containing the sensitive Master and Tserver
+   * Gflags.
+   */
+  public Set<String> getSensitiveJsonPathsForVersion(String version) {
+    LOG.info("Parsing sensitive gflags for DB version " + version);
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (ServerType server : ServerType.values()) {
+      if (!server.equals(ServerType.MASTER) && !server.equals(ServerType.TSERVER)) {
+        continue;
+      }
+      try {
+        for (GFlagDetails gflag : extractGFlags(version, server.name(), false)) {
+          if (gflag.tags.contains("sensitive_info")) {
+            sensitiveGflags.add("$.." + gflag.name);
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Error while fetching Gflags for db version " + version, e);
+      }
+    }
+    return sensitiveGflags;
+  }
+
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
       throws IOException {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
@@ -484,12 +508,12 @@ public class GFlagsValidation {
     }
   }
 
-  public Optional<String> getYsqlMajorVersion(String version) throws IOException {
+  public Optional<Integer> getYsqlMajorVersion(String version) throws IOException {
     File file = getDBMetadataFile(version);
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode jsonNode = objectMapper.readTree(file);
     if (jsonNode.has(YSQL_MAJOR_VERSION_FIELD_NAME)) {
-      String ysqlMajorVersion = jsonNode.get(YSQL_MAJOR_VERSION_FIELD_NAME).asText();
+      int ysqlMajorVersion = jsonNode.get(YSQL_MAJOR_VERSION_FIELD_NAME).asInt();
       return Optional.of(ysqlMajorVersion);
     } else {
       return Optional.empty();
@@ -519,14 +543,14 @@ public class GFlagsValidation {
 
   public boolean ysqlMajorVersionUpgrade(String oldVersion, String newVersion) {
     try {
-      Optional<String> newVersionYsqlVersion = getYsqlMajorVersion(newVersion);
-      Optional<String> oldVersionYsqlVersion = getYsqlMajorVersion(oldVersion);
+      Optional<Integer> newVersionYsqlVersion = getYsqlMajorVersion(newVersion);
+      Optional<Integer> oldVersionYsqlVersion = getYsqlMajorVersion(oldVersion);
 
       // We assume that old db version that does not contains ysql major version are on pg-11.
       if (!newVersionYsqlVersion.isPresent()) {
         return false;
       }
-      if (newVersionYsqlVersion.get().equals("15")) {
+      if (newVersionYsqlVersion.get().equals(15)) {
         if (oldVersionYsqlVersion.isPresent()) {
           if (newVersionYsqlVersion.get().equals(oldVersionYsqlVersion.get())) {
             return false;

@@ -3,7 +3,8 @@ title: Java Driver 3.10 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 3.10 driver
-badges: ycql
+tags:
+  other: ycql
 aliases:
   - /preview/tutorials/build-apps/java/ycql
 menu:
@@ -31,13 +32,19 @@ type: docs
   <li >
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (3.10)
+      YCQL (3.10)
     </a>
   </li>
    <li >
     <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.15)
+      YCQL (4.15)
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL (4.15) with SSL
     </a>
   </li>
 </ul>

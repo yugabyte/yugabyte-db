@@ -36,6 +36,7 @@ import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
 import { parseDurationToSeconds } from '../../../../utils/parsers';
 import { convertSecondsToLargestDurationUnit } from '../utils';
 import { PITR_RETENTION_PERIOD_UNIT_OPTIONS } from './ConfigurePitrStep';
+import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
@@ -472,6 +473,7 @@ const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
   );
 
   return {
+    configName: `dr-config-${generateUniqueName()}`,
     namespaceUuids: [],
     tableUuids: [],
     // Fall back to seconds if we can find a matching duration unit.

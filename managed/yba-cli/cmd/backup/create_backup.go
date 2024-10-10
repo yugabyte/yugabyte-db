@@ -138,7 +138,26 @@ var createBackupCmd = &cobra.Command{
 
 		}
 
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Create - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+		}
+
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		if !strings.EqualFold(tableTypeFlag, "ysql") &&
 			!strings.EqualFold(tableTypeFlag, "ycql") &&
 			!strings.EqualFold(tableTypeFlag, "yedis") {
@@ -164,6 +183,16 @@ var createBackupCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		enableVerboseLogs, err := cmd.Flags().GetBool("enable-verbose-logs")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		parallelism, err := cmd.Flags().GetInt("parallelism")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		var keyspaceTableList []ybaclient.KeyspaceTable
 		keyspaces, err := cmd.Flags().GetStringArray("keyspace-info")
 		if err != nil {
@@ -171,6 +200,11 @@ var createBackupCmd = &cobra.Command{
 		}
 
 		timeBeforeDeleteInMs, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		category, err := cmd.Flags().GetString("category")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -185,12 +219,15 @@ var createBackupCmd = &cobra.Command{
 			UniverseUUID:      universeUUID,
 			CustomerUUID:      util.GetStringPointer(authAPI.CustomerUUID),
 			StorageConfigUUID: storageUUID,
+			BackupCategory:    util.GetStringPointer(strings.ToUpper(category)),
 			BackupType:        util.GetStringPointer(backupType),
 			KeyspaceTableList: &keyspaceTableList,
 			UseTablespaces:    util.GetBoolPointer(useTablespaces),
 			Sse:               util.GetBoolPointer(sse),
 			TimeBeforeDelete:  util.GetInt64Pointer(timeBeforeDeleteInMs),
 			ExpiryTimeUnit:    util.GetStringPointer("MILLISECONDS"),
+			EnableVerboseLogs: util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:       util.GetInt32Pointer(int32(parallelism)),
 		}
 
 		if (len(strings.TrimSpace(baseBackupUUID))) > 0 {
@@ -245,17 +282,8 @@ var createBackupCmd = &cobra.Command{
 				backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 				r, response, err := backupListRequest.Execute()
 				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe Backup")
+					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
 					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(r.GetEntities()) == 1 {
-					fullBackupContext := *backup.NewFullBackupContext()
-					fullBackupContext.Output = os.Stdout
-					fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
-					fullBackupContext.SetFullBackup(r.GetEntities()[0])
-					fullBackupContext.Write()
-					return
 				}
 
 				if len(r.GetEntities()) < 1 {
@@ -362,6 +390,14 @@ func init() {
 		"[Optional] Backup tablespaces information as part of the backup")
 	createBackupCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3")
+	createBackupCmd.Flags().String("category", "",
+		"[Optional] Category of the backup. "+
+			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
+			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+	createBackupCmd.Flags().Bool("enable-verbose-logs", false,
+		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
+	createBackupCmd.Flags().Int("parallelism", 8,
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 	createBackupCmd.Flags().String("base-backup-uuid", "",
 		"[Optional] Base Backup UUID for taking incremental backups")
 }

@@ -4,7 +4,8 @@
 %common.entities;
 ]>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
-                version="1.0">
+                version="1.0"
+                xmlns="http://www.w3.org/1999/xhtml">
 
 <!--
   This file contains XSLT stylesheet customizations that are common to
@@ -14,9 +15,18 @@
 <!-- Parameters -->
 <xsl:param name="make.valid.html" select="1"></xsl:param>
 <xsl:param name="generate.id.attributes" select="1"></xsl:param>
+<xsl:param name="make.graphic.viewport" select="0"/>
 <xsl:param name="link.mailto.url">pgsql-docs@lists.postgresql.org</xsl:param>
 <xsl:param name="toc.max.depth">2</xsl:param>
 
+<!--
+  The below allows the stylesheets provided by the website to be applied fully
+  to the generated HTML.
+  -->
+<xsl:template name="body.attributes">
+  <xsl:attribute name="id">docContent</xsl:attribute>
+  <xsl:attribute name="class">container-fluid col-10</xsl:attribute>
+</xsl:template>
 
 <!-- Change display of some elements -->
 
@@ -117,8 +127,11 @@ set       toc,title
                                                  &uppercase;),
                                              substring(&primary;, 1, 1)))]"/>
 
-  <div class="index">
-    <!-- pgsql-docs: begin added stuff -->
+  <!-- pgsql-docs: added xmlns:xlink, autoidx.xsl doesn't include xlink in
+       exclude-result-prefixes. Without our customization that just leads to a
+       single xmlns:xlink in this div, but because we emit it it otherwise
+       gets pushed down to the elements output by autoidx.xsl -->
+  <div class="index" xmlns:xlink="http://www.w3.org/1999/xlink">
     <p class="indexdiv-quicklinks">
       <a href="#indexdiv-Symbols">
         <xsl:call-template name="gentext">

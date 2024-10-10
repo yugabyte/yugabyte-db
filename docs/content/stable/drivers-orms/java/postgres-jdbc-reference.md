@@ -3,7 +3,8 @@ title: PostgreSQL JDBC Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: Java JDBC Driver for YSQL
-badges: ysql
+tags:
+  other: ysql
 menu:
   stable:
     name: JDBC Drivers

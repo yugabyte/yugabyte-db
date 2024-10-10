@@ -42,7 +42,7 @@ public class TaskTest extends FakeDBApplication {
     taskInfo.save();
 
     // Check the various fields.
-    assertNotNull(taskInfo.getTaskUUID());
+    assertNotNull(taskInfo.getUuid());
     assertEquals(taskInfo.getTaskType(), TaskType.CreateUniverse);
     assertNotNull(taskInfo.getCreateTime());
     assertNotNull(taskInfo.getUpdateTime());

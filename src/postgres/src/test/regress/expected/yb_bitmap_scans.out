@@ -1890,9 +1890,9 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON 
          Filter: ((a.k1 = k1) OR ((a.k2 = k1) AND (a.k1 = 1)))
          ->  BitmapOr
                ->  Bitmap Index Scan on t2_k1_idx
-                     Index Cond: (a.k1 = k1)
+                     Index Cond: (k1 = a.k1)
                ->  Bitmap Index Scan on t2_k1_idx
-                     Index Cond: (a.k2 = k1)
+                     Index Cond: (k1 = a.k2)
 (9 rows)
 
 --

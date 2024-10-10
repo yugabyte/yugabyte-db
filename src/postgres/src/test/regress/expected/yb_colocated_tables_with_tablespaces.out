@@ -556,14 +556,14 @@ DROP TABLE table2;
 DROP TABLE table3;
 -- Explicitly specifying pg_default tablespace must not create a new tablegroup
 CREATE TABLE table1(a int);
-SELECT * FROM pg_yb_tablegroup;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
  grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+----------+---------------+--------+------------
  default |       10 |             0 |        |
 (1 row)
 
 CREATE TABLE table2(a int) TABLESPACE pg_default;
-SELECT * FROM pg_yb_tablegroup;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
  grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+----------+---------------+--------+------------
  default |       10 |             0 |        |
@@ -606,12 +606,12 @@ CREATE TABLE t1 (a int) TABLESPACE tsp1;
 CREATE TABLE t2 (a int) TABLESPACE tsp1;
 DROP TABLESPACE tsp1;
 ERROR:  tablespace "tsp1" cannot be dropped because some objects depend on it
-DETAIL:  tablespace of table t1
-tablespace of table t2
+DETAIL:  tablespace for table t1
+tablespace for table t2
 DROP TABLE t1;
 DROP TABLESPACE tsp1;
 ERROR:  tablespace "tsp1" cannot be dropped because some objects depend on it
-DETAIL:  tablespace of table t2
+DETAIL:  tablespace for table t2
 DROP TABLE t2;
 DROP TABLESPACE tsp1;
 DROP TABLESPACE tsp2;

@@ -13,8 +13,6 @@
 
 #include "yb/tablet/running_transaction.h"
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/hybrid_time.h"
@@ -635,6 +633,7 @@ const TabletId& RunningTransaction::status_tablet() const {
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
+  metadata_.locality = TransactionLocality::GLOBAL;
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

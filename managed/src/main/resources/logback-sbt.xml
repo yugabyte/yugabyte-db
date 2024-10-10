@@ -194,6 +194,7 @@
 
   <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
   <logger name="kamon.module.ModuleRegistry" level="ERROR"/>
+  <logger name="org.apache.pekko.actor.ActorSystemImpl" level="ERROR"/>
 
   <root level="WARN">
     <appender-ref ref="ASYNCSTDOUT" />

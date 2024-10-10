@@ -59,7 +59,7 @@ public interface OperatorStatusUpdater {
     startYBUniverseEventStatus(universe, universeName, taskName, taskUUID, state, false);
   }
 
-  default void updateRestoreJobStatus(String message, UUID taskUUID) {
+  default void updateRestoreJobStatus(String message, UUID taskUUID, Universe universe) {
     // no-op implementation
   }
 

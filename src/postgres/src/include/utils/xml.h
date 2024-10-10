@@ -4,7 +4,7 @@
  *	  Declarations for XML data type support.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/xml.h
@@ -15,10 +15,10 @@
 #ifndef XML_H
 #define XML_H
 
+#include "executor/tablefunc.h"
 #include "fmgr.h"
 #include "nodes/execnodes.h"
 #include "nodes/primnodes.h"
-#include "executor/tablefunc.h"
 
 typedef struct varlena xmltype;
 
@@ -58,12 +58,12 @@ extern PgXmlErrorContext *pg_xml_init(PgXmlStrictness strictness);
 extern void pg_xml_done(PgXmlErrorContext *errcxt, bool isError);
 extern bool pg_xml_error_occurred(PgXmlErrorContext *errcxt);
 extern void xml_ereport(PgXmlErrorContext *errcxt, int level, int sqlcode,
-			const char *msg);
+						const char *msg);
 
 extern xmltype *xmlconcat(List *args);
 extern xmltype *xmlelement(XmlExpr *xexpr,
-		   Datum *named_argvalue, bool *named_argnull,
-		   Datum *argvalue, bool *argnull);
+						   Datum *named_argvalue, bool *named_argnull,
+						   Datum *argvalue, bool *argnull);
 extern xmltype *xmlparse(text *data, XmlOptionType xmloption, bool preserve_whitespace);
 extern xmltype *xmlpi(const char *target, text *arg, bool arg_is_null, bool *result_is_null);
 extern xmltype *xmlroot(xmltype *data, text *version, int standalone);
@@ -75,10 +75,10 @@ extern char *map_sql_identifier_to_xml_name(const char *ident, bool fully_escape
 extern char *map_xml_name_to_sql_identifier(const char *name);
 extern char *map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_strings);
 
-extern int	xmlbinary;			/* XmlBinaryType, but int for guc enum */
+extern PGDLLIMPORT int xmlbinary;	/* XmlBinaryType, but int for guc enum */
 
-extern int	xmloption;			/* XmlOptionType, but int for guc enum */
+extern PGDLLIMPORT int xmloption;	/* XmlOptionType, but int for guc enum */
 
-extern const TableFuncRoutine XmlTableRoutine;
+extern PGDLLIMPORT const TableFuncRoutine XmlTableRoutine;
 
 #endif							/* XML_H */

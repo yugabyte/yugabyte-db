@@ -470,6 +470,7 @@ export const TableSelect = (props: TableSelectProps) => {
           placeholder={t('tablesSearchBarPlaceholder')}
         />
         {props.configAction === XClusterConfigAction.MANAGE_TABLE &&
+          xClusterConfigType !== XClusterConfigType.DB_SCOPED &&
           tableType === TableType.PGSQL_TABLE_TYPE && (
             <YBButton
               variant="primary"

@@ -5,11 +5,13 @@
     },
     ".": [
       "$BUILD_ROOT/auto_flags.json",
+      "$BUILD_ROOT/gflag_allowlist.txt",
       "$BUILD_ROOT/master_flags.xml",
       "$BUILD_ROOT/tserver_flags.xml",
       "$BUILD_ROOT/version_metadata.json"
     ],
     "bin": [
+      "$BUILD_ROOT/bin/clockbound_dump",
       "$BUILD_ROOT/bin/ldb",
       "$BUILD_ROOT/bin/log-dump",
       "$BUILD_ROOT/bin/odyssey",
@@ -28,6 +30,8 @@
       "bin/bulk_load_cleanup.sh",
       "bin/bulk_load_helper.sh",
       "bin/configure",
+      "bin/configure_clockbound.sh",
+      "bin/configure_ptp.sh",
       "bin/log_cleanup.sh",
       "bin/yb-check-consistency.py",
       "bin/yugabyted",

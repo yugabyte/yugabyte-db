@@ -24,14 +24,21 @@ class MasterClusterClient {
  public:
   explicit MasterClusterClient(MasterClusterProxy&& proxy) noexcept;
 
-  Result<ListTabletServersResponsePB> ListTabletServers();
+  Status BlacklistHost(HostPortPB&& host) const;
+  Status ClearBlacklist() const;
 
-  Result<ListLiveTabletServersResponsePB> ListLiveTabletServers();
+  Result<std::optional<ListTabletServersResponsePB::Entry>> GetTabletServer(
+      const std::string& uuid) const;
 
-  Result<GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
+  Result<ListTabletServersResponsePB> ListTabletServers() const;
 
-  Result<ChangeMasterClusterConfigResponsePB> ChangeMasterClusterConfig(
-      const SysClusterConfigEntryPB& cluster_config);
+  Result<ListLiveTabletServersResponsePB> ListLiveTabletServers() const;
+
+  Result<SysClusterConfigEntryPB> GetMasterClusterConfig() const;
+
+  Status ChangeMasterClusterConfig(SysClusterConfigEntryPB&& cluster_config) const;
+
+  Status RemoveTabletServer(std::string&& uuid) const;
 
  private:
   MasterClusterProxy proxy_;

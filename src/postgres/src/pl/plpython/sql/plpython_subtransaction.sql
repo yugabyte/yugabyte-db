@@ -8,43 +8,6 @@ CREATE TABLE subtransaction_tbl (
     i integer
 );
 
--- Explicit case for Python <2.6
-
-CREATE FUNCTION subtransaction_test(what_error text = NULL) RETURNS text
-AS $$
-import sys
-subxact = plpy.subtransaction()
-subxact.__enter__()
-exc = True
-try:
-    try:
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (1)")
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (2)")
-        if what_error == "SPI":
-            plpy.execute("INSERT INTO subtransaction_tbl VALUES ('oops')")
-        elif what_error == "Python":
-            raise Exception("Python exception")
-    except:
-        exc = False
-        subxact.__exit__(*sys.exc_info())
-        raise
-finally:
-    if exc:
-        subxact.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
-
-SELECT subtransaction_test();
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('SPI');
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('Python');
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-
--- Context manager case for Python >=2.6
-
 CREATE FUNCTION subtransaction_ctx_test(what_error text = NULL) RETURNS text
 AS $$
 with plpy.subtransaction():
@@ -54,7 +17,7 @@ with plpy.subtransaction():
         plpy.execute("INSERT INTO subtransaction_tbl VALUES ('oops')")
     elif what_error == "Python":
         raise Exception("Python exception")
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_ctx_test();
 SELECT * FROM subtransaction_tbl;
@@ -77,12 +40,12 @@ with plpy.subtransaction():
         with plpy.subtransaction():
             plpy.execute("INSERT INTO subtransaction_tbl VALUES (3)")
             plpy.execute("error")
-    except plpy.SPIError, e:
+    except plpy.SPIError as e:
         if not swallow:
             raise
         plpy.notice("Swallowed %s(%r)" % (e.__class__.__name__, e.args[0]))
 return "ok"
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_nested_test();
 SELECT * FROM subtransaction_tbl;
@@ -102,7 +65,7 @@ with plpy.subtransaction():
     plpy.execute("INSERT INTO subtransaction_tbl VALUES (2)")
     plpy.execute("SELECT subtransaction_nested_test('t')")
 return "ok"
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_deeply_nested_test();
 SELECT * FROM subtransaction_tbl;
@@ -113,25 +76,25 @@ TRUNCATE subtransaction_tbl;
 CREATE FUNCTION subtransaction_exit_without_enter() RETURNS void
 AS $$
 plpy.subtransaction().__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_enter_without_exit() RETURNS void
 AS $$
 plpy.subtransaction().__enter__()
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_exit_twice() RETURNS void
 AS $$
 plpy.subtransaction().__enter__()
 plpy.subtransaction().__exit__(None, None, None)
 plpy.subtransaction().__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_enter_twice() RETURNS void
 AS $$
 plpy.subtransaction().__enter__()
 plpy.subtransaction().__enter__()
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_exit_same_subtransaction_twice() RETURNS void
 AS $$
@@ -139,7 +102,7 @@ s = plpy.subtransaction()
 s.__enter__()
 s.__exit__(None, None, None)
 s.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_enter_same_subtransaction_twice() RETURNS void
 AS $$
@@ -147,20 +110,23 @@ s = plpy.subtransaction()
 s.__enter__()
 s.__enter__()
 s.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 -- No warnings here, as the subtransaction gets indeed closed
 CREATE FUNCTION subtransaction_enter_subtransaction_in_with() RETURNS void
 AS $$
 with plpy.subtransaction() as s:
     s.__enter__()
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION subtransaction_exit_subtransaction_in_with() RETURNS void
 AS $$
-with plpy.subtransaction() as s:
-    s.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
+try:
+    with plpy.subtransaction() as s:
+        s.__exit__(None, None, None)
+except ValueError as e:
+    raise ValueError(e)
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_exit_without_enter();
 SELECT subtransaction_enter_without_exit();
@@ -193,7 +159,7 @@ try:
     plpy.execute(p, ["wrong"])
 except plpy.SPIError:
     plpy.warning("Caught a SPI error")
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_mix_explicit_and_implicit();
 SELECT * FROM subtransaction_tbl;
@@ -206,7 +172,7 @@ AS $$
 s = plpy.subtransaction()
 s.enter()
 s.exit(None, None, None)
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT subtransaction_alternative_names();
 
@@ -220,7 +186,7 @@ with plpy.subtransaction():
          plpy.execute("INSERT INTO subtransaction_tbl VALUES ('a')")
      except plpy.SPIError:
          plpy.notice("caught")
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT try_catch_inside_subtransaction();
 SELECT * FROM subtransaction_tbl;
@@ -236,7 +202,7 @@ with plpy.subtransaction():
          plpy.execute("INSERT INTO subtransaction_tbl VALUES (1)")
      except plpy.SPIError:
          plpy.notice("caught")
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT pk_violation_inside_subtransaction();
 SELECT * FROM subtransaction_tbl;
@@ -251,7 +217,7 @@ with plpy.subtransaction():
     cur.fetch(10)
 fetched = cur.fetch(10);
 return int(fetched[5]["i"])
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION cursor_aborted_subxact() RETURNS int AS $$
 try:
@@ -263,7 +229,7 @@ except plpy.SPIError:
     fetched = cur.fetch(10)
     return int(fetched[5]["i"])
 return 0 # not reached
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION cursor_plan_aborted_subxact() RETURNS int AS $$
 try:
@@ -277,7 +243,7 @@ except plpy.SPIError:
     fetched = cur.fetch(5)
     return fetched[2]["i"]
 return 0 # not reached
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 CREATE FUNCTION cursor_close_aborted_subxact() RETURNS boolean AS $$
 try:
@@ -288,7 +254,7 @@ except plpy.SPIError:
     cur.close()
     return True
 return False # not reached
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpython3u;
 
 SELECT cursor_in_subxact();
 SELECT cursor_aborted_subxact();

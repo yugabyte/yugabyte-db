@@ -223,6 +223,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             Arrays.asList(
                 HashicorpVaultConfigParams.HC_VAULT_ENGINE,
                 HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+                HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
                 HashicorpVaultConfigParams.HC_VAULT_ADDRESS);
         for (String field : hashicorpKmsNonEditableFields) {
           if (formData.get(field) != null && !authconfig.get(field).equals(formData.get(field))) {
@@ -305,6 +306,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
         formData.set(
             HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
             authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME));
 
         if (formData.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) == null
             && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) != null) {

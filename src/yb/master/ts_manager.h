@@ -72,13 +72,6 @@ using TSCountCallback = std::function<void()>;
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
-//
-// Note that TSDescriptors are never deleted, even if the TS crashes
-// and has not heartbeated in quite a while. This makes it simpler to
-// keep references to TSDescriptors elsewhere in the master without
-// fear of lifecycle problems. Dead servers are "dead, but not forgotten"
-// (they live on in the heart of the master).
-//
 // This class is thread-safe.
 //
 // LOCKING ORDER:
@@ -169,10 +162,14 @@ class TSManager {
 
   Status RunLoader();
 
+  Status RemoveTabletServer(
+      const std::string& permanent_uuid, const BlacklistSet& blacklist,
+      const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
+
  private:
   // Performs all mutations necessary to register a new tserver or update the registration of an
   // existing tserver. There are two registration pathways, one through heartbeats and the other
-  // through membership in an tablet group that is heartbeating to the master.
+  // through membership in a tablet group that is heartbeating to the master.
   Result<TSDescriptorPtr> RegisterInternal(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
       std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
@@ -200,7 +197,6 @@ class TSManager {
       RegisteredThroughHeartbeat registered_through_heartbeat) REQUIRES(registration_lock_);
 
   // Perform the mutations encoded in RegistrationMutationData.
-  //   - write to sys catalog (todo(zdrudi))
   //   - insert a newly registered tserver into servers_by_id_
   //   - commit write locks
   //
@@ -217,6 +213,9 @@ class TSManager {
   void GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const REQUIRES_SHARED(map_lock_);
   void GetDescriptorsUnlocked(
       std::function<bool(const TSDescriptorPtr&)> predicate, TSDescriptorVector* descs) const
+      REQUIRES_SHARED(map_lock_);
+
+  std::optional<TSDescriptorPtr> LookupTSInternalUnlocked(const std::string& permanent_uuid) const
       REQUIRES_SHARED(map_lock_);
 
   // Returns the registered ts descriptors whose hostport matches the hostport in the

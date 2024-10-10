@@ -5,7 +5,6 @@
 package backup
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -25,6 +24,7 @@ var listBackupCmd = &cobra.Command{
 	Short: "List YugabyteDB Anywhere backups",
 	Long:  "List backups in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
+		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		universeUUIDs, err := cmd.Flags().GetString("universe-uuids")
@@ -50,6 +50,22 @@ var listBackupCmd = &cobra.Command{
 			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
 				backup.StorageConfigs = append(backup.StorageConfigs, s)
 			}
+		}
+
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "List - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
 		}
 
 		backupCtx := formatter.Context{
@@ -82,7 +98,8 @@ var listBackupCmd = &cobra.Command{
 		}
 
 		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
-
+		backups := make([]ybaclient.BackupResp, 0)
+		force := viper.GetBool("force")
 		for {
 			// Execute backup list request
 			r, response, err := backupListRequest.Execute()
@@ -94,28 +111,34 @@ var listBackupCmd = &cobra.Command{
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
 				if util.IsOutputType(formatter.TableFormatKey) {
-					logrus.Infoln("No backups found\n")
+					logrus.Info("No backups found\n")
 				} else {
-					logrus.Infoln("[]\n")
+					logrus.Info("[]\n")
 				}
 				return
 			}
 
 			// Write backup entities
-			backup.Write(backupCtx, r.GetEntities())
+			if force {
+				backups = append(backups, r.GetEntities()...)
+			} else {
+				backup.Write(backupCtx, r.GetEntities())
+			}
 
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
 			if !hasNext {
-				if util.IsOutputType(formatter.TableFormatKey) {
-					logrus.Infoln("No more backups present\n")
+				if util.IsOutputType(formatter.TableFormatKey) && !force {
+					logrus.Info("No more backups present\n")
 				}
 				break
 			}
 
-			// Prompt user for more entries
-			if !promptForMoreEntries() {
-				break
+			err = util.ConfirmCommand(
+				"List more entries",
+				viper.GetBool("force"))
+			if err != nil {
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 
 			offset += int32(len(r.GetEntities()))
@@ -124,15 +147,10 @@ var listBackupCmd = &cobra.Command{
 			backupAPIQuery.Offset = offset
 			backupListRequest = authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		}
+		if force {
+			backup.Write(backupCtx, backups)
+		}
 	},
-}
-
-// Function to prompt user for more entries
-func promptForMoreEntries() bool {
-	var input string
-	fmt.Print("More entries? (yes/no): ")
-	fmt.Scanln(&input)
-	return strings.ToLower(input) == "yes"
 }
 
 func init() {
@@ -141,4 +159,6 @@ func init() {
 		"[Optional] Comma separated list of universe uuids")
 	listBackupCmd.Flags().String("universe-names", "",
 		"[Optional] Comma separated list of universe names")
+	listBackupCmd.Flags().BoolP("force", "f", false,
+		"[Optional] Bypass the prompt for non-interactive usage.")
 }

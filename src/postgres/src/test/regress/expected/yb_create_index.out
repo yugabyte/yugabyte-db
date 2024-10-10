@@ -145,8 +145,8 @@ CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY ((h) hash, r));
  v2     | integer |           |          |
 Indexes:
     "t1_pkey" PRIMARY KEY, lsm (h HASH, r ASC)
-    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
     "t1_v1_idx" lsm (v1 HASH)
+    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
 
 \d t2
                  Table "public.t2"
@@ -675,11 +675,11 @@ CREATE UNIQUE INDEX ON test_method ((h1, (h2 % 8)) HASH, r2, r1);
 Indexes:
     "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
     "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
-    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
     "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
     "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
     "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
     "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
 
 -- These should issue NOTICE and verify pg_get_indexdef() output doesn't have
 -- NULLS FIRST/NULLS LAST
@@ -759,12 +759,11 @@ SELECT pg_get_indexdef('test_method_expr_idx3'::regclass);
  v2     | integer |           |          |
 Indexes:
     "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
-    "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
-    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
     "test_method_expr_idx" lsm ((h1 % 8) HASH)
     "test_method_expr_idx1" lsm ((h1 % 8) HASH)
     "test_method_expr_idx2" lsm ((h1 % 8) HASH)
     "test_method_expr_idx3" lsm ((h1 % 8) HASH)
+    "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
     "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
     "test_method_h1_idx" lsm (h1 HASH)
     "test_method_h1_idx1" lsm (h1 HASH)
@@ -773,6 +772,7 @@ Indexes:
     "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
     "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
     "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
 
 DROP INDEX test_method_expr_idx;
 DROP INDEX test_method_expr_idx1;
@@ -939,7 +939,7 @@ SELECT * FROM test_method ORDER BY r1, r2;
   1 |  1 |  2 |  2 |  4 | 14
 (10 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
             QUERY PLAN
 ----------------------------------
  Sort
@@ -948,7 +948,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
          Storage Filter: (v1 > 5)
 (4 rows)
 
-SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
  h1 | h2 | r1 | r2 | v1 | v2
 ----+----+----+----+----+----
   1 |  2 |  1 |  2 |  6 | 16
@@ -1134,7 +1134,6 @@ CREATE INDEX ON test_method ((h2) HASH);
 Indexes:
     "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
     "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
-    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
     "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
     "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
     "test_method_h2_idx" lsm (h2 HASH)
@@ -1142,6 +1141,7 @@ Indexes:
     "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
     "test_method_r1_r2_idx1" lsm (r1 ASC NULLS FIRST, r2 ASC)
     "test_method_r1_r2_idx2" lsm (r1 DESC, r2 DESC NULLS LAST)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
                      QUERY PLAN

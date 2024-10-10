@@ -83,6 +83,22 @@ public class RuntimeConfGetter {
     return runtimeConfigFactory.staticApplicationConf();
   }
 
+  public Config getGlobalConf() {
+    return runtimeConfigFactory.globalRuntimeConf();
+  }
+
+  public Config getProviderConf(Provider p) {
+    return runtimeConfigFactory.forProvider(p);
+  }
+
+  public Config getCustomerConf(Customer c) {
+    return runtimeConfigFactory.forCustomer(c);
+  }
+
+  public Config getUniverseConf(Universe u) {
+    return runtimeConfigFactory.forUniverse(u);
+  }
+
   @SuppressWarnings("unchecked")
   public <T> ConfKeyInfo<T> getConfKeyInfo(String path, Class<T> type) {
     return (ConfKeyInfo<T>) keyMetaData.get(path);

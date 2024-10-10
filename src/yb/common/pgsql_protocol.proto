@@ -148,6 +148,12 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
+// YB_TODO(upgrade): Handle in pg15 upgrade path.
+message PgsqlRandState {
+  required uint64 s0 = 1;
+  required uint64 s1 = 2;
+}
+
 // Random sampling state
 message PgsqlSamplingStatePB {
   // target number of rows to collect
@@ -160,8 +166,10 @@ message PgsqlSamplingStatePB {
   optional double rowstoskip = 4;
   // reservoir state W
   optional double rstate_w = 5;
-  // 48 bits of sampler random state
-  optional uint64 rand_state = 6;
+  // 48 bits of sampler random state (deprecated).
+  reserved 6;
+  // 128 bits of sampler random state.
+  optional PgsqlRandState rand_state = 7;
 }
 
 message PgsqlFetchSequenceParamsPB {
@@ -287,6 +295,12 @@ message PgsqlWriteRequestPB {
   optional bytes partition_key = 22;
 
   optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
+}
+
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+  required int32 vector_column_id = 3;
 }
 
 //--------------------------------------------------------------------------------------------------

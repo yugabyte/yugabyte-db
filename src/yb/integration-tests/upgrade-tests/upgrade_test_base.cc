@@ -19,11 +19,18 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+
+#include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 
 DECLARE_uint32(auto_flags_apply_delay_ms);
 
@@ -45,15 +52,8 @@ std::string GetRelevantUrl(const BuildInfo& info) {
 }
 
 Status RunCommand(const std::vector<std::string>& args) {
-  std::string output, error;
   LOG(INFO) << "Execute: " << AsString(args);
-  auto status = Subprocess::Call(args, &output, &error);
-  if (!status.ok()) {
-    return status.CloneAndAppend(error).CloneAndPrepend(
-        Format("Error running command $0: " + args.front()));
-  }
-  LOG(INFO) << "Command Output: " << output;
-  return Status::OK();
+  return Subprocess::Call(args);
 }
 
 // Get the value of the key from the xml node as a string, and trims the value.
@@ -179,20 +179,41 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
-// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
-// insert a new entry.
-void AddUnDefOkFlag(std::vector<std::string>& flag_list, const std::string& flag_name) {
+void AddFlagToCsvFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_to_add) {
   for (auto& flag : flag_list) {
-    if (flag.find("--undefok=")) {
-      flag += Format(",$0", flag_name);
+    if (flag.starts_with(Format("--$0=", flag_name))) {
+      flag += Format(",$0", flag_to_add);
       return;
     }
   }
-  flag_list.push_back(Format("--undefok=$0", flag_name));
+  flag_list.push_back(Format("--$0=$1", flag_name, flag_to_add));
+}
+
+// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
+// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
+// insert a new entry.
+void AddUnDefOkAndSetFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_value) {
+  AddFlagToCsvFlag(flag_list, "undefok", flag_name);
+  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
+}
+
+void AddAllowedPreviewFlag(std::vector<std::string>& flag_list, const std::string& flag_name) {
+  AddFlagToCsvFlag(flag_list, "allowed_preview_flags_csv", flag_name);
 }
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
+
+Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enable) {
+  for (auto* master : cluster.master_daemons()) {
+    RETURN_NOT_OK(
+        cluster.SetFlag(master, "TEST_online_pg11_to_pg15_upgrade", enable ? "true" : "false"));
+  }
+  return Status::OK();
+}
 
 }  // namespace
 
@@ -203,16 +224,24 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
+  if (old_version_info_.version != kBuild_2_20_2_4) {
+    test_skipped_ = true;
+    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2_20_2_4;
+  }
+
   if (IsSanitizer()) {
+    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
   if (old_version_info_.version.empty()) {
+    test_skipped_ = true;
     CHECK(false) << "Build info for old version not set";
     return;
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
+    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
@@ -238,10 +267,19 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   opts.daemon_bin_path = VERIFY_RESULT(DownloadAndGetBinPath(old_version_info_));
 
   // Disable TEST_always_return_consensus_info_for_succeeded_rpc since it is not upgrade safe.
-  AddUnDefOkFlag(opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc");
-  opts.extra_master_flags.push_back("--TEST_always_return_consensus_info_for_succeeded_rpc=false");
-  AddUnDefOkFlag(opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc");
-  opts.extra_tserver_flags.push_back("--TEST_always_return_consensus_info_for_succeeded_rpc=false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+
+  // YB_TODO: Enable ysql_enable_db_catalog_version_mode since it is not major version upgrade
+  // safe.
+  if (old_version_info_.version == kBuild_2_20_2_4) {
+    AddAllowedPreviewFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode");
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode", "true");
+    AddAllowedPreviewFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode");
+    AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode", "true");
+  }
 
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
@@ -257,6 +295,28 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
+  server::GetStatusRequestPB req;
+  server::GetStatusResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
+                                   current_version_info_.ysql_major_version();
+
+  if (IsYsqlMajorVersionUpgrade()) {
+    // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
+    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+  }
+
+  if (old_version_info_.version == kBuild_2_20_2_4) {
+    // YB_TODO: Remove when the min upgrade-from version is 2024.1+.
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
+    RETURN_NOT_OK(conn.Fetch("SELECT yb_fix_catalog_version_table(true)"));
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=false"));
+  }
+
   return Status::OK();
 }
 
@@ -268,6 +328,9 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
       RestartAllMastersInCurrentVersion(delay_between_nodes), "Failed to restart masters");
 
   RETURN_NOT_OK_PREPEND(
+      PerformYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
+
+  RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
 
   RETURN_NOT_OK_PREPEND(
@@ -277,7 +340,10 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
     return Status::OK();
   }
 
-  return FinalizeUpgrade();
+  RETURN_NOT_OK_PREPEND(FinalizeUpgrade(), "Failed to finalize upgrade");
+
+  LOG(INFO) << "Cluster upgraded to current version";
+  return Status::OK();
 }
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
@@ -296,6 +362,12 @@ Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_betwee
 Status UpgradeTestBase::RestartMasterInCurrentVersion(
     ExternalMaster& master, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-master " << master.id() << " in current version";
+
+  if (is_ysql_major_version_upgrade_) {
+    // Multiple tests can run on the same box, so use a unique ports.
+    master.AddExtraFlag("ysql_upgrade_postgres_port", yb::ToString(cluster_->AllocateFreePort()));
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(master, current_version_master_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
@@ -329,6 +401,44 @@ Status UpgradeTestBase::RestartTServerInCurrentVersion(
   }
 
   return Status::OK();
+}
+
+Status UpgradeTestBase::PerformYsqlMajorVersionUpgrade() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Running ysql major version upgrade";
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, true));
+
+  master::StartYsqlMajorVersionUpgradeInitdbRequestPB req;
+  master::StartYsqlMajorVersionUpgradeInitdbResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  auto master_admin_proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+  RETURN_NOT_OK(master_admin_proxy.StartYsqlMajorVersionUpgradeInitdb(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto is_upgrade_done = [&master_admin_proxy]() -> Result<bool> {
+    master::IsYsqlMajorVersionUpgradeInitdbDoneRequestPB req;
+    master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+    RETURN_NOT_OK(master_admin_proxy.IsYsqlMajorVersionUpgradeInitdbDone(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    if (resp.has_initdb_error()) {
+      return StatusFromPB(resp.initdb_error().status());
+    }
+    return resp.done();
+  };
+
+  return LoggedWaitFor(
+      is_upgrade_done, 10min, "Waiting for ysql major version upgrade to complete");
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -365,6 +475,18 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   return Status::OK();
 }
 
+Status UpgradeTestBase::FinalizeYsqlMajorVersionUpgrade() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Finalizing ysql major version upgrade";
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
+
+  return Status::OK();
+}
+
 Status UpgradeTestBase::PerformYsqlUpgrade() {
   LOG(INFO) << "Running ysql upgrade";
 
@@ -386,6 +508,9 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
 
+  RETURN_NOT_OK_PREPEND(
+      FinalizeYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
+
   RETURN_NOT_OK_PREPEND(PromoteAutoFlags(), "Failed to promote AutoFlags");
 
   RETURN_NOT_OK_PREPEND(PerformYsqlUpgrade(), "Failed to perform ysql upgrade");
@@ -393,6 +518,30 @@ Status UpgradeTestBase::FinalizeUpgrade() {
   // Set the current version bin path for the cluster, so that any newly added nodes get started on
   // the new version.
   cluster_->SetDaemonBinPath(current_version_bin_path_);
+
+  return Status::OK();
+}
+
+Status UpgradeTestBase::RollbackYsqlMajorVersion() {
+  if (!is_ysql_major_version_upgrade_) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Running ysql major version rollback";
+
+  master::RollbackYsqlMajorVersionUpgradeRequestPB req;
+  master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
+  rpc::RpcController rpc;
+  // Rollback RPC is synchronous and can take a while.
+  rpc.set_timeout(3min);
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorVersionUpgrade(
+          req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
 
   return Status::OK();
 }
@@ -431,9 +580,12 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInOldVersion(delay_between_nodes), "Failed to restart tservers");
 
+  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersion(), "Failed to run ysql major version rollback");
+
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
 
+  LOG(INFO) << "Cluster rolled back to old version";
   return Status::OK();
 }
 
@@ -453,6 +605,12 @@ Status UpgradeTestBase::RestartAllMastersInOldVersion(MonoDelta delay_between_no
 Status UpgradeTestBase::RestartMasterInOldVersion(
     ExternalMaster& master, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-master " << master.id() << " in old version";
+
+  if (is_ysql_major_version_upgrade_) {
+    // Multiple tests can run on the same box, so use a unique ports.
+    master.RemoveExtraFlag("ysql_upgrade_postgres_port");
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(master, old_version_master_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
@@ -478,6 +636,17 @@ Status UpgradeTestBase::RestartAllTServersInOldVersion(MonoDelta delay_between_n
 Status UpgradeTestBase::RestartTServerInOldVersion(
     ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-tserver " << ts.id() << " in old version";
+
+  if (is_ysql_major_version_upgrade_ && old_version_info_.version == kBuild_2_20_2_4) {
+    // YB_TODO: Remove this once we switch to a newer version.
+    // 2.20 does not have the pg_data symlink changes so we need to manually delete the pg_data
+    // folder and use the pg_data_11.
+    auto env = Env::Default();
+    const auto pg_data_dir = JoinPathSegments(ts.GetRootDir(), "pg_data");
+    RETURN_NOT_OK(env->DeleteRecursively(pg_data_dir));
+    RETURN_NOT_OK(env->RenameFile(JoinPathSegments(ts.GetRootDir(), "pg_data_11"), pg_data_dir));
+  }
+
   RETURN_NOT_OK(RestartDaemonInVersion(ts, old_version_tserver_bin_path_));
 
   if (wait_for_cluster_to_stabilize) {
