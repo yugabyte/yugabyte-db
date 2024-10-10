@@ -5,7 +5,7 @@ linkTitle: TEXT
 description: Use the TEXT data type to specify data of a string of Unicode characters.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1440
 aliases:
   - /preview/api/cassandra/type_text

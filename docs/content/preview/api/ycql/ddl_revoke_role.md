@@ -5,7 +5,7 @@ linkTitle: REVOKE ROLE
 description: Use the `REVOKE ROLE` statement to revoke a role (which represents a group of permissions and the SUPERUSER status) from another role.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1284
 aliases:
   - /preview/api/cassandra/ddl_revoke_role

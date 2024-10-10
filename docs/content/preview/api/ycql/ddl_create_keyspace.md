@@ -5,7 +5,7 @@ linkTitle: CREATE KEYSPACE
 description: Use the CREATE KEYSPACE statement to create a keyspace that functions as a grouping mechanism for database objects, such as tables or types.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1230
 aliases:
   - /preview/api/cassandra/ddl_create_keyspace

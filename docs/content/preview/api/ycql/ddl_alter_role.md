@@ -5,7 +5,7 @@ linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the properties of an existing role.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1210
 aliases:
   - /preview/api/cassandra/ddl_alter_role

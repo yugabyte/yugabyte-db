@@ -5,7 +5,7 @@ linkTitle: ALTER TABLE
 description: Use the ALTER TABLE statement to change the schema or definition of an existing table.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1220
 aliases:
   - /preview/api/cassandra/ddl_alter_table

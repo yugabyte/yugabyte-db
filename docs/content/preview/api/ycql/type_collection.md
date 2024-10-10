@@ -5,7 +5,7 @@ linkTitle: Collection
 description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1390
 aliases:
   - /preview/api/cassandra/type_collection

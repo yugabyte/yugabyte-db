@@ -5,7 +5,7 @@ linkTitle: Simple expressions
 description: A simple expression can be a column, constant, or NULL.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-expressions
     weight: 1331
 aliases:
   - /preview/api/cassandra/expr_simple

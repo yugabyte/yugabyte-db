@@ -5,7 +5,7 @@ linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a new user-defined data type in a keyspace.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1250
 aliases:
   - /preview/api/cassandra/ddl_create_type

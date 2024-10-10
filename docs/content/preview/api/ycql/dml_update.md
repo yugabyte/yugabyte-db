@@ -5,7 +5,7 @@ linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1320
 aliases:
   - /preview/api/cassandra/dml_update/

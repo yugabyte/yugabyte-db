@@ -5,7 +5,7 @@ linkTitle: GRANT PERMISSION
 description: Use the GRANT PERMISSION statement to grant a permission (or all the available permissions) to a role.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1281
 aliases:
   - /preview/api/cassandra/ddl_grant_permission

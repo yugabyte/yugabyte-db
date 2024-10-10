@@ -6,7 +6,7 @@ summary: UUID types
 description: Use the UUID data type to specify columns for data of universally unique ids. TIMEUUID is a universal unique identifier variant that includes time information.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1460
 aliases:
   - /preview/api/cassandra/type_uuid

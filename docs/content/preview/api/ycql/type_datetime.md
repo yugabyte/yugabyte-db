@@ -5,7 +5,7 @@ linkTitle: DATE, TIME, and TIMESTAMP
 description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify dates and time.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1450
 aliases:
   - /preview/api/cassandra/type_datetime

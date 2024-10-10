@@ -5,7 +5,7 @@ linkTitle: BLOB
 description: Use the BLOB data type to represent arbitrary binary data of variable length.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-datatypes
     weight: 1370
 aliases:
   - /preview/api/cassandra/type_blob

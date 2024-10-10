@@ -5,7 +5,7 @@ linkTitle: DROP INDEX
 description: Use the DROP INDEX statement to remove an index and all of its data from the database.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-statements
     weight: 1255
 aliases:
   - /preview/api/cassandra/ddl_drop_index

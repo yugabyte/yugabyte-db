@@ -5,7 +5,7 @@ linkTitle: Function call
 description: Use a function call expression to apply the specified function to given arguments between parentheses and return the result of the computation.
 menu:
   preview:
-    parent: api-cassandra
+    parent: ycql-expressions
     weight: 1350
 aliases:
   - /preview/api/cassandra/expr_fcall
