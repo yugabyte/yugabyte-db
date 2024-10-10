@@ -27,6 +27,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
@@ -122,6 +123,22 @@ func SplitInput(input string) []string {
 	return strings.FieldsFunc(input, func(r rune) bool {
 			return r == ',' || r == ' '
 	})
+}
+
+func SystemdLogMethod() string {
+	version, err := systemd.Version()
+	if err != nil {
+		log.Debug("Error determining systemd version: " + err.Error())
+		return ""
+	}
+	log.Debug("Detected OS with systemd version " + strconv.Itoa(version))
+	if version >= 240 {
+		return "append"
+	}
+	if version >= 236 {
+		return "file"
+	}
+	return ""
 }
 
 // Create or truncate a file at a relative path for the non-root case. Have to make the directory

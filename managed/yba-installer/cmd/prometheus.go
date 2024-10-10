@@ -31,9 +31,14 @@ type prometheusDirectories struct {
 	DataDir             string
 	PromDir             string
 	cronScript          string
+	LogDir							string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
+	logDir := "/var/log"
+	if !common.HasSudoAccess() {
+		logDir = common.GetBaseInstall() + "/data/logs"
+	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -43,6 +48,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePrometheus.sh"),
+		LogDir:							 logDir,
 	}
 }
 
@@ -298,12 +304,17 @@ func (prom Prometheus) Upgrade() error {
 // Status prints out the header information for the
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
+
+	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
+	if common.SystemdLogMethod() == "" {
+		logFileLoc = "journalctl -u prometheus"
+	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: prom.DataDir + "/prometheus.log",
+		LogFileLoc: logFileLoc,
 	}
 
 	// Set the systemd service file location if one exists
@@ -524,6 +535,12 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		{promPkg, promBinaryDir, "promtool"},
 		{promPkg, prom.PromDir, "consoles"},
 		{promPkg, prom.PromDir, "console_libraries"},
+	}
+	// for root the log file is in /var/log in case of SELinux
+	if (common.HasSudoAccess()) {
+		links = append(links, struct {
+			pkgDir, linkDir, binary string
+		}{prom.LogDir, filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"})
 	}
 	for _, link := range links {
 		if err := common.CreateSymlink(link.pkgDir, link.linkDir, link.binary); err != nil {
