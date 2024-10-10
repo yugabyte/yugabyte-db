@@ -210,7 +210,7 @@ explain (costs off)
          QUERY PLAN
 -----------------------------
  Sort
-   Sort Key: ('g'::text)
+   Sort Key: ('l'::text)
    ->  Gather
          Workers Planned: 2
          ->  Parallel Append
