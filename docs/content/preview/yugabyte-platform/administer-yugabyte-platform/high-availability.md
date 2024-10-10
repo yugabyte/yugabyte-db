@@ -166,7 +166,7 @@ After HA is operational, you should enable certificate validation to improve sec
 
 When you click **Enable Certificate Validation**, YBA tests the connection between the active instance and all standby instances with the certificates in the trust store. If the validation fails for any of the standbys, the entire enablement will fail and certificate validation will remain disabled. Check the CA certificate files added to the trust store and try again.
 
-#### Validate custom CA certificates
+#### Test custom CA certificates
 
 If you are using a custom CA certificate and certificate validation fails, you can test the CA certificate using the following command (on the active and standby nodes):
 
