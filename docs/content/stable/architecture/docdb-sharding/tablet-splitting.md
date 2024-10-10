@@ -179,7 +179,7 @@ Note the tablet UUID for later use.
 
 #### Manually flush the tablet
 
-The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [yb-ts-cli](../../../admin/yb-ts-cli/#flush-tablet) command:
 
 ```sh
 ./bin/yb-ts-cli \
@@ -243,7 +243,7 @@ In the high phase, each node has fewer than [`tablet_split_high_phase_shard_coun
 
 ##### Final phase
 
-When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GiB by default). The maximum number of tablets is still limited by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts).
+Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GiB by default). The maximum number of tablets is still limited by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts).
 
 #### Post-split compactions
 

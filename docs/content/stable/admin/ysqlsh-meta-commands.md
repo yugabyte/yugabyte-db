@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
+Similar to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
 
 {{< note title="Cloud shell" >}}
 

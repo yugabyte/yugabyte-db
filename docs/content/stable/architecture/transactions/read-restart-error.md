@@ -100,3 +100,11 @@ You can handle and mitigate read restart errors using the following techniques:
   This will enable YugabyteDB to retry the query internally on behalf of the user. As long as the output of a statement hasn't crossed ysql_output_buffer_size to result in flushing partial data to the external client, the YSQL query layer retries read restart errors for all statements in a Read Committed transaction block, for the first statement in a Repeatable Read transaction block, and for any standalone statement outside a transaction block. As a tradeoff, increasing the buffer size also increases the memory consumed by the YSQL backend processes, resulting in a higher risk of out-of-memory errors.
 
   Be aware that increasing `ysql_output_buffer_size` is not a silver bullet. For example, the COPY command can still raise a read restart error even though the command has a one line output. Increasing `ysql_output_buffer_size` is not useful in this scenario. The application must retry the COPY command instead. Another example is DMLs such as INSERT/UPDATE/DELETE. These do not have enough output to overflow the buffer size. However, when these statements are executed in the middle of a REPEATABLE READ transaction (e.g. BEGIN ISOLATION LEVEL REPEATABLE READ; ... INSERT ... COMMIT;), a read restart error cannot be retried internally by YugabyteDB. The onus is on the application to ROLLBACK and retry the transaction.
+- In rare scenarios where neither latency nor memory can be compromised, but _read-after-commit-visibility_ guarantee is not a necessity, set `yb_read_after_commit_visibility` to `relaxed`. This option only affects pure reads.
+
+  ```sql
+  SET yb_read_after_commit_visibility TO relaxed;
+  SELECT * FROM large_table;
+  ```
+
+  Please exercise caution when using this option.

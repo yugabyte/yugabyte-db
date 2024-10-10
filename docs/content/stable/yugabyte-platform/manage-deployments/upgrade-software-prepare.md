@@ -18,7 +18,7 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 ## Review major changes in previous YugabyteDB releases
 
-{{< warning title="For YugabyteDB upgrades in YBA" >}}
+{{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
 You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
 {{< /warning >}}
 
@@ -26,7 +26,7 @@ Before starting the upgrade, review the following major changes in previous Yuga
 
 ### Upgrading from versions earlier than v2.16.0
 
-The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YBA 2.16.0 and later.
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YugabyteDB Anywhere v2.16.0 and later.
 
 YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 

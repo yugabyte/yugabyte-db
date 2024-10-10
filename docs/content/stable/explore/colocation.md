@@ -1,6 +1,6 @@
 ---
-title: Colocated tables
-headerTitle: Colocated tables
+title: Colocating tables and databases
+headerTitle: Colocating tables
 linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
 menu:

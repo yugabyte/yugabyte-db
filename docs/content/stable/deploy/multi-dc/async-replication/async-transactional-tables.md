@@ -16,7 +16,6 @@ type: docs
 
 The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [manually configured](../async-transactional-setup/) transactional xCluster replication. For instruction on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-dblevel/#making-ddl-changes).
 
-You should perform these actions in a specific order, depending on the type of DDL, as indicated in the table below.
 When making DDL changes, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 
 You should perform these actions in a specific order, depending on the type of DDL, as indicated in the following table.

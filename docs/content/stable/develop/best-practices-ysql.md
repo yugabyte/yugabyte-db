@@ -27,7 +27,7 @@ For more details, see [Build global applications](../build-global-apps).
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<lead link="../../explore/colocation/">}}
-For more details, see [colocation](../../explore/colocation/).
+For more details, see [Colocation](../../explore/colocation/).
 {{</lead>}}
 
 ## Faster reads with covering indexes

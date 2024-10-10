@@ -51,15 +51,15 @@ Before you start, make sure that all nodes in the universe are running correctly
 
 ## Patch nodes
 
-Typically, the following sequence will be automated using scripts that call the YBA REST APIs.
+Typically, the following sequence will be automated using scripts that call the YugabyteDB Anywhere REST APIs.
 
 For each node in the universe, use the following general procedure:
 
 1. Stop the processes for the node to be patched.
 
-    In YugabyteDB Anywhere (YBA), navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Stop Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Stop Processes**.
 
-    If using the YBA API, use the following command:
+    If using the YugabyteDB Anywhere API, use the following command:
 
     ```sh
     curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
@@ -88,9 +88,9 @@ For each node in the universe, use the following general procedure:
 
 1. Start the processes for the node.
 
-    In YBA, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
 
-    If using the YBA API, use the following command:
+    If using the YugabyteDB Anywhere API, use the following command:
 
     ```shell
     curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
@@ -99,4 +99,4 @@ For each node in the universe, use the following general procedure:
 
     Check the return status to confirm that the node is started.
 
-When finished, you can confirm all nodes in the universe are running correctly in YBA by navigating to the universe **Nodes** tab.
+When finished, you can confirm all nodes in the universe are running correctly in YugabyteDB Anywhere by navigating to the universe **Nodes** tab.

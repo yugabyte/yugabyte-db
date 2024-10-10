@@ -50,7 +50,7 @@ For the full list of configuration flags, see the [YB-Master reference](../../..
 
 ## Run YB-Master servers with configuration file
 
-Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration flag with the private IP address of the YB-Master server.
+Alternatively, you can also create a `master.conf` file with the following flags and then run yb-master with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration flag with the private IP address of the YB-Master server.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -89,7 +89,7 @@ I0912 16:11:06.899287 27220 raft_consensus.cc:738] T 000000000000000000000000000
 
 {{< tip title="Tip" >}}
 
-Remember to add the command with which you launched `yb-master` to a cron to restart it if it goes down.
+Remember to add the command with which you launched yb-master to a cron to restart it if it goes down.
 
 {{< /tip >}}
 

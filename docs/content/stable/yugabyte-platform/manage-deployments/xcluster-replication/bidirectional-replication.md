@@ -30,7 +30,7 @@ In addition to the regular [limitations](../#limitations), Bidirectional replica
 
 ## Prerequisites
 
-Create two universes as described in [Prerequisites](../xcluster-replication-setup/#prerequisites).
+Create two universes as described in [Set up xCluster Replication Prerequisites](../xcluster-replication-setup/#prerequisites).
 
 ## Set up bidirectional replication
 

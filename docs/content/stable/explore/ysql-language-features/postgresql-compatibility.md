@@ -148,7 +148,7 @@ Note: When enabling the cost models, ensure that packed row for colocated tables
 
 #### YugabyteDB Anywhere
 
-To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#highlights).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#v2024.1.0.0).
 
 To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 
@@ -171,6 +171,8 @@ You can also change the setting on the **Settings** tab for deployed clusters.
 
 ## Unsupported PostgreSQL features
 
+Because YugabyteDB is a distributed database, supporting all PostgreSQL features in a distributed system is not always feasible. This section documents the known list of differences between PostgreSQL and YugabyteDB. You need to consider these differences while porting an existing application to YugabyteDB.
+
 The following PostgreSQL features are not supported in YugabyteDB:
 
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
@@ -179,6 +181,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Table inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
 | Exclusion constraints | [3944](https://github.com/yugabyte/yugabyte-db/issues/3944)|
 | Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
+| Constraint Triggers|[4700](https://github.com/yugabyte/yugabyte-db/issues/4700)|
 | GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|
 | Events (Listen/Notify) | [1872](https://github.com/yugabyte/yugabyte-db/issues/1872)|
 | XML Functions | [1043](https://github.com/yugabyte/yugabyte-db/issues/1043)|
@@ -187,7 +190,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | CREATE CONVERSION | [10866](https://github.com/yugabyte/yugabyte-db/issues/10866)|
 | Primary/Foreign key constraints on foreign tables | [10698](https://github.com/yugabyte/yugabyte-db/issues/10698), [10699](https://github.com/yugabyte/yugabyte-db/issues/10699) |
 | GENERATED ALWAYS AS STORED columns | [10695](https://github.com/yugabyte/yugabyte-db/issues/10695)|
-| Multicolumn GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
+| Multi-column GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
 | CREATE ACCESS METHOD | [10693](https://github.com/yugabyte/yugabyte-db/issues/10693)|
 | DESC/HASH on GIN indexes (ASC supported) | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
 | CREATE SCHEMA with elements | [10865](https://github.com/yugabyte/yugabyte-db/issues/10865)|
@@ -196,3 +199,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
 | DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
 | Some ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
+| UNLOGGED table | [1129](https://github.com/yugabyte/yugabyte-db/issues/1129) |
+| Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| [9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [17017](https://github.com/yugabyte/yugabyte-db/issues/17017) |
+| %TYPE syntax in Functions/Procedures/Triggers|[23619](https://github.com/yugabyte/yugabyte-db/issues/23619)|
+| Storage parameters on indexes or constraints|[23467](https://github.com/yugabyte/yugabyte-db/issues/23467)|

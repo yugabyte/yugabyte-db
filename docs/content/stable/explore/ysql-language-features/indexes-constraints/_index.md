@@ -15,6 +15,10 @@ type: indexpage
 
 As with tables, indexes in YugabyteDB are stored in a distributed manner - that is, they are split into tablets and replicated. Updates to indexes are transactional, which means that row updates and the corresponding index updates occur as a single transaction. Similar to tables, they are stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
 
+{{<note>}}
+The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
+{{</note>}}
+
 YugabyteDB supports most of the PostgreSQL index semantics in the [YSQL API](../../../api/ysql/).
 
 The following table lists different types of indexes and their support in YSQL.

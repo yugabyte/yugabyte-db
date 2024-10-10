@@ -28,15 +28,15 @@ Perform DDL operations in the order as shown in the following table. The order v
 
 | DDL | Step 1 | Step 2 | Step 3 |
 | :-- | :----- | :----- | :----- |
-| CREATE TABLE | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
-| DROP TABLE | [Remove table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
+| CREATE TABLE | Execute&nbsp;on&nbsp;Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
+| DROP TABLE | Execute on Target | Execute on Source | No changes needed |
 | CREATE TABLE foo<br>PARTITION OF bar | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
 | CREATE TABLE<br>Colocated | Execute on Target | Execute on Source using same colocation ID | No changes needed |
-| CREATE INDEX | Execute on Source<br>wait for backfill | Execute&nbsp;on&nbsp;Target<br>wait for backfill | [Reconcile configuration](#reconcile-configuration) |
-| DROP INDEX   | Execute on Target | Execute on Source | [Reconcile configuration](#reconcile-configuration) |
-| ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Target | Execute on Source | No changes needed |
-| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Source<br>wait for backfill | Execute on Target<br>wait for backfill | [Reconcile configuration](#reconcile-configuration) |
-| ALTER TABLE<br>DROP&nbsp;CONSTRAINT<br>(unique constraints only) | Execute on Target | Execute on Source | [Reconcile configuration](#reconcile-configuration) |
+| CREATE INDEX | Execute on Source<br>wait for backfill | Execute&nbsp;on&nbsp;Target<br>wait for backfill | No changes needed |
+| DROP INDEX   | Execute on Target | Execute on Source | No changes needed |
+| ALTER TABLE or INDEX | Execute on Target | Execute on Source | No changes needed |
+| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Source<br>wait for backfill | Execute on Target<br>wait for backfill | No changes needed |
+| ALTER TABLE<br>DROP&nbsp;CONSTRAINT<br>(unique constraints only) | Execute on Target | Execute on Source | No changes needed |
 
 {{% /tab %}}
 {{% tab header="YSQL Non-Transactional" lang="ysql-nontransaction" %}}
@@ -44,14 +44,14 @@ Perform DDL operations in the order as shown in the following table. The order v
 | DDL | Step 1 | Step 2 | Step 3 |
 | :-- | :----- | :----- | :----- |
 | CREATE TABLE | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
-| DROP TABLE | [Remove table from replication](#remove-a-table-from-replication) | Execute on Target | Execute&nbsp;on&nbsp;Source |
+| DROP TABLE | Execute on Target | Execute on Source | No changes needed |
 | CREATE TABLE foo<br>PARTITION OF bar | Execute&nbsp;on&nbsp;Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
 | CREATE TABLE<br>Colocated | Execute on Target | Execute&nbsp;on&nbsp;Source using same colocation ID | No changes needed |
 | CREATE INDEX | Execute on Source<br>wait for backfill | Execute&nbsp;on&nbsp;Target<br>wait for backfill | [Add index table to replication](#add-a-table-to-replication) |
-| DROP INDEX | [Remove index table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
+| DROP INDEX   | Execute on Target | Execute on Source | No changes needed |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Target | Execute on Source | No changes needed |
 | ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Source<br>wait for backfill | Execute on Target<br>wait for backfill | [Add the index table](#add-a-table-to-replication) corresponding to the constraint to replication |
-| ALTER TABLE<br>DROP&nbsp;CONSTRAINT<br>(unique constraints only) | [Remove the index table](#remove-a-table-from-replication) corresponding to the constraint from replication | Execute on Target | Execute on Source |
+| ALTER TABLE<br>DROP&nbsp;CONSTRAINT<br>(unique&nbsp;constraints&nbsp;only) | Execute on Target | Execute on Source | No changes needed |
 
 {{% /tab %}}
 {{% tab header="YCQL" lang="ycql" %}}
@@ -60,7 +60,7 @@ Perform DDL operations in the order as shown in the following table. The order v
 | :-- | :----- | :----- | :----- |
 | CREATE TABLE | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
 | DROP TABLE   | [Remove table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
-| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Restart replication for the main table](../xcluster-replication-setup/#restart-replication) |
+| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Add table to replication](#add-a-table-to-replication)  |
 | DROP INDEX   | [Remove index table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Target | Execute&nbsp;on&nbsp;Source | No changes needed |
 
@@ -106,12 +106,7 @@ This operation also automatically adds any associated index tables of this table
 Before dropping a table in replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
 {{</tip>}}
 
-When dropping a table, remove the table from replication before dropping the table in the source and target databases, as follows:
-
-1. In YugabyteDB Anywhere, navigate to your source, select **xCluster Replication**, and select the replication configuration.
-1. Click **Actions** and choose **Select Databases and Tables**.
-1. Deselect the tables and click **Validate Selection**.
-1. Click **Apply Changes**.
+When dropping a table, you can drop the tables and YugabyteDB Anywhere automatically updates the xCluster configuration. You can also manually remove the tables from the configuration in YugabyteDB Anywhere, in which case you would still need to drop the tables.
 
 ## Indexes
 

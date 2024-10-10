@@ -84,7 +84,7 @@ db := pg.Connect(opt)
 
 #### Use SSL
 
-For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -334,4 +334,5 @@ Query for id=1 returned: Employee<1 John 35 [%!l(string=Go)]>
 
 ## Learn more
 
-[YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Go applications using [GORM](../gorm/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

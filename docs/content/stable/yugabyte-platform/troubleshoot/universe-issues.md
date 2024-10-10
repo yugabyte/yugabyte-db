@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to monitor and troubleshoot issues that arise from universes.
+YugabyteDB Anywhere (YBA) allows you to monitor and troubleshoot issues that arise from universes.
 
 ## Use metrics
 

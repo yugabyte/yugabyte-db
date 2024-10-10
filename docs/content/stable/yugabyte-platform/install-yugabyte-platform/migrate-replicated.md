@@ -34,7 +34,7 @@ Alternately, you can migrate the [Replicated installation to YBA Installer on a 
 
 ### Migrate from Replicated to YBA Installer in place
 
-If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
+If you have high availability configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
 
 To migrate in place, do the following:
 

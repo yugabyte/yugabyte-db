@@ -26,7 +26,7 @@ If you have enabled CBO, you must run ANALYZE on user tables after data load for
 
 The YugabyteDB implementation is based on the framework provided by PostgreSQL, which requires the storage layer to provide a random sample of rows of a predefined size. The size is calculated based on a number of factors, such as the included columns' data types.
 
-{{< note title="Note" >}}
+{{< note title="Large tables" >}}
 The sampling algorithm is not currently optimized for large tables. It may take several minutes to collect statistics from a table containing millions of rows of data.
 {{< /note >}}
 

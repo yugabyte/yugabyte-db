@@ -84,7 +84,7 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql-flags).
+For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql).
 
 ### Use a hint plan
 
@@ -109,8 +109,8 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
   {{<index/item
-    title="Get query statistics"
-    body="Track planning and execution statistics for all statements executed by a server using pg_stat_staments."
+    title="Get query statistics using pg_stat_statements and ycql_stat_statements"
+    body="Track planning and execution statistics for all SQL statements executed by a server."
     href="pg-stat-statements/"
     icon="/images/section_icons/develop/learn.png">}}
 
