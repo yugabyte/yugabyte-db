@@ -932,142 +932,127 @@
 
 ########## Menus for stable
 
-[[stable]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [stable.params]
-    classes = "separator"
-    showSection = true
-
-[[stable]]
-  name = "YugabyteDB"
-  weight = 2
-  identifier = "yugabytedb"
-  url = "/stable/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Quick Start"
-  weight = 4
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
-  [stable.params]
-    showSection = true
-    hideChildren = true
-
-[[stable]]
-  name = "Explore"
-  weight = 5
-  identifier = "explore"
-  url = "/stable/explore/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/stable/develop/"
-  [stable.params]
-    showSection = true
-
-#[[stable]]
-#  name = "Tutorials"
-#  weight = 7
-#  identifier = "tutorials"
-#  [stable.params]
-#    showSection = true
+# [[stable]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [stable.params]
+#     classes = "separator"
+#     showSection = true
 
 # [[stable]]
-#  name = "Migrate"
-#  weight = 6
-#  identifier = "migrate"
-#  url = "/stable/migrate/"
-#  [stable.params]
-#    showSection = true
+#   name = "YugabyteDB"
+#   weight = 2
+#   identifier = "yugabytedb"
+#   url = "/stable/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Secure"
-  weight = 8
-  identifier = "secure"
-  url = "/stable/secure/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#   name = "Quick Start"
+#   weight = 4
+#   identifier = "quick-start"
+#   url = "/preview/quick-start-yugabytedb-managed/"
+#   [stable.params]
+#     showSection = true
+#     hideChildren = true
 
-[[stable]]
-  name = "Launch and Manage"
-  weight = 9
-  identifier = "launch-and-manage"
-  url = "/stable/launch-and-manage/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#   name = "Explore"
+#   weight = 5
+#   identifier = "explore"
+#   url = "/stable/explore/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Troubleshoot"
-  parent = "launch-and-manage"
-  url = "/preview/troubleshoot/"
+# [[stable]]
+#   name = "Develop"
+#   weight = 6
+#   identifier = "develop"
+#   url = "/stable/develop/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Benchmark"
-  weight = 10
-  identifier = "benchmark"
-  url = "/stable/benchmark/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#   name = "Secure"
+#   weight = 8
+#   identifier = "secure"
+#   url = "/stable/secure/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#   name = "Launch and Manage"
+#   weight = 9
+#   identifier = "launch-and-manage"
+#   url = "/stable/launch-and-manage/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
+# [[stable]]
+#   name = "Troubleshoot"
+#   parent = "launch-and-manage"
+#   url = "/preview/troubleshoot/"
 
-[[stable]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
+# [[stable]]
+#   name = "Benchmark"
+#   weight = 10
+#   identifier = "benchmark"
+#   url = "/stable/benchmark/"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
+# [[stable]]
+#   name = "Reference"
+#   weight = 12
+#   identifier = "reference"
+#   [stable.params]
+#     showSection = true
 
-[[stable]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#   name = "Misc"
+#   identifier = "misc"
+#   parent = "reference"
+
+# [[stable]]
+#   name = "YEDIS"
+#   weight = 1
+#   url = "/preview/yedis/"
+#   parent = "misc"
+
+# [[stable]]
+#   name = "Legal"
+#   weight = 2
+#   url = "/preview/legal/"
+#   parent = "misc"
+
+# [[stable]]
+#   name = "Contribute"
+#   weight = 13
+#   identifier = "contribute"
+#   url = "/preview/contribute/"
+#   [stable.params]
+#     showSection = true
 
 ########## Menus (in stable) for YB Anywhere section
 
-[[stable_yugabyte-platform]]
-  name = "Docs Home"
-  weight = 1
-  identifier = "home"
-  url = "/"
-  [stable_yugabyte-platform.params]
-    classes = "separator"
-    showSection = true
+# [[stable_yugabyte-platform]]
+#   name = "Docs Home"
+#   weight = 1
+#   identifier = "home"
+#   url = "/"
+#   [stable_yugabyte-platform.params]
+#     classes = "separator"
+#     showSection = true
 
-[[stable_yugabyte-platform]]
-  name = "YugabyteDB Anywhere"
-  weight = 2
-  identifier = "yugabytedb-anywhere"
-  [stable_yugabyte-platform.params]
-    showSection = true
-    hideLink = true
+# [[stable_yugabyte-platform]]
+#   name = "YugabyteDB Anywhere"
+#   weight = 2
+#   identifier = "yugabytedb-anywhere"
+#   [stable_yugabyte-platform.params]
+#     showSection = true
+#     hideLink = true
 
 ########## Menus (in stable) for APIs
 
