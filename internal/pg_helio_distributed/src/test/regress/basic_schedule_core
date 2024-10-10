@@ -135,3 +135,9 @@ test: bson_index_truncation_nested_object_tests
 test: commands_create_view_tests
 test: commands_insert
 test: setwindowfields_and_group_compliance
+
+test: bson_index_fast_join_scan_tests
+test: bson_index_rum_index_scan_to_bitmap_heap_scan
+test: bson_index_truncation_code_tests
+test: bson_index_truncation_symbol_tests
+test: bson_index_truncation_index_tests
