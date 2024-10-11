@@ -2614,7 +2614,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .getTableDetails()
         .forEach(
             tableConfig -> {
-              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnSource)) {
+              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnSource)
+                  || tableConfig.getStatus().equals(XClusterTableConfig.Status.DroppedFromTarget)) {
+                return;
+              } else if (tableConfig
+                  .getStatus()
+                  .equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
+                tableConfig.setTargetTableInfo(
+                    targetTableIdTableInfoRespMap.get(tableConfig.getTableId()));
                 return;
               }
               String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
@@ -2669,6 +2676,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return new Pair<>(sourceTableConfigs, targetTableConfigs);
   }
 
+  /**
+   * Retrieves a list of tables that are present only in the target universe and are not part of the
+   * xCluster replication configuration. In this context, XClusterTableConfig will contain the
+   * target universe table ID instead of the usual source universe table ID.
+   *
+   * @param xClusterUniverseService The service for interacting with the xCluster universe.
+   * @param ybClientService The service for interacting with the YB client.
+   * @param xClusterConfig The xCluster configuration.
+   * @param clusterConfig The cluster configuration entry.
+   * @param targetTableInfoList The list of table information from the target universe.
+   * @return A list of {@link XClusterTableConfig} representing tables that are only in the target
+   *     universe and not part of the replication.
+   */
   public static List<XClusterTableConfig> getTargetOnlyTable(
       XClusterUniverseService xClusterUniverseService,
       YBClientService ybClientService,
