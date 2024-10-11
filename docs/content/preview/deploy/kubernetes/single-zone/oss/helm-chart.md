@@ -385,7 +385,7 @@ You can upgrade the software on the YugabyteDB cluster with the following comman
 
 ```sh
 helm repo update
-helm upgrade yb-demo yugabytedb/yugabyte --version 2.1.6.0-b17 --wait -n yb-demo
+helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}} --wait -n yb-demo
 ```
 
 ## Update the configuration of YugabyteDB pods
