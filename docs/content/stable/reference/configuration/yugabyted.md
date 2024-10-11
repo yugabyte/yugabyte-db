@@ -705,7 +705,7 @@ Create a single-node locally and join other nodes that are part of the same clus
 : The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *config-file*
-: Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
+: yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.

@@ -98,7 +98,7 @@ yugabyted start --join=host:port,[host:port]
 : The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
 --config *config-file*
-: Yugabyted configuration file path.
+: yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -195,7 +195,7 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be stopped.
+: The path to the [configuration file](#advanced-flags) of the yugabyted server that needs to be stopped.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be stopped.
@@ -222,7 +222,7 @@ Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be destroyed.
+: The path to the [configuration file](#advanced-flags) of the yugabyted server that needs to be destroyed.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be destroyed.
@@ -249,7 +249,7 @@ Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose status is desired.
+: The path to the [configuration file](#advanced-flags) of the yugabyted server whose status is desired.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose status is desired.
@@ -276,7 +276,7 @@ Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose version is desired.
+: The path to the [configuration file](#advanced-flags) of the yugabyted server whose version is desired.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose version is desired.
@@ -304,7 +304,7 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: The path to the [configuration file](#advanced-flags) of the yugabyted server whose logs are desired.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose logs are desired.
