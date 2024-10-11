@@ -472,6 +472,40 @@ TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode)
 }
 
 
+static void
+TrySetCollectionShard(MongoCollection *collection)
+{
+	if (collection->isShardRemote)
+	{
+		return;
+	}
+
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally("client_min_messages", "WARNING");
+	const char *shardName = TryGetShardNameForUnshardedCollection(
+		collection->relationId, collection->collectionId, collection->tableName);
+	RollbackGUCChange(savedGUCLevel);
+	if (shardName != NULL)
+	{
+		if (shardName[0] == '\0')
+		{
+			collection->shardTableName[0] = '\0';
+			collection->isShardRemote = true;
+		}
+		else
+		{
+			strcpy(collection->shardTableName, shardName);
+			collection->isShardRemote = false;
+		}
+	}
+	else
+	{
+		collection->isShardRemote = false;
+		collection->shardTableName[0] = '\0';
+	}
+}
+
+
 /*
  * GetMongoCollectionByName returns collection metadata by database and
  * collection name or NULL if the collection does not exist.
@@ -523,6 +557,14 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 			{
 				/* table was dropped */
 				return NULL;
+			}
+
+			/* Collection is found and valid - check for local shard */
+			if (entryByName->collection.shardKey == NULL &&
+				!entryByName->collection.isShardRemote &&
+				entryByName->collection.shardTableName[0] == '\0')
+			{
+				TrySetCollectionShard(&entryByName->collection);
 			}
 		}
 
@@ -589,15 +631,7 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 
 		if (collection.shardKey == NULL)
 		{
-			savedGUCLevel = NewGUCNestLevel();
-			SetGUCLocally("client_min_messages", "WARNING");
-			const char *shardName = TryGetShardNameForUnshardedCollection(
-				collection.relationId, collection.collectionId, collection.tableName);
-			RollbackGUCChange(savedGUCLevel);
-			if (shardName != NULL)
-			{
-				strcpy(collection.shardTableName, shardName);
-			}
+			TrySetCollectionShard(&collection);
 		}
 	}
 
@@ -853,18 +887,7 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 		collection->relationId = relationId;
 		if (collection->shardKey == NULL && collection->viewDefinition == NULL)
 		{
-			const char *shardName = TryGetShardNameForUnshardedCollection(relationId,
-																		  collectionId,
-																		  collection->
-																		  tableName);
-			if (shardName == NULL)
-			{
-				collection->shardTableName[0] = '\0';
-			}
-			else
-			{
-				strcpy(collection->shardTableName, shardName);
-			}
+			TrySetCollectionShard(collection);
 		}
 
 		collectionExists = true;

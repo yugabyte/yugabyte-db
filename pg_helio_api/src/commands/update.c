@@ -425,6 +425,13 @@ command_update(PG_FUNCTION_ARGS)
 		}
 	}
 
+	Oid shardOid = TryGetCollectionShardTable(collection, NoLock);
+	if (shardOid == InvalidOid)
+	{
+		/* Shard not valid on this node anymore (due to shard moves etc) */
+		collection->shardTableName[0] = '\0';
+	}
+
 	bool hasWriteErrors = false;
 	pgbson *result = NULL;
 	if (DefaultInlineWriteOperations ||

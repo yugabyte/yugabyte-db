@@ -119,7 +119,8 @@ Query * MutateChunksQueryForDistribution(Query *cosmosMetadataQuery);
 /*
  * Given a table OID, if the table is not the actual physical shard holding the data (say in a
  * distributed setup), tries to return the full shard name of the actual table if it can be found locally
- * or NULL otherwise (e.g. for ApiDataSchema.documents_1 returns ApiDataSchema.documents_1_12341 or NULL)
+ * or NULL otherwise (e.g. for ApiDataSchema.documents_1 returns ApiDataSchema.documents_1_12341 or NULL, or "")
+ * NULL implies that the request can be tried again. "" implies that the shard cannot be resolved locally.
  */
 const char * TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId,
 												   const char *tableName);

@@ -118,6 +118,9 @@ typedef struct
 	 */
 	char shardTableName[NAMEDATALEN];
 
+	/* Whether or not the shard for the shardTableName is remote */
+	bool isShardRemote;
+
 	/* Schema Validator if applicable */
 	SchemaValidatorInfo schemaValidator;
 } MongoCollection;

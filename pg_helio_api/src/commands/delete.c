@@ -201,6 +201,13 @@ command_delete(PG_FUNCTION_ARGS)
 									  RowExclusiveLock);
 	if (collection != NULL)
 	{
+		Oid shardOid = TryGetCollectionShardTable(collection, NoLock);
+		if (shardOid == InvalidOid)
+		{
+			/* Shard not valid on this node anymore (due to shard moves etc) */
+			collection->shardTableName[0] = '\0';
+		}
+
 		if (DefaultInlineWriteOperations || !EnableUnshardedBatchDelete ||
 			collection->shardKey != NULL || collection->shardTableName[0] != '\0')
 		{

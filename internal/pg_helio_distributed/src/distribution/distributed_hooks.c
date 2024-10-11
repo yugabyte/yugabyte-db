@@ -288,6 +288,8 @@ RunMultiValueQueryWithNestedDistributionCore(const char *query, int nArgs, Oid *
  * Given a relationId and a collectionId for the relation, tries to get
  * the shard tableName for the table if it is an unsharded table with a single shard.
  * e.g. for documents_1 returns documents_1_102011.
+ * If shards are unavailable returns NULL - can be retried.
+ * If the shard is remote and not loca - returns ""
  */
 static const char *
 TryGetShardNameForUnshardedCollectionCore(Oid relationId, uint64 collectionId, const
@@ -296,7 +298,7 @@ TryGetShardNameForUnshardedCollectionCore(Oid relationId, uint64 collectionId, c
 	if (!UseLocalExecutionShardQueries)
 	{
 		/* Defensive - only turn this on with feature flag */
-		return NULL;
+		return "";
 	}
 
 	const char *shardIdDetailsQuery =
@@ -328,7 +330,7 @@ TryGetShardNameForUnshardedCollectionCore(Oid relationId, uint64 collectionId, c
 	if (!resultNulls[1] || !resultNulls[2])
 	{
 		/* has at least some shard values */
-		return NULL;
+		return "";
 	}
 
 	/* Construct the shard table name */
@@ -342,7 +344,7 @@ TryGetShardNameForUnshardedCollectionCore(Oid relationId, uint64 collectionId, c
 	}
 	else
 	{
-		return NULL;
+		return "";
 	}
 }
 

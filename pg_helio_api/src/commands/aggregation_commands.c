@@ -203,7 +203,7 @@ command_find_cursor_first_page(PG_FUNCTION_ARGS)
 									 generateCursorParams);
 
 	Datum response = HandleFirstPageRequest(
-		fcinfo, DatumGetTextP(database), findSpec, cursorId, &queryData,
+		fcinfo, DatumGetTextPP(database), findSpec, cursorId, &queryData,
 		QueryKind_Find, query);
 
 	PG_RETURN_DATUM(response);
