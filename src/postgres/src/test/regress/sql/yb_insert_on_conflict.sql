@@ -95,8 +95,8 @@ SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
 DELETE FROM ab_tab WHERE a IS null;
 -- NULLS NOT DISTINCT
 DROP INDEX ah_idx;
-/* TODO(jason): uncomment when NULLS NOT DISTINCT is either supported or blocked
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH) NULLS NOT DISTINCT;
+/* TODO(jason): uncomment when NULLS NOT DISTINCT is supported
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
 SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
