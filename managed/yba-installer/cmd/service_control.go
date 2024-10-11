@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
@@ -47,11 +48,20 @@ var startCmd = &cobra.Command{
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
 			}
+			if err := common.Chown(common.GetDataRoot(), "yugabyte", "yugabyte", true); err != nil {
+				log.Fatal("Failed to change ownership of data directory: " + err.Error())
+			}
 			log.Info("Initializing YBA before starting services")
 			if err := common.Initialize(); err != nil {
 				log.Fatal("Failed to initialize common components: " + err.Error())
 			}
 			for _, name := range serviceOrder {
+				if name == "yb-platform" {
+					log.Info("Generating yb-platform config with fixPaths set to true")
+					plat := services[name].(Platform)
+					plat.FixPaths = true
+					config.GenerateTemplate(plat)
+				}
 				if err := services[name].Initialize(); err != nil {
 					log.Fatal("Failed to initialize " + name + ": " + err.Error())
 				}
