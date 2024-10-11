@@ -91,7 +91,7 @@ ERROR:  2D000: invalid transaction termination
 
 ## 3B001: Invalid savepoint specification
 
-This error occurs when you try to `ROLLBACK` to or `RELEASE` a savepoint that has not been defined.
+This error occurs when you try to `ROLLBACK` to, or `RELEASE` a savepoint that has not been defined.
 
 ```output
 ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
@@ -133,7 +133,7 @@ Error codes starting with 42 typically relate to issues with SQL syntax, invalid
 Retrying these errors will likely have no effect unless the respective issue is fixed.
 {{</warning>}}
 
-Here are some of the errors.
+Some of the errors are described in the following table:
 
 | Code  |                                          Issue                                          |
 | ----- | --------------------------------------------------------------------------------------- |

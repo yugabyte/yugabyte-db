@@ -47,8 +47,8 @@ In some scenarios, a server-side retry is not suitable. For example, the retry l
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client.
 
-{{<warning title="Scenarios Where Retries Should Be Avoided">}}
-Retries should only be performed when they are deemed safe. Retries should be avoided in the following situations:
+{{<warning title="Scenarios where retries should be avoided">}}
+Retries should only be performed when they are deemed safe, and should be avoided in the following situations:
 
 - For unfamiliar errors, such as internal errors, to prevent potential data corruption.
 - For commit or auto-commit statements, as it's unclear whether the failure occurred before or after the commit.
@@ -59,7 +59,7 @@ The following scenarios describe the causes for failures, and the required metho
 Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback/) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for some time between retries and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
 ```python
-max_attempts = 10   # max no.of retries
+max_attempts = 10   # max number of retries
 sleep_time = 0.002  # 2 ms - base sleep time
 backoff = 2         # exponential multiplier
 
@@ -70,7 +70,7 @@ while attempt < max_attempts:
         cursor = cxn.cursor()
         cursor.execute("BEGIN");
 
-        # Execute Transaction Statments here
+        # Execute transaction statments here
 
         cursor.execute("COMMIT");
         break
@@ -242,7 +242,7 @@ The only valid statements at this point would be [ROLLBACK](../../../../api/ysql
 
 ##### 42XXX - Syntax errors
 
-Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions. Retrying these errors will likely have no effect unless the respective issue is fixed. Here are some of the errors.
+Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions. Retrying these errors will likely have no effect unless the respective issue is fixed.
 
 {{<lead link="../transactions-errorcodes-ysql/#42xxx-syntax-error-or-access-rule-violation">}}
 For the list of errors in the class 42 category, see [Syntax Error or Access Rule Violation](../transactions-errorcodes-ysql/#42xxx-syntax-error-or-access-rule-violation)
