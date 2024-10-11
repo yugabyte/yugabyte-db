@@ -19,7 +19,7 @@ YugabyteDB ships with command line interface (CLI) shells for interacting with e
 
 The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
-Clients work best with servers of the same or an older major version. With ysqlsh, meta-commands are more likely to fail if the server is a newer version than ysqlsh itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
+Clients work best with servers of the same or an older major version. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
 
 If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
 
