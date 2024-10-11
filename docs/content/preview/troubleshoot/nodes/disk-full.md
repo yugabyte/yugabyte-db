@@ -35,7 +35,7 @@ Consider configuring low disk space alerts that will notify you before nodes run
 
 The flags [max_disk_throughput_mbps](../../../reference/configuration/all-flags-yb-master/#max-disk-throughput-mbps) and [reject_writes_min_disk_space_mb](../../../reference/configuration/all-flags-yb-master/#reject-writes-min-disk-space-mb) determine the amount of disk space that is considered too low. The default value is 3GB.
 
-The YB-TServer logs contain the following message when the system nears the threshold (18GB):
+The YB-TServer logs contain the following message when the system nears the threshold:
 
 ```output
 W0829 15:35:51.325239 1986375680 log.cc:2186] Low disk space on yb-data/tserver/wals/table-7457ebcd745e4ea89375a30406f2c188/tablet-749e4d78244c43d2bba9cdb8505b732f/wal-000000001. Free space: 3518698209 bytes
@@ -67,7 +67,9 @@ Scale the cluster to increase capacity. You can do this in two ways:
 
 Unnecessary files can accumulate on the nodes, including large log files or older core dumps.
 
+{{<warning>}}
 Do not modify or remove the YugabyteDB data, bin, or config directories and files. Damage or loss of these files can result in unavailability and data loss.
+{{</warning>}}
 
 ### Drop unnecessary tables and databases/namespaces
 
@@ -103,7 +105,7 @@ The following sections describe disk full scenarios and the recommended recovery
 
 If the Master or TServer are unable to create new log files at tablet bootstrap time, they can enter a crash loop.
 
-You can identify this by looking at the `/var/log/messages` files [for what? can we have an example log message]
+You can identify this by looking at the `/var/log/messages` files.
 
 ### Data drive is full
 
