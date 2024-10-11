@@ -19,7 +19,11 @@ YugabyteDB ships with command line interface (CLI) shells for interacting with e
 
 The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and located in the `bin` directory of the YugabyteDB home directory.
 
-If you prefer, you can install a standalone version using any of the following methods:
+Clients work best with servers of the same or an older major version. With ysqlsh, meta-commands are more likely to fail if the server is a newer version than ysqlsh itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
+
+If you are running multiple versions of YugabyteDB, use the newest version of the client to connect. You can keep and use the matching version of a client to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
+
+You can install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -85,3 +89,17 @@ docker pull yugabytedb/yugabyte-client:latest
 
   </div>
 </div>
+
+## Release notes
+
+The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-releases/). Only versions with client-specific changes are listed.
+
+### v2.23.0.0 - September 13, 2024 {#v2.23.0.0}
+
+* Documents the limitations of retry logic when using `-c` flag in `ysqlsh` command. {{<issue 21804>}}
+
+* Allows the deletion of the Cassandra role in ycqlsh without it regenerating upon cluster restart, by adding a flag to mark if the role was previously created. {{<issue 21057>}}
+
+### v2024.1.1.0 - July 31, 2024 {#v2024.1.1.0}
+
+* Automated SQL/CQL Shell binary. Along with full binary, added separate downloadable SQL/CQL Shell binary. <!-- IDEA-1526 -->
