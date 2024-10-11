@@ -327,7 +327,7 @@ Result<int64_t> LogCache::GetMaxReplicateIndexFromSegmentFooter(int64_t segment_
   return segment->footer().has_max_replicate_index() ? segment->footer().max_replicate_index() : 0;
 }
 
-uint64_t LogCache::GetActiveSegmentNumber() const {
+int64_t LogCache::GetActiveSegmentNumber() const {
   return log_->active_segment_sequence_number();
 }
 
@@ -357,6 +357,10 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
 
   // If it misses, read from the log.
   return log_->GetLogReader()->LookupOpId(op_index);
+}
+
+Result<int64_t> LogCache::LookupOpWalSegmentNumber(int64_t op_index) const {
+  return log_->GetLogReader()->LookupOpWalSegmentNumber(op_index);
 }
 
 namespace {
