@@ -46,6 +46,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
@@ -471,6 +472,7 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
   server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
 
   InitThreading();
 

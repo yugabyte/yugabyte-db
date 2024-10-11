@@ -178,6 +178,17 @@ void ExternalYbController::Shutdown() {
     WARN_NOT_OK(process_->Kill(SIGKILL), "Killing YB Controller process failed");
   }
 
+  // Manually cleanup left behind subprocesses if any.
+  string cmd = "ps -ef | grep -v grep | grep " + tmp_dir_ + " | awk '{print $2}' | xargs kill -9";
+  std::vector<string> argvc = { "bash", "-c", cmd };
+  string results;
+  LOG(INFO) << "Killing YB Controller subprocesses";
+  Status s = Subprocess::Call(argvc, &results);
+  if (!s.ok()) {
+    LOG(INFO) << "No subprocesses to kill! " << s.ToString();
+  }
+  LOG(INFO) << results;
+
   // Delete the tmp directory if present.
   status = (DeleteIfExists(tmp_dir_, Env::Default()));
   if (!status.ok()) {

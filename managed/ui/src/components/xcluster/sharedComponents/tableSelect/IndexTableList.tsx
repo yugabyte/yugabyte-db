@@ -9,7 +9,12 @@ import {
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
+import {
+  formatBytes,
+  getIsTransactionalAtomicityEnabled,
+  isTableToggleable,
+  tableSort
+} from '../../ReplicationUtils';
 import { TableNameCell } from './TableNameCell';
 import { XClusterConfigAction, XClusterConfigType } from '../../constants';
 
@@ -62,21 +67,18 @@ export const IndexTableList = ({
     mainTableReplicationCandidate.indexTables?.sort((a, b) =>
       tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
+  const isTransactionalAtomicityEnabled = getIsTransactionalAtomicityEnabled(xClusterConfigType);
   const untoggleableTableUuids = indexTableRows
     .filter(
       (table) =>
-        xClusterConfigType === XClusterConfigType.TXN ||
-        xClusterConfigType === XClusterConfigType.DB_SCOPED ||
+        isTransactionalAtomicityEnabled ||
         !isTableToggleable(table, xClusterConfigAction) ||
         xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
     )
     .map((table) => table.tableUUID);
   const isSelectable =
     isMainTableSelectable &&
-    !(
-      xClusterConfigType === XClusterConfigType.TXN ||
-      xClusterConfigType === XClusterConfigType.DB_SCOPED
-    ) &&
+    !isTransactionalAtomicityEnabled &&
     xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE;
   return (
     <div className={styles.expandComponent}>

@@ -1251,8 +1251,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
       if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
-          && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)
-          && universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor > 1) {
+          && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
         log.info("Creating consistency check task for task {}", taskType);
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
       }

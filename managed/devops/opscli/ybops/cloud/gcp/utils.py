@@ -25,7 +25,8 @@ from ybops.cloud.common.utils import request_retry_decorator
 
 RESOURCE_BASE_URL = "https://www.googleapis.com/compute/beta/projects/"
 REGIONS_RESOURCE_URL_FORMAT = RESOURCE_BASE_URL + "{}/regions/{}"
-PRICING_JSON_URL = "https://cloudpricingcalculator.appspot.com/static/data/pricelist.json"
+PRICING_JSON_URL = os.environ.get("YB_GCP_PRICING_JSON_URL",
+                                  "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json")
 IMAGE_NAME_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-"
 IMAGE_NAME_PREEMPTIBLE_SUFFIX = "-PREEMPTIBLE"
 OPERATION_WAIT_TIME = 5
@@ -806,14 +807,18 @@ class GoogleCloudAdmin():
         return os.environ.get("GCE_SHARED_VPC_PROJECT", self.project)
 
     def get_pricing_map(self, ):
-        # Requests encounters an SSL bug when run on portal, so verify is set to false
-        pricing_url_response = requests.get(PRICING_JSON_URL, verify=False)
-        pricing_map_all = pricing_url_response.json()["gcp_price_list"]
-        pricing_map = {}
-        for key in pricing_map_all:
-            if key.startswith(IMAGE_NAME_PREFIX):
-                pricing_map[key] = pricing_map_all[key]
-        return pricing_map
+        try:
+            # Requests encounters an SSL bug when run on portal, so verify is set to false
+            pricing_url_response = requests.get(PRICING_JSON_URL, verify=False)
+            pricing_map_all = pricing_url_response.json()["gcp_price_list"]
+            pricing_map = {}
+            for key in pricing_map_all:
+                if key.startswith(IMAGE_NAME_PREFIX):
+                    pricing_map[key] = pricing_map_all[key]
+            return pricing_map
+        except Exception as e:
+            logging.warn("[app] Exception {} determining GCP pricing info".format(e))
+        return {}
 
     @gcp_request_limit_retry
     def get_instances(self, zone, instance_name, get_all=False, filters=None):

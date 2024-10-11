@@ -671,8 +671,7 @@ export function ReplicationDetails({
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationTables
                     xClusterConfig={xClusterConfig}
-                    isTableInfoError={xClusterConfigFullQuery.isError}
-                    isTableInfoLoading={xClusterConfigFullQuery.isLoading}
+                    isTableInfoIncludedInConfig={xClusterConfigFullQuery.isSuccess}
                     isActive={window.location.search === '?tab=tables'}
                     isDrInterface={false}
                   />

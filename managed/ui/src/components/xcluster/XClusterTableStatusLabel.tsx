@@ -91,6 +91,7 @@ export const XClusterTableStatusLabel = ({ status, errors }: XClusterTableStatus
           <i className="fa fa-exclamation-triangle" />
         </Typography>
       );
+    case XClusterTableStatus.TABLE_INFO_MISSING:
     case XClusterTableStatus.DROPPED:
     case XClusterTableStatus.DROPPED_FROM_SOURCE:
     case XClusterTableStatus.DROPPED_FROM_TARGET:

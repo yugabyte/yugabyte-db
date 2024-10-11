@@ -37,6 +37,26 @@ class AlterUniverseReplicationHelper {
       Master& master, CatalogManager& catalog_manager, const AlterUniverseReplicationRequestPB* req,
       AlterUniverseReplicationResponsePB* resp, const LeaderEpoch& epoch);
 
+  struct AddTablesToReplicationData {
+    xcluster::ReplicationGroupId replication_group_id;
+    master::NamespaceIdentifierPB source_namespace_to_add;
+    std::vector<TableId> source_table_ids_to_add;
+    std::vector<xrepl::StreamId> source_bootstrap_ids_to_add;
+    std::optional<TableId> target_table_id = std::nullopt;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(
+          replication_group_id, source_namespace_to_add, source_table_ids_to_add,
+          source_bootstrap_ids_to_add, target_table_id);
+    }
+
+    bool HasSourceNamespaceToAdd() const { return !source_namespace_to_add.id().empty(); }
+  };
+
+  static Status AddTablesToReplication(
+      Master& master, CatalogManager& catalog_manager, const AddTablesToReplicationData& data,
+      const LeaderEpoch& epoch);
+
  private:
   AlterUniverseReplicationHelper(
       Master& master, CatalogManager& catalog_manager, const LeaderEpoch& epoch);
@@ -49,8 +69,8 @@ class AlterUniverseReplicationHelper {
       const AlterUniverseReplicationRequestPB* req);
 
   Status AddTablesToReplication(
-      scoped_refptr<UniverseReplicationInfo> universe, const AlterUniverseReplicationRequestPB* req,
-      AlterUniverseReplicationResponsePB* resp);
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const AddTablesToReplicationData& add_table_data);
 
   Master& master_;
   CatalogManager& catalog_manager_;

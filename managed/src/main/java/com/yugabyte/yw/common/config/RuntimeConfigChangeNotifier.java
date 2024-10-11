@@ -37,7 +37,8 @@ public class RuntimeConfigChangeNotifier {
       MonitoredMountRootsListener monitoredMountRootsListener,
       UseNewRbacAuthzListener useNewRbacAuthzListener,
       BootstrapRequiredRpcPoolMaxThreadListener bootstrapRequiredRpcPoolMaxThreadListener,
-      CpuUsageIntervalListener cpuUsageIntervalListener) {
+      CpuUsageIntervalListener cpuUsageIntervalListener,
+      MetricsScrapeIntervalStandbyListener metricsScrapeIntervalStandbyListener) {
     List<String> refreshableClients = AppConfigHelper.getRefreshableClients();
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
@@ -47,6 +48,7 @@ public class RuntimeConfigChangeNotifier {
     addListener(useNewRbacAuthzListener);
     addListener(bootstrapRequiredRpcPoolMaxThreadListener);
     addListener(cpuUsageIntervalListener);
+    addListener(metricsScrapeIntervalStandbyListener);
   }
 
   public void notifyListeners(UUID scopeUUID, String path) {

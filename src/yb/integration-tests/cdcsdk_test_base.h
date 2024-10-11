@@ -249,7 +249,8 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
-      CDCRecordType record_type = CDCRecordType::CHANGE);
+      CDCRecordType record_type = CDCRecordType::CHANGE,
+      std::string namespace_name = kNamespaceName);
 
   Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 

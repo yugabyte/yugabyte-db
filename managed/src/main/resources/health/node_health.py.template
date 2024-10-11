@@ -2126,7 +2126,8 @@ def _chrony_get_clock_drift_ms():
             skew = float(skew_match.group(1))
             delay = float(delay_match.group(1))
             dispersion = float(dispersion_match.group(1))
-            return skew + dispersion + (.5 * delay)
+            # Main algorithm is (skew + dispersion + (.5 * delay))
+            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
     return "Failed to get clock drift from chrony"
 
 def _ntp_get_clock_drift_ms():

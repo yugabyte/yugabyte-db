@@ -604,6 +604,7 @@ public class XClusterConfigController extends AuthenticatedController {
       XClusterConfigTaskBase.verifyTablesNotInReplication(
           ybService,
           tableIdsToAdd,
+          xClusterConfig.getTableType(),
           xClusterConfig.getType(),
           xClusterConfig.getSourceUniverseUUID(),
           sourceTableInfoList,
@@ -737,9 +738,13 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "No change in the xCluster config table list is detected");
     }
+    Set<String> tableIdsToRemoveWithReplicationSetup =
+        tableIdsToRemove.stream()
+            .filter(tableId -> xClusterConfig.getTableIdsWithReplicationSetup().contains(tableId))
+            .collect(Collectors.toSet());
 
     if (xClusterConfig.getTableIdsWithReplicationSetup().size() + tableIdsToAdd.size()
-        == tableIdsToRemove.size()) {
+        == tableIdsToRemoveWithReplicationSetup.size()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "The operation to remove tables from replication config will remove all the "
@@ -1820,6 +1825,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,
         tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
         configType,
         sourceUniverse.getUniverseUUID(),
         sourceTableInfoList,

@@ -68,9 +68,14 @@ class XClusterInboundReplicationGroupSetupTask;
 //    (PopulateTabletMapping).
 class XClusterTableSetupTask : public MultiStepMonitoredTask {
  public:
+  // Both target_table_id and stream_id are optional.
+  //  - target_table_id: If provided, we will match tables using table ids instead of table names,
+  //                     and will skip performing schema validation.
+  //  - stream_id: If provided, we will skip creating a new stream on the source.
   XClusterTableSetupTask(
       std::shared_ptr<XClusterInboundReplicationGroupSetupTask> parent_task,
-      const TableId& source_table_id, const xrepl::StreamId& stream_id);
+      const TableId& source_table_id, const std::optional<TableId>& target_table_id,
+      const xrepl::StreamId& stream_id);
 
   ~XClusterTableSetupTask() = default;
 
@@ -104,6 +109,8 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
       const std::shared_ptr<client::YBTableInfo>& source_table_info, const Status& s);
   Status ProcessTable(
       const std::shared_ptr<client::YBTableInfo>& source_table_info, const Status& s);
+
+  Status ProcessTableWithoutSchemaValidation();
 
   static void GetTablegroupSchemaCallback(
       std::shared_ptr<XClusterTableSetupTask> shared_this,
@@ -139,6 +146,8 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
 
   std::shared_ptr<XClusterInboundReplicationGroupSetupTask> parent_task_;
   const TableId& source_table_id_;
+  // Set by automatic DDL mode since we know the target table and can skip schema validation.
+  const std::optional<TableId> target_table_id_;
   XClusterTableSetupInfo table_setup_info_;
   std::string log_prefix_;
 
@@ -163,11 +172,7 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
  public:
   XClusterInboundReplicationGroupSetupTask(
       Master& master, CatalogManager& catalog_manager, const LeaderEpoch& epoch,
-      xcluster::ReplicationGroupId&& replication_group_id,
-      const google::protobuf::RepeatedPtrField<HostPortPB>& source_masters,
-      std::vector<TableId>&& source_table_ids, std::vector<xrepl::StreamId>&& stream_ids,
-      bool transactional, std::vector<NamespaceId>&& source_namespace_ids,
-      std::vector<NamespaceId>&& target_namespace_ids, bool automatic_ddl_mode);
+      XClusterSetupUniverseReplicationData&& data);
 
   ~XClusterInboundReplicationGroupSetupTask() = default;
 
@@ -179,7 +184,7 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
 
   std::string description() const override { return log_prefix_; }
 
-  xcluster::ReplicationGroupId Id() const override { return replication_group_id_; }
+  xcluster::ReplicationGroupId Id() const override { return data_.replication_group_id; }
 
   Status ValidateInputArguments();
 
@@ -243,19 +248,10 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
   XClusterManager& xcluster_manager_;
   const LeaderEpoch epoch_;
 
-  const xcluster::ReplicationGroupId replication_group_id_;
-  const google::protobuf::RepeatedPtrField<HostPortPB> source_masters_;
-  // The following lists are preserved in the same order they were provided.
-  const std::vector<TableId> source_table_ids_;
-  const std::vector<xrepl::StreamId> stream_ids_;
-  const std::vector<NamespaceId> source_namespace_ids_;
-  const std::vector<NamespaceId> target_namespace_ids_;
+  const XClusterSetupUniverseReplicationData data_;
 
   const bool is_alter_replication_;
-  const bool stream_ids_provided_;
-  const bool transactional_;  // Not used in ALTER.
   bool is_db_scoped_;  // Computed in ValidateInputArguments.
-  const bool automatic_ddl_mode_;
 
   std::string log_prefix_;
 

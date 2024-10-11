@@ -1234,8 +1234,12 @@ extern bool YbUseFastBackwardScan();
 
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
+extern bool YbIsAuthBackend();
+
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
+
+bool YbUseUnsafeTruncate(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

@@ -2731,12 +2731,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, /* is_explicit_checkpoint */ true));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
 
@@ -2765,14 +2762,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */true,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) {
@@ -2797,11 +2789,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
   // SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
@@ -2827,14 +2817,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */false,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBootStrap)) {
@@ -10742,6 +10727,55 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
       expected_tablets, test_client(), stream_id,
       "Waiting for cdc state entries after master restart");
   LOG(INFO) << "Stream, after master restart, only contains the table_1.";
+}
+
+TEST_F(CDCSDKYsqlTest, TestSlotNameInCDCMetricsAttributes) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1));
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+
+  std::string kNamespaceName_2 = "test_namespace_for_old_model";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test2"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, nullptr));
+  ASSERT_EQ(tablets_1.size(), 1);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, nullptr));
+  ASSERT_EQ(tablets_2.size(), 1);
+
+  std::string slot_name = "test_slot";
+  auto stream_id_with_slot = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      slot_name, CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      kNamespaceName));
+
+  auto stream_id_without_slot = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      kNamespaceName_2));
+
+  vector<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> metrics(2);
+  metrics[0] = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablets_1[0].tablet_id(), stream_id_with_slot,
+      CreateMetricsEntityIfNotFound::kFalse));
+
+  metrics[1] = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablets_2[0].tablet_id(), stream_id_without_slot,
+      CreateMetricsEntityIfNotFound::kFalse));
+
+  // Stream created with replication slot will have slot_name attribute in its metrics.
+  auto slot_name_attribute = ASSERT_RESULT(metrics[0]->TEST_GetAttribute("slot_name"));
+  ASSERT_EQ(slot_name_attribute, slot_name);
+
+  // Old model stream will not contain slot_name attribute in its metrics.
+  auto result = metrics[1]->TEST_GetAttribute("slot_name");
+  ASSERT_STR_CONTAINS(result.ToString(), "not found in attributes_ map");
 }
 
 }  // namespace cdc

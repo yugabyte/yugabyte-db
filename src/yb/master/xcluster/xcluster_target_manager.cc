@@ -1135,8 +1135,47 @@ Status XClusterTargetManager::SetupUniverseReplication(
     }
   }
 
-  auto setup_replication_task =
-      VERIFY_RESULT(CreateSetupUniverseReplicationTask(master_, catalog_manager_, req, epoch));
+  SCHECK_PB_FIELDS_NOT_EMPTY(
+      *req, replication_group_id, producer_master_addresses, producer_table_ids);
+
+  // Construct data struct.
+  XClusterSetupUniverseReplicationData data;
+  data.replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  data.source_masters.CopyFrom(req->producer_master_addresses());
+  data.transactional = req->transactional();
+  data.automatic_ddl_mode = req->automatic_ddl_mode();
+
+  for (const auto& bootstrap_id : req->producer_bootstrap_ids()) {
+    data.stream_ids.push_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
+  }
+
+  for (const auto& source_ns_id : req->producer_namespaces()) {
+    SCHECK(!source_ns_id.id().empty(), InvalidArgument, "Invalid Namespace Id");
+    SCHECK(!source_ns_id.name().empty(), InvalidArgument, "Invalid Namespace name");
+    SCHECK_EQ(
+        source_ns_id.database_type(), YQLDatabase::YQL_DATABASE_PGSQL, InvalidArgument,
+        "Invalid Namespace database_type");
+
+    data.source_namespace_ids.push_back(source_ns_id.id());
+
+    NamespaceIdentifierPB target_ns_id;
+    target_ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    target_ns_id.set_name(source_ns_id.name());
+    auto ns_info = VERIFY_RESULT(catalog_manager_.FindNamespace(target_ns_id));
+    data.target_namespace_ids.push_back(ns_info->id());
+  }
+
+  data.source_table_ids.insert(
+      data.source_table_ids.begin(), req->producer_table_ids().begin(),
+      req->producer_table_ids().end());
+
+  return SetupUniverseReplication(std::move(data), epoch);
+}
+
+Status XClusterTargetManager::SetupUniverseReplication(
+    XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
+  auto setup_replication_task = VERIFY_RESULT(
+      CreateSetupUniverseReplicationTask(master_, catalog_manager_, std::move(data), epoch));
 
   {
     std::lock_guard l(replication_setup_tasks_mutex_);
@@ -1268,6 +1307,20 @@ Status XClusterTargetManager::DeleteUniverseReplication(
   CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
+}
+
+Status XClusterTargetManager::AddTableToReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+    const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+    const LeaderEpoch& epoch) {
+  AlterUniverseReplicationHelper::AddTablesToReplicationData data;
+  data.replication_group_id = replication_group_id;
+  data.source_table_ids_to_add.push_back(source_table_id);
+  data.source_bootstrap_ids_to_add.push_back(bootstrap_id);
+  data.target_table_id = target_table_id;
+
+  return AlterUniverseReplicationHelper::AddTablesToReplication(
+      master_, catalog_manager_, data, epoch);
 }
 
 }  // namespace yb::master

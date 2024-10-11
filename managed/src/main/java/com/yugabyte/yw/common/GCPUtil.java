@@ -85,7 +85,7 @@ public class GCPUtil implements CloudUtil {
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
   private static final String PRICING_JSON_URL =
-      "https://cloudpricingcalculator.appspot.com/static/data/pricelist.json";
+      "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json";
 
   public static final String YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME =
       "GOOGLE_APPLICATION_CREDENTIALS";

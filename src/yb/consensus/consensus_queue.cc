@@ -738,12 +738,20 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
   return result;
 }
 
+std::pair<int64_t, int64_t> PeerMessageQueue::GetCommittedAndMajorityReplicatedIndex() {
+  LockGuard lock(queue_lock_);
+  return {queue_state_.committed_op_id.index, queue_state_.majority_replicated_op_id.index};
+}
+
+int64_t PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
+  return start_index == 0 ? max<int64_t>(log_cache_.earliest_op_index(), 0)
+                          : start_index;
+}
+
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
-    OpId last_op_id, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
+    int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
-  int64_t after_op_index =
-      last_op_id.empty() ? max<int64_t>(log_cache_.earliest_op_index(), 0)
-                         : last_op_id.index;
+  int64_t after_op_index = GetStartOpIdIndex(last_op_id_index);
 
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline,
@@ -788,8 +796,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
     };
   }
 
-  auto result =
-      VERIFY_RESULT(ReadFromLogCacheForCDC(last_op_id, to_index, deadline, fetch_single_entry));
+  auto result = VERIFY_RESULT(
+      ReadFromLogCacheForCDC(last_op_id.index, to_index, deadline, fetch_single_entry));
 
   result.have_more_messages =
       HaveMoreMessages(result.have_more_messages.get() || pending_messages);
@@ -816,14 +824,11 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
       return res;
     }
 
-    {
-      LockGuard lock(queue_lock_);
-      // Use committed_op_id because it's already been processed by the Transaction codepath.
-      committed_op_id_index = queue_state_.committed_op_id.index;
-      // Determine if there are pending operations in RAFT but not yet LogCache.
-      last_replicated_op_id_index = queue_state_.majority_replicated_op_id.index;
-      pending_messages = committed_op_id_index != last_replicated_op_id_index;
-    }
+    std::tie(committed_op_id_index, last_replicated_op_id_index) =
+        GetCommittedAndMajorityReplicatedIndex();
+
+    // Determine if there are pending operations in RAFT but not yet LogCache.
+    pending_messages = committed_op_id_index != last_replicated_op_id_index;
 
     if (repl_index) {
       *repl_index = committed_op_id_index;
@@ -843,8 +848,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
       }
     }
 
-    auto result = VERIFY_RESULT(
-        ReadFromLogCacheForCDC(last_op_id, committed_op_id_index, deadline, fetch_single_entry));
+    auto result = VERIFY_RESULT(ReadFromLogCacheForCDC(
+        last_op_id.index, committed_op_id_index, deadline, fetch_single_entry));
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
     res.read_from_disk_size += result.read_from_disk_size;
@@ -868,6 +873,93 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
            last_read_hybrid_time <= stream_safe_time);
 
   return res;
+}
+
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
+    const OpId& from_op_id, CoarseTimePoint deadline, bool fetch_single_entry,
+    int64_t* last_committed_index, HybridTime* consistent_stream_safe_time_footer) {
+  auto read_ops = ReadOpsResult();
+
+  auto [committed_op_id_index, last_replicated_op_id_index] =
+      GetCommittedAndMajorityReplicatedIndex();
+
+  // Determine if there are pending operations in RAFT but not yet LogCache.
+  auto pending_messages = committed_op_id_index != last_replicated_op_id_index;
+
+  if (last_committed_index) {
+    *last_committed_index = committed_op_id_index;
+  }
+
+  if (from_op_id.index >= committed_op_id_index && !fetch_single_entry) {
+    // Nothing to read.
+    return ReadOpsResult {
+      .messages = ReplicateMsgs(),
+      .preceding_op = OpId(),
+      .have_more_messages = HaveMoreMessages(pending_messages)
+    };
+  }
+
+  auto start_op_id_index = GetStartOpIdIndex(from_op_id.index);
+
+  VLOG(1) << "Will read Ops from a WAL segment. "
+            << " start_op_id_index = " << start_op_id_index
+            << " committed_op_id_index = " << committed_op_id_index
+            << " last_replicated_op_id_index = " << last_replicated_op_id_index;
+
+  auto current_segment_num_result = log_cache_.LookupOpWalSegmentNumber(start_op_id_index);
+  if (!current_segment_num_result.ok() ||
+      (*current_segment_num_result == log_cache_.GetActiveSegmentNumber())) {
+    // Read entire WAL.
+    return ReadReplicatedMessagesForConsistentCDC(
+        from_op_id, HybridTime::kInvalid.ToUint64(), deadline, fetch_single_entry);
+  }
+
+  auto current_segment_num = *current_segment_num_result;
+  auto segment_last_index =
+      VERIFY_RESULT(log_cache_.GetMaxReplicateIndexFromSegmentFooter(current_segment_num));
+
+  // Nothing to read in this segment, read the next segment.
+  if (start_op_id_index == segment_last_index) {
+    current_segment_num = VERIFY_RESULT(log_cache_.LookupOpWalSegmentNumber(start_op_id_index + 1));
+    if (current_segment_num == log_cache_.GetActiveSegmentNumber()) {
+      // Read entire WAL.
+      return ReadReplicatedMessagesForConsistentCDC(
+          from_op_id, HybridTime::kInvalid.ToUint64(), deadline, fetch_single_entry);
+    }
+    segment_last_index =
+        VERIFY_RESULT(log_cache_.GetMaxReplicateIndexFromSegmentFooter(current_segment_num));
+  }
+  auto consistent_stream_safe_time =
+      VERIFY_RESULT(log_cache_.GetMinStartTimeRunningTxnsFromSegmentFooter(current_segment_num));
+
+  if (consistent_stream_safe_time_footer) {
+    *consistent_stream_safe_time_footer = consistent_stream_safe_time;
+  }
+
+  VLOG(1) << "Reading a new WAL segment. Segment info:"
+          << " current_segment_num = " << current_segment_num
+          << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
+          << " segment_last_index = " << segment_last_index
+          << " consistent_stream_safe_time = " << consistent_stream_safe_time
+          << " start_op_id_index = " << start_op_id_index;
+
+  auto current_index = start_op_id_index;
+
+  // Read the ops from the segment starting from current_index + 1.
+  while (current_index < segment_last_index) {
+    auto result = VERIFY_RESULT(
+        ReadFromLogCacheForCDC(current_index, segment_last_index, deadline, fetch_single_entry));
+
+    read_ops.read_from_disk_size += result.read_from_disk_size;
+    read_ops.messages.insert(
+        read_ops.messages.end(), result.messages.begin(), result.messages.end());
+
+    if (!result.messages.empty()) {
+      current_index = result.messages.back()->id().index();
+    }
+  }
+
+  return read_ops;
 }
 
 const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstrap(

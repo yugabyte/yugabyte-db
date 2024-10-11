@@ -532,7 +532,8 @@ Status UpgradeTestBase::RollbackYsqlMajorVersion() {
   master::RollbackYsqlMajorVersionUpgradeRequestPB req;
   master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  // Rollback RPC is synchronous and can take a while.
+  rpc.set_timeout(3min);
   RETURN_NOT_OK(
       cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorVersionUpgrade(
           req, &resp, &rpc));
