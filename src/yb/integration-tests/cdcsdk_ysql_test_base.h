@@ -714,6 +714,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency = 0,
       const int& start_index = 0);
 
+  std::vector<int> PerformSingleAndMultiShardInsertsInSeparateThreads(
+      int total_single_shard_txns, int total_multi_shard_txns, int batch_size,
+      PostgresMiniCluster* test_cluster, int additional_inserts = 0);
+
   void PerformSingleAndMultiShardQueries(
       const int& num_batches, const int& queries_per_batch, const string& query,
       int apply_update_latency = 0, const int& start_index = 0);

@@ -2729,12 +2729,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, /* is_explicit_checkpoint */ true));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
 
@@ -2763,14 +2760,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */true,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) {
@@ -2795,11 +2787,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
   // SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
@@ -2825,14 +2815,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */false,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBootStrap)) {
