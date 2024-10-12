@@ -28,7 +28,6 @@ import {
   XClusterConfigAction,
   XClusterConfigType,
   XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
-  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import { DurationUnit, DURATION_UNIT_TO_SECONDS } from '../constants';
@@ -103,15 +102,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   );
 
   const drConfigMutation = useMutation(
-    ({
-      formValues,
-      defaultPitrSnapshotInterval,
-      isDbScoped
-    }: {
-      formValues: CreateDrConfigFormValues;
-      defaultPitrSnapshotInterval: number;
-      isDbScoped: boolean;
-    }) => {
+    ({ formValues, isDbScoped }: { formValues: CreateDrConfigFormValues; isDbScoped: boolean }) => {
       const retentionPeriodSec =
         formValues.pitrRetentionPeriodValue *
         DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
@@ -127,12 +118,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           }
         },
         pitrParams: {
-          retentionPeriodSec: retentionPeriodSec,
-          // Math.max is used to ensure the snapshot interval is at least 1 second.
-          snapshotIntervalSec: Math.max(
-            Math.min(defaultPitrSnapshotInterval, retentionPeriodSec - 1),
-            1
-          )
+          retentionPeriodSec: retentionPeriodSec
         },
         dbScoped: isDbScoped
       };
@@ -283,16 +269,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   }
 
   const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
-  const runtimeConfigDefaultPitrSnapshotInterval = parseDurationToSeconds(
-    runtimeConfigEntries.find(
-      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL
-    )?.value ?? '',
-    { noThrow: true }
-  );
-  const defaultPitrSnapshotInterval = isNaN(runtimeConfigDefaultPitrSnapshotInterval)
-    ? XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK
-    : runtimeConfigDefaultPitrSnapshotInterval;
-
   const isDbScopedEnabled =
     runtimeConfigEntries.find(
       (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
@@ -347,7 +323,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIRM_ALERT:
         return drConfigMutation.mutateAsync({
           formValues,
-          defaultPitrSnapshotInterval,
           isDbScoped: isDbScopedEnabled
         });
       default:
