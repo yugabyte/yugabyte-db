@@ -8,6 +8,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -34,7 +35,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +48,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -438,7 +442,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
   }
 
   @Test
-  public void testDbScopedFailoverRestart() throws InterruptedException {
+  public void testDbScopedFailoverRestartWithSwitchover() throws InterruptedException, IOException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
     Universe sourceUniverse = createData.sourceUniverse;
@@ -474,6 +478,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
     validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
+    // Take down source universe nodes.
+    for (NodeDetails sourceNode : sourceUniverse.getNodes()) {
+      killProcessOnNode(sourceUniverse.getUniverseUUID(), sourceNode.nodeName, ServerType.TSERVER);
+    }
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -496,6 +505,19 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     Universe newSourceUniverse = Universe.getOrBadRequest(targetUniverse.getUniverseUUID());
     Universe newTargetUniverse = Universe.getOrBadRequest(sourceUniverse.getUniverseUUID());
     verifyUniverseState(newSourceUniverse);
+
+    for (NodeDetails newTargetNode : newTargetUniverse.getNodes()) {
+      startProcessesOnNode(newTargetUniverse.getUniverseUUID(), newTargetNode, ServerType.TSERVER);
+    }
+
+    // Wait for tservers to start.
+    try (YBClient client =
+        ybClientService.getClient(
+            newTargetUniverse.getMasterAddresses(), newTargetUniverse.getCertificateNodetoNode())) {
+      waitTillNumOfTservers(client, 3);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
     verifyUniverseState(newTargetUniverse);
 
     // Repair DR config.
@@ -518,7 +540,39 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(newSourceUniverse, tables.get(1), Map.of("id", "11", "name", "'val11'"));
     validateRowCount(newTargetUniverse, tables.get(1), 2 /* expectedRows */);
 
-    deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
+    // Perform a switchover to make sure that new outbound replication group can be created even
+    // though stale outbound replication group is persisted.
+    DrConfigSwitchoverForm switchoverForm = new DrConfigSwitchoverForm();
+    switchoverForm.primaryUniverseUuid = newTargetUniverse.getUniverseUUID();
+    switchoverForm.drReplicaUniverseUuid = newSourceUniverse.getUniverseUUID();
+
+    Result switchoverResult = switchover(drConfigUUID, switchoverForm);
+    assertOk(switchoverResult);
+    json = Json.parse(contentAsString(switchoverResult));
+    taskInfo =
+        waitForTask(
+            UUID.fromString(json.get("taskUUID").asText()), newSourceUniverse, newTargetUniverse);
+    sourceUniverse = Universe.getOrBadRequest(newTargetUniverse.getUniverseUUID());
+    targetUniverse = Universe.getOrBadRequest(newSourceUniverse.getUniverseUUID());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    // Sleep to make sure roles are propogated properly after switchover.
+    Thread.sleep(5000);
+
+    // Validate newSourceUniverse -> newTargetUniverse replication succeeds.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "3", "name", "'val3'"));
+    validateRowCount(targetUniverse, tables.get(0), 3 /* expectedRows */);
+
+    insertRow(sourceUniverse, tables.get(1), Map.of("id", "12", "name", "'val12'"));
+    validateRowCount(targetUniverse, tables.get(1), 3 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+
+    for (Db db : dbs) {
+      dropDatabase(sourceUniverse, db);
+      dropDatabase(targetUniverse, db);
+    }
   }
 
   @Test
@@ -607,7 +661,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  //  @Test
+  @Test
   public void testDbScopedSwitchover() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
@@ -640,7 +694,38 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(newSourceUniverse, tables.get(1), Map.of("id", "11", "name", "'val11'"));
     validateRowCount(newTargetUniverse, tables.get(1), 2 /* expectedRows */);
 
-    deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
+    DrConfigSwitchoverForm newSwitchoverForm = new DrConfigSwitchoverForm();
+    newSwitchoverForm.primaryUniverseUuid = newTargetUniverse.getUniverseUUID();
+    newSwitchoverForm.drReplicaUniverseUuid = newSourceUniverse.getUniverseUUID();
+
+    Result newSwitchoverResult = switchover(drConfigUUID, newSwitchoverForm);
+    assertOk(newSwitchoverResult);
+    json = Json.parse(contentAsString(newSwitchoverResult));
+    taskInfo =
+        waitForTask(
+            UUID.fromString(json.get("taskUUID").asText()), newSourceUniverse, newTargetUniverse);
+    Universe newSourceUniverse2 = Universe.getOrBadRequest(newTargetUniverse.getUniverseUUID());
+    Universe newTargetUniverse2 = Universe.getOrBadRequest(newSourceUniverse.getUniverseUUID());
+    verifyUniverseState(Universe.getOrBadRequest(newSourceUniverse2.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(newTargetUniverse2.getUniverseUUID()));
+
+    // Sleep to make sure roles are propogated properly after switchover.
+    Thread.sleep(5000);
+
+    // Validate newSourceUniverse -> newTargetUniverse replication succeeds.
+    insertRow(newSourceUniverse2, tables.get(0), Map.of("id", "3", "name", "'val3'"));
+    validateRowCount(newTargetUniverse2, tables.get(0), 3 /* expectedRows */);
+
+    insertRow(newSourceUniverse2, tables.get(1), Map.of("id", "12", "name", "'val12'"));
+    validateRowCount(newTargetUniverse2, tables.get(1), 3 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, newSourceUniverse2, newTargetUniverse2);
+
+    // Should be able to drop dbs as PITRs are deleted.
+    for (Db db : dbs) {
+      dropDatabase(newSourceUniverse2, db);
+      dropDatabase(newTargetUniverse2, db);
+    }
   }
 
   @Test
@@ -670,6 +755,12 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     validateRowCount(targetUniverse, tables.get(1), 2 /* expectedRows */);
 
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+
+    // Should be able to drop dbs as PITRs are deleted.
+    for (Db db : dbs) {
+      dropDatabase(sourceUniverse, db);
+      dropDatabase(targetUniverse, db);
+    }
   }
 
   private void deleteDrConfig(UUID drConfigUUID, Universe sourceUniverse, Universe targetUniverse)
@@ -683,6 +774,8 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(TaskInfo.State.Success, deleteTaskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    // Replication group may take time to delete.
+    Thread.sleep(2000);
   }
 
   private CreateDRMetadata defaultDbDRCreate() throws InterruptedException {

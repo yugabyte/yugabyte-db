@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
@@ -51,6 +53,7 @@ import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -741,10 +744,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeleteRemnantStreamsTask(UUID universeUuid, String namespaceName) {
+  protected SubTaskGroup createDeleteRemnantStreamsTask(
+      XClusterConfig xClusterConfig, String namespaceName) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteRemnantStreams");
     DeleteRemnantStreams.Params deleteRemnantStreamsParams = new DeleteRemnantStreams.Params();
-    deleteRemnantStreamsParams.setUniverseUUID(universeUuid);
+    deleteRemnantStreamsParams.xClusterConfig = xClusterConfig;
+    deleteRemnantStreamsParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     deleteRemnantStreamsParams.namespaceName = namespaceName;
 
     DeleteRemnantStreams task = createTask(DeleteRemnantStreams.class);
@@ -2904,6 +2909,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               dbIds.size(), foundDbIds.size(), missingDbIds));
     }
     return requestedTableInfoList;
+  }
+
+  public SubTaskGroup createAddExistingPitrToXClusterConfig(
+      XClusterConfig xClusterConfig, PitrConfig pitrConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AddExistingPitrToXClusterConfig");
+    AddExistingPitrToXClusterConfig.Params taskParams =
+        new AddExistingPitrToXClusterConfig.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.pitrConfig = pitrConfig;
+    AddExistingPitrToXClusterConfig task = createTask(AddExistingPitrToXClusterConfig.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   // DR methods.

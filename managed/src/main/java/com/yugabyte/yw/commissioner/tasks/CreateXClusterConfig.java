@@ -592,6 +592,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               namespaceName); // Need to drop pitr configs that may be dangling.
       long retentionPeriodSeconds;
       long snapshotIntervalSeconds;
+      // Need to keep track of re-created PITR after deleting old PITR if backup restore is needed.
+      boolean oldPitrCreatedForDr = false;
       if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
         retentionPeriodSeconds = pitrParams.retentionPeriodSec;
         snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
@@ -608,20 +610,27 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .getSeconds();
       }
       if (xClusterConfig.getType() != ConfigType.Basic) {
-        // Delete the PITR config if the the bootstrap required predicate is true or the PITR
-        // config has different parameters.
-        pitrConfigOnTargetOptional.ifPresent(
-            pitrConfig ->
-                createDeletePitrConfigTask(
-                        pitrConfig.getUuid(),
-                        targetUniverse.getUniverseUUID(),
-                        false /* ignoreErrors */)
-                    .setShouldRunPredicate(
-                        bootstrapRequiredPredicate.or(
-                            task ->
-                                pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
-                                    || pitrConfig.getScheduleInterval()
-                                        != snapshotIntervalSeconds)));
+        if (pitrConfigOnTargetOptional.isPresent()) {
+          PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
+          oldPitrCreatedForDr = pitrConfig.isCreatedForDr();
+          // if new PITR will not be created, need to add pitr config to existing xcluster config.
+          // If PITR is dropped, this will dropped from cascade.
+          if (pitrConfig.getRetentionPeriod() == retentionPeriodSeconds
+              && pitrConfig.getScheduleInterval() == snapshotIntervalSeconds) {
+            createAddExistingPitrToXClusterConfig(xClusterConfig, pitrConfig);
+          }
+
+          // Delete the PITR config if the the bootstrap required predicate is true (db cannot
+          // be dropped if there is a PITR config associated to it) or the PITR config has
+          // different parameters.
+          createDeletePitrConfigTask(
+                  pitrConfig.getUuid(), targetUniverse.getUniverseUUID(), false /* ignoreErrors */)
+              .setShouldRunPredicate(
+                  bootstrapRequiredPredicate.or(
+                      task ->
+                          pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
+                              || pitrConfig.getScheduleInterval() != snapshotIntervalSeconds));
+        }
       }
 
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
@@ -652,7 +661,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
         // Delete hanging replication streams, otherwise deleting the database will fail.
-        createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName)
+        createDeleteRemnantStreamsTask(xClusterConfig, namespaceName)
             .setShouldRunPredicate(bootstrapRequiredPredicate);
         // If the table type is YSQL, delete the database from the target universe before restore.
         createDeleteKeySpaceTask(
@@ -719,7 +728,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                   retentionPeriodSeconds,
                   snapshotIntervalSeconds,
                   xClusterConfig,
-                  false /* createdForDr */)
+                  oldPitrCreatedForDr /* createdForDr */)
               .setShouldRunPredicate(
                   bootstrapRequiredPredicate.or(
                       task ->
@@ -1060,8 +1069,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             xClusterConfig,
             false /* createdForDr */);
       } else {
-        log.info("Reusing the existing PITR config because it has the right parameters");
-        xClusterConfig.addPitrConfig(pitrConfigOptional.get());
+        // Reusing the existing PITR config.
+        createAddExistingPitrToXClusterConfig(xClusterConfig, pitrConfigOptional.get());
       }
     } else {
       log.info("Creating a new PITR config");
