@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
@@ -54,6 +55,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -3005,6 +3007,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  public SubTaskGroup createAddExistingPitrToXClusterConfig(
+      XClusterConfig xClusterConfig, PitrConfig pitrConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AddExistingPitrToXClusterConfig");
+    AddExistingPitrToXClusterConfig.Params taskParams =
+        new AddExistingPitrToXClusterConfig.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.pitrConfig = pitrConfig;
+    AddExistingPitrToXClusterConfig task = createTask(AddExistingPitrToXClusterConfig.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   // DR methods.

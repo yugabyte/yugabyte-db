@@ -645,7 +645,38 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(newSourceUniverse, tables.get(1), Map.of("id", "11", "name", "'val11'"));
     validateRowCount(newTargetUniverse, tables.get(1), 2 /* expectedRows */);
 
-    deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
+    DrConfigSwitchoverForm newSwitchoverForm = new DrConfigSwitchoverForm();
+    newSwitchoverForm.primaryUniverseUuid = newTargetUniverse.getUniverseUUID();
+    newSwitchoverForm.drReplicaUniverseUuid = newSourceUniverse.getUniverseUUID();
+
+    Result newSwitchoverResult = switchover(drConfigUUID, newSwitchoverForm);
+    assertOk(newSwitchoverResult);
+    json = Json.parse(contentAsString(newSwitchoverResult));
+    taskInfo =
+        waitForTask(
+            UUID.fromString(json.get("taskUUID").asText()), newSourceUniverse, newTargetUniverse);
+    Universe newSourceUniverse2 = Universe.getOrBadRequest(newTargetUniverse.getUniverseUUID());
+    Universe newTargetUniverse2 = Universe.getOrBadRequest(newSourceUniverse.getUniverseUUID());
+    verifyUniverseState(Universe.getOrBadRequest(newSourceUniverse2.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(newTargetUniverse2.getUniverseUUID()));
+
+    // Sleep to make sure roles are propogated properly after switchover.
+    Thread.sleep(5000);
+
+    // Validate newSourceUniverse -> newTargetUniverse replication succeeds.
+    insertRow(newSourceUniverse2, tables.get(0), Map.of("id", "3", "name", "'val3'"));
+    validateRowCount(newTargetUniverse2, tables.get(0), 3 /* expectedRows */);
+
+    insertRow(newSourceUniverse2, tables.get(1), Map.of("id", "12", "name", "'val12'"));
+    validateRowCount(newTargetUniverse2, tables.get(1), 3 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, newSourceUniverse2, newTargetUniverse2);
+
+    // Should be able to drop dbs as PITRs are deleted.
+    for (Db db : dbs) {
+      dropDatabase(newSourceUniverse2, db);
+      dropDatabase(newTargetUniverse2, db);
+    }
   }
 
   @Test
@@ -675,6 +706,12 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     validateRowCount(targetUniverse, tables.get(1), 2 /* expectedRows */);
 
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+
+    // Should be able to drop dbs as PITRs are deleted.
+    for (Db db : dbs) {
+      dropDatabase(sourceUniverse, db);
+      dropDatabase(targetUniverse, db);
+    }
   }
 
   @Test
@@ -828,6 +865,8 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     assertEquals(TaskInfo.State.Success, deleteTaskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
     verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    // Replication group may take time to delete.
+    Thread.sleep(2000);
   }
 
   private CreateDRMetadata defaultDbDRCreate() throws InterruptedException {

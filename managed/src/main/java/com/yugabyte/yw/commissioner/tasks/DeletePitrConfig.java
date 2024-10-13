@@ -59,6 +59,7 @@ public class DeletePitrConfig extends UniverseTaskBase {
             log.error(errorMsg);
             throw new RuntimeException(errorMsg);
           }
+          log.debug("Successfully deleted pitr config with uuid {}", pitrConfig.getUuid());
           break;
         }
       }
