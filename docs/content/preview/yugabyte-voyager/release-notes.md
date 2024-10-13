@@ -22,7 +22,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 - The assess-migration command now reports the unsupported BRIN and SPGIST index methods from PostgreSQL source.
 - Improved console output of the export schema command in case of MVIEW sizing recommendations.
 
-### Bug Fixes
+### Bug fixes
 
 - Fixed an issue in the streaming phase of the import data command, which occurred only in case of unique key conflicting events. The producer [goroutine](https://go.dev/tour/concurrency/1) (which checks for conflicts, calculates the event's hash, and places them on a channel for consumption) was blocked because the channel was full and the consumer goroutine after processing these events, couldn't clear the channel due to a lock held by the producer, causing a deadlock.
 - Fixed a syntax error in the data import streaming phase caused by update events with a uuid column and a JSON column containing single quotes.
