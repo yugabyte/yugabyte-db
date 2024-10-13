@@ -748,7 +748,7 @@ class Tablet : public AbstractTablet,
   Status SetAllCDCRetentionBarriersUnlocked(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier);
+      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns);
 
   Status SetAllInitialCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
@@ -763,7 +763,9 @@ class Tablet : public AbstractTablet,
       MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff);
 
-//------------------------------------------------------------------------------------------------
+  HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
+
+  //------------------------------------------------------------------------------------------------
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   std::shared_ptr<void> AddAdditionalMetadata(

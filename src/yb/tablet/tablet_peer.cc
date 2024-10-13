@@ -1262,7 +1262,15 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     RETURN_NOT_OK(CheckRunning());
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      auto log = log_atomic_.load(std::memory_order_acquire);
+      auto min_start_ht_cdc_unstreamed_txns = tablet_->GetMinStartHTCDCUnstreamedTxns(log);
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+          << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
+          << min_start_ht_cdc_unstreamed_txns;
+
+      txn_participant->SetIntentRetainOpIdAndTime(
+          cdc_sdk_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
       if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
         tablet_->CleanupIntentFiles();
       }
