@@ -1833,6 +1833,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
                     << change_resp.cdc_sdk_checkpoint().index();
 
           tablet_to_checkpoint[tablet_ids[i]] = change_resp.cdc_sdk_checkpoint();
+          explicit_checkpoints[tablet_ids[i]] = explicit_cp;
         } else {
           status = StatusFromPB(change_resp.error().status());
           if (status.IsTabletSplit()) {
@@ -2432,6 +2433,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               return (*num_intents >= min_expected_num_intents);
             case IntentCountCompareOption::EqualTo:
               return (*num_intents == min_expected_num_intents);
+            case IntentCountCompareOption::LessThan:
+              return (*num_intents < min_expected_num_intents);
           }
 
           return false;
@@ -4697,6 +4700,44 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           kTableName));
     }
 
+    return Status::OK();
+  }
+
+  void CDCSDKYsqlTest::GetLogSegmentCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, size_t>* log_segment_count) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        log_segment_count->emplace(peer->permanent_uuid(), peer->GetNumLogSegments());
+        LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+                  << ": log segment count: "
+                  << (*log_segment_count)[peer->permanent_uuid()];
+      }
+    }
+  }
+
+  Status CDCSDKYsqlTest::GetIntentEntriesAndSSTFileCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
+                                     initial_intents_and_intent_sst_file_count) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+        auto intent_count = VERIFY_RESULT(tablet->CountIntents());
+        auto intent_sst_file_count = tablet->intents_db()->GetCurrentVersionNumSSTFiles();
+
+        LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+                  << ": intent count: " << intent_count
+                  << ", intent SST file count: " << intent_sst_file_count;
+
+        initial_intents_and_intent_sst_file_count->emplace(
+            std::move(peer->permanent_uuid()), std::make_pair(intent_count, intent_sst_file_count));
+      }
+    }
     return Status::OK();
   }
 

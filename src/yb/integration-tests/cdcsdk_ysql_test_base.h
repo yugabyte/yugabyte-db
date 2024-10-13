@@ -140,7 +140,7 @@ using rpc::RpcController;
 
 namespace cdc {
 
-YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
+YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
@@ -838,6 +838,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
       std::optional<std::unordered_set<TableId>*> expected_tables = std::nullopt,
       std::optional<std::unordered_set<TabletId>*> expected_tablets = std::nullopt);
+
+  // Get the log segments count on each peer of the given tablet.
+  void GetLogSegmentCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, size_t>* log_segment_count);
+
+  // Get the intent entry & intent SST file count on each peer of the given tablet.
+  Status GetIntentEntriesAndSSTFileCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
+                                        initial_intents_and_intent_sst_file_count);
 };
 
 }  // namespace cdc
