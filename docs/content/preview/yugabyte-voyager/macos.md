@@ -38,9 +38,8 @@ Perform the following steps to install yb-voyager using brew for macOS:
 
 Install a specific version of `yb-voyager` using the following command:
 
-    ```sh
     brew install yb-voyager@<VERSION>
-    ```
+
     {{< /note >}}
 
 1. Check that yb-voyager is installed using the following command:
