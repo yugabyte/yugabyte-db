@@ -164,7 +164,7 @@ public class QueryLdapServer extends AbstractTaskBase {
           ldapUtil.createConnection(
               ldapUnivSyncFormData.getLdapServer(),
               ldapUnivSyncFormData.getLdapPort(),
-              ldapUnivSyncFormData.getUseLdapTls(),
+              ldapUnivSyncFormData.getUseLdapSsl(),
               ldapUnivSyncFormData.getUseLdapTls(),
               ldapUnivSyncFormData.getLdapTlsProtocol().getVersionString());
 
