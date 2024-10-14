@@ -1349,23 +1349,24 @@
         ;
 
         connect-src 'self'
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
+            https://api.rudderstack.com/
+            https://api.segment.io/
+            https://cdn.segment.com/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://metrics.kapa.ai/
             https://raw.githubusercontent.com/
+            https://sessions.bugsnag.com/
             https://stats.g.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
             https://umbcujcbe8-dsn.algolia.net/
-            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://api.segment.io/
-            https://cdn.segment.com/
-            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
-            https://api.rudderstack.com/
-            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
