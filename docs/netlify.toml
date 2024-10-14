@@ -1357,6 +1357,7 @@
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
             https://umbcujcbe8-dsn.algolia.net/
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://api.segment.io/
@@ -1368,11 +1369,17 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://cdn.jsdelivr.net
+            https://cdn.jsdelivr.net/
+            https://cdn.madkudu.com/
+            https://cdn.rudderlabs.com/
+            https://cdn.segment.com/
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.7.1.min.js
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://j.6sc.co/
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
+            https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
             https://umbcujcbe8-1.algolianet.com/
@@ -1384,10 +1391,6 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://cdn.segment.com/
-            https://j.6sc.co/
-            https://cdn.rudderlabs.com/
-            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
         ;
 
         style-src 'self' 'unsafe-inline'
