@@ -3,4 +3,4 @@ default_version = '1.24-0'
 module_pathname = '$libdir/pg_helio_api'
 relocatable = false
 superuser = true
-requires = 'pg_helio_core, pg_cron, tsm_system_rows, vector, postgis'
+requires = 'pg_helio_core, pg_cron, tsm_system_rows, vector, postgis, rum'

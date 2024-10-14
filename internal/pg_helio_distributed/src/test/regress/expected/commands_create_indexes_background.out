@@ -772,9 +772,9 @@ CALL helio_distributed_test_helpers.create_indexes_background('db', '{ "createIn
 
 CALL helio_distributed_test_helpers.create_indexes_background('db', '{ "createIndexes": "UnsupportedLanguage", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "default_language": "ok" } ] }');
 NOTICE:  creating collection
-                                                                                                                               retval                                                                                                                               | ok 
+                                                                                                     retval                                                                                                     | ok 
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "operator class \"helio_api_catalog.bson_rum_text_path_ops\" does not exist for access method \"helio_rum\"", "code" : { "$numberInt" : "67137668" } } }, "ok" : { "$numberInt" : "0" } } | f
+ { "raw" : { "defaultShard" : { "ok" : { "$numberInt" : "0" }, "errmsg" : "unsupported language: \"ok\" for text index version 3", "code" : { "$numberInt" : "503316509" } } }, "ok" : { "$numberInt" : "0" } } | f
 (1 row)
 
 --Reset -- so that other tests do not get impacted

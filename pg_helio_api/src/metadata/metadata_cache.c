@@ -1867,11 +1867,10 @@ BsonExprWithLetFunctionId(void)
 Oid
 BsonTextFunctionId(void)
 {
-	return GetBinaryOperatorFunctionIdMissingOk(
+	return GetInternalBinaryOperatorFunctionId(
 		&Cache.BsonTextFunctionId,
 		"bson_dollar_text",
-		BsonTypeId(), BsonTypeId(),
-		"1.6");
+		BsonTypeId(), BsonTypeId());
 }
 
 
@@ -5526,7 +5525,7 @@ BsonTextSearchMetaQualFuncId(void)
 
 	if (Cache.BsonTextSearchMetaQualFuncId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(ApiCatalogToApiInternalSchemaName),
 											makeString("bson_text_meta_qual"));
 		Oid paramOids[4] = { BsonTypeId(), TSQUERYOID, BYTEAOID, BOOLOID };
 		bool missingOK = false;

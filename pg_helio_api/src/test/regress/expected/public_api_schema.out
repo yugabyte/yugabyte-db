@@ -224,9 +224,10 @@ List of access methods
 -----------+------------------------------------------+--------------+------------------------------------------------------+----------
  helio_rum | helio_api_catalog.shard_key_and_document | uuid         | helio_api_catalog.bson_rum_exclusion_ops             | no
  helio_rum | helio_core.bson                          | bytea        | helio_api_catalog.bson_rum_single_path_ops           | yes
+ helio_rum | helio_core.bson                          | text         | helio_api_catalog.bson_rum_text_path_ops             | no
  helio_rum | helio_core.bson                          | bytea        | helio_api_catalog.bson_rum_wildcard_project_path_ops | no
  helio_rum | helio_core.bson                          | bigint       | helio_api_catalog.helio_rum_hashed_ops               | no
-(4 rows)
+(5 rows)
 
 \dAf *helio*
                                           List of operator families
@@ -234,9 +235,10 @@ List of access methods
 -----------+------------------------------------------------------+------------------------------------------
  helio_rum | helio_api_catalog.bson_rum_exclusion_ops             | helio_api_catalog.shard_key_and_document
  helio_rum | helio_api_catalog.bson_rum_single_path_ops           | helio_core.bson
+ helio_rum | helio_api_catalog.bson_rum_text_path_ops             | helio_core.bson
  helio_rum | helio_api_catalog.bson_rum_wildcard_project_path_ops | helio_core.bson
  helio_rum | helio_api_catalog.helio_rum_hashed_ops               | helio_core.bson
-(4 rows)
+(5 rows)
 
 \dX *helio*
                  List of extended statistics

@@ -67,11 +67,11 @@ SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@
 
 
 -- try these with the function.
-SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "coffee" } }') ORDER BY object_id;
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE helio_api_internal.bson_dollar_text(document, '{ "": { "$search": "coffee" } }') ORDER BY object_id;
 
-SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "bake coffee cake" } }') ORDER BY object_id;
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE helio_api_internal.bson_dollar_text(document, '{ "": { "$search": "bake coffee cake" } }') ORDER BY object_id;
 
-SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "\"coffee shop\"" } }') ORDER BY object_id;
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE helio_api_internal.bson_dollar_text(document, '{ "": { "$search": "\"coffee shop\"" } }') ORDER BY object_id;
 
 -- shard collection & try the query again
 SELECT helio_api.shard_collection('db', 'text_search', '{ "_id": "hashed" }', false);

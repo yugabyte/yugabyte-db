@@ -3250,12 +3250,17 @@ SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6408 OR
 set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc5", "indexes": [ { "key": { "a.b": "text" }, "name": "key" } ] }');
 NOTICE:  creating collection
-ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6421 ON helio_data.documents_6409 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "a.b" : 1.0 }')) "
-SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6409 ORDER BY index_id;
- collection_id | index_id | index_spec | index_is_valid 
+                                                                                                   create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
-(0 rows)
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6409 ORDER BY index_id;
+ collection_id | index_id |                         index_spec                         | index_is_valid 
+---------------------------------------------------------------------
+          6409 |     6420 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,) | t
+          6409 |     6421 | (key,"{ ""a.b"" : ""text"" }",,,,,2,,,)                    | t
+(2 rows)
 
 -- Additional tests for bug where index term length optimization with '$' was not consistent, i.e., we would generate prefix like 'ikey' and '$.0'
 SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 2, "ikey" : { "a": ["abcdefgh"]}}', 'ikey.a', false, true

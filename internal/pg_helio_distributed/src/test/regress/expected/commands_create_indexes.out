@@ -403,8 +403,11 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "text"}, "name": "my_idx_text"}]}', true);
-ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_11021 ON helio_data.documents_11000 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "a$**" : 1.0 }')) "
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "21" }, "numIndexesAfter" : { "$numberInt" : "22" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 -- test "v"
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.1234, "name": "invalid_v"}]}', true);
 ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 2.1234000000000001762, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got 2.123400
@@ -417,28 +420,28 @@ ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 100, "name" : "inval
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.0, "name": "valid_v"}]}', true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "21" }, "numIndexesAfter" : { "$numberInt" : "22" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "22" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- same index since 2.0 == 2
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2, "name": "valid_v"}]}', true);
                                                                                                                        create_indexes_non_concurrently                                                                                                                        
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "22" }, "numIndexesAfter" : { "$numberInt" : "22" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- following are assumed to be identical to built-in _id index even if their names are different than "_id_"
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1}, "name" : "_id_1"}, {"key": {"_id": 1.0}, "name" : "_id_2"}]}', true);
                                                                                                                        create_indexes_non_concurrently                                                                                                                        
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "22" }, "numIndexesAfter" : { "$numberInt" : "22" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- but this is not identical to built-in _id index, so we will create it
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1.2}, "name" : "_id_3"}]}', true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "22" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "24" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- and this conflicts with _id_3 since key != {"_id": 1}, so we will throw an error
@@ -448,14 +451,14 @@ ERROR:  Index already exists with a different name: _id_3
 SELECT helio_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.a": 1}, "name": "my_idx_6", "background": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "24" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "24" }, "numIndexesAfter" : { "$numberInt" : "25" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- hidden false is ignored.
 SELECT helio_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.b": 1}, "name": "my_idx_7", "hidden": false }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "24" }, "numIndexesAfter" : { "$numberInt" : "25" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "25" }, "numIndexesAfter" : { "$numberInt" : "26" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- hidden true fails.
@@ -465,14 +468,14 @@ ERROR:  hidden indexes are not supported yet.
 SELECT helio_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.f": 1}, "name": "my_idx_9", "ns": "foo.bar" }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "25" }, "numIndexesAfter" : { "$numberInt" : "26" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "26" }, "numIndexesAfter" : { "$numberInt" : "27" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- readPreference is ignored
 SELECT helio_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.g": 1}, "name": "my_idx_10" }], "$readPreference": { "mode": "secondary" }}', p_database_name=>'db', p_skip_check_collection_create=>true);
                                                                                                     create_indexes_non_concurrently                                                                                                     
 ---------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "26" }, "numIndexesAfter" : { "$numberInt" : "27" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "27" }, "numIndexesAfter" : { "$numberInt" : "28" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "too_many_indexes", "indexes": [{"key": {"a0": 1}, "name": "a0"},{"key": {"a1": 1}, "name": "a1"},{"key": {"a2": 1}, "name": "a2"},{"key": {"a3": 1}, "name": "a3"},{"key": {"a4": 1}, "name": "a4"},{"key": {"a5": 1}, "name": "a5"},{"key": {"a6": 1}, "name": "a6"},{"key": {"a7": 1}, "name": "a7"},{"key": {"a8": 1}, "name": "a8"},{"key": {"a9": 1}, "name": "a9"},{"key": {"a10": 1}, "name": "a10"},{"key": {"a11": 1}, "name": "a11"},{"key": {"a12": 1}, "name": "a12"},{"key": {"a13": 1}, "name": "a13"},{"key": {"a14": 1}, "name": "a14"},{"key": {"a15": 1}, "name": "a15"},{"key": {"a16": 1}, "name": "a16"},{"key": {"a17": 1}, "name": "a17"},{"key": {"a18": 1}, "name": "a18"},{"key": {"a19": 1}, "name": "a19"},{"key": {"a20": 1}, "name": "a20"},{"key": {"a21": 1}, "name": "a21"},{"key": {"a22": 1}, "name": "a22"},{"key": {"a23": 1}, "name": "a23"},{"key": {"a24": 1}, "name": "a24"},{"key": {"a25": 1}, "name": "a25"},{"key": {"a26": 1}, "name": "a26"},{"key": {"a27": 1}, "name": "a27"},{"key": {"a28": 1}, "name": "a28"},{"key": {"a29": 1}, "name": "a29"},{"key": {"a30": 1}, "name": "a30"},{"key": {"a31": 1}, "name": "a31"},{"key": {"a32": 1}, "name": "a32"},{"key": {"a33": 1}, "name": "a33"},{"key": {"a34": 1}, "name": "a34"},{"key": {"a35": 1}, "name": "a35"},{"key": {"a36": 1}, "name": "a36"},{"key": {"a37": 1}, "name": "a37"},{"key": {"a38": 1}, "name": "a38"},{"key": {"a39": 1}, "name": "a39"},{"key": {"a40": 1}, "name": "a40"},{"key": {"a41": 1}, "name": "a41"},{"key": {"a42": 1}, "name": "a42"},{"key": {"a43": 1}, "name": "a43"},{"key": {"a44": 1}, "name": "a44"},{"key": {"a45": 1}, "name": "a45"},{"key": {"a46": 1}, "name": "a46"},{"key": {"a47": 1}, "name": "a47"},{"key": {"a48": 1}, "name": "a48"},{"key": {"a49": 1}, "name": "a49"},{"key": {"a50": 1}, "name": "a50"},{"key": {"a51": 1}, "name": "a51"},{"key": {"a52": 1}, "name": "a52"},{"key": {"a53": 1}, "name": "a53"},{"key": {"a54": 1}, "name": "a54"},{"key": {"a55": 1}, "name": "a55"},{"key": {"a56": 1}, "name": "a56"},{"key": {"a57": 1}, "name": "a57"},{"key": {"a58": 1}, "name": "a58"},{"key": {"a59": 1}, "name": "a59"},{"key": {"a60": 1}, "name": "a60"},{"key": {"a61": 1}, "name": "a61"},{"key": {"a62": 1}, "name": "a62"},{"key": {"a63": 1}, "name": "a63"}, {"key": {"a64": 1}, "name": "a64"}]}', true);
@@ -604,29 +607,32 @@ SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.c
 -- for hashed, unique and text indexes we should not see the limit as those shouldn't be truncated
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', true);
 NOTICE:  creating collection
-ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_11045 ON helio_data.documents_11007 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "a" : 1.0 }')) "
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "hashed" }, "name": "a_hashed" } ] }', true);
-NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": 1 }, "name": "a_unique", "unique": true } ] }', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "hashed" }, "name": "a_hashed" } ] }', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": 1 }, "name": "a_unique", "unique": true } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 WITH c1 AS (SELECT collection_id from helio_api_catalog.collections where collection_name = 'noIndexTermSizeLimit' and database_name = 'db')
 SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.collection_id and schemaname = 'helio_data' ORDER BY indexname ASC;
                                                                                                                          indexdef                                                                                                                         
 ---------------------------------------------------------------------
- CREATE UNIQUE INDEX collection_pk_11008 ON helio_data.documents_11008 USING btree (shard_key_value, object_id)
- CREATE INDEX documents_rum_index_11047 ON helio_data.documents_11008 USING helio_rum (document helio_rum_hashed_ops (path=a))
- CREATE INDEX documents_rum_index_11048 ON helio_data.documents_11008 USING helio_rum (document bson_rum_single_path_ops (path=a, generatenotfoundterm='true'), (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=a))
-(3 rows)
+ CREATE UNIQUE INDEX collection_pk_11007 ON helio_data.documents_11007 USING btree (shard_key_value, object_id)
+ CREATE INDEX documents_rum_index_11045 ON helio_data.documents_11007 USING helio_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }'))
+ CREATE INDEX documents_rum_index_11046 ON helio_data.documents_11007 USING helio_rum (document helio_rum_hashed_ops (path=a))
+ CREATE INDEX documents_rum_index_11047 ON helio_data.documents_11007 USING helio_rum (document bson_rum_single_path_ops (path=a, generatenotfoundterm='true'), (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=a))
+(4 rows)
 
 SELECT ('{ "createIndexes": "indexColl_1", "indexes": [{ "key": { "description1": 1, "description2": 1, "description3": 1, "description4": 1, "description5": 1, "description6": 1, "description7": 1, "description8": 1, ' ||
  ' "description9": 1, "description10": 1, "description11": 1, "description12": 1, "description13": 1, "description14": 1, "description15": 1, "description16": 1, "description17": 1, ' ||
@@ -751,13 +757,13 @@ ERROR:  Cannot create new indexes on existing collection db.blocking_index in a 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'blocking_index') ORDER BY collection_id, index_id;
  collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
 ---------------------------------------------------------------------
-         11009 |    11058 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
-         11009 |    11059 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : { "$numberInt" : "1" } }, "name" : "c_1" }    | t
-         11009 |    11060 | { "v" : { "$numberInt" : "2" }, "key" : { "d" : { "$numberInt" : "1" } }, "name" : "d_1" }    | t
-         11009 |    11061 | { "v" : { "$numberInt" : "2" }, "key" : { "e" : { "$numberInt" : "1" } }, "name" : "e_1" }    | t
-         11009 |    11062 | { "v" : { "$numberInt" : "2" }, "key" : { "f" : { "$numberInt" : "1" } }, "name" : "f_1" }    | t
-         11009 |    11063 | { "v" : { "$numberInt" : "2" }, "key" : { "g" : { "$numberInt" : "1" } }, "name" : "g_1" }    | t
-         11009 |    11064 | { "v" : { "$numberInt" : "2" }, "key" : { "h" : { "$numberInt" : "1" } }, "name" : "h_1" }    | t
-         11009 |    11065 | { "v" : { "$numberInt" : "2" }, "key" : { "i" : { "$numberInt" : "1" } }, "name" : "i_1" }    | t
+         11008 |    11057 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+         11008 |    11058 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : { "$numberInt" : "1" } }, "name" : "c_1" }    | t
+         11008 |    11059 | { "v" : { "$numberInt" : "2" }, "key" : { "d" : { "$numberInt" : "1" } }, "name" : "d_1" }    | t
+         11008 |    11060 | { "v" : { "$numberInt" : "2" }, "key" : { "e" : { "$numberInt" : "1" } }, "name" : "e_1" }    | t
+         11008 |    11061 | { "v" : { "$numberInt" : "2" }, "key" : { "f" : { "$numberInt" : "1" } }, "name" : "f_1" }    | t
+         11008 |    11062 | { "v" : { "$numberInt" : "2" }, "key" : { "g" : { "$numberInt" : "1" } }, "name" : "g_1" }    | t
+         11008 |    11063 | { "v" : { "$numberInt" : "2" }, "key" : { "h" : { "$numberInt" : "1" } }, "name" : "h_1" }    | t
+         11008 |    11064 | { "v" : { "$numberInt" : "2" }, "key" : { "i" : { "$numberInt" : "1" } }, "name" : "i_1" }    | t
 (8 rows)
 
