@@ -177,6 +177,12 @@ If enabled, indexes on the same (YCQL) table may be batched together during back
 
 Default: `true`
 
+##### --time_source
+
+Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
+Default: `""`
+
 ## YSQL flags
 
 ##### --enable_ysql

@@ -19,7 +19,7 @@ import resource
 # POSIX message queues, threshold - 819200 (RLIMIT_MSGQUEUE)
 # real-time priority, threshold - 0 (RLIMIT_RTPRIO)
 # As of now, necessary ulimit resources for YB are in verification RLIMIT_NOFILE and RLIMIT_NPROC
-# Ref - https://docs.yugabyte.com/preview/deploy/manual-deployment/system-config/#ulimits
+# Ref - https://docs.yugabyte.com/preview/deploy/manual-deployment/system-config/#set-ulimits
 
 REQUIRED_RESOURCES = {
     "RLIMIT_NOFILE": (1048576, "open files"),
