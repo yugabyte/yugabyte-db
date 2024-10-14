@@ -107,14 +107,28 @@ You can call `SELECT * FROM parquet.file_metadata(<uri>)` to discover file level
 You can call `SELECT * FROM parquet.kv_metadata(<uri>)` to query custom key-value metadata of the Parquet file at given uri.
 
 ## Object Store Support
-`pg_parquet` supports reading and writing Parquet files from/to `S3` object store. Only the uris with `s3://` scheme is supported.
+`pg_parquet` supports reading and writing Parquet files from/to `S3` object store. Only the uris with `s3://` scheme is supported. 
 
-You can either set the following environment variables or use shared configuration files to access to the object store:
-- `AWS_ACCESS_KEY_ID`: the access key ID of the AWS account,
-- `AWS_SECRET_ACCESS_KEY`: the secret access key of the AWS account,
-- `AWS_REGION`: the default region of the AWS account.
+The simplest way to configure object storage is by creating the standard `~/.aws/credentials` and `~/.aws/config` files:
 
-You can set config and credentials file paths with `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` environment variables. The default config and credentials file paths are `~/.aws/config` and `~/.aws/credentials`. You can also set profile name with `AWS_PROFILE` environment variable. The default profile name is `default`.
+```bash
+$ cat ~/.aws/credentials
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+$ cat ~/.aws/config 
+[default]
+region = eu-central-1
+```
+
+Alternatively, you can use the following environment variables when starting postgres to configure the S3 client:
+- `AWS_ACCESS_KEY_ID`: the access key ID of the AWS account
+- `AWS_SECRET_ACCESS_KEY`: the secret access key of the AWS account
+- `AWS_REGION`: the default region of the AWS account
+- `AWS_SHARED_CREDENTIALS_FILE`: an alternative location for the credentials file
+- `AWS_CONFIG_FILE`: an alternative location for the config file
+- `AWS_PROFILE`: the name of the profile from the credentials and config file (default profile name is `default`)
 
 ## Copy Options
 `pg_parquet` supports the following options in the `COPY TO` command:
