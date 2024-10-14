@@ -35,9 +35,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
-import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
@@ -1050,16 +1050,14 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      TaskError taskError = new TaskError();
+      YBAError taskError = null;
       // Method getRedactedParams does not modify the input as it makes a deep-copy.
       String redactedTaskParams = taskInfo.getRedactedParams().toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
-        taskError.setCode(TaskErrorCode.PLATFORM_SHUTDOWN);
-        taskError.setMessage("Platform shutdown");
+        taskError = new YBAError(Code.PLATFORM_SHUTDOWN, "Platform shutdown");
       } else if (t instanceof TaskExecutionException) {
         TaskExecutionException e = (TaskExecutionException) t;
-        taskError.setCode(e.getCode());
-        taskError.setMessage(e.getMessage());
+        taskError = new YBAError(e.getCode(), e.getMessage());
       } else {
         Throwable cause = t;
         // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
@@ -1072,7 +1070,7 @@ public class TaskExecutor {
                 "Failed to execute task %s, hit error:\n\n %s.",
                 StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
-        taskError.setMessage(errorString);
+        taskError = new YBAError(Code.INTERNAL_ERROR, errorString);
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
