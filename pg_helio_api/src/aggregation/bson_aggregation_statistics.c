@@ -94,7 +94,8 @@ typedef enum ArithmeticOperationErrorSource
 	OperationSource_StdDevSampWinfuncFinal = 5,
 	OperationSource_InvYCAlgr = 6,
 	OperationSource_CombineYCAlgr = 7,
-	OperationSource_SFuncYCAlgr = 8
+	OperationSource_SFuncYCAlgr = 8,
+	OperationSource_ExpMovingAvg = 9,
 } ArithmeticOperationErrorSource;
 
 /* --------------------------------------------------------- */
@@ -125,7 +126,7 @@ static void CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *
 															const bson_value_t *newYValue,
 															BsonCovarianceAndVarianceAggState
 															*currentState);
-static bool CalculateExpMovingAvg(bson_value_t *currentValue, bson_value_t *perValue,
+static void CalculateExpMovingAvg(bson_value_t *currentValue, bson_value_t *perValue,
 								  bson_value_t *weightValue, bool isAlpha,
 								  bson_value_t *resultValue);
 static bytea * AllocateBsonIntegralAndDerivativeAggState(void);
@@ -866,24 +867,10 @@ bson_exp_moving_avg(PG_FUNCTION_ARGS)
 			 * If the parameter is alpha,
 			 * the calculation is: current result = current value * alpha + previous result * ( 1 - alpha )
 			 */
-			if (!CalculateExpMovingAvg(&bsonCurrentValue, &bsonPerValue,
-									   &stateData->weight,
-									   stateData->isAlpha, &bsonResultValue))
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
-						errmsg(
-							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
-							BsonValueToJsonForLogging(
-								&bsonCurrentValue),
-							BsonValueToJsonForLogging(&bsonPerValue),
-							BsonValueToJsonForLogging(&stateData->weight)),
-						errdetail_log(
-							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
-							BsonValueToJsonForLogging(
-								&bsonCurrentValue),
-							BsonValueToJsonForLogging(&bsonPerValue),
-							BsonValueToJsonForLogging(&stateData->weight)));
-			}
+			CalculateExpMovingAvg(&bsonCurrentValue, &bsonPerValue,
+								  &stateData->weight,
+								  stateData->isAlpha, &bsonResultValue);
+
 
 			/* If currentValue is of type decimal128, then expMovingResult will also be of type decimal128, */
 			/* and all subsequent expMoving results will also be of type decimal128. */
@@ -1716,6 +1703,7 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 	/* the product of two values is -1 means they are infinity values with different signs */
 	if (isInfinityX * isInfinityY == -1 || isInfinityX * isInfinitySxy == -1 ||
 		isInfinityY * isInfinitySxy == -1)
+
 	/* infinities with different signs, return nan */
 	{
 		currentState->count++;
@@ -1731,6 +1719,7 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 		return;
 	}
 	else if (isInfinityX || isInfinityY || isInfinitySxy)
+
 	/* infinities with the same sign, return infinity */
 	{
 		currentState->count++;
@@ -1992,85 +1981,52 @@ ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
  * If the parameter is alpha,
  * the calculation is: current result = current value * alpha + previous result * ( 1 - alpha )
  */
-static bool
-CalculateExpMovingAvg(bson_value_t *bsonCurrentValue, bson_value_t *bsonPerValue,
+static void
+CalculateExpMovingAvg(bson_value_t *bsonCurrentValue, bson_value_t *bsonPreValue,
 					  bson_value_t *bsonWeightValue, bool isAlpha,
 					  bson_value_t *bsonResultValue)
 {
-	bool isDecimalOpSuccess = true;
+	bson_value_t currentValue = *bsonCurrentValue;
+	bson_value_t preValue = *bsonPreValue;
+	bson_value_t weightValue = *bsonWeightValue;
 
-	bson_value_t decimalCurrentValue;
-	decimalCurrentValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalCurrentValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		bsonCurrentValue);
-
-	bson_value_t decimalPreValue;
-	decimalPreValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalPreValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(bsonPerValue);
-
-	bson_value_t decimalWeightValue;
-	decimalWeightValue.value_type = BSON_TYPE_DECIMAL128;
-	decimalWeightValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
-		bsonWeightValue);
-
-	bson_value_t decimalOne;
-	decimalOne.value_type = BSON_TYPE_DECIMAL128;
-	decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
-
-	bson_value_t decimalTwo;
-	decimalTwo.value_type = BSON_TYPE_DECIMAL128;
-	decimalTwo.value.v_decimal128 = GetDecimal128FromInt64(2);
+	bson_value_t intOne = {
+		.value_type = BSON_TYPE_INT32,
+		.value.v_int32 = 1
+	};
 
 	if (isAlpha)
 	{
 		/*
 		 *  current result = current value * alpha + previous result * ( 1 - alpha )
 		 */
-		bson_value_t decimalPreWeight;
-		Decimal128Result decimalOpResult;
 
 		/* 1 - alpha */
-		decimalOpResult = SubtractDecimal128Numbers(&decimalOne, &decimalWeightValue,
-													&decimalPreWeight);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+								&intOne,
+								&weightValue,
+								OperationSource_ExpMovingAvg);
 
 		/* previous result * ( 1 - alpha ) */
-		decimalOpResult = MultiplyDecimal128Numbers(&decimalPreValue, &decimalPreWeight,
-													&decimalPreValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&preValue,
+								&intOne,
+								OperationSource_ExpMovingAvg);
+
 
 		/* current value * alpha */
-		decimalOpResult = MultiplyDecimal128Numbers(&decimalCurrentValue,
-													&decimalWeightValue,
-													&decimalCurrentValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&currentValue,
+								&weightValue,
+								OperationSource_ExpMovingAvg);
 
-		/* decimalPreValue = previous result * ( 1 - alpha ) */
-		/* decimalCurrentValue = current value * alpha */
-		/* bsonResultValue = decimalPreValue + decimalCurrentValue */
-		decimalOpResult = AddDecimal128Numbers(&decimalPreValue, &decimalCurrentValue,
-											   bsonResultValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		/* preValue = previous result * ( 1 - alpha ) */
+		/* currentValue = current value * alpha */
+		/* currentValue = currentValue + preValue */
+		ArithmeticOperationFunc(ArithmeticOperation_Add,
+								&currentValue,
+								&preValue,
+								OperationSource_ExpMovingAvg);
 	}
 	else
 	{
@@ -2079,76 +2035,54 @@ CalculateExpMovingAvg(bson_value_t *bsonCurrentValue, bson_value_t *bsonPerValue
 		 *  To improve calculation accuracy, we need to convert the calculation:
 		 *  (currentValue * 2 + preValue * ( N - 1 ) ) / ( N + 1 )
 		 */
-		bson_value_t decimalWeightSubtractOne;  /* N-1 */
-		bson_value_t decimalWeightAddOne;  /* N+1 */
+		bson_value_t intTwo = {
+			.value_type = BSON_TYPE_INT32,
+			.value.v_int32 = 2
+		};
 
-		Decimal128Result decimalOpResult;
+		/* currentValue = currentValue * 2 */
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&currentValue,
+								&intTwo,
+								OperationSource_ExpMovingAvg);
 
-		/*currentValue * 2 */
-		decimalOpResult = MultiplyDecimal128Numbers(&decimalCurrentValue, &decimalTwo,
-													&decimalCurrentValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
 
-		/* N - 1 */
-		decimalOpResult = SubtractDecimal128Numbers(&decimalWeightValue, &decimalOne,
-													&decimalWeightSubtractOne);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		/* weightValue = weightValue - 1 */
+		ArithmeticOperationFunc(ArithmeticOperation_Subtract,
+								&weightValue,
+								&intOne,
+								OperationSource_ExpMovingAvg);
 
-		/* preValue * (N - 1) */
-		decimalOpResult = MultiplyDecimal128Numbers(&decimalPreValue,
-													&decimalWeightSubtractOne,
-													&decimalPreValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		/* preValue = preValue * weightValue */
+		/* wightValue was updated before (line: 2049) */
+		ArithmeticOperationFunc(ArithmeticOperation_Multiply,
+								&preValue,
+								&weightValue,
+								OperationSource_ExpMovingAvg);
 
-		/* currentValue*2 + preValue * (N-1) */
-		decimalOpResult = AddDecimal128Numbers(&decimalPreValue, &decimalCurrentValue,
-											   bsonResultValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+
+		/* currentValue = currentValue + preValue */
+		ArithmeticOperationFunc(ArithmeticOperation_Add,
+								&currentValue,
+								&preValue,
+								OperationSource_ExpMovingAvg);
 
 		/*bsonWeightValue = N; */
 		/* N + 1 */
-		decimalOpResult = AddDecimal128Numbers(&decimalWeightValue, &decimalOne,
-											   &decimalWeightAddOne);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		/* add 2 here due to weightValue substract 1 before (line: 2052) */
+		ArithmeticOperationFunc(ArithmeticOperation_Add,
+								&weightValue,
+								&intTwo,
+								OperationSource_ExpMovingAvg);
 
-		/* bsonResultValue = currentValue * 2 + preValue*(N - 1); */
-		/* decimalWeightAddOne =  N + 1 */
-		/* bsonResultValue / decimalWeightAddOne */
-		decimalOpResult = DivideDecimal128Numbers(bsonResultValue, &decimalWeightAddOne,
-												  bsonResultValue);
-		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
-			Decimal128Result_Inexact)
-		{
-			isDecimalOpSuccess = false;
-			return isDecimalOpSuccess;
-		}
+		/* currentValue = currentValue / weightValue */
+		ArithmeticOperationFunc(ArithmeticOperation_Divide,
+								&currentValue,
+								&weightValue,
+								OperationSource_ExpMovingAvg);
 	}
-	return isDecimalOpSuccess;
+
+	*bsonResultValue = currentValue;
 }
 
 
@@ -2234,6 +2168,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 					errdetail_log(errorMsg, opName));
 		}
 	}
+
 	/* if xBsonValue is a number and unit is specified, throw an error */
 	else if (BsonTypeIsNumber(xBsonValue->value_type))
 	{
@@ -2256,6 +2191,7 @@ RunTimeCheckForIntegralAndDerivative(bson_value_t *xBsonValue, bson_value_t *yBs
 							BsonTypeName(
 								xBsonValue->value_type))));
 	}
+
 	/* if unit is not specified and x is a date, throw an error */
 	else if (!timeUnitInt64 && xBsonValue->value_type == BSON_TYPE_DATE_TIME)
 	{
@@ -2459,8 +2395,10 @@ HandleArithmeticOperationError(const char *opName, bson_value_t *state, const
 							   bson_value_t *number, ArithmeticOperationErrorSource
 							   errSource)
 {
-	char *errMsg =
-		"Failed while calculating %s result: opName = %s, state = %s, number = %s";
+	char *errMsg = "Internal error while calculating %s.";
+	char *errMsgSource = "variance/covariance";
+	char *errMsgDetails =
+		"Failed while calculating %s result: opName = %s, state = %s, number = %s.";
 	char *calculateFunc = "";
 
 	switch (errSource)
@@ -2521,13 +2459,19 @@ HandleArithmeticOperationError(const char *opName, bson_value_t *state, const
 				"CalculateSFuncForCovarianceOrVarianceWithYCAlgr";
 			break;
 		}
+
+		case OperationSource_ExpMovingAvg:
+		{
+			calculateFunc = "CalculateExpMovingAvg";
+			errMsgSource = "expMovingAvg";
+			break;
+		}
 	}
 
 	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR)),
-			errmsg(
-				"Internal error while calculating variance/covariance."),
+			errmsg(errMsg, errMsgSource),
 			errdetail_log(
-				errMsg,
+				errMsgDetails,
 				calculateFunc,
 				opName,
 				BsonValueToJsonForLogging(state),
