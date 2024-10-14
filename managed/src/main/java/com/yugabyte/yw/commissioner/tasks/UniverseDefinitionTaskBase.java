@@ -1421,11 +1421,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             throw new IllegalStateException(
                 "No cluster " + cluster.uuid + " found in " + taskParams().getUniverseUUID());
           }
-          if (!univCluster
+          if (!cluster
               .userIntent
               .instanceTags
               .get(NODE_NAME_KEY)
-              .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
+              .equals(univCluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
             throw new IllegalArgumentException("'Name' tag value cannot be changed.");
           }
         }
