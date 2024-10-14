@@ -601,7 +601,8 @@ extern List *YbExecUpdateIndexTuples(TupleTableSlot *slot,
 									 HeapTuple tuple,
 									 EState *estate,
 									 Bitmapset *updatedCols,
-									 bool is_pk_updated);
+									 bool is_pk_updated,
+									 bool is_inplace_update_enabled);
 
 extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
 						  ItemPointer conflictTid, List *arbiterIndexes,

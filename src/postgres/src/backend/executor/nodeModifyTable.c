@@ -1642,7 +1642,8 @@ ExecUpdate(ModifyTableState *mtstate,
 		{
 			recheckIndexes =  YbExecUpdateIndexTuples(
 				slot, YBCGetYBTupleIdFromSlot(planSlot), oldtuple, tuple,
-				estate, cols_marked_for_update, is_pk_updated);
+				estate, cols_marked_for_update, is_pk_updated,
+				mtstate->yb_is_inplace_index_update_enabled);
 		}
 
 		bms_free(cols_marked_for_update);
@@ -2995,6 +2996,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->mt_arowmarks = (List **) palloc0(sizeof(List *) * nplans);
 	mtstate->mt_nplans = nplans;
+
+	mtstate->yb_is_inplace_index_update_enabled = yb_enable_inplace_index_update;
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL, node->epqParam);

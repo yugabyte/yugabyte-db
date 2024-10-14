@@ -666,6 +666,12 @@ YbDdlRollbackEnabled () {
 
 extern bool yb_use_hash_splitting_by_default;
 
+/*
+ * If set to true, non-key columns of secondary indexes are updated in-place
+ * when no key columns are modified.
+ */
+extern bool yb_enable_inplace_index_update;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool has_infra;

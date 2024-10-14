@@ -765,7 +765,8 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 						HeapTuple tuple,
 						EState *estate,
 						Bitmapset *updatedCols,
-						bool is_pk_updated)
+						bool is_pk_updated,
+						bool is_inplace_update_enabled)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -863,7 +864,7 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 
 			econtext->ecxt_scantuple = slot;
 			insertApplicable = ExecQual(predicate, econtext);
-			
+
 			if (deleteApplicable != insertApplicable)
 			{
 				/*
@@ -878,8 +879,7 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 
 				continue;
 			}
-			
-			
+
 			if (!deleteApplicable)
 			{
 				/* Neither deletes nor updates applicable. Nothing to be done for this index. */
@@ -915,7 +915,8 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 			}
 		}
 
-		if (!indexRelation->rd_amroutine->ybamcanupdatetupleinplace)
+		if (!(is_inplace_update_enabled &&
+			  indexRelation->rd_amroutine->ybamcanupdatetupleinplace))
 		{
 			deleteIndexes = lappend_int(deleteIndexes, i);
 			insertIndexes = lappend_int(insertIndexes, i);
@@ -968,7 +969,7 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 		 *
 		 * To achieve this, we compute the list of all indexes whose key columns
 		 * are updated. These need the DELETE + INSERT. For all indexes, first
-		 * issue the deletes, followed by the inserts. 
+		 * issue the deletes, followed by the inserts.
 		 */
 
 		int j = 0;
