@@ -231,20 +231,23 @@ public class NodeAgentEnabler {
    * For 1 and 2, provider flag must not be checked.
    */
   private boolean isBackgroundInstallNodeAgentEnabled(Universe universe) {
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster.userIntent.useSystemd == false) {
+      log.info(
+          "Unsupported universe {} for background node-agent installation as systemd is disabled",
+          universe.getUniverseUUID());
+      return false;
+    }
     return isNodeAgentEnabled(
             universe,
             p -> {
-              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-              if (primaryCluster.userIntent.useSystemd == false) {
-                return false;
-              }
               if (p.getCloudCode() != CloudType.onprem || p.getDetails().isSkipProvisioning()) {
                 // Do not include provider flag for cloud and fully manual onprem providers when the
                 // enabler is on.
                 return !isEnabled();
               }
-              // Onprem non-manual provider for which the provider flag is also checked.
-              return false;
+              // Always check provider flag for onprem non-manual providers.
+              return true;
             })
         .orElse(false);
   }

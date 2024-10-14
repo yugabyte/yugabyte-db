@@ -149,6 +149,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     userIntent.provider = provider.getUuid().toString();
     userIntent.universeName = name;
     userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.useSystemd = true;
     Universe universe = ModelFactory.createUniverse(name, customer.getId(), providerType);
     universe =
         Universe.saveDetails(
