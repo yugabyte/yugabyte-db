@@ -257,6 +257,8 @@ class Env {
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
+  yb::Result<std::vector<std::string>> GetChildren(const std::string& dir);
+
   void GetChildrenWarnNotOk(const std::string& dir,
                             std::vector<std::string>* result);
 

@@ -20,7 +20,7 @@ YRPC_GENERATE(
         MESSAGES TRUE
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES docdb.proto)
+        NO_SERVICE_PROTO_FILES docdb.proto vector_lsm.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -82,6 +82,7 @@ set(DOCDB_SRCS
         vector_index_read.cc
         vector_index_update.cc
         vector_lsm.cc
+        vector_lsm_metadata.cc
         wait_queue.cc
         )
 

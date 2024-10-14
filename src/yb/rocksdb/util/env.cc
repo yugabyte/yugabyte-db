@@ -97,6 +97,12 @@ void Env::GetChildrenWarnNotOk(const std::string& dir,
   WARN_NOT_OK(GetChildren(dir, result), "Failed to get children " + dir);
 }
 
+yb::Result<std::vector<std::string>> Env::GetChildren(const std::string& dir) {
+  std::vector<std::string> result;
+  RETURN_NOT_OK(GetChildren(dir, &result));
+  return result;
+}
+
 Logger::~Logger() {
 }
 

@@ -46,9 +46,6 @@ class VectorIndexWriterIf {
 
   virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
 
-  // Saves the current state of the vector index to a file.
-  virtual Status SaveToFile(const std::string& file_path) const = 0;
-
   // Returns the vector with the given id, an empty vector if such VertexId does not exist, or
   // a non-OK status if an error occurred.
   virtual Result<Vector> GetVector(VertexId vertex_id) const = 0;
@@ -61,7 +58,13 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   using VectorType = Vector;
   using DistanceResultType = DistanceResult;
 
-  virtual Status AttachToFile(const std::string& output_path) = 0;
+  // Saves index to the file, switching it to immutable state.
+  // Implementation could partially unload index and load it on demand from this file.
+  virtual Status SaveToFile(const std::string& path) = 0;
+
+  // Loads index from the file in immutable state.
+  // Implementation could load index partially, fetching data on demand and unload it if necessary.
+  virtual Status LoadFromFile(const std::string& path) = 0;
 
   virtual ~VectorIndexIf() = default;
 };

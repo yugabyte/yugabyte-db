@@ -34,13 +34,15 @@
 #include "yb/util/status.h"
 
 #include "yb/vector/distance.h"
+#include "yb/vector/index_wrapper_base.h"
 
 namespace yb::vectorindex {
 
 namespace {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
+class HnswlibIndex :
+    public IndexWrapperBase<HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
   using Scalar = typename Vector::value_type;
 
@@ -65,29 +67,30 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
-  Status Insert(VertexId vertex_id, const Vector& v) override {
+  Status DoInsert(VertexId vertex_id, const Vector& v) {
     CHECK_NOTNULL(hnsw_);
     hnsw_->addPoint(v.data(), vertex_id);
-    has_entries_ = true;
     return Status::OK();
   }
 
-  Status SaveToFile(const std::string& file_path) const override {
+  Status DoSaveToFile(const std::string& path) {
     try {
-      hnsw_->saveIndex(file_path);
+      hnsw_->saveIndex(path);
     } catch (std::exception& e) {
       return STATUS_FORMAT(
-          IOError, "Failed to save Hnswlib index to file $0: $1", file_path, e.what());
+          IOError, "Failed to save Hnswlib index to file $0: $1", path, e.what());
     }
     return Status::OK();
   }
 
-  Status AttachToFile(const std::string& file_path) override {
+  Status DoLoadFromFile(const std::string& path) {
+    // Create hnsw_ before loading from file.
+    RETURN_NOT_OK(Reserve(0));
     try {
-      hnsw_->loadIndex(file_path, space_.get());
+      hnsw_->loadIndex(path, space_.get());
     } catch (std::exception& e) {
       return STATUS_FORMAT(
-          IOError, "Failed to load Hnswlib index from file $0: $1", file_path, e.what());
+          IOError, "Failed to load Hnswlib index from file $0: $1", path, e.what());
     }
     return Status::OK();
   }
@@ -96,11 +99,8 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
     return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
   }
 
-  std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) const override {
-    if (!has_entries_) {
-      return {};
-    }
+  std::vector<VertexWithDistance<DistanceResult>> DoSearch(
+      const Vector& query_vector, size_t max_num_results) const {
     std::vector<VertexWithDistance<DistanceResult>> result;
     auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), max_num_results);
     result.reserve(tmp_result.size());
@@ -149,7 +149,6 @@ class HnswlibIndex : public VectorIndexIf<Vector, DistanceResult> {
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
-  std::atomic<bool> has_entries_{false};
 };
 
 }  // namespace

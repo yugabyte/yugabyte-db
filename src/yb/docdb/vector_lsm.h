@@ -92,7 +92,7 @@ struct VectorLSMOptions {
   typename Types::ChunkFactory chunk_factory;
   size_t points_per_chunk;
   VectorLSMKeyValueStorage* key_value_storage;
-  rpc::ThreadPool* insert_thread_pool;
+  rpc::ThreadPool* thread_pool;
 };
 
 template<vectorindex::IndexableVectorType VectorType,
@@ -124,21 +124,30 @@ class VectorLSM {
   size_t TEST_num_immutable_chunks() const;
   bool TEST_HasBackgroundInserts() const;
 
+  struct MutableChunk;
+
  private:
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk() REQUIRES(mutex_);
+  // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
+  template<class... Args>
+  void SaveChunk(Args&&... args) EXCLUDES(mutex_);
+  Status DoSaveChunk(size_t chunk_index, const ChunkPtr& chunk) EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk() REQUIRES(mutex_);
 
   Options options_;
   rocksdb::Env* const env_;
 
-  size_t current_chunk_serial_no_ = 0;
   mutable rw_spinlock mutex_;
-  ChunkPtr mutable_chunk_ GUARDED_BY(mutex_);
+  size_t current_chunk_serial_no_ GUARDED_BY(mutex_) = 0;
+  std::atomic<size_t> num_chunks_being_saved_ = 0;
+  std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
   std::vector<ChunkPtr> immutable_chunks_ GUARDED_BY(mutex_);
-  size_t entries_in_mutable_chunks_ GUARDED_BY(mutex_) = 0;
   std::unique_ptr<InsertRegistry> insert_registry_;
+  // Does not change after Open.
+  size_t metadata_file_no_ = 0;
+  std::unique_ptr<rocksdb::WritableFile> metadata_file_ GUARDED_BY(mutex_);
 };
 
 template <template<class, class> class Factory, class VectorIndex>
