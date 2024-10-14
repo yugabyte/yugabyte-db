@@ -391,7 +391,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       if (universe.isYbcEnabled()) {
         installYbcOnThePods(
-            universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
             universe.getUniverseDetails().getYbcSoftwareVersion(),

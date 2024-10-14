@@ -609,6 +609,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of tservers for this universe in a given cluster.
+   *
+   * @return a list of tserver nodes
+   */
+  public List<NodeDetails> getTserversInCluster(UUID clusterUUID) {
+    return getServers(ServerType.TSERVER).stream()
+        .filter(server -> server.isInPlacement(clusterUUID))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
    * read replica will not be included.
    *
