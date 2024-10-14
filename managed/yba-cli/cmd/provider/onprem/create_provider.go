@@ -165,7 +165,7 @@ var createOnpremProviderCmd = &cobra.Command{
 				SshUser:                util.GetStringPointer(sshUser),
 			},
 		}
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -173,11 +173,8 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+			providerName, rTask, providerCode)
 	},
 }
 

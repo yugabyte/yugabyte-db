@@ -19,16 +19,20 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	universeFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 	"gopkg.in/yaml.v2"
 )
 
 // WaitForUpgradeUniverseTask waits for the upgrade task to complete
 func WaitForUpgradeUniverseTask(
-	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID, taskUUID string) {
+	authAPI *ybaAuthClient.AuthAPIClient, universeName string, rTask ybaclient.YBPTask) {
 
 	var universeData []ybaclient.UniverseResp
 	var response *http.Response
 	var err error
+
+	universeUUID := rTask.GetResourceUUID()
+	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The universe %s (%s) is being upgraded",
 		formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -57,10 +61,15 @@ func WaitForUpgradeUniverseTask(
 		}
 
 		universeFormatter.Write(universesCtx, universeData)
-
-	} else {
-		logrus.Infoln(msg + "\n")
+		return
 	}
+	logrus.Infoln(msg + "\n")
+	taskCtx := formatter.Context{
+		Command: "upgrade",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 }
 

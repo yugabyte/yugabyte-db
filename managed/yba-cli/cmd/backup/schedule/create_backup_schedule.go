@@ -7,6 +7,7 @@ package schedule
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -16,6 +17,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createBackupScheduleCmd represents the universe backup schedule command
@@ -256,14 +258,14 @@ var createBackupScheduleCmd = &cobra.Command{
 			requestBody.SetIncrementalBackupFrequencyTimeUnit("MINUTES")
 		}
 
-		rCreate, response, err := authAPI.CreateBackupSchedule().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.CreateBackupSchedule().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response, err, "Backup Schedule", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The backup schedule creation task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -276,12 +278,21 @@ var createBackupScheduleCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				logrus.Infof(
-					"The backup schedule %s creation task %s is complete now\n",
-					scheduleNameFlag,
-					formatter.Colorize(taskUUID, formatter.GreenColor))
 			}
+			// Replace with schedule output after get schedule is implemented
+			logrus.Infof(
+				"The backup schedule %s creation task %s is complete now\n",
+				scheduleNameFlag,
+				formatter.Colorize(taskUUID, formatter.GreenColor))
+			return
 		}
+		logrus.Info(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 	},
 }

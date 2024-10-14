@@ -17,6 +17,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/task"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // retryTaskCmd represents the retry task command
@@ -46,7 +47,7 @@ var retryTaskCmd = &cobra.Command{
 
 		retryRequest := authAPI.RetryTask(taskUUID)
 
-		rRetry, response, err := retryRequest.Execute()
+		rTask, response, err := retryRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "Retry")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
@@ -58,7 +59,7 @@ var retryTaskCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		newTaskUUID := rRetry.GetTaskUUID()
+		newTaskUUID := rTask.GetTaskUUID()
 		var currentTask ybaclient.CustomerTaskData
 		for _, t := range tasks {
 			if strings.Compare(t.GetId(), newTaskUUID) == 0 {
@@ -66,11 +67,11 @@ var retryTaskCmd = &cobra.Command{
 			}
 		}
 
-		msg := fmt.Sprintf("The task - \"(%s)\" (%s)  is being retried",
+		msg := fmt.Sprintf("The task - \"(%s)\" (%s) is being retried",
 			formatter.Colorize(currentTask.GetTitle(), formatter.GreenColor), newTaskUUID)
 
 		if viper.GetBool("wait") {
-			if rRetry.GetTaskUUID() != "" {
+			if rTask.GetTaskUUID() != "" {
 				logrus.Info(fmt.Sprintf("Waiting for task %s (%s) task to be retried\n",
 					formatter.Colorize(currentTask.GetTitle(), formatter.GreenColor), newTaskUUID))
 				err = authAPI.WaitForTask(newTaskUUID, msg)
@@ -93,7 +94,7 @@ var retryTaskCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
-			newTaskUUID := rRetry.GetTaskUUID()
+			newTaskUUID := rTask.GetTaskUUID()
 			var currentTask ybaclient.CustomerTaskData
 			for _, t := range tasks {
 				if strings.Compare(t.GetId(), newTaskUUID) == 0 {
@@ -101,9 +102,15 @@ var retryTaskCmd = &cobra.Command{
 				}
 			}
 			task.Write(tasksCtx, []ybaclient.CustomerTaskData{currentTask})
-
+			return
 		}
 		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "retry",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 

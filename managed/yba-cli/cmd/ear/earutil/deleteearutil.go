@@ -6,14 +6,17 @@ package earutil
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // DeleteEARValidation validates the delete config command
@@ -103,7 +106,7 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	}
 
 	earUUID := r[0].ConfigUUID
-	rDelete, response, err := authAPI.DeleteKMSConfig(earUUID).Execute()
+	rTask, response, err := authAPI.DeleteKMSConfig(earUUID).Execute()
 	if err != nil {
 		callSite := "EAR"
 		if len(strings.TrimSpace(commandCall)) != 0 {
@@ -117,11 +120,11 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 		formatter.Colorize(earName, formatter.GreenColor), earUUID)
 
 	if viper.GetBool("wait") {
-		if len(rDelete.GetTaskUUID()) > 0 {
+		if len(rTask.GetTaskUUID()) > 0 {
 			logrus.Info(fmt.Sprintf(
 				"Waiting for encryption at rest configuration %s (%s) to be deleted\n",
 				formatter.Colorize(earName, formatter.GreenColor), earUUID))
-			err = authAPI.WaitForTask(rDelete.GetTaskUUID(), msg)
+			err = authAPI.WaitForTask(rTask.GetTaskUUID(), msg)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -131,4 +134,11 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 		return
 	}
 	logrus.Infoln(msg + "\n")
+	taskCtx := formatter.Context{
+		Command: "delete",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+
 }

@@ -92,12 +92,11 @@ var RestartCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Restarting universe %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor)))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

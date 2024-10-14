@@ -330,18 +330,15 @@ var updateGCPProviderCmd = &cobra.Command{
 
 		// End of Updating Image Bundles
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -513,7 +510,7 @@ func addGCPRegions(
 	for _, regionString := range addRegions {
 		region := providerutil.BuildRegionMapFromString(regionString, "add")
 
-		zones := addGCPZones(region["name"], region["shared-subnet"],
+		zones := addGCPZones(region["shared-subnet"],
 			make([]ybaclient.AvailabilityZone, 0))
 		r := ybaclient.Region{
 			Code:  util.GetStringPointer(region["name"]),
@@ -534,7 +531,7 @@ func addGCPRegions(
 }
 
 func addGCPZones(
-	regionName, sharedSubnet string,
+	sharedSubnet string,
 	zones []ybaclient.AvailabilityZone,
 ) []ybaclient.AvailabilityZone {
 	z := ybaclient.AvailabilityZone{
