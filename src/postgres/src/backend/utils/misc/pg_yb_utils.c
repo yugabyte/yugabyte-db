@@ -1640,6 +1640,7 @@ int yb_parallel_range_size = 1024 * 1024;
 int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
 bool yb_enable_nop_alter_role_optimization = true;
+bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,

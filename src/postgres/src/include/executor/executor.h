@@ -663,7 +663,8 @@ extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 									 ItemPointer tupleid,
 									 EState *estate,
 									 Bitmapset *updatedCols,
-									 bool is_pk_updated);
+									 bool is_pk_updated,
+									 bool is_inplace_update_enabled);
 
 /*
  * prototypes from functions in execReplication.c

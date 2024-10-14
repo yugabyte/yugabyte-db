@@ -2456,7 +2456,7 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 			recheckIndexes =  YbExecUpdateIndexTuples(
 				resultRelInfo, slot, YBCGetYBTupleIdFromSlot(context->planSlot),
 				oldtuple, tupleid, context->estate, yb_cols_marked_for_update,
-				yb_is_pk_updated);
+				yb_is_pk_updated, mtstate->yb_is_inplace_index_update_enabled);
 		}
 	}
 	else
@@ -4563,6 +4563,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate->yb_is_update_optimization_enabled =
 		(node->yb_update_affected_entities != NULL &&
 		 operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled());
+
+	mtstate->yb_is_inplace_index_update_enabled = yb_enable_inplace_index_update;
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL, node->epqParam);

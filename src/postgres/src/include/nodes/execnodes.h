@@ -1404,6 +1404,13 @@ typedef struct ModifyTableState
 	 * constraint checks etc. This field is set to false for single row txns.
 	 */
 	bool yb_is_update_optimization_enabled;
+
+	/*
+	 * If enabled, execution seeks to perform inplace update of non-key columns
+	 * of secondary indexes. This field is not applicable to single row txns
+	 * because they do not involve updates to secondary indexes.
+	 */
+	bool yb_is_inplace_index_update_enabled;
 } ModifyTableState;
 
 /* ----------------
