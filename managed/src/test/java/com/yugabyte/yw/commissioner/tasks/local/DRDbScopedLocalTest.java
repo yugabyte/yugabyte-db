@@ -607,7 +607,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
   }
 
-  //  @Test
+  @Test
   public void testDbScopedSwitchover() throws InterruptedException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
