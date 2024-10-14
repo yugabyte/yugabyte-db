@@ -912,6 +912,8 @@ void YBCStoreTServerAshSamples(
 
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
 
+YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** serverMetricsInfo, size_t* count);
+
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 

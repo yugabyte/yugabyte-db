@@ -247,6 +247,8 @@ class PgClient {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
   Status EnumerateActiveTransactions(

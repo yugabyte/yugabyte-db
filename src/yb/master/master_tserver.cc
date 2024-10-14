@@ -227,5 +227,10 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
 
+Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const {
+  LOG(DFATAL) << "Unexpected call of GetMetrics()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetMetrics()");
+}
+
 } // namespace master
 } // namespace yb

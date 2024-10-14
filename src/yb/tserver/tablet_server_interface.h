@@ -121,6 +121,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 };
 
 } // namespace tserver
