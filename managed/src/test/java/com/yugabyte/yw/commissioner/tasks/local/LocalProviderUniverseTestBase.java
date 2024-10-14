@@ -1084,6 +1084,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     }
   }
 
+  protected void startProcessesOnNode(UUID universeUuid, String nodeName)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (node.isTserver) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.TSERVER);
+    }
+    if (node.isMaster) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.MASTER);
+    }
+  }
+
   protected void killProcessOnNode(UUID universeUuid, String nodeName, ServerType serverType)
       throws IOException, InterruptedException {
     Universe universe = Universe.getOrBadRequest(universeUuid);

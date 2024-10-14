@@ -39,7 +39,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -443,7 +445,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
   }
 
   @Test
-  public void testDbScopedFailoverRestart() throws InterruptedException {
+  public void testDbScopedFailoverRestartWithSwitchover() throws InterruptedException, IOException {
     CreateDRMetadata createData = defaultDbDRCreate();
     UUID drConfigUUID = createData.drConfigUUID;
     Universe sourceUniverse = createData.sourceUniverse;
@@ -479,6 +481,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(sourceUniverse, tables.get(0), Map.of("id", "8", "name", "'val8'"));
     validateRowCount(targetUniverse, tables.get(0), 2 /* expectedRows */);
 
+    // Take down source universe nodes.
+    for (NodeDetails sourceNode : sourceUniverse.getNodes()) {
+      killProcessesOnNode(sourceUniverse.getUniverseUUID(), sourceNode.nodeName);
+    }
+
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
     drFailoverForm.primaryUniverseUuid = targetUniverse.getUniverseUUID();
@@ -501,6 +508,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     Universe newSourceUniverse = Universe.getOrBadRequest(targetUniverse.getUniverseUUID());
     Universe newTargetUniverse = Universe.getOrBadRequest(sourceUniverse.getUniverseUUID());
     verifyUniverseState(newSourceUniverse);
+
+    for (NodeDetails newTargetNode : newTargetUniverse.getNodes()) {
+      startProcessesOnNode(newTargetUniverse.getUniverseUUID(), newTargetNode.nodeName);
+    }
     verifyUniverseState(newTargetUniverse);
 
     // Repair DR config.
@@ -523,7 +534,39 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     insertRow(newSourceUniverse, tables.get(1), Map.of("id", "11", "name", "'val11'"));
     validateRowCount(newTargetUniverse, tables.get(1), 2 /* expectedRows */);
 
-    deleteDrConfig(drConfigUUID, newSourceUniverse, newTargetUniverse);
+    // Perform a switchover to make sure that new outbound replication group can be created even
+    // though stale outbound replication group is persisted.
+    DrConfigSwitchoverForm switchoverForm = new DrConfigSwitchoverForm();
+    switchoverForm.primaryUniverseUuid = newTargetUniverse.getUniverseUUID();
+    switchoverForm.drReplicaUniverseUuid = newSourceUniverse.getUniverseUUID();
+
+    Result switchoverResult = switchover(drConfigUUID, switchoverForm);
+    assertOk(switchoverResult);
+    json = Json.parse(contentAsString(switchoverResult));
+    taskInfo =
+        waitForTask(
+            UUID.fromString(json.get("taskUUID").asText()), newSourceUniverse, newTargetUniverse);
+    sourceUniverse = Universe.getOrBadRequest(newTargetUniverse.getUniverseUUID());
+    targetUniverse = Universe.getOrBadRequest(newSourceUniverse.getUniverseUUID());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    // Sleep to make sure roles are propogated properly after switchover.
+    Thread.sleep(5000);
+
+    // Validate newSourceUniverse -> newTargetUniverse replication succeeds.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "3", "name", "'val3'"));
+    validateRowCount(targetUniverse, tables.get(0), 3 /* expectedRows */);
+
+    insertRow(sourceUniverse, tables.get(1), Map.of("id", "12", "name", "'val12'"));
+    validateRowCount(targetUniverse, tables.get(1), 3 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
+
+    for (Db db : dbs) {
+      dropDatabase(sourceUniverse, db);
+      dropDatabase(targetUniverse, db);
+    }
   }
 
   @Test
