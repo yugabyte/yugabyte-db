@@ -59,7 +59,6 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
-            temp_file.write("set -e\n")
             key = next(iter(self.config), None)
             if key is not None:
                 context = self.config[key]
@@ -133,13 +132,11 @@ class ProvisionCommand(Command):
     def populate_sudo_check(self, file):
         file.write("\n######## Check the SUDO Access #########\n")
         file.write("SUDO_ACCESS=\"false\"\n")
-        file.write("set +e\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
-        file.write("set -e\n")
 
     def _generate_template(self):
         os_distribution, os_family, os_version = self._get_os_info()
@@ -311,7 +308,7 @@ class ProvisionCommand(Command):
                     )
                 sys.exit(1)
 
-    def run_preflight_checks(self, extra_vars):
+    def run_preflight_checks(self):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
