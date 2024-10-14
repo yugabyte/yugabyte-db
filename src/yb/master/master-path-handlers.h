@@ -301,7 +301,7 @@ class MasterPathHandlers {
   Status CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
-  // Otherwise, do not perform calculation if number of tables is less than max_table_count.
+  // Otherwise, do not perform calculation if number of tables is more than max_table_count.
   Result<TServerTree> CalculateTServerTree(int max_table_count);
   void RenderLoadBalancerViewPanel(
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
