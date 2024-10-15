@@ -111,6 +111,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(raft_heartbeat_interval_ms);
 
 using yb::client::YBClient;
 using yb::client::YBSchema;
@@ -228,6 +229,10 @@ class RemoteBootstrapITest : public CreateTableITestBase {
                                                            const int leader_index,
                                                            const MonoDelta& timeout,
                                                            vector<string>* tablet_ids);
+
+  void AddNewPeerWithDiskspaceCheck(const int num_tablet_servers);
+  void ReplacePeerWithDiskspaceCheck(const int num_tablet_servers);
+
   MonoDelta crash_test_timeout_ = MonoDelta::FromSeconds(40);
   const MonoDelta kWaitForCrashTimeout_ = 60s;
   vector<string> crash_test_tserver_flags_;
@@ -1980,6 +1985,162 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ASSERT_NO_FATALS(StartCluster(
       ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
   RBSWithLazySuperblockFlush(/* num_tables */ 20);
+}
+
+
+TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithDiskspaceCheck) {
+  AddNewPeerWithDiskspaceCheck(3);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSReplacePeerWithDiskspaceCheck) {
+  ReplacePeerWithDiskspaceCheck(3);
+}
+
+// The test simulates a scenario where remote bootstrap of a new tablet peer initially
+// fails due to insufficient disk space, and succeeds once disk space clears up.
+void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_servers) {
+  ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
+
+  // the tserver on which we will add a replica
+  auto ts_to_add_peer = 2;
+  auto ts_uuid_to_add = cluster_->tablet_server(ts_to_add_peer)->uuid();
+
+  // stop the ts.
+  const auto timeout = MonoDelta::FromSeconds(40);
+  ASSERT_OK(cluster_->RemoveTabletServer(ts_uuid_to_add, MonoTime::Now() + timeout));
+  ASSERT_OK(
+      cluster_->WaitForTabletServerCount(num_tablet_servers - 1, timeout));
+
+  LOG(INFO) << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(100);
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+  auto* ts_to_add_peer_details = ts_map_[ts_uuid_to_add].get();
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+
+  ASSERT_OK(cluster_->tablet_server(ts_to_add_peer)->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {std::make_pair("rbs_data_size_to_disk_space_ratio_threshold", "0.9"),
+       std::make_pair("TEST_simulate_free_space_bytes", "0")}));
+  LOG(INFO) << "Adding tserver with uuid " << ts_to_add_peer_details->uuid();
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet_id, ts_to_add_peer_details, PeerMemberType::PRE_VOTER, boost::none,
+      MonoDelta::FromSeconds(5)));
+
+  // After adding TS, the leader will detect that the new TS needs to be remote bootstrapped.
+  // Verify that the new TS gets added to the tablet consensus.
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(
+      1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+  SleepFor(3 * FLAGS_raft_heartbeat_interval_ms * 1ms);
+
+  // RBS attempts would have failed due to insufficient disk space, hence the tablet would
+  // still be in PRE_VOTER state.
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(
+      1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_add_peer),
+                              "TEST_simulate_free_space_bytes", "-1"));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(ts_to_add_peer, tablet_id, TABLET_DATA_READY));
+  LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
+            << ts_to_add_peer_details->uuid();
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      num_tablet_servers, leader_ts, tablet_id, timeout));
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  workload.rows_inserted()));
+}
+
+// The test simulates a scenario where remote bootstrap of an existing (about to be replaced)
+// tablet peer initially fails due to insufficient disk space, and succeeds once disk space
+// clears up.
+void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_servers) {
+  ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
+
+  // the tserver on which we will replace a replica
+  auto ts_to_replace_peer = 2;
+
+  // Populate a tablet with some data.
+  LOG(INFO) << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(100);
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  const auto timeout = MonoDelta::FromSeconds(40);
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+  auto* ts_to_replace_peer_details =
+      ts_map_[cluster_->tablet_server(ts_to_replace_peer)->uuid()].get();
+
+  // Set ts 0 as leader. In case ts 2 is the leader, the leader switch may take long.
+  ASSERT_OK(itest::StartElection(ts, tablet_id, timeout));
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "TEST_simulate_free_space_bytes", "0"));
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "rbs_data_size_to_disk_space_ratio_threshold", "0.9"));
+  ASSERT_OK(itest::DeleteTablet(
+      ts_to_replace_peer_details, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
+  LOG(INFO) << "Tablet " << tablet_id << " in TABLET_DATA_TOMBSTONED state in tablet server "
+            << ts_to_replace_peer_details->uuid();
+  SleepFor(3 * FLAGS_raft_heartbeat_interval_ms * 1ms);
+
+  // RBS attempts would have failed due to insufficient disk space, hence the tablet would
+  // still be in tombstoned state.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "rbs_data_size_to_disk_space_ratio_threshold", "0"));
+
+  // wait for the bootstrap to complete
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_READY));
+  LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
+            << ts_to_replace_peer_details->uuid();
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      num_tablet_servers, leader_ts, tablet_id, timeout));
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  workload.rows_inserted()));
 }
 
 class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster> {

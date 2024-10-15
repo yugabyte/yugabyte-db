@@ -588,7 +588,8 @@ void Peer::ProcessRemoteBootstrapResponse() {
   }
 
   if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Unable to begin remote bootstrap on peer: " << status;
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Unable to begin remote bootstrap on peer: " << status;
     return;
   }
 
