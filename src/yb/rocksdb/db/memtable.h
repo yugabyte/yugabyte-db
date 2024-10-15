@@ -377,6 +377,10 @@ class MemTable {
            num_erased_.load(std::memory_order_acquire);
   }
 
+  uint64_t data_size() const {
+    return data_size_.load(std::memory_order_relaxed);
+  }
+
  private:
 
   friend class MemTableIterator;

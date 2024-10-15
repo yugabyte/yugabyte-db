@@ -47,6 +47,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int32(rocksdb_max_write_buffer_number);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -261,6 +262,7 @@ class PgMiniSmallMemstoreAndCacheTest : public PgSingleTServerTest {
   void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_mb_max) = 16;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = 32 * 1024 * 1024;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_write_buffer_number) = 2;
   }
 };
 
