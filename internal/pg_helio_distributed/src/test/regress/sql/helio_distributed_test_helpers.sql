@@ -283,3 +283,17 @@ CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.gin_bson_get_wildcard_
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT ROWS 100
 AS 'pg_helio_api', $$gin_bson_get_wildcard_project_generated_terms$$;
+
+CREATE FUNCTION helio_distributed_test_helpers.get_feature_counter_pretty(p_reset_counter bool)
+RETURNS SETOF json
+AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT row_to_json(result) FROM ( 
+        SELECT coalesce(json_agg(json_build_object(feature_name, usage_count)), '[]'::json) AS "Feature_usage" 
+        FROM helio_api_internal.command_feature_counter_stats(p_reset_counter)
+    ) result;
+END;
+$$
+LANGUAGE plpgsql;

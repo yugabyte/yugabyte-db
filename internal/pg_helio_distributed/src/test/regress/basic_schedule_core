@@ -147,3 +147,18 @@ test: bson_query_operator_geospatial_tests_index
 test: bson_query_operator_geospatial_tests_explain_index
 test: bson_query_operator_geospatial_tests_explain_runtime
 test: bson_query_operator_near_nearsphere
+
+test: commands_create_ttl_indexes
+test: bson_query_operator_range _S_TEMP_STR__bson_index_truncation_index_tests
+test: bson_index_truncation_binary_tests
+test: bson_index_fast_scan_tests
+test: users_libpq_permissioning
+
+# Not to be run concurrently with other tests to prevent flakiness
+test: mongo_feature_counters
+
+# TODO join content with previous pfe tests
+test: bson_query_operator_pfe_index_pushdown
+
+# Adhoc Query optimization tests
+test: bson_query_operator_in_opt
