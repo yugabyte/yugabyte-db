@@ -427,7 +427,7 @@ select * from my_locks order by 1;
 
 rollback;
 begin; alter table alterlock cluster on alterlock_pkey;
-ERROR:  ALTER TABLE CLUSTER not supported yet
+ERROR:  ALTER action CLUSTER ON not supported yet
 LINE 1: alter table alterlock cluster on alterlock_pkey;
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -435,7 +435,7 @@ select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
 begin; alter table alterlock set without cluster;
-ERROR:  ALTER TABLE SET WITHOUT CLUSTER not supported yet
+ERROR:  ALTER action SET WITHOUT CLUSTER not supported yet
 LINE 1: alter table alterlock set without cluster;
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -475,7 +475,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock alter column f2 set (n_distinct = 1);
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET not supported yet
 LINE 1: alter table alterlock alter column f2 set (n_distinct = 1);
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -492,7 +492,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock alter column f2 set storage extended;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: alter table alterlock alter column f2 set storage extended;
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -544,53 +544,53 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumb
 CREATE TABLE tt7 (x int, q text, y numeric(8,2));
 ALTER TABLE tt7 DROP q;								-- OK
 ALTER TABLE tt0 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt0 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt1 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt1 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt2 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt2 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt3 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt3 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt4 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt4 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt5 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt5 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt6 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt6 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt7 OF tt_t0;
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt7 OF tt_t0;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
-ERROR:  ALTER TABLE OF not supported yet
+ERROR:  ALTER action OF not supported yet
 LINE 1: ALTER TABLE tt7 OF tt_t1;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt7 NOT OF;
-ERROR:  ALTER TABLE NOT OF not supported yet
+ERROR:  ALTER action NOT OF not supported yet
 LINE 1: ALTER TABLE tt7 NOT OF;
                         ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -1150,7 +1150,7 @@ drop table parted_validate_test;
 CREATE TABLE attmp(i integer);
 INSERT INTO attmp VALUES (1);
 ALTER TABLE attmp ALTER COLUMN i SET (n_distinct = 1, n_distinct_inherited = 2);
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET not supported yet
 LINE 1: ALTER TABLE attmp ALTER COLUMN i SET (n_distinct = 1, n_dist...
                           ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

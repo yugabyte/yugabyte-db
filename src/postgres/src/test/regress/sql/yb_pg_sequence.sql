@@ -3,7 +3,6 @@
 --
 
 -- various error cases
-CREATE UNLOGGED SEQUENCE sequence_testx;
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 MAXVALUE -20;
@@ -277,13 +276,11 @@ SELECT lastval();
 -- unlogged sequences
 -- (more tests in src/test/recovery/)
 CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
-/* YB: uncomment when UNLOGGED SEQUENCE is supported
 ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
 \d sequence_test_unlogged
 ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
 \d sequence_test_unlogged
 DROP SEQUENCE sequence_test_unlogged;
-*/ -- YB
 
 -- Test sequences in read-only transactions
 CREATE TEMPORARY SEQUENCE sequence_test_temp1;

@@ -227,7 +227,7 @@ select * from test2;
 
 drop table test2;
 select * into unlogged table test3 from atacc1;
-NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
 select * from test3;
  b  | c  | d
 ----+----+----
@@ -946,9 +946,9 @@ SELECT * FROM tbl_serial_primary_key;
 DROP TABLE tbl_serial_primary_key;
 -- Test LOGGED / UNLOGGED, SET, RESET
 CREATE UNLOGGED TABLE test_tbl (i int); -- ok, UNLOGGED is ignored
-NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
 ALTER TABLE test_tbl SET UNLOGGED; -- ok, ignored
-NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
 ALTER TABLE test_tbl SET LOGGED; -- ok
 ALTER TABLE test_tbl SET (fillfactor = 101); -- fails: out of limit
 NOTICE:  storage parameters are currently ignored in YugabyteDB

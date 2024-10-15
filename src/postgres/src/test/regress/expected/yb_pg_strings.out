@@ -1803,7 +1803,7 @@ insert into toasttest values(repeat('1234567890',10000));
 -- operation used in that case
 --
 alter table toasttest alter column f1 set storage external;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: alter table toasttest alter column f1 set storage external;
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -1885,7 +1885,7 @@ insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
 -- operation used in that case
 --
 alter table toasttest alter column f1 set storage external;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: alter table toasttest alter column f1 set storage external;
                               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

@@ -291,7 +291,7 @@ COMMENT ON CONSTRAINT ctlt1_a_check ON ctlt1 IS 't1_a_check';
 COMMENT ON INDEX ctlt1_pkey IS 'index pkey';
 COMMENT ON INDEX ctlt1_b_key IS 'index b_key';
 ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
                           ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
