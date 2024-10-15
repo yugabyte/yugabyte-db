@@ -76,7 +76,6 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -1368,7 +1367,7 @@ public class Util {
     return t.negate();
   }
 
-  public static void doWithCorrelationId(Consumer<String> consumer) {
+  public static <T> T doWithCorrelationId(Function<String, T> function) {
     Map<String, String> originalContext = MDC.getCopyOfContextMap();
     try {
       String correlationId = UUID.randomUUID().toString();
@@ -1378,7 +1377,7 @@ public class Util {
       }
       context.put(LogUtil.CORRELATION_ID, correlationId);
       MDC.setContextMap(context);
-      consumer.accept(correlationId);
+      return function.apply(correlationId);
     } finally {
       if (MapUtils.isEmpty(originalContext)) {
         MDC.clear();

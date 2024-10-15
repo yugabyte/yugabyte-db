@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -155,8 +156,10 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         log.debug(
             "Retrying task {} for universe {}", action.getTaskType(), universe.getUniverseUUID());
         customerTask =
-            customerTaskManager.retryCustomerTask(
-                customer.getUuid(), universeDetails.placementModificationTaskUuid);
+            Util.doWithCorrelationId(
+                id ->
+                    customerTaskManager.retryCustomerTask(
+                        customer.getUuid(), universeDetails.placementModificationTaskUuid));
       }
       if (customerTask == null) {
         return Optional.empty();
@@ -504,19 +507,22 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
     // Submit the task to initiate master failover.
-    UUID taskUUID = getCommissioner().submit(TaskType.MasterFailover, taskParams);
-    log.info(
-        "Submitted master failover for universe {} node {}, task uuid = {}.",
-        universe.getUniverseUUID(),
-        action.getNodeName(),
-        taskUUID);
-    return CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.MasterFailover,
-        universe.getName());
+    return Util.doWithCorrelationId(
+        id -> {
+          UUID taskUUID = getCommissioner().submit(TaskType.MasterFailover, taskParams);
+          log.info(
+              "Submitted master failover for universe {} node {}, task uuid = {}.",
+              universe.getUniverseUUID(),
+              action.getNodeName(),
+              taskUUID);
+          return CustomerTask.create(
+              customer,
+              universe.getUniverseUUID(),
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.MasterFailover,
+              universe.getName());
+        });
   }
 
   private CustomerTask submitSyncMasterAddressesTask(Customer customer, Universe universe) {
@@ -525,18 +531,21 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     taskParams.expectedUniverseVersion = universe.getVersion();
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
-    UUID taskUUID = getCommissioner().submit(TaskType.SyncMasterAddresses, taskParams);
-    log.info(
-        "Submitted sync master addresses task {} for universe {}",
-        taskUUID,
-        universe.getUniverseUUID());
-    return CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.SyncMasterAddresses,
-        universe.getName());
+    return Util.doWithCorrelationId(
+        id -> {
+          UUID taskUUID = getCommissioner().submit(TaskType.SyncMasterAddresses, taskParams);
+          log.info(
+              "Submitted sync master addresses task {} for universe {}",
+              taskUUID,
+              universe.getUniverseUUID());
+          return CustomerTask.create(
+              customer,
+              universe.getUniverseUUID(),
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.SyncMasterAddresses,
+              universe.getName());
+        });
   }
 
   /**

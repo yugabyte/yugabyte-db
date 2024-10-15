@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -101,18 +102,21 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUuid);
-    UUID taskUuid = commissioner.submit(TaskType.EnableNodeAgentInUniverse, params);
-    CustomerTask customerTask =
-        CustomerTask.create(
-            customer,
-            universeUuid,
-            taskUuid,
-            CustomerTask.TargetType.Universe,
-            CustomerTask.TaskType.EnableNodeAgent,
-            universeOpt.get().getName());
-    commissioner.waitForTask(customerTask.getTaskUUID());
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
-    return taskInfo.getTaskState() == TaskInfo.State.Success;
+    return Util.doWithCorrelationId(
+        id -> {
+          UUID taskUuid = commissioner.submit(TaskType.EnableNodeAgentInUniverse, params);
+          CustomerTask customerTask =
+              CustomerTask.create(
+                  customer,
+                  universeUuid,
+                  taskUuid,
+                  CustomerTask.TargetType.Universe,
+                  CustomerTask.TaskType.EnableNodeAgent,
+                  universeOpt.get().getName());
+          commissioner.waitForTask(customerTask.getTaskUUID());
+          TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+          return taskInfo.getTaskState() == TaskInfo.State.Success;
+        });
   }
 
   private InstallNodeAgent.Params createInstallParams(

@@ -306,6 +306,7 @@ public class CustomerTaskManager {
                   customerTask.resetCompletionTime();
                   customerTask.setCorrelationId(corrId);
                   commitTransaction();
+                  return customerTask;
                 } catch (Exception e) {
                   throw new RuntimeException(
                       "Unable to delete the previous task info: " + taskUUID);
