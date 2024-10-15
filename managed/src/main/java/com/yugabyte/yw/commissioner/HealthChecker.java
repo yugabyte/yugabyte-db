@@ -750,10 +750,12 @@ public class HealthChecker {
           nodeInfo.setSslProtocol(tserverGflags.get("ssl_protocols"));
         }
         if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
-          nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
+          nodeInfo.setYsqlPort(
+              params.universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort);
           nodeInfo.setYsqlServerHttpPort(nodeDetails.ysqlServerHttpPort);
           if (nodeInfo.enableConnectionPooling) {
-            nodeInfo.setInternalYsqlPort(nodeDetails.internalYsqlServerRpcPort);
+            nodeInfo.setInternalYsqlPort(
+                params.universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
           }
         }
         if (nodeInfo.enableYCQL && nodeDetails.isYqlServer) {
@@ -765,18 +767,21 @@ public class HealthChecker {
         if (!provider.getCode().equals(CloudType.onprem.toString())
             && !provider.getCode().equals(CloudType.kubernetes.toString())) {
           nodeInfo.setCheckClock(true);
-          if (confGetter.getConfForScope(params.universe, UniverseConfKeys.healthCheckTimeDrift)) {
-            nodeInfo.setCheckTimeDrift(true);
-            nodeInfo.setTimeDriftWrnThreshold(
-                confGetter.getConfForScope(
-                    params.universe, UniverseConfKeys.healthCheckTimeDriftWrnThreshold));
-            nodeInfo.setTimeDriftErrThreshold(
-                confGetter.getConfForScope(
-                    params.universe, UniverseConfKeys.healthCheckTimeDriftErrThreshold));
-            nodeInfo.setClockSyncServiceRequired(
-                confGetter.getConfForScope(
-                    params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
-          }
+        }
+        // Clock drift config values. Clock drift health checks are only run for non-k8s universes
+        // and if they are enabled.
+        if (!provider.getCode().equals(CloudType.kubernetes.toString())
+            && confGetter.getConfForScope(params.universe, UniverseConfKeys.healthCheckTimeDrift)) {
+          nodeInfo.setCheckTimeDrift(true);
+          nodeInfo.setTimeDriftWrnThreshold(
+              confGetter.getConfForScope(
+                  params.universe, UniverseConfKeys.healthCheckTimeDriftWrnThreshold));
+          nodeInfo.setTimeDriftErrThreshold(
+              confGetter.getConfForScope(
+                  params.universe, UniverseConfKeys.healthCheckTimeDriftErrThreshold));
+          nodeInfo.setClockSyncServiceRequired(
+              confGetter.getConfForScope(
+                  params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
         } else {
           nodeInfo.setClockSyncServiceRequired(false);
         }
@@ -1166,10 +1171,13 @@ public class HealthChecker {
     private int masterRpcPort = 7100;
     private int tserverRpcPort = 9100;
     private int ysqlServerHttpPort = 13000;
+
+    // Clock and drift check values will get overridden.
     private boolean checkClock = false;
     private boolean checkTimeDrift = true;
-    private int timeDriftWrnThreshold = 250;
+    private int timeDriftWrnThreshold = 200;
     private int timeDriftErrThreshold = 400;
+
     private Long nodeStartTime = null;
     private boolean testReadWrite = true;
     private boolean testYsqlshConnectivity = true;

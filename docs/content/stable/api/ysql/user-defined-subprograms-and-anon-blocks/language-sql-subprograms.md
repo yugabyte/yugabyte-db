@@ -5,7 +5,7 @@ linkTitle: >
   "language sql" subprograms
 description: Describes SQL functions and procedures. These are also known as "language sql" subprograms. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: language-sql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20

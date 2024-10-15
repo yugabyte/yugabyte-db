@@ -931,15 +931,9 @@ SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) <
 
 -- Test when parent can produce parallel paths but not any (or some) of its children
 ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 ANALYZE pagg_tab_para;
 /*
 EXPLAIN (COSTS OFF)
@@ -957,10 +951,7 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
 (6 rows)
 
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 ANALYZE pagg_tab_para;
 /*
 EXPLAIN (COSTS OFF)

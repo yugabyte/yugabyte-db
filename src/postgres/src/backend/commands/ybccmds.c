@@ -952,8 +952,13 @@ YbOnTruncateUpdateCatalog(Relation rel)
 	CommandCounterIncrement();
 }
 
+/*
+ * Execute an unsafe YB truncate operation (without table rewrite):
+ * For non-colocated tables: perform a tablet-level truncate.
+ * For colocated tables: add a table-level tombstone.
+ */
 void
-YbTruncate(Relation rel)
+YbUnsafeTruncate(Relation rel)
 {
 	YBCPgStatement handle;
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1009,7 +1014,7 @@ YbTruncate(Relation rel)
 			continue;
 		}
 
-		YbTruncate(indexRel);
+		YbUnsafeTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
 
@@ -1619,6 +1624,19 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			*needsYBAlter = true;
 			break;
 		}
+
+		case AT_SetLogged:
+		case AT_SetUnLogged:
+			/* A NOTICE message is output from the grammar */
+			*needsYBAlter = false;
+			break;
+
+		case AT_SetRelOptions:
+		case AT_ResetRelOptions:
+			*needsYBAlter = false;
+			ereport(NOTICE,
+					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			break;
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

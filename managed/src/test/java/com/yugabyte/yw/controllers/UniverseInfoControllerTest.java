@@ -26,6 +26,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsBytes;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -414,16 +416,18 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         });
     when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
-    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.setEnableNestloopOff)))
+        .thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
+    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements))  */ SELECT s.userid::regrole as rolname, d.datname,"
-            + " s.queryid, LEFT(s.query, 1024) as query, s.calls, s.total_time, s.rows, s.min_time,"
-            + " s.max_time, s.mean_time, s.stddev_time, s.local_blks_hit, s.local_blks_written FROM"
-            + " pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER BY s.total_time"
-            + " DESC LIMIT 200",
+            + " s.queryid, LEFT(s.query, 1024) as query, s.calls, s.rows, s.local_blks_hit,"
+            + " s.local_blks_written, s.total_time, s.min_time, s.max_time, s.mean_time,"
+            + " s.stddev_time FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER"
+            + " BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 
@@ -443,16 +447,18 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         });
     when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
-    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.setEnableNestloopOff)))
+        .thenReturn(true);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
+    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ SELECT s.userid::regrole"
-            + " as rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query, s.calls,"
-            + " s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time,"
-            + " s.local_blks_hit, s.local_blks_written FROM pg_stat_statements s JOIN pg_database d"
-            + " ON d.oid = s.dbid ORDER BY s.total_time DESC LIMIT 200",
+            + " as rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query, s.calls, s.rows,"
+            + " s.local_blks_hit, s.local_blks_written, s.total_time, s.min_time, s.max_time,"
+            + " s.mean_time, s.stddev_time FROM pg_stat_statements s JOIN pg_database d ON d.oid ="
+            + " s.dbid ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 

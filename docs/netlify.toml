@@ -803,6 +803,31 @@
   to = "/v2.14/deploy/checklist/"
   force = true
 
+[[redirects]]
+  from = "/v2.20/api/ysqlsh/*"
+  to = "/v2.20/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ysqlsh/*"
+  to = "/v2.18/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ysqlsh/*"
+  to = "/v2.14/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/api/ycqlsh/*"
+  to = "/v2.20/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ycqlsh/*"
+  to = "/v2.18/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ycqlsh/*"
+  to = "/v2.14/admin/ycqlsh/:splat"
+  force = true
+
 
 # YBA High availability
 
@@ -1349,9 +1374,16 @@
         ;
 
         connect-src 'self'
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
+            https://api.rudderstack.com/
+            https://api.segment.io/
+            https://cdn.segment.com/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://metrics.kapa.ai/
             https://raw.githubusercontent.com/
+            https://sessions.bugsnag.com/
             https://stats.g.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
@@ -1359,20 +1391,21 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://api.segment.io/
-            https://cdn.segment.com/
-            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
-            https://api.rudderstack.com/
-            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://cdn.jsdelivr.net
+            https://cdn.jsdelivr.net/
+            https://cdn.madkudu.com/
+            https://cdn.rudderlabs.com/
+            https://cdn.segment.com/
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.7.1.min.js
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://j.6sc.co/
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
+            https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
             https://umbcujcbe8-1.algolianet.com/
@@ -1384,10 +1417,6 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://cdn.segment.com/
-            https://j.6sc.co/
-            https://cdn.rudderlabs.com/
-            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
         ;
 
         style-src 'self' 'unsafe-inline'

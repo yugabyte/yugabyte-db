@@ -23,6 +23,7 @@
 #include "yb/util/shared_lock.h"
 
 #include "yb/vector/distance.h"
+#include "yb/vector/index_wrapper_base.h"
 #include "yb/vector/usearch_include_wrapper_internal.h"
 #include "yb/vector/coordinate_types.h"
 
@@ -72,7 +73,8 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
 namespace {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
+class UsearchIndex :
+    public IndexWrapperBase<UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
   explicit UsearchIndex(const HNSWOptions& options)
       : dimensions_(options.dimensions),
@@ -91,42 +93,37 @@ class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
-  Status Insert(VertexId vertex_id, const Vector& v) override {
+  Status DoInsert(VertexId vertex_id, const Vector& v) {
     if (!index_.add(vertex_id, v.data())) {
       return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
     }
-    has_entries_ = true;
     return Status::OK();
   }
 
-  Status SaveToFile(const std::string& file_path) const override {
-    if (!index_.save(output_file_t(file_path.c_str()))) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", file_path);
+  Status DoSaveToFile(const std::string& path) {
+    // TODO(lsm) Reload via memory mapped file
+    if (!index_.save(output_file_t(path.c_str()))) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
     }
     return Status::OK();
   }
 
-
-  Status AttachToFile(const std::string& input_path) override {
-    auto result = decltype(index_)::make(input_path.c_str(), /* view= */ true);
+  Status DoLoadFromFile(const std::string& path) {
+    auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
     if (result) {
       index_ = std::move(result.index);
       return Status::OK();
     }
-    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", input_path);
+    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
   }
-
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     return metric_(
         pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
   }
 
-  std::vector<VertexWithDistance<DistanceResult>> Search(
-      const Vector& query_vector, size_t max_num_results) const override {
-    if (!has_entries_) {
-      return {};
-    }
+  std::vector<VertexWithDistance<DistanceResult>> DoSearch(
+      const Vector& query_vector, size_t max_num_results) const {
     auto usearch_results = index_.search(query_vector.data(), max_num_results);
     std::vector<VertexWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
@@ -151,7 +148,6 @@ class UsearchIndex : public VectorIndexIf<Vector, DistanceResult> {
   DistanceKind distance_kind_;
   metric_punned_t metric_;
   index_dense_gt<VertexId> index_;
-  std::atomic<bool> has_entries_{false};
 };
 
 }  // namespace

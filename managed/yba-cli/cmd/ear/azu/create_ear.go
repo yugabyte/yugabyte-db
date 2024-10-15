@@ -141,18 +141,15 @@ var createAzureEARCmd = &cobra.Command{
 			}
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.AzureEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.AzureEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: Azure", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.AzureEARType, taskUUID)
+			configName, rTask, util.AzureEARType)
 
 	},
 }

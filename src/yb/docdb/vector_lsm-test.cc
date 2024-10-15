@@ -100,7 +100,7 @@ class VectorLSMTest : public DocDBTestBase,
                       public testing::WithParamInterface<vectorindex::ANNMethodKind> {
  protected:
   VectorLSMTest()
-      : insert_thread_pool_(rpc::ThreadPoolOptions {
+      : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
         }) {
@@ -115,7 +115,17 @@ class VectorLSMTest : public DocDBTestBase,
     return Schema();
   }
 
-  rpc::ThreadPool insert_thread_pool_;
+  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+
+  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+
+  Status InsertCube(
+      FloatVectorLSM& lsm, size_t dimensions,
+      size_t block_size = std::numeric_limits<size_t>::max());
+
+  void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
+
+  rpc::ThreadPool thread_pool_;
   std::optional<VectorLSMKeyValueStorageRocksDbWrapper> key_value_storage_;
 };
 
@@ -133,50 +143,60 @@ auto ChunkFactory(vectorindex::ANNMethodKind ann_method) {
   return decltype(&UsearchIndexFactory::Create)(nullptr);
 }
 
-TEST_P(VectorLSMTest, Simple) {
-  constexpr int kDimensions = 4;
-
-  FloatVectorLSM lsm;
-  {
-    FloatVectorLSM::Options options = {
-      .storage_dir = JoinPathSegments(rocksdb_dir_, "vector_lsm"),
-      .chunk_factory = [factory = ChunkFactory(GetParam())]() {
-          vectorindex::HNSWOptions hnsw_options = {
-            .dimensions = kDimensions,
-          };
-          return factory(hnsw_options);
-        },
-      .points_per_chunk = 1000,
-      .key_value_storage = &*key_value_storage_,
-      .insert_thread_pool = &insert_thread_pool_,
-    };
-    ASSERT_OK(lsm.Open(std::move(options)));
-  }
-  {
-    FloatVectorLSM::InsertEntries entries;
-    for (vectorindex::VertexId i = 1; i <= (1 << kDimensions); ++i) {
-      auto bits = i - 1;
-      FloatVector vector(kDimensions);
-      for (int d = 0; d != kDimensions; ++d) {
-        vector[d] = 1.f * ((bits >> d) & 1);
-      }
-      entries.emplace_back(FloatVectorLSM::InsertEntry {
-        .vertex_id = i,
-        .base_table_key = KeyBuffer(Slice(VertexKey(i))),
-        .vector = std::move(vector),
-      });
+Status VectorLSMTest::InsertCube(FloatVectorLSM& lsm, size_t dimensions, size_t block_size) {
+  HybridTime write_time(1000, 0);
+  FloatVectorLSM::InsertEntries entries;
+  for (vectorindex::VertexId i = 1; i <= (1ULL << dimensions); ++i) {
+    if (entries.size() >= block_size) {
+      RETURN_NOT_OK(lsm.Insert(entries, write_time));
+      entries.clear();
     }
-    HybridTime write_time(1000, 0);
-    ASSERT_OK(lsm.Insert(entries, write_time));
-  }
 
+    auto bits = i - 1;
+    FloatVector vector(dimensions);
+    for (size_t d = 0; d != dimensions; ++d) {
+      vector[d] = 1.f * ((bits >> d) & 1);
+    }
+    entries.emplace_back(FloatVectorLSM::InsertEntry {
+      .vertex_id = i,
+      .base_table_key = KeyBuffer(Slice(VertexKey(i))),
+      .vector = std::move(vector),
+    });
+  }
+  return lsm.Insert(entries, write_time);
+}
+
+Status VectorLSMTest::OpenVectorLSM(
+    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+  FloatVectorLSM::Options options = {
+    .storage_dir = JoinPathSegments(rocksdb_dir_, "vector_lsm"),
+    .chunk_factory = [factory = ChunkFactory(GetParam()), dimensions]() {
+        vectorindex::HNSWOptions hnsw_options = {
+          .dimensions = dimensions,
+        };
+        return factory(hnsw_options);
+      },
+    .points_per_chunk = points_per_chunk,
+    .key_value_storage = &*key_value_storage_,
+    .thread_pool = &thread_pool_,
+  };
+  return lsm.Open(std::move(options));
+}
+
+Status VectorLSMTest::InitVectorLSM(
+    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, points_per_chunk));
+  return InsertCube(lsm, dimensions, points_per_chunk);
+}
+
+void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
   bool stop = false;
-  FloatVectorLSM::Vector query_vector(kDimensions, 0.f);
+  FloatVectorLSM::Vector query_vector(dimensions, 0.f);
   while (!stop) {
     stop = !lsm.TEST_HasBackgroundInserts();
 
     FloatVectorLSM::SearchOptions options = {
-      .max_num_results = kDimensions + 1,
+      .max_num_results = dimensions + 1,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
 
@@ -190,10 +210,45 @@ TEST_P(VectorLSMTest, Simple) {
     std::sort(search_result.begin(), search_result.end(), [](const auto& lhs, const auto& rhs) {
       return lhs.base_table_key < rhs.base_table_key;
     });
-    for (int d = 0; d != kDimensions; ++d) {
+    for (size_t d = 0; d != dimensions; ++d) {
       ASSERT_EQ(search_result[d + 1].distance, 1);
       ASSERT_EQ(search_result[d + 1].base_table_key.AsSlice().ToBuffer(), VertexKey(1 + (1 << d)));
     }
+  }
+}
+
+TEST_P(VectorLSMTest, Simple) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, 1000));
+
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+TEST_P(VectorLSMTest, MultipleChunks) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kChunkSize = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+TEST_P(VectorLSMTest, Bootstrap) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kChunkSize = 4;
+
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+  }
+
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
+    VerifyVectorLSM(lsm, kDimensions);
   }
 }
 

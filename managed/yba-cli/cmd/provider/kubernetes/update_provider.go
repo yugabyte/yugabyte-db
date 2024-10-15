@@ -203,7 +203,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -214,11 +214,8 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+			providerName, rTask, providerCode)
 	},
 }
 

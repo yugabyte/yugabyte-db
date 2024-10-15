@@ -2,6 +2,8 @@
 -- CREATE SEQUENCE
 --
 -- various error cases
+CREATE UNLOGGED SEQUENCE sequence_testx;
+ERROR:  unlogged sequences are not supported
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 ERROR:  INCREMENT must not be zero
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;

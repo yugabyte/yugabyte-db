@@ -1,0 +1,12 @@
+{
+    "methodConfig": [
+      {
+        "name": [
+          {
+            "service": "nodeagent.server.NodeAgent"
+          }
+        ],
+        "timeout": "1s"
+      }
+    ]
+}

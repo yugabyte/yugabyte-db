@@ -5,7 +5,7 @@ linkTitle: Reserved names
 description: List of YSQL system column and database object names that are reserved for internal usage.
 summary: List of reserved names
 menu:
-  stable:
+  stable_api:
     identifier: api-ysql-reserved-names
     parent: api-ysql
     weight: 100

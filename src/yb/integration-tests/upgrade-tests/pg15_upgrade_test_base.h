@@ -19,7 +19,7 @@ namespace yb {
 
 class Pg15UpgradeTestBase : public UpgradeTestBase {
  public:
-  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2_20_2_4) {}
+  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_0_0) {}
   virtual ~Pg15UpgradeTestBase() override = default;
 
   void SetUp() override;

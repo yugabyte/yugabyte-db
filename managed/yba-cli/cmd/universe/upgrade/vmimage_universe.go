@@ -18,8 +18,8 @@ import (
 
 // upgradeVMImageCmd represents the universe upgrade vm image command
 var upgradeVMImageCmd = &cobra.Command{
-	Use:     "linux-os",
-	Aliases: []string{"vm-image", "os"},
+	Use:     "os",
+	Aliases: []string{"vm-image", "linux-os"},
 	Short:   "VM Linux OS patch for a YugabyteDB Anywhere Universe",
 	Long: "VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes" +
 		" of cloud type AWS, GCP and Azure.",
@@ -174,14 +174,13 @@ var upgradeVMImageCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Patching universe %s (%s) linux OS\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
 				universeUUID,
 			))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

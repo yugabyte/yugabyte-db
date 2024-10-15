@@ -69,7 +69,7 @@ class TransactionCoordinatorContext {
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       std::shared_ptr<LWTransactionStatePB> request) = 0;
   virtual Status SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) = 0;
 
   server::Clock& clock() const {
     return *clock_ptr();

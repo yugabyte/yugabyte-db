@@ -30,6 +30,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(cdc_write_post_apply_metadata);
 
@@ -1832,6 +1833,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
                     << change_resp.cdc_sdk_checkpoint().index();
 
           tablet_to_checkpoint[tablet_ids[i]] = change_resp.cdc_sdk_checkpoint();
+          explicit_checkpoints[tablet_ids[i]] = explicit_cp;
         } else {
           status = StatusFromPB(change_resp.error().status());
           if (status.IsTabletSplit()) {
@@ -2082,6 +2084,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     int64 prev_safetime = safe_hybrid_time;
     int prev_index = wal_segment_index;
     const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
+    int count[8] = {};
 
     do {
       GetChangesResponsePB change_resp;
@@ -2099,6 +2102,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
       for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
         resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
+        UpdateRecordCount(change_resp.cdc_sdk_proto_records(i), count);
       }
 
       prev_checkpoint = change_resp.cdc_sdk_checkpoint();
@@ -2108,8 +2112,13 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       prev_records = change_resp.cdc_sdk_proto_records_size();
     } while (prev_records != 0);
 
+
     resp.checkpoint = prev_checkpoint;
     resp.safe_hybrid_time = prev_safetime;
+
+    for (int i = 0; i < 8; i++) {
+      resp.record_count[i] = count[i];
+    }
     return resp;
   }
 
@@ -2424,6 +2433,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               return (*num_intents >= min_expected_num_intents);
             case IntentCountCompareOption::EqualTo:
               return (*num_intents == min_expected_num_intents);
+            case IntentCountCompareOption::LessThan:
+              return (*num_intents < min_expected_num_intents);
           }
 
           return false;
@@ -4156,6 +4167,50 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     }
   }
 
+  std::vector<int> CDCSDKYsqlTest::PerformSingleAndMultiShardInsertsInSeparateThreads(
+      int total_single_shard_txns, int total_multi_shard_txns, int batch_size,
+      PostgresMiniCluster* test_cluster, int additional_inserts) {
+    TestThreadHolder thread_holder;
+
+    // Thread for writing single-shard transactions.
+    thread_holder.AddThreadFunctor(
+        [&]() { ASSERT_OK(WriteRows(0, total_single_shard_txns, test_cluster)); });
+
+    // First thread for writing multi-shard transactions.
+    thread_holder.AddThreadFunctor([&]() {
+      int start_key = total_single_shard_txns;
+      for (int i = 0; i < total_multi_shard_txns; i++) {
+        ASSERT_OK(WriteRowsHelper(
+            start_key + i * batch_size, start_key + (i + 1) * batch_size, test_cluster, true));
+      }
+    });
+
+    // Second thread for writing multi-shard transactions.
+    thread_holder.AddThreadFunctor([&]() {
+      int start_key = total_single_shard_txns + total_multi_shard_txns * batch_size;
+      for (int i = 0; i < total_multi_shard_txns; i++) {
+        ASSERT_OK(WriteRowsHelper(
+            start_key + i * batch_size, start_key + (i + 1) * batch_size, test_cluster, true));
+      }
+    });
+
+    // Wait for all threads to complete.
+    thread_holder.JoinAll();
+
+    // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+    std::vector<int> expected_count = {
+        1,
+        total_single_shard_txns + 2 * total_multi_shard_txns * batch_size + additional_inserts,
+        0,
+        0,
+        0,
+        0,
+        total_single_shard_txns + total_multi_shard_txns * 2 + additional_inserts,
+        total_single_shard_txns + total_multi_shard_txns * 2 + additional_inserts};
+
+    return expected_count;
+  }
+
   void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency,
       const int& start_index) {
@@ -4645,6 +4700,44 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           kTableName));
     }
 
+    return Status::OK();
+  }
+
+  void CDCSDKYsqlTest::GetLogSegmentCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, size_t>* log_segment_count) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        log_segment_count->emplace(peer->permanent_uuid(), peer->GetNumLogSegments());
+        LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+                  << ": log segment count: "
+                  << (*log_segment_count)[peer->permanent_uuid()];
+      }
+    }
+  }
+
+  Status CDCSDKYsqlTest::GetIntentEntriesAndSSTFileCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
+                                     initial_intents_and_intent_sst_file_count) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+        auto intent_count = VERIFY_RESULT(tablet->CountIntents());
+        auto intent_sst_file_count = tablet->intents_db()->GetCurrentVersionNumSSTFiles();
+
+        LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+                  << ": intent count: " << intent_count
+                  << ", intent SST file count: " << intent_sst_file_count;
+
+        initial_intents_and_intent_sst_file_count->emplace(
+            std::move(peer->permanent_uuid()), std::make_pair(intent_count, intent_sst_file_count));
+      }
+    }
     return Status::OK();
   }
 

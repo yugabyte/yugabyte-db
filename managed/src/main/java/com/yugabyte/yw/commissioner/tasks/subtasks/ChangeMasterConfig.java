@@ -27,11 +27,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.CommonTypes;
 import org.yb.client.ChangeConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 
 @Slf4j
 public class ChangeMasterConfig extends UniverseTaskBase {
@@ -217,20 +216,19 @@ public class ChangeMasterConfig extends UniverseTaskBase {
                     throw new IllegalStateException(
                         "No master leader between masters " + clientConfig.getMasterHostPorts());
                   }
-                  ListMastersResponse resp = client.listMasters();
-                  ServerInfo serverInfo =
-                      resp.getMasters().stream()
-                          .filter(s -> masterIp.equals(s.getHost()))
+                  ListMasterRaftPeersResponse resp = client.listMasterRaftPeers();
+                  PeerInfo peerInfo =
+                      resp.getPeersList().stream()
+                          .filter(p -> p.hasHost(masterIp))
                           .findFirst()
                           .orElse(null);
-                  log.debug("Master status: {}", serverInfo);
-                  CommonTypes.PeerRole peerRole =
-                      serverInfo == null ? null : serverInfo.getPeerRole();
+                  log.debug("Peer into: {}", peerInfo);
+                  PeerInfo.MemberType memberType =
+                      peerInfo == null ? null : peerInfo.getMemberType();
                   if (taskParams().opType == OpType.AddMaster) {
-                    return peerRole == CommonTypes.PeerRole.LEADER
-                        || peerRole == CommonTypes.PeerRole.FOLLOWER;
+                    return memberType == PeerInfo.MemberType.VOTER;
                   } else {
-                    return peerRole == null;
+                    return memberType == null;
                   }
                 } catch (Exception e) {
                   log.error("Failed to check master peer states", e);

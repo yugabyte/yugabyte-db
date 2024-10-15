@@ -4,7 +4,7 @@ headerTitle: CREATE TABLESPACE
 linkTitle: CREATE TABLESPACE
 description: Use the CREATE TABLESPACE statement to create a tablespace in the cluster.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_tablespace
     parent: statements
 type: docs

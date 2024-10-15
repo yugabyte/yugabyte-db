@@ -279,10 +279,7 @@ CREATE INDEX ON atest12 (a);
 CREATE INDEX ON atest12 (abs(a));
 -- results below depend on having quite accurate stats for atest12, so...
 ALTER TABLE atest12 SET (autovacuum_enabled = off);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: ALTER TABLE atest12 SET (autovacuum_enabled = off);
-                            ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 SET default_statistics_target = 10000;
 VACUUM ANALYZE atest12;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically

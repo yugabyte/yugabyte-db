@@ -1044,7 +1044,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return SpecificGFlags.construct(gflags, gflags);
   }
 
-  protected String getAllErrorsStr(TaskInfo taskInfo) {
+  public static String getAllErrorsStr(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
     for (TaskInfo subTask : taskInfo.getSubTasks()) {
       if (!StringUtils.isEmpty(subTask.getErrorMessage())) {

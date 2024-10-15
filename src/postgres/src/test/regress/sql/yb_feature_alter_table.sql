@@ -124,6 +124,9 @@ drop table test1;
 select * into test2 from atacc1;
 select * from test2;
 drop table test2;
+select * into unlogged table test3 from atacc1;
+select * from test3;
+drop table test3;
 
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
@@ -512,3 +515,12 @@ ALTER TABLE tbl_serial_primary_key DROP COLUMN k;
 INSERT INTO tbl_serial_primary_key(v) VALUES ('ABC');
 SELECT * FROM tbl_serial_primary_key;
 DROP TABLE tbl_serial_primary_key;
+
+-- Test LOGGED / UNLOGGED, SET, RESET
+CREATE UNLOGGED TABLE test_tbl (i int); -- ok, UNLOGGED is ignored
+ALTER TABLE test_tbl SET UNLOGGED; -- ok, ignored
+ALTER TABLE test_tbl SET LOGGED; -- ok
+
+ALTER TABLE test_tbl SET (fillfactor = 101); -- fails: out of limit
+ALTER TABLE test_tbl SET (fillfactor = 100); -- ok
+ALTER TABLE test_tbl RESET (fillfactor); -- ok

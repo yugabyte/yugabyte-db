@@ -3,6 +3,7 @@ import { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment-timezone';
+import { useQuery } from 'react-query';
 
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
@@ -17,6 +18,9 @@ import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { Box, Typography, useTheme } from '@material-ui/core';
+import { getPrometheusBaseUrl } from '../../../redesign/features/metrics/utils';
+import { PROMETHEUS_URL_QUERY_KEY } from '../../../redesign/helpers/api';
+import { getPrometheusHostInfo } from '../../../v2/api/metrics/metrics';
 
 import { HaInstanceState, HaPlatformInstance } from '../dtos';
 
@@ -52,6 +56,7 @@ export const HAInstances: FC<HAInstancesProps> = ({
   });
   const iconClasses = useIconStyles();
   const theme = useTheme();
+  const prometheusUrlQuery = useQuery(PROMETHEUS_URL_QUERY_KEY, () => getPrometheusHostInfo());
 
   const showAddInstancesModal = () => setAddInstancesModalVisible(true);
   const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
@@ -63,18 +68,20 @@ export const HAInstances: FC<HAInstancesProps> = ({
   const currentInstance = config?.instances.find((item) => item.is_local);
 
   const renderAddress = (_: any, platformInstance: HaPlatformInstance): ReactElement => {
-    const getPrometheusUrl = (platformInstanceAddress: string): string | null => {
-      try {
-        const platformInstanceUrl = new URL(platformInstanceAddress);
-        return `${platformInstanceUrl.protocol}//${platformInstanceUrl.hostname}:9090/targets?search=federate`;
-      } catch (error) {
-        console.error(`Invalid URL: ${platformInstanceAddress}`, error);
-        return null;
-      }
-    };
-    const prometheusUrl = getPrometheusUrl(platformInstance.address);
-    // Only standby YBA instances will have the federate metrics job.
-    const showPrometheusIcon = !platformInstance.is_leader && prometheusUrl;
+    const prometheusBaseUrl = prometheusUrlQuery.data
+      ? getPrometheusBaseUrl(
+          prometheusUrlQuery.data.prometheus_url,
+          prometheusUrlQuery.data.use_browser_fqdn
+        )
+      : '';
+
+    const prometheusFederateMetricsJobUrl = prometheusBaseUrl
+      ? `${prometheusBaseUrl}/targets?search=federate`
+      : '';
+    // Only local standby YBA instances will have the federate metrics job link as we are building the
+    // Prometheus link using the metrics URL provided by the current YBA's config values.
+    const showPrometheusIcon =
+      !platformInstance.is_leader && platformInstance.is_local && prometheusFederateMetricsJobUrl;
     return (
       <Box display="flex" gridGap={theme.spacing(1)} alignItems="center">
         <a href={platformInstance.address} target="_blank" rel="noopener noreferrer">
@@ -87,7 +94,7 @@ export const HAInstances: FC<HAInstancesProps> = ({
               <Typography variant="body2">View metrics federation job on prometheus</Typography>
             }
           >
-            <a target="_blank" rel="noopener noreferrer" href={prometheusUrl}>
+            <a target="_blank" rel="noopener noreferrer" href={prometheusFederateMetricsJobUrl}>
               <PrometheusIcon className={iconClasses.interactiveIcon} />
             </a>
           </YBTooltip>

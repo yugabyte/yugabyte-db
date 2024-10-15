@@ -5,7 +5,7 @@ linkTitle: Meta-commands
 description: YSQL shell meta-commands.
 headcontent: Run commands without querying the database
 menu:
-  stable:
+  stable_api:
     identifier: ysqlsh-meta-commands
     parent: ysqlsh
     weight: 10
