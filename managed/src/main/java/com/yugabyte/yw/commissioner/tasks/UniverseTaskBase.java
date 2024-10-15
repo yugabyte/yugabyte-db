@@ -309,7 +309,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
-          TaskType.CertsRotate);
+          TaskType.CertsRotate,
+          TaskType.PauseUniverse,
+          TaskType.ResumeUniverse);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -338,7 +340,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ReinstallNodeAgent);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
-      ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
+      ImmutableSet.of(
+          TaskType.GFlagsUpgrade,
+          TaskType.RestartUniverse,
+          TaskType.VMImageUpgrade,
+          TaskType.PauseUniverse /* TODO Validate this, added for YBM only */,
+          TaskType.ResumeUniverse /* TODO Validate this, added for YBM only */);
 
   private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
