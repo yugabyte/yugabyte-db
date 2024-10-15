@@ -33,6 +33,10 @@ CREATE VIEW yb_local_tablets AS
     SELECT *
     FROM yb_local_tablets();
 
+CREATE VIEW yb_servers_metrics AS
+    SELECT *
+    FROM yb_servers_metrics();
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,

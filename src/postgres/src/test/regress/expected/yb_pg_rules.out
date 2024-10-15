@@ -2441,6 +2441,11 @@ yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.partition_key_start,
     yb_local_tablets.partition_key_end
    FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end);
+yb_servers_metrics| SELECT yb_servers_metrics.uuid,
+    yb_servers_metrics.metrics,
+    yb_servers_metrics.status,
+    yb_servers_metrics.error
+   FROM yb_servers_metrics() yb_servers_metrics(uuid, metrics, status, error);
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_text,

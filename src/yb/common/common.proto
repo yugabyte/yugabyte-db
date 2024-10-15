@@ -677,3 +677,8 @@ message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
 }
+
+message TserverMetricsInfoPB {
+  required string name = 1;
+  required string value = 2;
+}

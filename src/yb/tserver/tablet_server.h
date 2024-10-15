@@ -365,6 +365,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
+  Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
   struct PgClientServiceHolder {
     template<class... Args>
     explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}

@@ -2442,6 +2442,10 @@ Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
   return pg_session_->TabletsMetadata();
 }
 
+Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
+    return pg_session_->ServersMetrics();
+}
+
 uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
   return pg_txn_manager_->GetCurrentReadTimePoint();
 }

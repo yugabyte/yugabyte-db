@@ -10501,4 +10501,14 @@
   descr => 'Reset the statistics collected by the ANALYZE command.',
   proname => 'yb_reset_analyze_statistics', prolang => '14', provolatile => 'v',
   prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_views.sql' },
+
+{ oid => '8072',
+  descr => 'Get metrics of all nodes',
+  proname => 'yb_servers_metrics', prorows => '10',
+  proretset => 't', provolatile => 'v', proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{text,jsonb,text,text}',
+  proargnames => '{uuid,metrics,status,error}',
+  proargmodes => '{o,o,o,o}',
+  prosrc => 'yb_servers_metrics'},
 ]

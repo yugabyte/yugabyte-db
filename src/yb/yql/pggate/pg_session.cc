@@ -1047,4 +1047,8 @@ Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
   return pg_client_.TabletsMetadata();
 }
 
+Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
+  return pg_client_.ServersMetrics();
+}
+
 }  // namespace yb::pggate

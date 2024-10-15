@@ -802,6 +802,8 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
