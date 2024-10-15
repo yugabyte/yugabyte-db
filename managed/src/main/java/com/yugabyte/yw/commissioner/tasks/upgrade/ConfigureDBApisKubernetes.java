@@ -81,6 +81,7 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           createUpdateDBApiDetailsTask(
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
+                  taskParams().enableConnectionPooling,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -116,6 +117,7 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
               cluster -> {
                 cluster.userIntent.enableYSQL = taskParams().enableYSQL;
                 cluster.userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+                cluster.userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
                 cluster.userIntent.enableYCQL = taskParams().enableYCQL;
                 cluster.userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
               });

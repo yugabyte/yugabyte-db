@@ -750,10 +750,12 @@ public class HealthChecker {
           nodeInfo.setSslProtocol(tserverGflags.get("ssl_protocols"));
         }
         if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
-          nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
+          nodeInfo.setYsqlPort(
+              params.universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort);
           nodeInfo.setYsqlServerHttpPort(nodeDetails.ysqlServerHttpPort);
           if (nodeInfo.enableConnectionPooling) {
-            nodeInfo.setInternalYsqlPort(nodeDetails.internalYsqlServerRpcPort);
+            nodeInfo.setInternalYsqlPort(
+                params.universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
           }
         }
         if (nodeInfo.enableYCQL && nodeDetails.isYqlServer) {
