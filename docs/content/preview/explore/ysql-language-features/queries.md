@@ -1,20 +1,21 @@
 ---
-title: Queries and joins
-linkTitle: Queries and joins
-description: Queries and joins in YSQL
+title: Reading data
+linkTitle: Read data
+description: Queries and joins to read data in YSQL
+headcontent: Learn how to interact with your data using select, use joins and filters
 menu:
   preview:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
-    weight: 210
+    weight: 400
 type: docs
 ---
 
-This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.
+Querying is the process of retrieving specific information from a database. This page provides an in-depth guide on how to query data from a database, starting with basic retrieval techniques and expanding into more advanced concepts like filtering, sorting, joining tables, and aggregating results. Whether you're a beginner learning how to extract information or an advanced user optimizing queries for performance, this guide will help you efficiently interact with your data.
 
-## Query data
+## Select statement
 
-The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions.
+The SELECT statement is used to retrieve data from tables. It begins by specifying the columns to be fetched, followed by the tables from which to retrieve the data. Additionally, it may include optional conditions for filtering the results and specifying the order in which the data should be returned. Let us explore this further with few examples.
 
 `SELECT` has the following syntax:
 
@@ -36,11 +37,28 @@ The following `SELECT` statement clauses provide flexibility and allow you to fi
 - The `HAVING` clause lets you filter groups.
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
 
-### SELECT examples
+## Setup
 
-{{% explore-setup-single %}}
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
 
-Suppose you work with a database that includes the following table populated with data:
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+## Sample schema
+
+For the pupose of illustration, lets consider the following table and corresponding data.
 
 ```sql
 CREATE TABLE employees (
@@ -58,432 +76,258 @@ INSERT INTO employees VALUES
   (1224, 'John Zimmerman', 'Sales');
 ```
 
-You can use the `SELECT` statement to find names of all employees in the `employees` table. In this case, you apply `SELECT` to one column only, as follows:
+## All data
 
-```sql
-SELECT name FROM employees;
-```
-
-To retrieve data that includes the employee name and department, you need to query multiple columns, as shown in the following example:
-
-```sql
-SELECT name, department FROM employees;
-```
-
-To obtain data from all the columns in the table, you can use an asterisk, as shown in the following example:
+To retrieve all the data from the table, you can use the following query.
 
 ```sql
 SELECT * FROM employees;
 ```
 
-You can also use expressions for data retrieval via `SELECT`. The following example shows how to use the concatenation operator to get employee numbers and names combined with departments for all employees:
+You should see the following output.
+
+```caddyfile{.nocopy}
+ employee_no |      name      | department
+-------------+----------------+------------
+        1223 | Lucille Ball   | Operations
+        1224 | John Zimmerman | Sales
+        1221 | John Smith     | Marketing
+        1222 | Bette Davis    | Sales
+```
+
+## Just one column
+
+Let's say you want to fetch just the name of the all the employees. For this, you can run the following query.
 
 ```sql
-SELECT employee_no, name || ' ' || department FROM employees;
+SELECT name FROM employees;
 ```
 
-The following is the output produced by the preceding example:
+You will get the following output.
 
-```output
-employee_no | ?column
-------------+---------------------------
-1221        | John Smith Marketing
-1222        | Bette Davis Sales
-1223        | Lucille Ball Operations
-1224        | John Zimmerman Sales
+```caddyfile{.nocopy}
+      name
+----------------
+ Lucille Ball
+ John Zimmerman
+ John Smith
+ Bette Davis
 ```
 
-In some cases, you may omit the `FROM` clause in the `SELECT` statement. The following example shows the `SELECT` statement that uses and expression to perform multiplication and outputs the result in a column:
+## Multiple columns
 
-```sql
-SELECT 2 * 5;
-```
-
-You can always view your table definitions by executing the following command:
-
-```shell
-yugabyte=# \d employees
-```
-
-### Column aliases
-
-You can use YSQL column aliases to provide meaningful column headers to a query output by assigning a temporary name to a column or an expression in the select list of your `SELECT` statement. An alias lifecycle ends as soon as the query finished executing.
-
-A column alias has the following syntax:
-
-```sql
-SELECT column_name AS alias_name FROM table_name;
-```
-
-The `AS` keyword is optional; if omitted, the following syntax applies:
-
-```sql
-SELECT column_name alias_name FROM table_name;
-```
-
-The following syntax is used for setting an alias for an expression:
-
-```sql
-SELECT expression AS alias_name FROM table_name;
-```
-
-Using the table from [SELECT examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
+Let's say you want to fetch both the name and department of the all the employees. For this, you can run the following query.
 
 ```sql
 SELECT name, department FROM employees;
 ```
 
-The following example renames the `department` column to `section` using an alias:
+You will get the following output.
+
+```caddyfile{.nocopy}
+      name      | department
+----------------+------------
+ Lucille Ball   | Operations
+ John Zimmerman | Sales
+ John Smith     | Marketing
+ Bette Davis    | Sales
+```
+
+## Column aliases
+
+Let's say you want to fetch both the name and department together as a single value of the all the employees. Because there is no defined name for the combined value, by default, the system will generate a column name as `?column?`. You can use the `AS` clause to assign a name for this generated column.
 
 ```sql
-SELECT name, department AS section FROM employees;
+SELECT employee_no, name || ' - ' || department AS combined FROM employees;
 ```
 
-The following is the output produced by the preceding example:
+You will get the following output.
 
-```output
-name                | section
---------------------+---------------------------
-John Smith          | Marketing
-Bette Davis         | Sales
-Lucille Ball        | Operations
-John Zimmerman      | Sales
+```caddyfile{.nocopy}
+ employee_no |         combined
+-------------+---------------------------
+        1223 | Lucille Ball - Operations
+        1224 | John Zimmerman - Sales
+        1221 | John Smith - Marketing
+        1222 | Bette Davis - Sales
 ```
 
-Column aliases may contain spaces. In this case, you enclose them in double quotes to produce multi-word headers, as shown in the following example:
+{{<tip>}}
+Column aliases may contain spaces. In such a case, you need enclose them in double quotes to produce multi-word headers.
+{{</tip>}}
 
-```sql
-SELECT name, department AS "section of the company" FROM employees;
-```
+## Ordering data
 
-### Sort and order data
-
-The `SELECT` statement returns data in an unspecified order. You can use the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
-
-`ORDER BY` has the following syntax:
-
-```sql
-SELECT list
-  FROM table_name
-  ORDER BY sort_expression1 [ASC | DESC] [NULLS FIRST | NULLS LAST],
-  ...,
-  sort_expressionN [ASC | DESC];
-```
-
-*sort_expression* can be a column name or an expression that you intend to sort. To sort the query result set based on multiple columns or expressions, include a comma separator between two columns or expressions. Use the `ASC` option to sort rows in ascending order and `DESC` to sort rows in descending order; if you do not specify these options, `ASC` is used by default.
-
-The `ORDER BY` clause is evaluated after `FROM` and `SELECT`. This gives you an opportunity to specify a column alias in the `SELECT` statement and use this alias in the `ORDER BY` clause.
-
-Using the table from [SELECT examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
+You can use the `ORDER BY` clause to order/sort your result set on a specific condition. You can also specify the kind of ordering you need( e.g, `ASC` or `DESC`). For example, to select few columns and order the results by the name of the employee, you can run
 
 ```sql
 SELECT name, department FROM employees ORDER BY name DESC;
 ```
 
-The following is the output produced by the preceding example:
+You will get the following output.
 
-```output
-name                | department
---------------------+---------------------------
-Lucille Ball        | Operations
-John Smith          | Marketing
-John Zimmerman      | Sales
-Bette Davis         | Sales
+```caddyfile{.nocopy}
+      name      | department
+----------------+------------
+ Lucille Ball   | Operations
+ John Zimmerman | Sales
+ John Smith     | Marketing
+ Bette Davis    | Sales
 ```
 
-Omitting the `DESC` option would result in the employees sorted in ascending order by their name.
+{{<tip>}}
+The default sort order of `ASC` will be used when not specified explicitly.
+{{</tip>}}
 
-The following example selects the name and department from the `employees` table, then sorts the rows by the name in ascending order, and then sorts the already sorted rows by department in descending order:
+You can also specify deifferent sort orders for different columns. For example, fetch the data sorted by the department in ascending order, and then sorting the rows with the same department by name in descending order, you can run:
 
 ```sql
 SELECT name, department FROM employees
-  ORDER BY name ASC, department DESC;
+  ORDER BY department ASC, name DESC;
 ```
 
-The following is the output produced by the preceding example:
+You will get the following output.
 
-```output
-name                | department
---------------------+---------------------------
-Bette Davis         | Sales
-John Zimmerman      | Sales
-John Smith          | Marketing
-Lucille Ball        | Operations
+```caddyfile{.nocopy}
+      name      | department
+----------------+------------
+ John Smith     | Marketing
+ Lucille Ball   | Operations
+ John Zimmerman | Sales
+ Bette Davis    | Sales
 ```
 
-Sorting rows that contain `NULL`  is typically done by using the `ORDER BY` clause's `NULLS FIRST` and `NULLS LAST` options. This allows you to specify the order of `NULL` with other non-null values: `NULLS FIRST` places `NULL` before other non-null values, whereas `NULL LAST` places `NULL` after other non-null values.
+## Ordering NULLs
 
-Which `NULL` option of the `ORDER BY` clause is used by default depends on whether a `DESC` or `ASC` option is specified: the `ORDER BY` clause with the `DESC` option uses the `NULLS FIRST` by default, and the `ORDER BY` clause with the `ASC` option uses the `NULLS LAST` by default.
+Sorting rows that contain NULL values is usually done using the ORDER BY clause with the NULLS FIRST and NULLS LAST options. These options allow you to control the placement of NULL values relative to non-null values: NULLS FIRST positions NULL before non-null values, while NULLS LAST positions NULL after non-null values.
 
-The following example demonstrates how to sort the `employees` table by department in ascending order displaying rows with missing departments first:
+The default behavior for sorting NULL values depends on whether the DESC or ASC option is used in the ORDER BY clause. When using DESC, the default is NULLS FIRST, and with ASC, the default is NULLS LAST.
+
+For example to order results by department in ascending order displaying rows with missing departments first, you can run:
 
 ```sql
 SELECT department FROM employees
   ORDER BY department ASC NULLS FIRST;
 ```
 
-### Duplicate rows
+## Duplicate rows
 
-You can use the `DISTINCT` clause in the `SELECT` statement to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list.
-
-The `DISTINCT` clause has the following syntax, with values in `column_name` evaluating the duplicate:
+You can use the `DISTINCT` clause to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list. For example, to get the list of departments, you can run:
 
 ```sql
-SELECT DISTINCT column_name FROM table_name;
+SELECT DISTINCT department FROM employees;
 ```
 
-In cases when multiple columns are used, the `DISTINCT` clause combines values of these columns to evaluate the duplicate.
+You will get the following output. Note that even though there are 2 employees in Sales, only one row for Sales has been returned. This is the effect of `DISTINCT`
 
-Because the order of rows returned by the `SELECT` statement is unspecified, the first row of each set of duplicates is unknown. `DISTINCT ON (expression)` allows you to keep the first row of each set of duplicates. using the following syntax:
+```caddyfile{.nocopy}
+ department
+------------
+ Marketing
+ Operations
+ Sales
+```
 
-The `DISTINCT ON (expression)` clause has the following syntax:
+## Filtering
+
+The `WHERE` clause allows you to filter the results based on a coondition. Only the rows that satisfy a specified condition are included in the result set.
+
+For example, to fetch rows only from the `Marketing` department, you can add a condition `department = 'Marketing'` in the `where` clause like:
 
 ```sql
-SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
-  FROM table_name
-  ORDER BY column_name_1, column_name_2;
-```
-
-The following series of examples inserts new rows into the table from [SELECT examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
-
-```sql
-INSERT INTO employees (employee_no, name, department)
-VALUES
-(9, 'Jean Harlow', 'Sales'),
-(8, 'Jean Harlow', 'Sales');
-```
-
-```sql
-SELECT DISTINCT name FROM employees ORDER BY name DESC;
-```
-
-The following is the output produced by the preceding examples:
-
-```output
-name
---------------------
-Lucille Ball
-John Smith
-John Zimmerman
-Jean Harlow
-Bette Davis
-```
-
-### Case sensitivity
-
-YSQL converts identifiers to lowercase unless they are enclosed in quotation marks. That is, YSQL is case-insensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as the `employees` table and the following query would be executed on the `employees` table without any problems:
-
-```sql
-SELECT name FROM Employees;
-```
-
-The following example shows how to run a query specifically on a table called `Employees`:
-
-```sql
-SELECT name FROM "Employees";
-```
-
-## Filter data
-
-The `WHERE` clause allows you to filter data returned by the `SELECT` statement. Only the rows that satisfy a specified condition are included in the result set.
-
-The `WHERE` clause has the following syntax:
-
-```sql
-SELECT list FROM table_name
-  WHERE condition
-  ORDER BY expression;
-```
-
-*condition* is a boolean expression or a combination of boolean expressions created with `AND` and `OR` logical operators. *condition* evaluates to `TRUE`, `FALSE`, or unknown. The result set only returns rows that cause *condition* to evaluate to `TRUE`.
-
-The following example uses the table from [SELECT examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
-
-```sql
-SELECT employee_no FROM employees
-  WHERE name = 'John Smith' AND department = 'Marketing';
+SELECT * FROM employees WHERE department = 'Marketing';
 ```
 
 The following is the output produced by the preceding example:
 
-```output
-employee_no
---------------------
-1221
+```caddyfile{.nocopy}
+ employee_no |    name    | department
+-------------+------------+------------
+        1221 | John Smith | Marketing
 ```
 
-The following example shows how to use the `OR` operator to find employee IDs of specific employees:
+You can use any of the supported [operators and expressions](../expressions-operators/) (except `ALL`, `ANY`, and `SOME`) to combine multiple conditions to fetch the results you need.
+
+For example to fetch all employees with names starting with either `B` or `L` you can use the `OR` operator.
 
 ```sql
-SELECT employee_no FROM employees
-  WHERE name = 'John Smith' OR name = 'Bette Davis';
+SELECT * FROM employees WHERE name LIKE 'B%' OR name LIKE 'L%';
 ```
 
 The following is the output produced by the preceding example:
 
-```output
-employee_no
---------------------
-1221
-1222
+```caddyfile{.nocopy}
+ employee_no |     name     | department
+-------------+--------------+------------
+        1223 | Lucille Ball | Operations
+        1222 | Bette Davis  | Sales
 ```
 
 During the query execution, the `WHERE` clause is evaluated after the `FROM` clause but before the `SELECT` and `ORDER BY` clause.
 
-You cannot use column aliases in the `WHERE` clause of  `SELECT`.
+{{<warning>}}
+You cannot use column aliases in the `WHERE` clause of `SELECT`.
+{{</warning>}}
 
-You can define the condition in the `WHERE` clause by using any standard SQL comparison operators and almost all logical operators except `ALL`, `ANY`, and `SOME`.
+## Limitting rows
 
-To find a string that matches a specified pattern, you use the `LIKE` operator. The following example returns all customers whose first names start with the string `Ann`:
+To return only upto a certain number of rows, you can use the LIMIT clause to set a ceiling on the no.of rows returned.
 
-The following example shows how to use the `LIKE` operator to find a string that matches a specified pattern returning employees:
-
-```sql
-SELECT name, department FROM employees WHERE name LIKE 'John%';
-```
-
-The following is the output produced by the preceding example:
-
-```output
-name            | department
-----------------+--------------------
-John Smith      | Sales
-John Zimmerman  | Marketing
-```
-
-YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT examples](#select-examples):
+For example, to return just one row, you set to `LIMIT 1` like:
 
 ```sql
-SELECT name FROM employees WHERE employee_no = 1000 + 222;
+SELECT * FROM employees LIMIT 1;
 ```
 
-The following is the output produced by the preceding example:
+You will get just one row, (usually the first row without the LIMIT) like:
 
-```output
-name
---------------------
-Bette Davis
+```caddyfile{.nocopy}
+ employee_no |     name     | department
+-------------+--------------+------------
+        1223 | Lucille Ball | Operations
 ```
 
-If the `employees` table had an additional column for the current timestamp that records the time of changes to every row, then the following example could have demonstrated how to use date expressions in the `WHERE` clause:
+## Skipping rows
+
+To skip certain number of rows before returning the result you can use the `OFFSET` clause. For example, to skip the first row that would be returned by a `select *` you can run,
 
 ```sql
-SELECT name FROM employees
-  WHERE CURRENT_TIMESTAMP = '2021-01-03 16:22:29.079+07:30';
+SELECT * FROM employees OFFSET 1;
 ```
 
-If one of the employee records was last modified on specific date and time, then the following could be the output produced by the preceding example:
+You will get the remaining 3 rows other than the first one.
 
-```output
-name
---------------------
-John Smith
+```caddyfile{.nocopy}
+ employee_no |      name      | department
+-------------+----------------+------------
+        1224 | John Zimmerman | Sales
+        1221 | John Smith     | Marketing
+        1222 | Bette Davis    | Sales
 ```
 
-### LIMIT clause
+{{<tip>}}
+You can accomplish pagination by using `LIMIT` and `OFFSET` in conjunction. For eg, you can get the `N`th page of `M` results by adding `OFFSET (N-1)*M LIMIT M`.
+{{</tip>}}
 
-The `LIMIT` clause of the `SELECT` statement allows you to impose constrains on the number of rows that your query can return.
-
-The `LIMIT` clause has the following syntax:
-
-```sql
-SELECT list FROM table_name
-  ORDER BY expression
-  LIMIT rows_number;
-```
-
-*rows_number* represents the number of rows included in the query result set. If this number is set to zero, the query does not return any rows. If *rows_number* is set to `NULL`, the query result is the same as if the `SELECT` statement did not contain the `LIMIT` clause.
-
-To skip rows before returning the rows specified by *rows_number*, you can use the `OFFSET` clause immediately after the `LIMIT` clause, as per the following syntax:
-
-```sql
-SELECT list FROM table_name
-  LIMIT rows_number OFFSET row_skip;
-```
-
-*row_skip* represents the number of rows that the query skips before returning *rows_number* rows. If *row_skip* is set to zero, the query result is the same as if the `SELECT` statement did not contain the `OFFSET` clause.
-
-Because rows are often stored in tables in an unspecified order, it is recommended that you include the `ORDER BY` clause in `SELECT` statements that contain the `LIMIT` clause.
-
-Using the table from [SELECT examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
-
-```sql
-SELECT employee_no, name FROM employees
-  ORDER BY employee_no
-  LIMIT 2;
-```
-
-The following is the output produced by the preceding example:
-
-```output
-employee_no | name
-------------+--------------------
-1221        | John Smith
-1222        | Bette Davis
-```
-
-The following example demonstrates how retrieve three employees starting from the second one ordered by their number:
-
-```sql
-SELECT name, department FROM employees
-  ORDER BY name
-  LIMIT 3
-  OFFSET 2;
-```
-
-The following is the output produced by the preceding example:
-
-```output
-name                | department
---------------------+----------------------
-John Smith          | Marketing
-John Zimmerman      | Sales
-Lucille Ball        | Operations
-```
-
-### LIKE operator
+## Matching strings
 
 There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition.
 
-The following is the syntax of the `LIKE` operator:
+For example, to find the details of all employees whose name starts with `Luci`, you can execute the following query:
 
 ```sql
-value LIKE pattern
+SELECT * FROM employees WHERE name LIKE 'Luci%';
 ```
 
-The expression evaluates to `true` if *value* matches *pattern*.
+You will get the details of all those whose names start with `Luci`.
 
-For example, if your goal is to find an employee and their department, yet you only know that the employee name starts with "Luci", you can execute the following query on a table created in [SELECT examples](#select-examples):
-
-```sql
-SELECT name, department FROM employees WHERE name LIKE 'Luci%';
+```caddyfile{.nocopy}
+ employee_no |     name     | department
+-------------+--------------+------------
+        1223 | Lucille Ball | Operations
 ```
 
-The following is the output produced by the preceding example:
-
-```output
-name          | department
---------------+----------------
-Lucille Ball  | Operations
-```
-
-The `WHERE` clause contains a special expression consisting of `name`, the `LIKE` operator, and a string that contains a percent sign. The string `'Luci%'` represents a pattern.
-
-Rows returned by the query are those whose values in the `name` column begin with `Luci` and might be followed by any other characters.
-
-To construct a pattern, you combine literal values with wildcard characters such as percent sign or underscore and use the `LIKE` or `NOT LIKE` operator to search for matches. Percent sign enables you to find a match for any sequence of any number of characters, whereas underscore matches any single character.
-
-If you do not provide a wildcard character in the pattern, the `LIKE` operator acts like the equal operator.
-
-The following is the syntax of the `NOT LIKE` operator:
-
-```sql
-value NOT LIKE pattern
-```
-
-The `NOT LIKE` operator behaves as an opposite of the `LIKE` operator and returns `true` when *value* does not match the *pattern*.
-
-## Group data
+## Grouping
 
 YSQL allows you to divide rows of the result set into groups using the `GROUP BY` clause of the `SELECT` statement. You can apply an aggregate function to each group to calculate the sum of items. You can also count items in a group using the `COUNT()` function.
 

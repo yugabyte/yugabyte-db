@@ -7,21 +7,38 @@ headcontent: Understand the various methods used for joining multiple tables
 menu:
   preview:
     name: Join strategies
-    identifier: explore-joins-ysql
-    parent: explore-ysql-language-features
-    weight: 214
+    identifier: joins-strategies-ysql
+    parent: architecture-query-layer
+    weight: 100
 type: docs
 ---
 
-[Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
+[Joins](../../../explore/ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
 
-Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](../queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), or [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
+Although as a user you would write your query using one of the standard joins - [Inner](../../../explore/ysql-language-features/queries/#inner-join), [Left outer](../../../explore/ysql-language-features/queries/#left-outer-join), [Right outer](../../../explore/ysql-language-features/queries/#right-outer-join), [Full outer](../../../explore/ysql-language-features/queries/#full-outer-join), or [Cross](../../../explore/ysql-language-features/queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
 The query optimizer is responsible for determining the most efficient join strategy for a given query, aiming to minimize the computational cost and improve overall performance. Knowing these strategies will help you understand the performance of your queries.
 
-{{% explore-setup-single %}}
-
 ## Setup
+
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+## Sample schema
 
 Suppose you work with a database that includes the following tables and indexes:
 
@@ -117,6 +134,64 @@ The query plan would be similar to the following:
  Peak Memory Usage: 56 kB
 ```
 
+## Batched nested loop join (BNL)
+
+In the case of nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
+
+To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter [yb_bnl_batch_size](../../../reference/configuration/yb-tserver/#yb-bnl-batch-size), which defaults to `1024` (the suggested value for this variable).
+
+If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
+
+To enable the query planner's use of BNL, use the YSQL configuration parameter [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl).
+
+To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute the following:
+
+```sql
+explain (analyze, dist, costs off)
+/*+
+    ybbatchednl(students scores)
+    set(yb_bnl_batch_size 1024)
+    set(yb_enable_optimizer_statistics on)
+*/
+SELECT name, subject, score
+      FROM students JOIN scores USING(id)
+      WHERE name = 'Natasha' and score > 70;
+```
+
+The query plan would be similar to the following:
+
+```yaml
+ YB Batched Nested Loop Join (actual time=4004.255..4004.297 rows=18 loops=1)
+   Join Filter: (students.id = scores.id)
+   ->  Index Scan using idx_name on students (actual time=2001.861..2001.870 rows=8 loops=1)
+         Index Cond: ((name)::text = 'Natasha'::text)
+         Storage Table Read Requests: 1
+         Storage Table Read Execution Time: 1001.078 ms
+         Storage Index Read Requests: 1
+         Storage Index Read Execution Time: 1000.589 ms
+   ->  Index Scan using idx_id on scores (actual time=2002.290..2002.305 rows=18 loops=1)
+         Index Cond: (id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))
+         Storage Filter: (score > 70)
+         Storage Table Read Requests: 1
+         Storage Table Read Execution Time: 1001.356 ms
+         Storage Index Read Requests: 1
+         Storage Index Read Execution Time: 1000.670 ms
+ Planning Time: 0.631 ms
+ Execution Time: 4004.541 ms
+ Storage Read Requests: 4
+ Storage Read Execution Time: 4003.693 ms
+ Storage Execution Time: 4003.693 ms
+ Peak Memory Usage: 476 kB
+```
+
+The key point to note is the index condition:
+
+```sql
+(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))
+```
+
+which led to `loops=1` in the inner scan as the lookup was batched. In the case of [nested loop join](#nested-loop-join), the inner side looped 8 times. Such batching can drastically improve performance in many scenarios.
+
 ## Merge join
 
 In a Merge join, both input tables must be sorted on the join key. It works by merging the sorted input streams based on the join condition.
@@ -207,67 +282,9 @@ The query plan would be similar to the following:
  Peak Memory Usage: 141 kB
 ```
 
-## Batched nested loop join (BNL)
-
-In the case of nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
-
-To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter [yb_bnl_batch_size](../../../reference/configuration/yb-tserver/#yb-bnl-batch-size), which defaults to `1024` (the suggested value for this variable).
-
-If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
-
-To enable the query planner's use of BNL, use the YSQL configuration parameter [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl).
-
-To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute the following:
-
-```sql
-explain (analyze, dist, costs off)
-/*+
-    ybbatchednl(students scores)
-    set(yb_bnl_batch_size 1024)
-    set(yb_enable_optimizer_statistics on)
-*/
-SELECT name, subject, score
-      FROM students JOIN scores USING(id)
-      WHERE name = 'Natasha' and score > 70;
-```
-
-The query plan would be similar to the following:
-
-```yaml
- YB Batched Nested Loop Join (actual time=4004.255..4004.297 rows=18 loops=1)
-   Join Filter: (students.id = scores.id)
-   ->  Index Scan using idx_name on students (actual time=2001.861..2001.870 rows=8 loops=1)
-         Index Cond: ((name)::text = 'Natasha'::text)
-         Storage Table Read Requests: 1
-         Storage Table Read Execution Time: 1001.078 ms
-         Storage Index Read Requests: 1
-         Storage Index Read Execution Time: 1000.589 ms
-   ->  Index Scan using idx_id on scores (actual time=2002.290..2002.305 rows=18 loops=1)
-         Index Cond: (id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))
-         Storage Filter: (score > 70)
-         Storage Table Read Requests: 1
-         Storage Table Read Execution Time: 1001.356 ms
-         Storage Index Read Requests: 1
-         Storage Index Read Execution Time: 1000.670 ms
- Planning Time: 0.631 ms
- Execution Time: 4004.541 ms
- Storage Read Requests: 4
- Storage Read Execution Time: 4003.693 ms
- Storage Execution Time: 4003.693 ms
- Peak Memory Usage: 476 kB
-```
-
-The key point to note is the index condition:
-
-```sql
-(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))
-```
-
-which led to `loops=1` in the inner scan as the lookup was batched. In the case of [nested loop join](#nested-loop-join), the inner side looped 8 times. Such batching can drastically improve performance in many scenarios.
-
 ## Learn more
 
-- [SQL Joins](../../ysql-language-features/queries#join-columns)
+- [SQL Joins](../../../explore/ysql-language-features/queries#join-columns)
 - [Postgres Join Methods in YugabyteDB](https://dev.to/yugabyte/postgresql-join-methods-in-yugabytedb-f02)
 - [Batched Nested Loop to reduce read requests to the distributed storage](https://dev.to/yugabyte/batched-nested-loop-to-reduce-read-requests-to-the-distributed-storage-j5i)
 - [OR Filter on Two Tables](https://dev.to/yugabyte/or-filter-on-two-tables-and-batched-nested-loops-aa)

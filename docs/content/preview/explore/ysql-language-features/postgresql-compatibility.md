@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: explore-ysql-postgresql-compatibility
     parent: explore-ysql-language-features
-    weight: 70
+    weight: 1200
 type: docs
 rightNav:
   hideH4: true

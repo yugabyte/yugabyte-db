@@ -10,15 +10,34 @@ menu:
   preview:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
-    weight: 150
+    weight: 200
+rightNav:
+  hideH3: true
 type: docs
 ---
 
-This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
+Whether you're storing text, numbers, dates, or more complex data like arrays and JSON, YugabyteDB provides robust options to define the structure of your database tables. Choosing the correct data type ensures that data is stored optimally, queries run efficiently, and constraints like precision, length, and integrity are properly maintained.
 
-The [JSONB document data type](../jsonb-ysql/) is described in a separate section.
+In this guide, we’ll explore the different data types to handle different kinds of data efficiently.
 
-{{% explore-setup-single %}}
+## Setup
+
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 ## Strings
 
@@ -46,6 +65,16 @@ INSERT INTO char_types (a, b, c) VALUES (
   'foo', 'bar', 'Data for the text column'
 );
 ```
+
+## Json
+
+YugabyteDB offers two types for storing JSON (JavaScript Object Notation) data: JSON and JSONB. Both allow you to store JSON-formatted data, but they have distinct characteristics.
+
+The older JSON type preserves white space, key order, and duplicate keys and is slower to process as it needs to be reparsed for each operation whereas the newer JSONB type stores data in a decomposed binary format, eliminates white space, reorders keys, and removes duplicate keys and is faster to process but slightly slower to input due to conversion overhead.
+
+{{<lead link="../jsonb-ysql/">}}
+To undertand how to use JSON and JSONB, see [JSON support](../jsonb-ysql/).
+{{</lead>}}
 
 ## Numeric types
 
@@ -143,19 +172,18 @@ The following shows the inserted data:
 yugabyte=# select * from temporal_types;
 ```
 
-```output
+```caddyfile{.nocopy}
  date_type  | time_type |   timestamp_type    |    timestampz_type     |     interval_type
 ------------+-----------+---------------------+------------------------+------------------------
  2010-06-28 | 12:32:12  | 2016-06-22 19:10:25 | 2016-06-22 19:10:25-07 | 10 years 3 mons 5 days
  2000-06-28 | 06:23:00  | 2016-06-22 19:10:25 | 2016-06-22 19:10:25-07 | 1 year
-(2 rows)
 ```
 
 ## Arrays
 
 YSQL supports arrays to hold data of variable length. The type of the data stored in an array can be an inbuilt type, a user-defined type or an enumerated type. The following examples are adapted from [Arrays](http://postgresguide.com/cool/arrays.html):
 
-### 1. Create a table with an array type
+### Creating an array
 
 ```sql
 CREATE TABLE rock_band (
@@ -164,7 +192,7 @@ CREATE TABLE rock_band (
 );
 ```
 
-### 2. Insert rows
+### Insert rows
 
 The following shows how to insert a row into the table. Note that the array literals must be double-quoted.
 
@@ -182,7 +210,7 @@ INSERT INTO rock_band VALUES (
 );
 ```
 
-### 3. Access arrays
+### Accessing arrays
 
 ```sql
 SELECT * FROM rock_band;
@@ -190,12 +218,11 @@ SELECT * FROM rock_band;
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
      name     |          members
 --------------+---------------------------
  Pink Floyd   | {Barrett,Gilmour}
  Led Zeppelin | {Page,Plant,Jones,Bonham}
-(2 rows)
 ```
 
 You can access array values using subscripts, as follows:
@@ -206,11 +233,10 @@ SELECT name FROM rock_band WHERE members[2] = 'Plant';
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
      name
 --------------
  Led Zeppelin
-(1 row)
 ```
 
 You can also access array values using slices, as follows:
@@ -221,15 +247,14 @@ SELECT members[1:2] FROM rock_band;
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
       members
 -------------------
  {Barrett,Gilmour}
  {Page,Plant}
-(2 rows)
 ```
 
-### 4. Update a single element
+### Update a single element
 
 ```sql
 UPDATE rock_band SET members[2] = 'Waters' WHERE name = 'Pink Floyd';
@@ -238,14 +263,13 @@ select * from rock_band where name = 'Pink Floyd';
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
     name    |     members
 ------------+------------------
  Pink Floyd | {Barrett,Waters}
-(1 row)
 ```
 
-### 5. Update the entire array
+### Update the entire array
 
 ```sql
 UPDATE rock_band SET members = '{"Mason", "Wright", "Gilmour"}'
@@ -255,14 +279,13 @@ select * from rock_band where name = 'Pink Floyd';
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
     name    |        members
 ------------+------------------------
  Pink Floyd | {Mason,Wright,Gilmour}
-(1 row)
 ```
 
-### 6. Search in arrays
+### Search in arrays
 
 Use the `ANY` keyword to search for a particular value in an array, as follows:
 
@@ -272,18 +295,17 @@ SELECT name FROM rock_band WHERE 'Mason' = ANY(members);
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
     name
 ------------
  Pink Floyd
-(1 row)
 ```
 
-## Enumerations - ENUM type
+## Enumerations
 
 YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
-### 1. Create ENUM
+### Creating ENUMs
 
 ```sql
 CREATE TYPE e_contact_method AS ENUM (
@@ -292,7 +314,7 @@ CREATE TYPE e_contact_method AS ENUM (
   'Phone');
 ```
 
-### 2. View the ENUM
+### Listing ENUMs
 
 To view the list of values across all `ENUM` types, execute the following:
 
@@ -304,7 +326,7 @@ SELECT t.typname, e.enumlabel
 
 The output should be as follows:
 
-```output
+```caddyfile{.nocopy}
      typname      | enumlabel
 ------------------+-----------
  e_contact_method | Email
@@ -312,7 +334,7 @@ The output should be as follows:
  e_contact_method | Phone
 ```
 
-### 3. Create a table with an ENUM column
+### ENUM column
 
 ```sql
 CREATE TABLE contact_method_info (
@@ -322,7 +344,7 @@ CREATE TABLE contact_method_info (
 );
 ```
 
-### 4. Insert a row with ENUM
+### Inserting an ENUM
 
 The `ENUM` should have a valid value, as follows:
 
@@ -336,11 +358,10 @@ Execute the following to verify:
 select * from contact_method_info;
 ```
 
-```output
+```caddyfile{.nocopy}
  contact_name | contact_method |     value
 --------------+----------------+---------------
  Jeff         | Email          | jeff@mail.com
-(1 row)
 ```
 
 Inserting an invalid `ENUM` value would fail, as shown in the following example:
@@ -351,7 +372,7 @@ INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563456');
 
 You should see the following error (which is compatible with that of PostgreSQL):
 
-```output
+```sql{.nocopy}
 ERROR:  22P02: invalid input value for enum e_contact_method: "Fax"
 LINE 1: INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563...
 ```
@@ -360,7 +381,7 @@ LINE 1: INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563...
 
 A composite type (also known as a *user-defined type*) is a collection of data types similar to a `struct` in a programming language. The examples in this section are adapted from [PostgreSQL Data Types](https://www.tutorialspoint.com/postgresql/postgresql_data_types.htm):
 
-### 1. Create a composite type
+### Create a composite type
 
 ```sql
 CREATE TYPE inventory_item AS (
@@ -370,7 +391,7 @@ CREATE TYPE inventory_item AS (
 );
 ```
 
-### 2. Create table with a composite type
+### Column with a composite type
 
 ```sql
 CREATE TABLE on_hand (
@@ -379,7 +400,7 @@ CREATE TABLE on_hand (
 );
 ```
 
-### 3. Insert a row
+### Insertion
 
 To insert a row, use the `ROW` keyword, as follows:
 
@@ -387,7 +408,7 @@ To insert a row, use the `ROW` keyword, as follows:
 INSERT INTO on_hand VALUES (ROW('fuzzy dice', 42, 1.99), 1000);
 ```
 
-### 4. Select data
+### Querying
 
 To select some subfields from the `on_hand` example table, execute the following:
 
@@ -403,11 +424,10 @@ SELECT (on_hand.item).name FROM on_hand WHERE (on_hand.item).price > 0.99;
 
 Expect the following output:
 
-```output
+```caddyfile{.nocopy}
     name
 ------------
  fuzzy dice
-(1 row)
 ```
 
 ## Range types

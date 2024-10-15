@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: explore-indexes-constraints-ysql
     parent: explore-ysql-language-features
-    weight: 245
+    weight: 600
 type: indexpage
 ---
 

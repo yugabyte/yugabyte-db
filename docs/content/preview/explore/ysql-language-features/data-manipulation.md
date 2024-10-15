@@ -1,12 +1,12 @@
 ---
 title: Data manipulation
-linkTitle: Data manipulation
-description: Data manipulation in YSQL
+linkTitle: Write data
+description: Data manipulation - Insert/Modify/Delete in YSQL
 menu:
   preview:
     identifier: explore-ysql-language-features-data-manipulation
     parent: explore-ysql-language-features
-    weight: 200
+    weight: 500
 type: docs
 ---
 

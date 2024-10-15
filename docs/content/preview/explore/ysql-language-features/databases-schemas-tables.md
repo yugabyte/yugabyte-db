@@ -1,139 +1,76 @@
 ---
-title: Schemas and tables
+title: Databases, schemas and tables
 linkTitle: Schemas and tables
-description: Schemas and tables in YSQL
+description: Create and operate on databases, schemas and tables
 menu:
   preview:
     identifier: explore-ysql-language-features-databases-schemas-tables
     parent: explore-ysql-language-features
     weight: 100
+rightNav:
+  hideH3: true
 type: docs
 ---
 
-This section covers basic topics including how to connect to your cluster using the YSQL shell, and use the shell to manage databases, schemas, and tables.
+Creating databases, tables, and schemas involves a structured process that enables efficient data management. Below is a detailed guide to help you understand and implement each step.
 
-{{% explore-setup-single %}}
+## Setup
 
-## YSQL shell
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
 
-Use the [ysqlsh shell](../../../admin/ysqlsh/) to interact with a Yugabyte database cluster using the [YSQL API](../../../api/ysql/). Because `ysqlsh` is derived from the PostgreSQL shell `psql` code base, all `psql` commands work as is in `ysqlsh`. Some default settings such as the database default port and the output format of some of the schema commands have been modified for YugabyteDB.
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-Using `ysqlsh`, you can:
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
 
-- interactively enter SQL queries and see the query results
-- input from a file or the command line
-- use [meta-commands](../../../admin/ysqlsh-meta-commands/) for scripting and administration
+{{</nav/panel>}}
 
-`ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
-
-### Connect to a node
-
-From the YugabyteDB home directory, connect to any node of the database cluster as shown below:
-
-```sh
-$ ./bin/ysqlsh -h 127.0.0.1
-```
-
-This should bring up the following prompt, which prints the version of `ysqlsh` being used.
-
-```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-You can check the version of the database server by running the following query:
-
-```sql
-yugabyte=# SELECT version();
-```
-
-The output shows the YugabyteDB server version, and is a fork of PostgreSQL v11.2:
-
-```output
-                                              version
-----------------------------------------------------------------------------------------------------------
- PostgreSQL 11.2-YB-{{<yb-version version="preview">}}-b0 on x86_64-<os, compiler version, etc>, 64-bit
-(1 row)
-```
-
-### Query timing
-
-You can turn the display of how long each SQL statement takes (in milliseconds) on and off by using the `\timing` meta-command, as follows:
-
-```sql
-yugabyte=# \timing
-```
-
-```output
-Timing is on.
-```
-
-## Users
-
-By default, YugabyteDB has two admin users already created: `yugabyte` (the recommended user) and `postgres` (mainly for backward compatibility with PostgreSQL). You can check this as follows:
-
-```sql
-yugabyte=# \conninfo
-```
-
-This should output the following:
-
-```output
-You are connected to database "yugabyte" as user "yugabyte" on host "127.0.0.1" at port "5433".
-```
-
-To check all the users provisioned, run the following meta-command:
-
-```sql
-yugabyte=# \du
-```
-
-```output
-                                     List of roles
-  Role name   |                         Attributes                         | Member of
---------------+------------------------------------------------------------+-----------
- postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- yb_db_admin  | No inheritance, Cannot login                               | {}
- yb_extension | Cannot login                                               | {}
- yb_fdw       | Cannot login                                               | {}
- yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
-```
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 ## Databases
 
 A database is the highest level of data organization and serves as a container for all objects such as tables, views, indexes, functions, and schemas. A YugabyteDB cluster can manage multiple databases and each database is isolated from the others, ensuring data integrity and security.
 
-### Default databases
-
-When a YugabyteDB cluster is deployed, YugabyteDB creates a set of default databases as described in the following table.
-
-| Database | Source | Description |
-| :--- | :--- | :--- |
-| postgres | PostgreSQL | PostgreSQL default database meant for use by users, utilities, and third party applications. |
-| system_platform | YugabyteDB | Used by [YugabyteDB Anywhere](../../../yugabyte-platform/) to run periodic read and write tests to check the health of the node's YSQL endpoint. |
-| template0 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/11/manage-ag-templatedbs.html), to be copied when using CREATE DATABASE commands. template0 should never be modified. |
-| template1 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/11/manage-ag-templatedbs.html), copied when using CREATE DATABASE commands. You can add objects to template1; these are copied into databases created later. |
-| yugabyte | YugabyteDB | The default database for YSQL API connections. See [Default user](../../../secure/enable-authentication/authentication-ysql/#default-user-and-password). |
-
-For more information on the default PostgreSQL databases, refer to [Managing Databases](https://www.postgresql.org/docs/11/managing-databases.html) on the PostgreSQL documentation.
-
 ### Create a database
 
-To create a new database `testdb`, run the following statement:
+By default, a database named `yugabyte` is already created. To create a new database say, `testdb`, run the following statement:
 
 ```sql
 CREATE DATABASE testdb;
 ```
 
-To list all databases, use the `\l` meta-command.
+This creates an empty database where you can create tables.
+
+### Switching to the new database
+
+To switch or connect to the new database, use the `\c` meta-command as follows:
 
 ```sql
+\c testdb
+```
+
+You should see the following output:
+
+```bash{.nocopy}
+You are now connected to database "testdb" as user "yugabyte".
+testdb=#
+```
+
+### List databases
+
+To list all databases, use the `\l` or `\list` meta-commands.
+
+```bash
 yugabyte=# \l
 ```
 
-```output
+```caddyfile{.nocopy}
                                    List of databases
       Name       |  Owner   | Encoding | Collate |    Ctype    |   Access privileges
 -----------------+----------+----------+---------+-------------+-----------------------
@@ -145,23 +82,15 @@ yugabyte=# \l
                  |          |          |         |             | postgres=CTc/postgres
  testdb          | yugabyte | UTF8     | C       | en_US.UTF-8 |
  yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |
-(6 rows)
 ```
 
-To connect to the database you created, use the `\c` meta-command.
+### Drop database
 
-```sql
-yugabyte=# \c testdb
-```
+To drop or delete the database we just created, connect to another database and then use the `DROP` command.
 
-You should see the following output:
-
-```output
-You are now connected to database "testdb" as user "yugabyte".
-testdb=#
-```
-
-To drop the database we just created, connect to another database and then use the `DROP` command.
+{{<warning>}}
+You cannot drop the database you are connected to.
+{{</warning>}}
 
 Connect to another database as follows:
 
@@ -169,7 +98,7 @@ Connect to another database as follows:
 testdb=# \c yugabyte
 ```
 
-```output
+```bash{.nocopy}
 You are now connected to database "yugabyte" as user "yugabyte".
 ```
 
@@ -179,46 +108,28 @@ Use the `DROP` command as follows:
 yugabyte=# DROP DATABASE testdb;
 ```
 
-```output
+```sql{.nocopy}
 DROP DATABASE
-```
-
-Verify the database is no longer present as follows:
-
-```sql
-yugabyte=# \l
-```
-
-```output
-                                   List of databases
-      Name       |  Owner   | Encoding | Collate |    Ctype    |   Access privileges
------------------+----------+----------+---------+-------------+-----------------------
- postgres        | postgres | UTF8     | C       | en_US.UTF-8 |
- system_platform | postgres | UTF8     | C       | en_US.UTF-8 |
- template0       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
-                 |          |          |         |             | postgres=CTc/postgres
- template1       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
-                 |          |          |         |             | postgres=CTc/postgres
- yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |
-(5 rows)
 ```
 
 ## Tables
 
 A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns. Tables are created in a specific schema (by default public) and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
 
-Create a table using the CREATE TABLE statement.
+### Creating a table
+
+Create a table using the [CREATE TABLE](../../../api/ysql/the-sql-language/statements/ddl_create_table) statement.
 
 ```sql
 CREATE TABLE users (
   id serial,
   username CHAR(25) NOT NULL,
-  enabled boolean DEFAULT TRUE,
+  email TEXT DEFAULT NULL,
   PRIMARY KEY (id)
-  );
+);
 ```
 
-```output
+```sql{.nocopy}
 CREATE TABLE
 ```
 
@@ -228,48 +139,90 @@ To list all tables, use the `\dt` meta-command.
 yugabyte=# \dt
 ```
 
-```output
-yugabyte=# \dt
+```caddyfile{.nocopy}
                 List of relations
  Schema |        Name         | Type  |  Owner
 --------+---------------------+-------+----------
  public | users               | table | yugabyte
 ```
 
-To list the table and the sequence you created, use the `\d` meta-command.
+To list more ionformation about the tables you created, use the `\d+` meta-command.
 
 ```sql
-yugabyte=# \d
+yugabyte=# \d+
 ```
 
-```output
- Schema |        Name         |   Type   |  Owner
---------+---------------------+----------+----------
- public | users               | table    | yugabyte
- public | users_id_seq        | sequence | yugabyte
+```caddyfile{.nocopy}
+                          List of relations
+ Schema |     Name     |   Type   |  Owner   |  Size   | Description
+--------+--------------+----------+----------+---------+-------------
+ public | users        | table    | yugabyte | 3072 kB |
+ public | users_id_seq | sequence | yugabyte | 0 bytes |
 ```
 
-To describe the table you created, enter the following:
+{{<note>}}
+The `users_id_seq` sequence you see above is the result of the `serial` datatype that has been used in the definition of the `id` column.
+{{</note>}}
+
+### Inserting Data
+
+Once the tables are set up, you can insert data into them. To insert a record into the above table, you can use the INSERT command.
 
 ```sql
-\d users
+INSERT INTO users VALUES(1, 'Yoda');
 ```
 
-```output
-yugabyte=# \d users
-                                Table "public.users"
-  Column  |     Type      | Collation | Nullable |              Default
-----------+---------------+-----------+----------+-----------------------------------
- id       | integer       |           | not null | nextval('users_id_seq'::regclass)
- username | character(25) |           | not null |
- enabled  | boolean       |           |          | true
-Indexes:
-    "users_pkey" PRIMARY KEY, lsm (id HASH)
+{{<note>}}
+The above statement does not have an explicit value for the column `email` as a default value of `NULL` has been set for that column.
+{{</note>}}
+
+### Querying Data
+
+You can retrieve data from tables using the SELECT statement. For eg,
+
+```sql
+SELECT * FROM users;
+```
+
+To retrieve only certain columns, you can specify the column name as,
+
+```sql
+SELECT username FROM users;
+```
+
+### Altering a table
+
+Once a table is created, you might need to alter it by adding, removing, or modifying columns. You can use the [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table) command to perform such actions.
+
+#### Add a column
+
+To add a new column say `address`, you can run the following command:
+
+```sql
+ALTER TABLE users ADD COLUMN address TEXT;
+```
+
+#### Drop a column
+
+To drop an existing column, say `enabled`, you can run the following command:
+
+```sql
+ALTER TABLE users DROP COLUMN  enabled ;
+```
+
+#### Modify a column's name
+
+To modify the name of a column, say to change the name of `id` column to `user_id` you can do:
+
+```sql
+ALTER TABLE users RENAME COLUMN id to user_id;
 ```
 
 ## Schemas
 
-A schema is a logical container in a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts.
+A schema is a logical container in a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts. By default, YugabyteDB creates a schema named `public` in each database.
+
+### Creating a schema
 
 To create the schema with name `myschema`, run the following command:
 
@@ -280,6 +233,8 @@ testdb=# CREATE SCHEMA myschema;
 ```output
 CREATE SCHEMA
 ```
+
+### Listing schemas
 
 List the schemas as follows:
 
@@ -296,20 +251,7 @@ yugabyte=# \dn
 (2 rows)
 ```
 
-To create a table in this schema, run the following:
-
-```sql
-yugabyte=# CREATE TABLE myschema.company(
-   ID   INT              NOT NULL,
-   NAME VARCHAR (20)     NOT NULL,
-   AGE  INT              NOT NULL,
-   ADDRESS  CHAR (25),
-   SALARY   DECIMAL (18, 2),
-   PRIMARY KEY (ID)
-);
-```
-
-At this point, the `default` schema is still the selected schema, and running the `\d` meta-command would not list the table you just created.
+### Current schema
 
 To see which schema is currently the default, run the following.
 
@@ -326,13 +268,32 @@ You should see the following output.
 (1 row)
 ```
 
+### Creating tables in a schema
+
+To create a table in a specific schema, prefix the table name with the schema name. For example, to create the table `users` in the schema `myschema`.
+
+```sql
+yugabyte=# CREATE TABLE myschema.users(
+   ID   INT              NOT NULL,
+   NAME VARCHAR (20)     NOT NULL,
+   AGE  INT              NOT NULL,
+   ADDRESS  CHAR (25),
+   SALARY   DECIMAL (18, 2),
+   PRIMARY KEY (ID)
+);
+```
+
+{{<note>}}
+At this point, the `default` schema is still the selected schema, and running the `\d` meta-command would not list the table you just created.
+{{</note>}}
+
+### Switching schemas
+
 To set `myschema` as the default schema in this session, do the following.
 
 ```sql
 SET search_path=myschema;
 ```
-
-Now list the table you created.
 
 ```sql
 yugabyte=# SHOW search_path;
@@ -359,6 +320,8 @@ yugabyte=# \d
 (1 row)
 ```
 
+### Dropping schemas
+
 To drop the schema `myschema` and all the objects inside it, first change the current default schema.
 
 ```sql
@@ -373,15 +336,94 @@ yugabyte=# DROP SCHEMA myschema CASCADE;
 
 You should see the following output.
 
-```output
+```sql{.nocopy}
 NOTICE:  drop cascades to table myschema.company
 DROP SCHEMA
 ```
 
-## Quit ysqlsh
+## Users
 
-To quit the shell, enter the following meta-command:
+Managing users (also called roles) involves creating, altering, deleting users, and managing their permissions.
+
+{{<note>}}
+By default, YugabyteDB has two admin users already created: `yugabyte` (the recommended user) and `postgres` (mainly for backward compatibility with PostgreSQL).
+{{</note>}}
+
+### Current user
+
+You can display the current user information as follows:
 
 ```sql
-yugabyte=# \q
+yugabyte=# \conninfo
+```
+
+This should output the following:
+
+```sql{.nocopy}
+You are connected to database "yugabyte" as user "yugabyte" on host "127.0.0.1" at port "5433".
+```
+
+### Listing users
+
+To check all the users provisioned, run the following meta-command:
+
+```sql
+yugabyte=# \du
+```
+
+```output
+                                     List of roles
+  Role name   |                         Attributes                         | Member of
+--------------+------------------------------------------------------------+-----------
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ yb_db_admin  | No inheritance, Cannot login                               | {}
+ yb_extension | Cannot login                                               | {}
+ yb_fdw       | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```
+
+### Creating a User
+
+You can create a user with the [CREATE USER](../../../api/ysql/the-sql-language/statements/dcl_create_user) command. For example, to create a user `yoda` with password `feeltheforce` as follows.
+
+```sql
+CREATE USER yoda WITH PASSWORD 'feeltheforce';
+```
+
+### Changing a user's password
+
+You can change passwords of existing users using the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example,
+
+```sql
+ALTER USER yoda WITH PASSWORD 'thereisnotry';
+```
+
+### User privileges
+
+Users can be granted privileges to perform certain operations on databases and tables. Privileges include actions like `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and more. You can provide privileges to users using the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant) command like:
+
+```sql
+GRANT SELECT, INSERT ON TABLE users TO yoda;
+```
+
+### Superuser privileges
+
+To give a user superuser privileges (full administrative rights), you can use the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example,
+
+```sql
+ALTER USER yoda WITH SUPERUSER;
+```
+
+To revoke superuser privileges, you can do,
+
+```sql
+ALTER USER yoda WITH NOSUPERUSER;
+```
+
+### Dropping a user
+
+You can drop/delete a user with the [DROP USER](../../../api/ysql/the-sql-language/statements/dcl_drop_user) command like:
+
+```sql
+DROP USER yoda ;
 ```

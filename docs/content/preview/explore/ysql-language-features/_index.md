@@ -37,10 +37,8 @@ The following table lists the most important YSQL features which you would find 
 | [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl) | Data definition language |
 | [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
-| [Join strategies](join-strategies/) | Inner join, outer join, full outer join, cross join, natural join. |
 | [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
 | [Indexes](indexes-constraints/) | Support for indexes and constraints |
-| [Stored Procedures](stored-procedures/) | Support for stored procedures |
 | [Extensions](pg-extensions/) | Support for PostgreSQL extensions |
 
 ## Advanced features in YSQL
@@ -55,4 +53,5 @@ The following table lists the advanced features in YSQL.
 | [Savepoints](advanced-features/savepoints/) | Savepoints in YSQL |
 | [Collations](advanced-features/collations/) | Collations in YSQL |
 | [Foreign data wrappers](advanced-features/foreign-data-wrappers/) | Foreign data wrappers in YSQL |
+| [Stored Procedures](advanced-features/stored-procedures/) | Support for stored procedures |
 | [Triggers](advanced-features/triggers/) | Triggers (on data modification) and event triggers (on schema changes) |

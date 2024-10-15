@@ -6,19 +6,32 @@ menu:
   preview:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
-    weight: 205
+    weight: 300
 type: docs
 ---
 
-This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
+YugabyteDB provides a rich set of expressions and operators that form the building blocks of SQL queries and data manipulation. This page serves as a comprehensive guide to the various types of expressions and operators available and understanding these expressions and operators is crucial for writing efficient and powerful SQL queries.
 
-{{% explore-setup-single %}}
+## Setup
 
-## Basic operators
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
 
-A large number of YSQL types have corresponding mathematical operators that are typically used for performing comparisons and mathematical operations. Operators allow you to specify conditions in YSQL statements and create links between conditions.
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-### Mathematical operators
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+## Mathematical operators
 
 The following table lists some of the mathematical operators that you can use in YSQL.
 
@@ -48,7 +61,7 @@ SELECT 6/2;
 SELECT ||/ 27.0;
 ```
 
-### Comparison operators
+## Comparison operators
 
 Comparison operators are binary. They return a `boolean` value `true` or `false`, depending on whether or not the comparison was asserted.
 
@@ -90,14 +103,14 @@ SELECT * FROM employees WHERE employee_no > 1222;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1223        | Lucille Ball     | Operations   | 70000
 1224        | John Zimmerman   | Sales        | 60000
 ```
 
-### String operators
+## String operators
 
 The following table describes a string operator that you can use in YSQL.
 
@@ -105,7 +118,7 @@ The following table describes a string operator that you can use in YSQL.
 | -------- | --------------------------------------------------- | ------------------------------ |
 | \|\|     | Concatenates two strings or a string and non-string <br> | 'wo' \|\| 'rd' results in word <br>'number' \|\| 55 results in number 55 <br>2021 \|\| 'is here' results in 2021 is here |
 
-### Logical operators
+## Logical operators
 
 The following table lists logical operators that you can use in YSQL.
 
@@ -123,13 +136,13 @@ SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1223        | Lucille Ball     | Operations   | 70000
 ```
 
-### Bitwise operators
+## Bitwise operators
 
 The following table lists bitwise operators that you can use in YSQL.
 
@@ -144,13 +157,55 @@ The following table lists bitwise operators that you can use in YSQL.
 
 Bitwise operators can be applied to bit data types and data types related to it.
 
-## Basic expressions
+## CAST Operator
 
-An expression combines values, operators, and YSQL functions that evaluate to a value.
+You can use the `CAST` operator to convert a value of one data type to another.
 
-Typical YSQL expressions are similar to formulas. The following types of expressions are supported:
+The following is the syntax of the `CAST` operator:
 
-### Boolean expressions
+```sql
+CAST (expression AS new_type);
+```
+
+*expression* is a constant, a table column, or an expression that evaluates to a value. *new_type* is a data type to which to convert the result of the *expression*.
+
+The following example converts a string constant to an integer:
+
+```sql
+SELECT CAST ('25' AS INTEGER);
+```
+
+The following example converts a string constant to a date:
+
+```sql
+SELECT
+  CAST ('2021-02-02' AS DATE),
+  CAST ('02-DEC-2020' AS DATE);
+```
+
+The preceding example produces the following output:
+
+```caddyfile{.nocopy}
+ date       | date
+------------+----------------
+ 2021-02-02 | 2020-12-02
+```
+
+YSQL supports another syntax for casting data types:
+
+```sql
+expression::type
+```
+
+The following example demonstrates the use of the :: operator:
+
+```sql
+SELECT
+'25'::INTEGER,
+'02-DEC-2020'::DATE;
+```
+
+## Boolean expressions
 
 Boolean expressions retrieve data by matching a single value. The expression is included in the `WHERE` clause.
 
@@ -162,13 +217,13 @@ SELECT * FROM employees WHERE salary = 60000;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1224        | John Zimmerman   | Sales        | 60000
 ```
 
-### Numeric expressions
+## Numeric expressions
 
 The purpose of numeric expressions is to perform a mathematical operation on a query.
 
@@ -180,7 +235,7 @@ SELECT (10 + 5) AS ADDITION;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 addition
 --------------
 15
@@ -196,13 +251,13 @@ SELECT count(*) AS "rows" FROM employees;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 rows
 -----------
 4
 ```
 
-### Date expressions
+## Date expressions
 
 Date expressions retrieve the current system date and time, as shown in the following  `SELECT` statement example:
 
@@ -212,7 +267,7 @@ SELECT CURRENT_TIMESTAMP;
 
 The following is the output produced by the preceding example:
 
-```output
+```caddyfile{.nocopy}
 now
 --------------
 2021-03-15 14:38:28.078+05:30
@@ -220,17 +275,13 @@ now
 
  You can use these expressions during data manipulation.
 
-## Conditional expressions and operators
-
-Conditional expressions and operators assist you with forming conditional queries. YSQL supports `CASE` and `CAST`, among others.
-
-### CASE
+## CASE expression
 
 The `CASE` expression enables you to add if-else logic to your queries (for example, to `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ).
 
 The following is the syntax of the general form of the `CASE` expression:
 
-```output
+```sql{.nocopy}
 CASE
   WHEN condition_a  THEN result_a
   WHEN condition_b  THEN result_b
@@ -278,7 +329,7 @@ ORDER BY name;
 
 The preceding example produces the following output, with a column alias `seniority` placed after the `CASE` expression:
 
-```output
+```caddyfile{.nocopy}
  employee_no  | name           | seniority
 --------------+----------------+--------------
 1222          | Bette Davis    | Senior
@@ -287,52 +338,4 @@ The preceding example produces the following output, with a column alias `senior
 1224          | John Zimmerman | Intermediate
 1225          | Lee Bo         | Intermediate
 1223          | Lucille Ball   | Senior
-```
-
-### CAST
-
-You can use the `CAST` operator to convert a value of one data type to another.
-
-The following is the syntax of the `CAST` operator:
-
-```sql
-CAST (expression AS new_type);
-```
-
-*expression* is a constant, a table column, or an expression that evaluates to a value. *new_type* is a data type to which to convert the result of the *expression*.
-
-The following example converts a string constant to an integer:
-
-```sql
-SELECT CAST ('25' AS INTEGER);
-```
-
-The following example converts a string constant to a date:
-
-```sql
-SELECT
-  CAST ('2021-02-02' AS DATE),
-  CAST ('02-DEC-2020' AS DATE);
-```
-
-The preceding example produces the following output:
-
-```output
- date       | date
-------------+----------------
- 2021-02-02 | 2020-12-02
-```
-
-YSQL supports another syntax for casting data types:
-
-```sql
-expression::type
-```
-
-The following example demonstrates the use of the :: operator:
-
-```sql
-SELECT
-'25'::INTEGER,
-'02-DEC-2020'::DATE;
 ```

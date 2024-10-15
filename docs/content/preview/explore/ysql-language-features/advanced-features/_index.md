@@ -8,11 +8,17 @@ menu:
   preview:
     identifier: advanced-features
     parent: explore-ysql-language-features
-    weight: 320
+    weight: 900
 type: indexpage
 ---
 
 {{<index/block>}}
+
+   {{<index/item
+    title="Stored procedures"
+    body="Use server side stored procedures and functions to avoid client-server traffic."
+    href="stored-procedures/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
 
    {{<index/item
     title="Cursors"
