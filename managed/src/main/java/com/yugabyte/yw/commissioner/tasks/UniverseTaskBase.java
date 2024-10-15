@@ -356,7 +356,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
           TaskType.MasterFailover,
-          TaskType.SyncMasterAddresses);
+          TaskType.SyncMasterAddresses,
+          TaskType.PauseUniverse,
+          TaskType.ResumeUniverse,
+          TaskType.PauseXClusterUniverses,
+          TaskType.ResumeXClusterUniverses);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -424,7 +428,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.VMImageUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.KubernetesOverridesUpgrade,
-          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */);
+          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */,
+          TaskType.PauseUniverse /* TODO Validate this, added for YBM only */,
+          TaskType.ResumeUniverse /* TODO Validate this, added for YBM only */,
+          TaskType.PauseXClusterUniverses /* TODO Validate this, added for YBM only */,
+          TaskType.ResumeXClusterUniverses /* TODO Validate this, added for YBM only */);
 
   private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
