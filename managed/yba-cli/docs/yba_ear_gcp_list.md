@@ -10,6 +10,12 @@ List GCP YugabyteDB Anywhere Encryption In Transit (EAR) configurations
 yba ear gcp list [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp list
+```
+
 ### Options
 
 ```

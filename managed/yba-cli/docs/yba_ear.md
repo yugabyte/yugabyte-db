@@ -38,6 +38,6 @@ yba ear [flags]
 * [yba ear delete](yba_ear_delete.md)	 - Delete a YugabyteDB Anywhere encryption at rest configuration
 * [yba ear describe](yba_ear_describe.md)	 - Describe a YugabyteDB Anywhere Encryption At Rest (EAR) configuration
 * [yba ear gcp](yba_ear_gcp.md)	 - Manage a YugabyteDB Anywhere GCP encryption at rest (EAR) configuration
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 * [yba ear list](yba_ear_list.md)	 - List YugabyteDB Anywhere Encryption at Rest Configurations
 

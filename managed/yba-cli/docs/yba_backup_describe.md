@@ -10,6 +10,12 @@ Describe an universe backup in YugabyteDB Anywhere
 yba backup describe [flags]
 ```
 
+### Examples
+
+```
+yba backup describe --uuid <backup-uuid>
+```
+
 ### Options
 
 ```

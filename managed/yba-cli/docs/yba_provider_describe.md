@@ -10,6 +10,12 @@ Describe a provider in YugabyteDB Anywhere
 yba provider describe [flags]
 ```
 
+### Examples
+
+```
+yba provider describe --name <provider-name>
+```
+
 ### Options
 
 ```

@@ -15,6 +15,7 @@ var describeCustomCAEITCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
 	Long:    "Describe a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
+	Example: `yba eit custom-ca describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DescribeEITValidation(cmd)
 	},

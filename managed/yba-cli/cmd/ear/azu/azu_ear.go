@@ -14,8 +14,8 @@ import (
 // AzureEARCmd represents the ear command
 var AzureEARCmd = &cobra.Command{
 	Use:     "azure",
-	GroupID: "type",
 	Aliases: []string{"az", "azu"},
+	GroupID: "type",
 	Short:   "Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration",
 	Long:    "Manage an Azure encryption at rest (EAR) configuration in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {

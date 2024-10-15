@@ -13,10 +13,11 @@ import (
 
 var describeProviderCmd = &cobra.Command{
 	Use:     "describe",
-	GroupID: "action",
 	Aliases: []string{"get"},
+	GroupID: "action",
 	Short:   "Describe a YugabyteDB Anywhere provider",
 	Long:    "Describe a provider in YugabyteDB Anywhere",
+	Example: `yba provider describe --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerutil.DescribeProviderValidation(cmd)
 	},

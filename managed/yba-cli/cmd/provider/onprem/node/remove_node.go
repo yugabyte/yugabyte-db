@@ -18,9 +18,11 @@ import (
 // removeNodesCmd represents the provider command
 var removeNodesCmd = &cobra.Command{
 	Use:     "remove",
-	Aliases: []string{"delete"},
+	Aliases: []string{"delete", "rm"},
 	Short:   "Delete node of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Delete nodes of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem node remove \
+	--name <provider-name> --ip <node-ip>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		providerNameFlag, err := cmd.Flags().GetString("name")

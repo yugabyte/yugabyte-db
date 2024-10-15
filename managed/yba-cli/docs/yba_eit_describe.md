@@ -10,6 +10,12 @@ Describe a YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 yba eit describe [flags]
 ```
 
+### Examples
+
+```
+yba eit delete --name <config-name>
+```
+
 ### Options
 
 ```

@@ -11,11 +11,13 @@ import (
 )
 
 var listHashicorpVaultEITCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List Hashicorp Vault YugabyteDB Anywhere Encryption" +
 		" In Transit (EIT) certificate configurations",
 	Long: "List Hashicorp Vault YugabyteDB Anywhere Encryption" +
 		" In Transit (EIT) certificate configurations",
+	Example: `yba eit hashicorp-vault list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "Hashicorp Vault", util.HashicorpVaultCertificateType)
 	},

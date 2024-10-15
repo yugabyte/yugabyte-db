@@ -10,6 +10,12 @@ Describe a GCP provider in YugabyteDB Anywhere
 yba provider gcp describe [flags]
 ```
 
+### Examples
+
+```
+yba provider gcp describe --name <provider-name>
+```
+
 ### Options
 
 ```

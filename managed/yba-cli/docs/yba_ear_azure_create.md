@@ -10,6 +10,15 @@ Create an Azure encryption at rest configuration in YugabyteDB Anywhere
 yba ear azure create [flags]
 ```
 
+### Examples
+
+```
+yba ear azure create --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id> \
+	--client-secret <client-secret> --vault-url <vault-url> \
+	--key-name <key-name>
+```
+
 ### Options
 
 ```

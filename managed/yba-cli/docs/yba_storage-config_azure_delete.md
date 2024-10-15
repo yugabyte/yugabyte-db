@@ -10,6 +10,12 @@ Delete an Azure storage configuration in YugabyteDB Anywhere
 yba storage-config azure delete [flags]
 ```
 
+### Examples
+
+```
+yba storage-config azure delete --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

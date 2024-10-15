@@ -1,19 +1,26 @@
-## yba ear hashicorp describe
+## yba eit hashicorp-vault delete
 
-Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 
 ### Synopsis
 
-Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Delete a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere
 
 ```
-yba ear hashicorp describe [flags]
+yba eit hashicorp-vault delete [flags]
+```
+
+### Examples
+
+```
+yba eit hashicorp-vault delete --name <config-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +40,5 @@ yba ear hashicorp describe [flags]
 
 ### SEE ALSO
 
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba eit hashicorp-vault](yba_eit_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 

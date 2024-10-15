@@ -27,6 +27,12 @@ var createRestoreCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Restore a YugabyteDB Anywhere universe backup",
 	Long:  "Restore an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup restore create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-1>;storage-location=<storage-location-1>;backup-type=ysql" \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-2>;storage-location=<storage-location-2>;backup-type=ysql"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {

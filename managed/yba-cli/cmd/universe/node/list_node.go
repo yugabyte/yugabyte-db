@@ -18,9 +18,11 @@ import (
 )
 
 var listNodeCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere universe nodes",
-	Long:  "List YugabyteDB Anywhere universe nodes",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere universe nodes",
+	Long:    "List YugabyteDB Anywhere universe nodes",
+	Example: `yba universe node list --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

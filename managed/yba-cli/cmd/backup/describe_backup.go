@@ -19,12 +19,13 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
 )
 
-// describeBackupCmd represents the edit backup command
+// describeBackupCmd represents the get backup command
 var describeBackupCmd = &cobra.Command{
 	Use:     "describe",
 	Aliases: []string{"get"},
 	Short:   "Describe a YugabyteDB Anywhere universe backup",
 	Long:    "Describe an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup describe --uuid <backup-uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {

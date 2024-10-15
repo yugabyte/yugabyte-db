@@ -1,22 +1,27 @@
-## yba backup edit
+## yba eit hashicorp-vault update
 
-Edit a YugabyteDB Anywhere universe backup
+Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 
 ### Synopsis
 
-Edit an universe backup in YugabyteDB Anywhere
+Update a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere
 
 ```
-yba backup edit [flags]
+yba eit hashicorp-vault update [flags]
+```
+
+### Examples
+
+```
+yba eit hashicorp-vault update --name <config-name> \
+	--token <token>
 ```
 
 ### Options
 
 ```
-      --uuid string                    [Required] The UUID of the backup to be edited.
-      --time-before-delete-in-ms int   [Optional] Time before delete from the current time in ms.
-      --storage-config-name string     [Optional] Change the storage configuration assigned to the backup.
-  -h, --help                           help for edit
+      --token string   [Required] Update Hashicorp Vault Token.
+  -h, --help           help for update
 ```
 
 ### Options inherited from parent commands
@@ -28,6 +33,7 @@ yba backup edit [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -35,5 +41,5 @@ yba backup edit [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
+* [yba eit hashicorp-vault](yba_eit_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 

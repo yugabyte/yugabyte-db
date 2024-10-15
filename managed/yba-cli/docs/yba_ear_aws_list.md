@@ -10,6 +10,12 @@ List AWS YugabyteDB Anywhere Encryption In Transit (EAR) configurations
 yba ear aws list [flags]
 ```
 
+### Examples
+
+```
+yba ear aws list
+```
+
 ### Options
 
 ```

@@ -15,6 +15,7 @@ var describeAWSEARCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe an AWS YugabyteDB Anywhere Encryption In Transit (EAR) configuration",
 	Long:    "Describe an AWS YugabyteDB Anywhere Encryption In Transit (EAR) configuration",
+	Example: `yba ear aws describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DescribeEARValidation(cmd)
 	},

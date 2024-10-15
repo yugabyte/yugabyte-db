@@ -10,6 +10,12 @@ Retry a task in YugabyteDB Anywhere
 yba task retry [flags]
 ```
 
+### Examples
+
+```
+yba task retry --task-uuid <task-uuid>
+```
+
 ### Options
 
 ```

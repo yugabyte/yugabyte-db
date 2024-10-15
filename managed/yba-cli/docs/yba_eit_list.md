@@ -10,6 +10,12 @@ List YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 yba eit list [flags]
 ```
 
+### Examples
+
+```
+yba eit list
+```
+
 ### Options
 
 ```

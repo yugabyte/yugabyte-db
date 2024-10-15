@@ -19,6 +19,7 @@ var reprovisionNodeCmd = &cobra.Command{
 	Short: "Reprovision a node instance in YugabyteDB Anywhere universe",
 	Long: "Reprovision a node instance in YugabyteDB Anywhere universe.\n" +
 		"Re-provision node with already stopped processes.",
+	Example: `yba universe node reprovision --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

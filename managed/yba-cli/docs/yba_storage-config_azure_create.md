@@ -10,6 +10,13 @@ Create an Azure storage configuration in YugabyteDB Anywhere
 yba storage-config azure create [flags]
 ```
 
+### Examples
+
+```
+yba storage-config azure create --name <storage-configuration-name> \
+	--backup-location <backup-location> --sas-token <sas-token>
+```
+
 ### Options
 
 ```

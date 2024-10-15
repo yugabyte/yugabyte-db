@@ -19,9 +19,12 @@ import (
 
 // deleteBackupScheduleCmd represents the schedule command
 var deleteBackupScheduleCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere universe backup schedule",
-	Long:  "Delete an universe backup schedule in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere universe backup schedule",
+	Long:    "Delete an universe backup schedule in YugabyteDB Anywhere",
+	Example: `yba backup schedule delete --name <backup-schedule-name> \
+	--universe-name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		scheduleName, err := cmd.Flags().GetString("name")

@@ -21,9 +21,10 @@ import (
 
 // createAWSProviderCmd represents the provider command
 var createAWSProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an AWS YugabyteDB Anywhere provider",
-	Long:  "Create an AWS provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an AWS YugabyteDB Anywhere provider",
+	Long:    "Create an AWS provider in YugabyteDB Anywhere",
 	Example: `yba provider aws create -n <provider-name> \
 	--region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> \
 	--zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet> \

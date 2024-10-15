@@ -10,6 +10,12 @@ Delete an Azure encryption at rest configuration in YugabyteDB Anywhere
 yba ear azure delete [flags]
 ```
 
+### Examples
+
+```
+yba ear azure delete --name <config-name>
+```
+
 ### Options
 
 ```

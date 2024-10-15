@@ -14,6 +14,7 @@ import (
 // K8sCertManagerEITCmd represents the eit command
 var K8sCertManagerEITCmd = &cobra.Command{
 	Use:     "k8s-cert-manager",
+	Aliases: []string{"k8scertmanager", "k8scm"},
 	GroupID: "type",
 	Short: "Manage a YugabyteDB Anywhere K8s Cert Manager encryption" +
 		" in transit (EIT) certificate configuration",

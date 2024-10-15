@@ -19,9 +19,12 @@ import (
 
 // updateAZStorageConfigurationCmd represents the storage config command
 var updateAZStorageConfigurationCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an Azure YugabyteDB Anywhere storage configuration",
-	Long:  "Update an Azure storage configuration in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an Azure YugabyteDB Anywhere storage configuration",
+	Long:    "Update an Azure storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config azure update --name <storage-configuration-name> \
+	--sas-token <sas-token>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

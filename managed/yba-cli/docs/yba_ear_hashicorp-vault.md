@@ -1,4 +1,4 @@
-## yba ear hashicorp
+## yba ear hashicorp-vault
 
 Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 
@@ -7,14 +7,14 @@ Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configurat
 Manage a Hashicorp Vault encryption at rest (EAR) configuration in YugabyteDB Anywhere
 
 ```
-yba ear hashicorp [flags]
+yba ear hashicorp-vault [flags]
 ```
 
 ### Options
 
 ```
   -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
-  -h, --help          help for hashicorp
+  -h, --help          help for hashicorp-vault
 ```
 
 ### Options inherited from parent commands
@@ -34,9 +34,9 @@ yba ear hashicorp [flags]
 ### SEE ALSO
 
 * [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
-* [yba ear hashicorp create](yba_ear_hashicorp_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
-* [yba ear hashicorp delete](yba_ear_hashicorp_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
-* [yba ear hashicorp describe](yba_ear_hashicorp_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
-* [yba ear hashicorp list](yba_ear_hashicorp_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
-* [yba ear hashicorp update](yba_ear_hashicorp_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba ear hashicorp-vault create](yba_ear_hashicorp-vault_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
+* [yba ear hashicorp-vault delete](yba_ear_hashicorp-vault_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
+* [yba ear hashicorp-vault describe](yba_ear_hashicorp-vault_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+* [yba ear hashicorp-vault list](yba_ear_hashicorp-vault_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear hashicorp-vault update](yba_ear_hashicorp-vault_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 

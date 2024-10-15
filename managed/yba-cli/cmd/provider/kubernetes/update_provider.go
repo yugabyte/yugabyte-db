@@ -19,9 +19,12 @@ import (
 
 // updateK8sProviderCmd represents the provider command
 var updateK8sProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider kuberenetes update --name <provider-name> \
+	--image-registry <image-registry>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

@@ -10,6 +10,12 @@ Describe a universe in YugabyteDB Anywhere
 yba universe describe [flags]
 ```
 
+### Examples
+
+```
+yba universe describe --name <universe-name>
+```
+
 ### Options
 
 ```

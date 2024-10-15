@@ -10,6 +10,12 @@ Encryption-at-rest settings for a universe
 yba universe security ear [flags]
 ```
 
+### Examples
+
+```
+yba universe security ear --name <universe-name> --operation <operation>
+```
+
 ### Options
 
 ```

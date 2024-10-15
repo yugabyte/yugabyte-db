@@ -22,6 +22,8 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration",
 	Long:    "Create a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear hashicorp-vault create --name <config-name> \
+	--token <token> --vault-address <vault-address>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		token, err := cmd.Flags().GetString("token")

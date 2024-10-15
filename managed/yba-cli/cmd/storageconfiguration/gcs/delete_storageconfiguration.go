@@ -12,9 +12,11 @@ import (
 
 // deleteGCSStorageConfigurationCmd represents the storage command
 var deleteGCSStorageConfigurationCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a GCS YugabyteDB Anywhere storage configuration",
-	Long:  "Delete a GCS storage configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a GCS YugabyteDB Anywhere storage configuration",
+	Long:    "Delete a GCS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config gcs delete --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},

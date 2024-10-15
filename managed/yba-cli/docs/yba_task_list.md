@@ -10,6 +10,12 @@ List YugabyteDB Anywhere tasks
 yba task list [flags]
 ```
 
+### Examples
+
+```
+yba task list
+```
+
 ### Options
 
 ```

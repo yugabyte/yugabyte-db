@@ -10,10 +10,16 @@ Delete an universe backup in YugabyteDB Anywhere
 yba backup delete [flags]
 ```
 
+### Examples
+
+```
+yba backup delete --backup-info backup-uuid=<backup-uuid>
+```
+
 ### Options
 
 ```
-      --backup-info stringArray   [Required] The info of the backups to be described. The backup-info is of the format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. Backup UUID is required..
+      --backup-info stringArray   [Required] The info of the backups to be deleted. The backup-info is of the format backup-uuid=<backup_uuid>,storage-config-uuid=<storage-config-uuid>. Backup UUID is required..
   -h, --help                      help for delete
 ```
 

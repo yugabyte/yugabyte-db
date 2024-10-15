@@ -1,4 +1,4 @@
-## yba eit hashicorp create
+## yba eit hashicorp-vault create
 
 Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 
@@ -7,7 +7,15 @@ Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 Create a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere
 
 ```
-yba eit hashicorp create [flags]
+yba eit hashicorp-vault create [flags]
+```
+
+### Examples
+
+```
+yba eit hashicorp-vault create --name <config-name> \
+	--token <token> --vault-address <vault-address> \
+	--secret-engine <secret-engine>
 ```
 
 ### Options
@@ -38,5 +46,5 @@ yba eit hashicorp create [flags]
 
 ### SEE ALSO
 
-* [yba eit hashicorp](yba_eit_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
+* [yba eit hashicorp-vault](yba_eit_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 

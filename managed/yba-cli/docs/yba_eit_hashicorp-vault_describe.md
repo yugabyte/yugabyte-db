@@ -1,23 +1,25 @@
-## yba ear hashicorp update
+## yba eit hashicorp-vault describe
 
-Update a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 
 ### Synopsis
 
-Update a Hashicorp Vault encryption at rest (EAR) configuration in YugabyteDB Anywhere
+Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 
 ```
-yba ear hashicorp update [flags]
+yba eit hashicorp-vault describe [flags]
+```
+
+### Examples
+
+```
+yba eit hashicorp-vault describe --name <config-name>
 ```
 
 ### Options
 
 ```
-      --role-id string          [Optional] Update Hashicorp Vault AppRole ID.
-      --secret-id string        [Optional] Update Hashicorp Vault AppRole Secret ID.
-      --auth-namespace string   [Optional] Update Hashicorp Vault AppRole Auth Namespace.
-      --token string            [Optional] Update Hashicorp Vault Token. Required if AppRole credentials are not provided.
-  -h, --help                    help for update
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -37,5 +39,5 @@ yba ear hashicorp update [flags]
 
 ### SEE ALSO
 
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba eit hashicorp-vault](yba_eit_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 

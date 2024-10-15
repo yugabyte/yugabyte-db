@@ -18,9 +18,11 @@ import (
 
 // listInstanceTypesCmd represents the provider command
 var listInstanceTypesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List instance types of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

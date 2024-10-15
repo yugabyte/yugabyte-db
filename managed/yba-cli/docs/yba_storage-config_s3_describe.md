@@ -10,6 +10,12 @@ Describe a S3 storage configuration in YugabyteDB Anywhere
 yba storage-config s3 describe [flags]
 ```
 
+### Examples
+
+```
+yba storage-config s3 describe --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

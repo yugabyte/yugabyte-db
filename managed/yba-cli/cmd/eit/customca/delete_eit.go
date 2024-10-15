@@ -12,9 +12,11 @@ import (
 
 // deleteCustomCAEITCmd represents the eit command
 var deleteCustomCAEITCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere Custom CA encryption in transit configuration",
-	Long:  "Delete a Custom CA encryption in transit configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere Custom CA encryption in transit configuration",
+	Long:    "Delete a Custom CA encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit custom-ca delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DeleteEITValidation(cmd)
 	},

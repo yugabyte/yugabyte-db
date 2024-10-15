@@ -1,19 +1,25 @@
-## yba ear hashicorp list
+## yba ear hashicorp-vault describe
 
-List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 
 ### Synopsis
 
-List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 
 ```
-yba ear hashicorp list [flags]
+yba ear hashicorp-vault describe [flags]
+```
+
+### Examples
+
+```
+yba ear hashicorp-vault describe --name <config-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +39,5 @@ yba ear hashicorp list [flags]
 
 ### SEE ALSO
 
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 
