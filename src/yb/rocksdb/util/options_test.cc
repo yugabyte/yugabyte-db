@@ -1756,6 +1756,7 @@ Status GetFromString(ColumnFamilyOptions* source, ColumnFamilyOptions* destinati
   destination->soft_rate_limit = 0;
   destination->compaction_options_fifo = CompactionOptionsFIFO();
   destination->max_mem_compaction_level = 0;
+  destination->max_flushing_bytes = 0;
 
   return Status::OK();
 }

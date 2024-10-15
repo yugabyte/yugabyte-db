@@ -31,6 +31,7 @@ struct MutableCFOptions {
   MutableCFOptions(const Options& options, const ImmutableCFOptions& ioptions)
       : write_buffer_size(options.write_buffer_size),
         max_write_buffer_number(options.max_write_buffer_number),
+        max_flushing_bytes(options.max_flushing_bytes),
         arena_block_size(options.arena_block_size),
         memtable_prefix_bloom_bits(options.memtable_prefix_bloom_bits),
         memtable_prefix_bloom_probes(options.memtable_prefix_bloom_probes),
@@ -124,6 +125,7 @@ struct MutableCFOptions {
   // Memtable related options
   size_t write_buffer_size;
   int max_write_buffer_number;
+  size_t max_flushing_bytes = std::numeric_limits<size_t>::max();
   size_t arena_block_size;
   uint32_t memtable_prefix_bloom_bits;
   uint32_t memtable_prefix_bloom_probes;
