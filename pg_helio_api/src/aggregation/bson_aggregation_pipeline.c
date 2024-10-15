@@ -749,6 +749,7 @@ static const int AggregationStageCount = sizeof(StageDefinitions) /
 PG_FUNCTION_INFO_V1(command_bson_aggregation_pipeline);
 PG_FUNCTION_INFO_V1(command_api_collection);
 PG_FUNCTION_INFO_V1(command_aggregation_support);
+PG_FUNCTION_INFO_V1(helio_core_bson_to_bson);
 
 
 inline static void
@@ -864,6 +865,16 @@ command_aggregation_support(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_POINTER(NIL);
+}
+
+
+/*
+ * Converts a helio_core.bson to a bson.
+ */
+Datum
+helio_core_bson_to_bson(PG_FUNCTION_ARGS)
+{
+	return PG_GETARG_DATUM(0);
 }
 
 
@@ -4262,6 +4273,16 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	FuncExpr *accumFunc = makeFuncExpr(
 		functionId, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId() &&
+		IsClusterVersionAtleastThis(1, 24, 0))
+	{
+		accumFunc = makeFuncExpr(
+			HelioCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(accumFunc),
+			InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+	}
+
 	Aggref *aggref = CreateSingleArgAggregate(aggregateFunctionOid,
 											  (Expr *) accumFunc, parseState);
 	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
@@ -4729,6 +4750,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	FuncExpr *groupFunc = makeFuncExpr(
 		bsonExpressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId() &&
+		IsClusterVersionAtleastThis(1, 24, 0))
+	{
+		groupFunc = makeFuncExpr(
+			HelioCoreBsonToBsonFunctionOId(), BsonTypeId(), list_make1(groupFunc),
+			InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+	}
 
 	/* Now do the projector / accumulators
 	 * We do this in 2 stages to handle citus query generation.

@@ -190,6 +190,6 @@ SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", 
 -- explain plan validation
 EXPLAIN SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "linear" }}}}]}');
 
-EXPLAIN SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "value": 1 }}}}]}');
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "value": 1 }}}}]}');
 
 EXPLAIN SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "c": { "method": "linear" }, "b": { "value": 1 }}}}]}');

@@ -654,3 +654,224 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
  { "_id" : "3", "a" : "$notAFieldPath", "res" : [ { "_id" : "3" } ] }
 (3 rows)
 
+/* Shard the collections */
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$varNotRef" ]} }, "let": { "varRef": "3" } }');
+ERROR:  Use of undefined variable: varNotRef
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(1 row)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} } } ], "let": { "varRef": "3" } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(2 rows)
+
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(1 row)
+
+-- find/aggregate with variables referencing other variables on the same let spec should work
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }, "filter": {}, "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]} } }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+(3 rows)
+
+-- nested $let should also work
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{"$project": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply", "nestedLet": "$$nestedLet"  }}], "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]}, "nestedLet": {"$let": {"vars": {"add": {"$add": ["$$multiply", 1]}}, "in": "$$add"}} } }');
+                                                                             document                                                                              
+---------------------------------------------------------------------
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+(3 rows)
+
+-- $addFields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField1" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : false, "newField1" : { "$numberInt" : "3" } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField1" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField1" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $replaceRoot
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceRoot": { "newRoot": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $replaceWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceWith": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $group (with simple aggregators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+-- $project
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "_id": 1, "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : "3", "c" : false, "newField" : { "$numberInt" : "3" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $unionWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": { "c": "foo" }}, { "$unionWith": { "coll": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "bar": "$$varRef" } } ] } } ], "let": { "varRef": 30 }}');
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : "foo" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "c" : "foo" }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "c" : "foo" }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "bar" : { "$numberInt" : "30" } }
+(6 rows)
+
+-- $sortByCount
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$sortByCount": { "$lt": [ "$_id", "$$varRef" ] } } ], "let": { "varRef": "2" } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : false, "count" : { "$numberInt" : "2" } }
+ { "_id" : true, "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- $facet
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField": "myvalue" }}, { "$facet": { "sb1": [ { "$addFields": { "myVar": "$$varRef" }} ], "sb2": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ] }} ], "let": { "varRef": "2" } }');
+                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "sb1" : [ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField" : "myvalue", "myVar" : "2" } ], "sb2" : [ { "_id" : "2", "c" : { "$numberInt" : "0" } } ] }
+(1 row)
+
+-- $graphLookup
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_gl', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_gl", "pipeline": [ { "$graphLookup": { "from": "aggregation_pipeline_let_gl", "startWith": { "$max": [ "$reportsTo", "$$reportsTo" ] }, "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ], "let": { "reportsTo": "Dev" } }');
+ERROR:  $graphLookup with 'from' on a sharded collection is not supported
+-- $inverseMatch
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_inv', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_inv", "pipeline": [ { "$inverseMatch": { "path": "policy", "from": "aggregation_pipeline_let_gl", "pipeline": [{"$match": {"$expr": { "$eq": [ "$name", "$$varRef"] }} }] }  }], "let": { "varRef": "Dev" } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "policy" : { "name" : "Dev" } }
+(1 row)
+
+-- $window operators
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_setWindowFields', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "aggregation_pipeline_let_setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$concat": ["$a", "$$varRef" ] }, "output": {"total": { "$sum": "$$varRefNum"}}}}], "let": { "varRef": "prefix", "varRefNum": 2 } }');
+                                                                                                        document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "def", "cost" : { "$numberInt" : "8" }, "quantity" : { "$numberInt" : "502" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "ghi", "cost" : { "$numberInt" : "4" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } }, "total" : { "$numberInt" : "2" } }
+(3 rows)
+
+-- $lookup
+SELECT helio_api.shard_collection('db', 'aggregation_pipeline_let_pipelineto', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQval": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                   document                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQval" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQval" : { "$numberInt" : "100" } } ] }
+(3 rows)
+
+-- Add a $lookup with let but add a subquery stage
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                               document                                                                                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ] } ] }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$addFields": { "addedQvalBefore": "$$qval" }}, { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQvalAfter": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                             document                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQvalBefore" : { "$numberInt" : "120" }, "addedQvalAfter" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQvalBefore" : { "$numberInt" : "100" }, "addedQvalAfter" : { "$numberInt" : "100" } } ] }
+(3 rows)
+
+-- nested $lookup
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+ERROR:  Nested lookup with let on sharded collections not supported yet
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+ERROR:  Nested lookup with let on sharded collections not supported yet

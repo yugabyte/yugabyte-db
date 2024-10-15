@@ -998,6 +998,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the helio_api_internal.delete_worker function */
 	Oid DeleteWorkerFunctionOid;
 
+	/* OID of helio_api_internal.helio_core_bson_to_bson*/
+	Oid HelioCoreBsonToBsonFunctionOId;
+
 	/* Oid of array type for bson */
 	Oid BsonArrayTypeOid;
 } HelioApiOidCacheData;
@@ -4486,6 +4489,19 @@ BsonValidateGeographyFunctionId(void)
 		&Cache.BsonValidateGeographyFunctionId,
 		ApiCatalogSchemaName, "bson_validate_geography", nargs,
 		argTypes, missingOk);
+}
+
+
+Oid
+HelioCoreBsonToBsonFunctionOId(void)
+{
+	int nargs = 1;
+	Oid argTypes[1] = { HelioCoreBsonTypeId() };
+
+	return GetSchemaFunctionIdWithNargs(&Cache.HelioCoreBsonToBsonFunctionOId,
+										"helio_api_internal",
+										"helio_core_bson_to_bson", nargs,
+										argTypes, false);
 }
 
 

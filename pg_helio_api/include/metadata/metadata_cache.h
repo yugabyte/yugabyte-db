@@ -363,4 +363,7 @@ Oid UpdateWorkerFunctionOid(void);
 Oid InsertWorkerFunctionOid(void);
 Oid DeleteWorkerFunctionOid(void);
 
+/* Compat functions*/
+Oid HelioCoreBsonToBsonFunctionOId(void);
+
 #endif
