@@ -22,11 +22,18 @@ Perform the following steps to install yb-voyager using brew for macOS:
 
     Note that the tap `yugabyte/yugabytedb` has been updated to `yugabyte/tap`. If you have previously installed yb-voyager using the tap `yugabyte/yugabytedb`, untap the entry using `brew untap yugabyte/yugabytedb`, and then tap using the preceding command.
 
+1. Install the `postgresql@16` package to access `pg_dump` or `pg_restore` using the following command:
+
+    ```sh
+    brew install postgresql@16
+    ```
+
 1. Install `yb-voyager` and its dependencies using the following command:
 
     ```sh
     brew install yb-voyager
     ```
+
     {{< note >}}
 
 Install a specific version of `yb-voyager` using the following command:
@@ -34,6 +41,7 @@ Install a specific version of `yb-voyager` using the following command:
     brew install yb-voyager@<VERSION>
 
     {{< /note >}}
+
 1. Check that yb-voyager is installed using the following command:
 
     ```sh
