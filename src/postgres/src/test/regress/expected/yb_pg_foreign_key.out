@@ -1224,7 +1224,7 @@ DETAIL:  Key (fk)=(20) is not present in table "pktable".
 --
 INSERT INTO fktable VALUES (1, 5);
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRABLE INITIALLY IMMEDIATE;
-ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+ERROR:  ALTER action ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRA...
                             ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -1242,7 +1242,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "fkt
 DETAIL:  Key (fk)=(20) is not present in table "pktable".
 -- try additional syntax
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE;
-ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+ERROR:  ALTER action ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEF...
                             ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

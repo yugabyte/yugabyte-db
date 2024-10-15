@@ -686,7 +686,7 @@ ERROR:  relation "t2" does not exist
 -- \.
 CREATE TABLE t3 (c text, b text, a int, k serial, PRIMARY KEY(k ASC));
 ALTER TABLE t3 INHERIT t1;
-ERROR:  ALTER TABLE INHERIT not supported yet
+ERROR:  ALTER action INHERIT not supported yet
 LINE 1: ALTER TABLE t3 INHERIT t1;
                        ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

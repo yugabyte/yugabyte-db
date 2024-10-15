@@ -191,12 +191,12 @@ ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (DROP user, DROP password);
 -- YB note: ALTER TABLE not supported yet, see #1124
 ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_na...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_na...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -259,7 +259,7 @@ SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should work again
 -- and remote-estimate mode on ft2.
 ANALYZE ft1;
 ALTER FOREIGN TABLE ft2 OPTIONS (use_remote_estimate 'true');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 OPTIONS (use_remote_estimate 'true')...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -8440,7 +8440,7 @@ AND ftoptions @> array['fetch_size=30000'];
 
 -- YB note: ERROR:  ALTER TABLE not supported yet
 ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '600...
                                        ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

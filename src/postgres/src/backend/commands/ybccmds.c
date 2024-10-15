@@ -1630,8 +1630,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		}
 
 		case AT_SetLogged:
+			switch_fallthrough();
 		case AT_SetUnLogged:
-			/* A NOTICE message is output from the grammar */
 			*needsYBAlter = false;
 			break;
 

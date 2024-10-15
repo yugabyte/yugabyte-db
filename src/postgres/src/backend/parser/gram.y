@@ -2076,7 +2076,6 @@ AlterTableStmt:
 				}
 		|	ALTER SEQUENCE qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = $4;
@@ -2086,7 +2085,6 @@ AlterTableStmt:
 				}
 		|	ALTER SEQUENCE IF_P EXISTS qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $5;
 					n->cmds = $6;
@@ -2298,7 +2296,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET ( column_parameter = value [, ... ] ) */
 			| ALTER opt_column ColId SET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ALTER COLUMN ... SET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetOptions;
 					n->name = $3;
@@ -2308,7 +2306,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> RESET ( column_parameter = value [, ... ] ) */
 			| ALTER opt_column ColId RESET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ALTER COLUMN ... RESET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ResetOptions;
 					n->name = $3;
@@ -2318,7 +2316,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STORAGE <storagemode> */
 			| ALTER opt_column ColId SET STORAGE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ALTER COLUMN ... SET STORAGE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetStorage;
 					n->name = $3;
@@ -2427,7 +2425,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
 			| ALTER CONSTRAINT name ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER CONSTRAINT", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ALTER CONSTRAINT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					Constraint *c = makeNode(Constraint);
 					n->subtype = AT_AlterConstraint;
@@ -2486,7 +2484,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> CLUSTER ON <indexname> */
 			| CLUSTER ON name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE CLUSTER", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action CLUSTER ON", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ClusterOn;
 					n->name = $3;
@@ -2495,7 +2493,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET WITHOUT CLUSTER */
 			| SET WITHOUT CLUSTER
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET WITHOUT CLUSTER", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action SET WITHOUT CLUSTER", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropCluster;
 					n->name = NULL;
@@ -2513,14 +2511,7 @@ alter_table_cmd:
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-					/*
-					 * UNLOGGED persistence is NO-OP in YB.
-					 */
-					ereport(NOTICE,
-							(errmsg("unlogged option is currently ignored in YugabyteDB, "
-											"all non-temp tables will be logged")));
-					/* n->subtype = AT_SetUnLogged; */
-					n->subtype = AT_SetLogged;
+					n->subtype = AT_SetUnLogged;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
@@ -2586,7 +2577,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE RULE <rule> */
 			| ENABLE_P RULE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE RULE", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ENABLE RULE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableRule;
 					n->name = $3;
@@ -2595,7 +2586,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE ALWAYS RULE <rule> */
 			| ENABLE_P ALWAYS RULE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE RULE", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ENABLE ALWAYS RULE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableAlwaysRule;
 					n->name = $4;
@@ -2604,7 +2595,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE REPLICA RULE <rule> */
 			| ENABLE_P REPLICA RULE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE RULE", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action ENABLE REPLICA RULE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableReplicaRule;
 					n->name = $4;
@@ -2613,7 +2604,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE RULE <rule> */
 			| DISABLE_P RULE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DISABLE RULE", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action DISABLE RULE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableRule;
 					n->name = $3;
@@ -2622,7 +2613,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE INHERIT", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddInherit;
 					n->def = (Node *) $2;
@@ -2631,7 +2622,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE NO INHERIT", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropInherit;
 					n->def = (Node *) $3;
@@ -2640,7 +2631,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> OF <type_name> */
 			| OF any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE OF", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action OF", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					TypeName *def = makeTypeNameFromNameList($2);
 					def->location = @2;
@@ -2651,7 +2642,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NOT OF */
 			| NOT OF
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE NOT OF", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action NOT OF", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropOf;
 					$$ = (Node *)n;
@@ -2727,7 +2718,7 @@ alter_table_cmd:
 				}
 			| alter_generic_options
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE", 1124);
+					parser_ybc_signal_unsupported(@1, "ALTER action OPTIONS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_GenericOptions;
 					n->def = (Node *)$1;
@@ -9553,7 +9544,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SEQUENCE qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_SEQUENCE;
 					n->relation = $3;
@@ -9564,7 +9554,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SEQUENCE IF_P EXISTS qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_SEQUENCE;
 					n->relation = $5;
@@ -10127,7 +10116,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER SEQUENCE qualified_name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE SET SCHEMA", 1002);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_SEQUENCE;
 					n->relation = $3;
@@ -10137,7 +10125,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER SEQUENCE IF_P EXISTS qualified_name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE SET SCHEMA", 1002);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_SEQUENCE;
 					n->relation = $5;

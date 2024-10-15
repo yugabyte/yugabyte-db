@@ -622,7 +622,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		/* UNLOGGED persistence is NO-OP in YugabyteDB. */
 		ereport(NOTICE,
 				(errmsg("unlogged option is currently ignored in YugabyteDB, "
-								"all non-temp tables will be logged")));
+								"all non-temp relations will be logged")));
 		stmt->relation->relpersistence = RELPERSISTENCE_PERMANENT;
 	}
 
@@ -4215,6 +4215,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_SetUnLogged:	/* SET UNLOGGED */
 			ATSimplePermissions(rel, ATT_TABLE);
 			tab->chgPersistence = ATPrepChangePersistence(rel, false);
+
+			if (IsYugaByteEnabled())
+			{
+				/* UNLOGGED persistence is NO-OP in YB. */
+				tab->chgPersistence = false;
+				ereport(NOTICE,
+						(errmsg("unlogged option is currently ignored in YugabyteDB, "
+										"all non-temp relations will be logged")));
+			}
+
 			/* force rewrite if necessary; see comment in ATRewriteTables */
 			if (tab->chgPersistence)
 			{

@@ -1,6 +1,6 @@
 --
 -- ALTER RENAME
--- rename column, table, database
+-- rename column, table, sequence, database
 --
 create database test_rename;
 create database test_rename1;
@@ -66,6 +66,31 @@ select * from bar;
 --------+------+-------+----------
  public | bar  | table | yugabyte
 (1 row)
+
+create sequence test_seq;
+\d test_seq
+                          Sequence "public.test_seq"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
+
+alter sequence test_seq rename to test_seq_renamed;
+select nextval('test_seq'); -- fail
+ERROR:  relation "test_seq" does not exist
+LINE 1: select nextval('test_seq');
+                       ^
+select nextval('test_seq_renamed');
+ nextval
+---------
+       1
+(1 row)
+
+\d test_seq
+\d test_seq_renamed
+                      Sequence "public.test_seq_renamed"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
 
 \c test_rename1;
 alter database test_rename rename to test_rename2;
