@@ -1069,6 +1069,36 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     }
   }
 
+  protected void startProcessesOnNode(UUID universeUuid, String nodeName)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (node.isTserver) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.TSERVER);
+    }
+    if (node.isMaster) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.MASTER);
+    }
+  }
+
+  protected void killProcessOnNode(UUID universeUuid, String nodeName, ServerType serverType)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (serverType == ServerType.TSERVER) {
+      if (!node.isTserver) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else if (serverType == ServerType.MASTER) {
+      if (!node.isMaster) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else {
+      throw new IllegalArgumentException("Server type " + serverType + " is not supported");
+    }
+    localNodeManager.killProcess(nodeName, serverType);
+  }
+
   protected void startProcessesOnNode(
       UUID universeUuid, NodeDetails node, UniverseTaskBase.ServerType serverType)
       throws IOException, InterruptedException {
@@ -1077,6 +1107,24 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected boolean isMasterProcessRunning(String nodeName) {
     return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
+  }
+
+  protected void waitTillNumOfTservers(YBClient ybClient, int expected) {
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> getNumberOfTservers(ybClient), (num) -> num == expected);
+    boolean success = condition.retryUntilCond(500, TimeUnit.SECONDS.toMillis(60));
+    if (!success) {
+      throw new RuntimeException("Failed to wait till expected number of tservers");
+    }
+  }
+
+  protected Integer getNumberOfTservers(YBClient ybClient) {
+    try {
+      return ybClient.listTabletServers().getTabletServersCount();
+    } catch (Exception e) {
+      return 0;
+    }
   }
 
   // This method waits for the next task to complete.

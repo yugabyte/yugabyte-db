@@ -712,10 +712,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeleteRemnantStreamsTask(UUID universeUuid, String namespaceName) {
+  protected SubTaskGroup createDeleteRemnantStreamsTask(
+      XClusterConfig xClusterConfig, String namespaceName) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteRemnantStreams");
     DeleteRemnantStreams.Params deleteRemnantStreamsParams = new DeleteRemnantStreams.Params();
-    deleteRemnantStreamsParams.setUniverseUUID(universeUuid);
+    deleteRemnantStreamsParams.xClusterConfig = xClusterConfig;
+    deleteRemnantStreamsParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     deleteRemnantStreamsParams.namespaceName = namespaceName;
 
     DeleteRemnantStreams task = createTask(DeleteRemnantStreams.class);

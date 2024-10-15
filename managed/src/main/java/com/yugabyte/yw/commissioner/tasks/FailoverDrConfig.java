@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 
 @Slf4j
 public class FailoverDrConfig extends EditDrConfig {
@@ -97,43 +99,49 @@ public class FailoverDrConfig extends EditDrConfig {
 
         createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
 
+        Set<NamespaceIdentifierPB> namespaces;
+        if (failoverXClusterConfig.getType().equals(ConfigType.Db)) {
+          namespaces = getNamespaces(this.ybService, targetUniverse, taskParams().getDbs());
+        } else {
+          namespaces = getNamespaces(taskParams().getTableInfoList());
+        }
+
         // Use pitr to restore to the safetime for all DBs.
-        getNamespaces(taskParams().getTableInfoList())
-            .forEach(
-                namespace -> {
-                  Optional<PitrConfig> pitrConfigOptional =
-                      PitrConfig.maybeGet(
-                          targetUniverse.getUniverseUUID(),
-                          failoverXClusterConfig.getTableTypeAsCommonType(),
-                          namespace.getName());
-                  if (pitrConfigOptional.isEmpty()) {
-                    throw new IllegalStateException(
-                        String.format(
-                            "No PITR config for database %s.%s found on universe %s",
-                            failoverXClusterConfig.getTableTypeAsCommonType(),
-                            namespace.getName(),
-                            targetUniverse.getUniverseUUID()));
-                  }
+        namespaces.forEach(
+            namespace -> {
+              Optional<PitrConfig> pitrConfigOptional =
+                  PitrConfig.maybeGet(
+                      targetUniverse.getUniverseUUID(),
+                      failoverXClusterConfig.getTableTypeAsCommonType(),
+                      namespace.getName());
+              if (pitrConfigOptional.isEmpty()) {
+                throw new IllegalStateException(
+                    String.format(
+                        "No PITR config for database %s.%s found on universe %s",
+                        failoverXClusterConfig.getTableTypeAsCommonType(),
+                        namespace.getName(),
+                        targetUniverse.getUniverseUUID()));
+              }
 
-                  // Todo: Ensure the PITR config exists on YBDB.
+              // Todo: Ensure the PITR config exists on YBDB.
 
-                  Long namespaceSafetimeEpochUs =
-                      taskParams()
-                          .getNamespaceIdSafetimeEpochUsMap()
-                          .get(namespace.getId().toStringUtf8());
-                  if (Objects.isNull(namespaceSafetimeEpochUs)) {
-                    throw new IllegalArgumentException(
-                        String.format(
-                            "No safetime for namespace %s is specified in the taskparams",
-                            namespace.getName()));
-                  }
+              Long namespaceSafetimeEpochUs =
+                  taskParams()
+                      .getNamespaceIdSafetimeEpochUsMap()
+                      .get(namespace.getId().toStringUtf8());
+              if (Objects.isNull(namespaceSafetimeEpochUs)) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "No safetime for namespace %s is specified in the taskparams",
+                        namespace.getName()));
+              }
 
-                  // Todo: Add a subtask group for the following.
-                  createRestoreSnapshotScheduleTask(
-                      targetUniverse,
-                      pitrConfigOptional.get(),
-                      TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
-                });
+              // Todo: Add a subtask group for the following.
+              createRestoreSnapshotScheduleTask(
+                  targetUniverse,
+                  pitrConfigOptional.get(),
+                  TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
+            });
 
         // Delete PITR on failover as standby is now the new primary and we have restored snapshot.
         List<PitrConfig> pitrConfigs = currentXClusterConfig.getPitrConfigs();

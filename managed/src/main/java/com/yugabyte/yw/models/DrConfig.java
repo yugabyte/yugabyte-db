@@ -25,7 +25,6 @@ import jakarta.persistence.OneToMany;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -172,15 +171,7 @@ public class DrConfig extends Model {
   }
 
   public String getNewXClusterConfigName(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    int id = 0;
-    while (true) {
-      String newName = "--DR-CONFIG-" + this.name + "-" + id;
-      if (Objects.isNull(
-          XClusterConfig.getByNameSourceTarget(newName, sourceUniverseUUID, targetUniverseUUID))) {
-        return newName;
-      }
-      id++;
-    }
+    return "--DR-CONFIG-" + this.name + "--_" + UUID.randomUUID();
   }
 
   @Override

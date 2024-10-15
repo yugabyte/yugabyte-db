@@ -5570,7 +5570,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // If it's in the middle of a repair, there's no replication on source.
       if (!(xClusterConfig.isUsedForDr() && xClusterConfig.getDrConfig().isHalted())) {
         // TODO: add forceDelete.
-        createDeleteReplicationOnSourceTask(xClusterConfig)
+        createDeleteReplicationOnSourceTask(xClusterConfig, forceDelete)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     } else {
@@ -6061,13 +6061,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param xClusterConfig config used
    * @return the created subtask group
    */
-  protected SubTaskGroup createDeleteReplicationOnSourceTask(XClusterConfig xClusterConfig) {
+  protected SubTaskGroup createDeleteReplicationOnSourceTask(
+      XClusterConfig xClusterConfig, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteReplicationOnSource");
-    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
-    xClusterConfigParams.xClusterConfig = xClusterConfig;
+    DeleteReplicationOnSource.Params deleteReplicationOnSourceParams =
+        new DeleteReplicationOnSource.Params();
+    deleteReplicationOnSourceParams.xClusterConfig = xClusterConfig;
+    deleteReplicationOnSourceParams.ignoreErrors = ignoreErrors;
 
     DeleteReplicationOnSource task = createTask(DeleteReplicationOnSource.class);
-    task.initialize(xClusterConfigParams);
+    task.initialize(deleteReplicationOnSourceParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

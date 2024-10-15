@@ -129,7 +129,12 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
             getLiveNode(universe), universe, table.db.name, query, 10);
-    assertTrue(ysqlResponse.isSuccess());
+    if (!ysqlResponse.isSuccess()) {
+      throw new RuntimeException(
+          String.format(
+              "Failed to get row count for universe: %s and table: %s",
+              universe.getName(), table.name));
+    }
     return Integer.parseInt(localNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
   }
 
@@ -143,14 +148,13 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
                 log.debug("row count {}", rowCount);
                 return rowCount;
               } catch (Exception e) {
+                log.debug("threw error");
                 log.error(e.getMessage());
                 return -1;
               }
             },
-            rowCount -> {
-              return rowCount == expectedRows;
-            });
-    boolean success = condition.retryUntilCond(5, TimeUnit.MINUTES.toSeconds(1));
+            rowCount -> rowCount == expectedRows);
+    boolean success = condition.retryUntilCond(1, TimeUnit.MINUTES.toSeconds(1));
     if (!success) {
       throw new RuntimeException(
           String.format(

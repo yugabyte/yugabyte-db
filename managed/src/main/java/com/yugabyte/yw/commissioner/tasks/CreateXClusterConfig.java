@@ -669,7 +669,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
         // Delete hanging replication streams, otherwise deleting the database will fail.
-        createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName)
+        createDeleteRemnantStreamsTask(xClusterConfig, namespaceName)
             .setShouldRunPredicate(bootstrapRequiredPredicate);
         // If the table type is YSQL, delete the database from the target universe before restore.
         createDeleteKeySpaceTask(
