@@ -99,6 +99,8 @@ void		pg_log_generic_v(enum pg_log_level level, enum pg_log_part part,
 							 const char *pg_restrict fmt, va_list ap)
 			pg_attribute_printf(3, 0);
 
+void		yb_set_should_log_filename(bool log_filename);
+
 /*
  * Preferred style is to use these macros to perform logging; don't call
  * pg_log_generic[_v] directly, except perhaps in error interface code.

@@ -31,6 +31,8 @@ static const char *sgr_warning = NULL;
 static const char *sgr_note = NULL;
 static const char *sgr_locus = NULL;
 
+static bool yb_log_filename = true;
+
 #define SGR_ERROR_DEFAULT "01;31"
 #define SGR_WARNING_DEFAULT "01;35"
 #define SGR_NOTE_DEFAULT "01;36"
@@ -246,7 +248,7 @@ pg_log_generic_v(enum pg_log_level level, enum pg_log_part part,
 
 	fmt = _(fmt);
 
-	if (!(log_flags & PG_LOG_FLAG_TERSE) || filename)
+	if ((!(log_flags & PG_LOG_FLAG_TERSE) || filename) && yb_log_filename)
 	{
 		if (sgr_locus)
 			fprintf(stderr, ANSI_ESCAPE_FMT, sgr_locus);
@@ -331,4 +333,9 @@ pg_log_generic_v(enum pg_log_level level, enum pg_log_part part,
 	fprintf(stderr, "%s\n", buf);
 
 	free(buf);
+}
+
+void
+yb_set_should_log_filename(bool log_filename) {
+	yb_log_filename = log_filename;
 }
