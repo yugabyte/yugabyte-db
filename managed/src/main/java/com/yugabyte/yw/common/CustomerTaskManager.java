@@ -284,18 +284,26 @@ public class CustomerTaskManager {
                   subtask -> {
                     subtask.delete();
                   });
-          UUID newTaskUUID = commissioner.submit(taskType, taskParams, taskUUID);
-          beginTransaction();
-          try {
-            customerTask.updateTaskUUID(newTaskUUID);
-            customerTask.resetCompletionTime();
-            commitTransaction();
-          } catch (Exception e) {
-            throw new RuntimeException("Unable to delete the previous task info: " + taskUUID);
-          } finally {
-            endTransaction();
-          }
-
+          UniverseTaskParams finalTaskParams = taskParams;
+          Util.doWithCorrelationId(
+              corrId -> {
+                // There is a chance that async execution is delayed and correlation ID is
+                // overwritten. It is rare because there is no queuing of tasks.
+                UUID newTaskUUID = commissioner.submit(taskType, finalTaskParams, taskUUID);
+                beginTransaction();
+                try {
+                  customerTask.updateTaskUUID(newTaskUUID);
+                  customerTask.resetCompletionTime();
+                  customerTask.setCorrelationId(corrId);
+                  commitTransaction();
+                  return customerTask;
+                } catch (Exception e) {
+                  throw new RuntimeException(
+                      "Unable to delete the previous task info: " + taskUUID);
+                } finally {
+                  endTransaction();
+                }
+              });
         } else {
           // Mark customer task as completed.
           // Customer task is marked completed after the task state is updated in TaskExecutor.
