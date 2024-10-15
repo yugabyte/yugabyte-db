@@ -74,7 +74,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
   libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.5-yb-8"
   ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell using:
 
   ```sh
   $ ./bin/ysqlsh

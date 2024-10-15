@@ -27,7 +27,7 @@ To connect your YugabyteDB database to Kinesis:
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
     ```
 
-1. Create a table using [ysqlsh](../../admin/ysqlsh/#starting-ysqlsh) as follows:
+1. Create a table using [ysqlsh](../../api/ysqlsh/#starting-ysqlsh) as follows:
 
     ```sql
     CREATE TABLE users(

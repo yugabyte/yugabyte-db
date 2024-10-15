@@ -803,6 +803,31 @@
   to = "/v2.14/deploy/checklist/"
   force = true
 
+[[redirects]]
+  from = "/v2.20/api/ysqlsh/*"
+  to = "/v2.20/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ysqlsh/*"
+  to = "/v2.18/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ysqlsh/*"
+  to = "/v2.14/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/api/ycqlsh/*"
+  to = "/v2.20/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ycqlsh/*"
+  to = "/v2.18/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ycqlsh/*"
+  to = "/v2.14/admin/ycqlsh/:splat"
+  force = true
+
 
 # YBA High availability
 

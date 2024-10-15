@@ -36,7 +36,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 {{% explore-setup-single %}}
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
+1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);
