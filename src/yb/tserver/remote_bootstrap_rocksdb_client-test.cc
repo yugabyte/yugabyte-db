@@ -19,6 +19,9 @@
 
 using std::vector;
 
+DECLARE_int64(TEST_simulate_free_space_bytes);
+DECLARE_double(rbs_data_size_to_disk_space_ratio_threshold);
+
 namespace yb {
 namespace tserver {
 
@@ -75,6 +78,23 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
               << " and file " << tablet_peer_rocksdb_file_path;
     ASSERT_OK(CompareFileContents(local_rocksdb_file_path, tablet_peer_rocksdb_file_path));
   }
+}
+
+TEST_F(RemoteBootstrapRocksDBClientTest, TestLowDiskSpace) {
+  auto orig_TEST_simulate_free_space_bytes = FLAGS_TEST_simulate_free_space_bytes;
+  auto orig_rbs_data_size_to_disk_space_ratio_threshold =
+      FLAGS_rbs_data_size_to_disk_space_ratio_threshold;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rbs_data_size_to_disk_space_ratio_threshold) = 0.9;
+  HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
+  auto client = std::make_unique<RemoteBootstrapClient>(GetTabletId(), fs_manager_.get());
+  Status status = client->Start(leader_.permanent_uuid(), proxy_cache_.get(),
+                                host_port, ServerRegistrationPB(), &meta_);
+  ASSERT_EQ(status.code(), Status::kIOError);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
+      orig_TEST_simulate_free_space_bytes;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rbs_data_size_to_disk_space_ratio_threshold) =
+      orig_rbs_data_size_to_disk_space_ratio_threshold;
 }
 
 } // namespace tserver

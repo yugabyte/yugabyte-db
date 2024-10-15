@@ -943,4 +943,8 @@ Status FsManager::ListDir(const std::string& path, std::vector<std::string> *obj
   return env_->GetChildren(path, objects);
 }
 
+Result<uint64> FsManager::GetFreeSpaceBytes(const std::string& path) const {
+  return env_->GetFreeSpaceBytes(path);
+}
+
 } // namespace yb
