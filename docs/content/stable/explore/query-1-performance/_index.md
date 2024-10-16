@@ -3,14 +3,14 @@ title: Query Tuning
 headerTitle: Query Tuning
 linkTitle: Query tuning
 description: Tuning and optimizing query performance
-headcontent: Tuning and optimizing query performance
-image: /images/section_icons/index/develop.png
+headcontent: Optimize query performance
 menu:
   stable:
     identifier: query-tuning
     parent: explore
     weight: 300
 type: indexpage
+showRightNav: true
 ---
 
 YugabyteDB provides a number of familiar performance tuning tools you can use to tune queries.
