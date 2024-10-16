@@ -89,7 +89,7 @@ jobs:
 
       - name: Install and configure pgrx
         run: |
-          cargo install --locked cargo-pgrx@0.12.5
+          cargo install --locked cargo-pgrx@0.12.6
           cargo pgrx init --pg${{ env.PG_MAJOR }} $(which pg_config)
 
       - name: Install cargo-llvm-cov for coverage report

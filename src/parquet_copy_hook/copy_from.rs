@@ -3,10 +3,10 @@ use std::ffi::CStr;
 use pgrx::{
     ereport, pg_guard,
     pg_sys::{
-        addNSItemToQuery, assign_expr_collations, canonicalize_qual, coerce_to_boolean,
-        eval_const_expressions, make_ands_implicit, transformExpr, AsPgCStr, BeginCopyFrom,
-        CopyFrom, CopyStmt, EndCopyFrom, InvalidOid, Node, Oid, ParseExprKind, ParseNamespaceItem,
-        ParseState, PlannedStmt, QueryEnvironment,
+        addNSItemToQuery, assign_expr_collations, canonicalize_qual, check_enable_rls,
+        coerce_to_boolean, eval_const_expressions, make_ands_implicit, transformExpr, AsPgCStr,
+        BeginCopyFrom, CheckEnableRlsResult, CopyFrom, CopyStmt, EndCopyFrom, InvalidOid, Node,
+        Oid, ParseExprKind, ParseNamespaceItem, ParseState, PlannedStmt, QueryEnvironment,
     },
     void_mut_ptr, PgBox, PgLogLevel, PgRelation, PgSqlErrorCode,
 };
@@ -201,7 +201,7 @@ fn copy_from_stmt_transform_where_clause(
 // Taken from PG COPY FROM code path.
 fn copy_from_stmt_ensure_row_level_security(relation_oid: Oid) {
     if unsafe { check_enable_rls(relation_oid, InvalidOid, false) }
-        == CheckEnableRlsResult::Enabled as i32
+        == CheckEnableRlsResult::RLS_ENABLED as i32
     {
         ereport!(
             pgrx::PgLogLevel::ERROR,
@@ -210,19 +210,4 @@ fn copy_from_stmt_ensure_row_level_security(relation_oid: Oid) {
             "Use INSERT statements instead."
         );
     }
-}
-
-// utils/rls.h
-extern "C" {
-    fn check_enable_rls(relid: Oid, check_as_user: Oid, no_error: bool) -> i32;
-}
-
-// utils/rls.h
-#[repr(C)]
-enum CheckEnableRlsResult {
-    #[allow(dead_code)]
-    None,
-    #[allow(dead_code)]
-    NoneEnv,
-    Enabled,
 }

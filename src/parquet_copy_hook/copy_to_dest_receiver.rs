@@ -1,11 +1,11 @@
 use std::ffi::CStr;
 
 use pg_sys::{
-    get_typlenbyval, slot_getallattrs, AllocSetContextCreateExtended, AsPgCStr, BlessTupleDesc,
-    CommandDest, CurrentMemoryContext, Datum, DatumGetCString, DestReceiver, HeapTupleData, List,
-    MemoryContext, MemoryContextAllocZero, MemoryContextDelete, MemoryContextReset, TupleDesc,
-    TupleTableSlot, ALLOCSET_DEFAULT_INITSIZE, ALLOCSET_DEFAULT_MAXSIZE, ALLOCSET_DEFAULT_MINSIZE,
-    VARHDRSZ,
+    get_typlenbyval, slot_getallattrs, toast_raw_datum_size, AllocSetContextCreateExtended,
+    AsPgCStr, BlessTupleDesc, CommandDest, CurrentMemoryContext, Datum, DatumGetCString,
+    DestReceiver, HeapTupleData, List, MemoryContext, MemoryContextAllocZero, MemoryContextDelete,
+    MemoryContextReset, TupleDesc, TupleTableSlot, ALLOCSET_DEFAULT_INITSIZE,
+    ALLOCSET_DEFAULT_MAXSIZE, ALLOCSET_DEFAULT_MINSIZE, VARHDRSZ,
 };
 use pgrx::{prelude::*, PgList, PgMemoryContexts, PgTupleDesc};
 
@@ -394,9 +394,4 @@ fn tuple_column_sizes(tuple_datums: &[Option<Datum>], tupledesc: &PgTupleDesc) -
     }
 
     column_sizes
-}
-
-// access/detoast.h
-extern "C" {
-    fn toast_raw_datum_size(datum: pg_sys::Datum) -> usize;
 }
