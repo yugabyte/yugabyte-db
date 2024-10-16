@@ -18,7 +18,7 @@ type: docs
 
 Whether you're storing text, numbers, dates, or more complex data like arrays and JSON, YugabyteDB provides robust options to define the structure of your database tables. Choosing the correct data type ensures that data is stored optimally, queries run efficiently, and constraints like precision, length, and integrity are properly maintained.
 
-In this guide, we’ll explore the different data types to handle different kinds of data efficiently.
+This guide explores the different data types to handle different kinds of data efficiently.
 
 ## Setup
 
@@ -66,14 +66,14 @@ INSERT INTO char_types (a, b, c) VALUES (
 );
 ```
 
-## Json
+## JSON
 
-YugabyteDB offers two types for storing JSON (JavaScript Object Notation) data: JSON and JSONB. Both allow you to store JSON-formatted data, but they have distinct characteristics.
+YugabyteDB provides two types for storing JSON (JavaScript Object Notation) data: JSON and JSONB. Both allow you to store JSON-formatted data, but they have distinct characteristics.
 
-The older JSON type preserves white space, key order, and duplicate keys and is slower to process as it needs to be reparsed for each operation whereas the newer JSONB type stores data in a decomposed binary format, eliminates white space, reorders keys, and removes duplicate keys and is faster to process but slightly slower to input due to conversion overhead.
+The JSON type preserves white space, key order, and duplicate keys, and is slower to process as it needs to be reparsed for each operation. The newer JSONB type stores data in a decomposed binary format, eliminates white space, reorders keys, and removes duplicate keys, and is faster to process but slightly slower to input due to conversion overhead.
 
 {{<lead link="../jsonb-ysql/">}}
-To undertand how to use JSON and JSONB, see [JSON support](../jsonb-ysql/).
+To understand how to use JSON and JSONB, see [JSON support](../jsonb-ysql/).
 {{</lead>}}
 
 ## Numeric types
@@ -183,7 +183,7 @@ yugabyte=# select * from temporal_types;
 
 YSQL supports arrays to hold data of variable length. The type of the data stored in an array can be an inbuilt type, a user-defined type or an enumerated type. The following examples are adapted from [Arrays](http://postgresguide.com/cool/arrays.html):
 
-### Creating an array
+### Create an array
 
 ```sql
 CREATE TABLE rock_band (
@@ -210,7 +210,7 @@ INSERT INTO rock_band VALUES (
 );
 ```
 
-### Accessing arrays
+### Access arrays
 
 ```sql
 SELECT * FROM rock_band;
@@ -305,7 +305,7 @@ Expect the following output:
 
 YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
-### Creating ENUMs
+### Create ENUMs
 
 ```sql
 CREATE TYPE e_contact_method AS ENUM (
@@ -314,7 +314,7 @@ CREATE TYPE e_contact_method AS ENUM (
   'Phone');
 ```
 
-### Listing ENUMs
+### List ENUMs
 
 To view the list of values across all `ENUM` types, execute the following:
 
@@ -344,7 +344,7 @@ CREATE TABLE contact_method_info (
 );
 ```
 
-### Inserting an ENUM
+### Insert an ENUM
 
 The `ENUM` should have a valid value, as follows:
 
@@ -400,7 +400,7 @@ CREATE TABLE on_hand (
 );
 ```
 
-### Insertion
+### Insert
 
 To insert a row, use the `ROW` keyword, as follows:
 
@@ -408,7 +408,7 @@ To insert a row, use the `ROW` keyword, as follows:
 INSERT INTO on_hand VALUES (ROW('fuzzy dice', 42, 1.99), 1000);
 ```
 
-### Querying
+### Query
 
 To select some subfields from the `on_hand` example table, execute the following:
 

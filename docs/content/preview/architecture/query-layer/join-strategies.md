@@ -13,15 +13,15 @@ menu:
 type: docs
 ---
 
-[Joins](../../../explore/ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
+[Joins](../../../explore/ysql-language-features/queries#join-columns) are a fundamental concept in relational databases, used to query and combine data from multiple tables. Use joins to combine rows from two or more tables based on a related column. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
 
 Although as a user you would write your query using one of the standard joins - [Inner](../../../explore/ysql-language-features/queries/#inner-join), [Left outer](../../../explore/ysql-language-features/queries/#left-outer-join), [Right outer](../../../explore/ysql-language-features/queries/#right-outer-join), [Full outer](../../../explore/ysql-language-features/queries/#full-outer-join), or [Cross](../../../explore/ysql-language-features/queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
-The query optimizer is responsible for determining the most efficient join strategy for a given query, aiming to minimize the computational cost and improve overall performance. Knowing these strategies will help you understand the performance of your queries.
+The query optimizer is responsible for determining the most efficient join strategy for a given query, to minimize the computational cost and improve overall performance. Knowing these strategies will help you understand the performance of your queries.
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -38,7 +38,7 @@ The examples will run on any YugabyteDB universe. To create a universe follow th
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-## Sample schema
+### Sample schema
 
 Suppose you work with a database that includes the following tables and indexes:
 
@@ -86,7 +86,7 @@ analyze students, scores;
 ```
 
 {{<tip>}}
-The following examples use _hints_ to force the query planner to pick a specific join strategy. In practice, you don't need to specify a hint, as the default planner will pick an appropriate strategy.
+The following examples use _hints_ to force the query planner to pick a specific join strategy. In practice, you don't need to specify a hint, as the planner automatically picks an appropriate strategy.
 {{</tip>}}
 
 ## Nested loop join
@@ -97,9 +97,9 @@ Nested loop join has an outer loop and an inner loop. The outer loop iterates th
 
 The worst-case time complexity is `O(m*n)`, where `m` and `n` are the sizes of outer and inner tables respectively. Often used when one table is small and an index can be used.
 
-This is also the preferred join strategy at times as it is the only join method to not require extra memory overhead and also operates well in queries where the join clause has low selectivity. If you compare the `Peak Memory Usage` of this join strategy with others, you will notice that this is the lowest.
+This is also often the preferred join strategy, as it is the only join method to not require extra memory overhead, and it operates well in queries where the join clause has low selectivity. If you compare the peak memory usage of this join strategy with others, you will notice that it is the lowest.
 
-To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Nested loop join, you would execute the following:
+To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using nested loop join, you would execute the following:
 
 ```sql
 explain (analyze, dist, costs off)
@@ -144,7 +144,7 @@ If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the 
 
 To enable the query planner's use of BNL, use the YSQL configuration parameter [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl).
 
-To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute the following:
+To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using BNL, you would execute the following:
 
 ```sql
 explain (analyze, dist, costs off)
@@ -194,7 +194,7 @@ which led to `loops=1` in the inner scan as the lookup was batched. In the case 
 
 ## Merge join
 
-In a Merge join, both input tables must be sorted on the join key. It works by merging the sorted input streams based on the join condition.
+In a merge join, both input tables must be sorted on the join key. It works by merging the sorted input streams based on the join condition.
 
 Merge Joins are efficient when dealing with large datasets, and the join condition involves equality comparisons. If the tables are not already sorted, the optimizer will use sorting operations as part of the execution plan.
 
@@ -242,11 +242,11 @@ The query plan would be similar to the following:
 
 ## Hash join
 
-The Hash join algorithm starts by hashing the join key columns of both input tables. The hash function transforms the join key values into a hash code.
+The hash join algorithm starts by hashing the join key columns of both input tables. The hash function transforms the join key values into a hash code.
 
-Hash Joins are suitable for equi-joins (joins based on equality) and are effective when the join keys are not sorted or indexed.
+Hash joins are suitable for equi-joins (joins based on equality) and are effective when the join keys are not sorted or indexed.
 
-To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Hash join, you would execute the following:
+To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using hash join, you would execute the following:
 
 ```sql
 explain (analyze, dist, costs off)
@@ -284,7 +284,7 @@ The query plan would be similar to the following:
 
 ## Learn more
 
-- [SQL Joins](../../../explore/ysql-language-features/queries#join-columns)
+- [SQL Joins](../../../explore/ysql-language-features/queries/#join-columns)
 - [Postgres Join Methods in YugabyteDB](https://dev.to/yugabyte/postgresql-join-methods-in-yugabytedb-f02)
 - [Batched Nested Loop to reduce read requests to the distributed storage](https://dev.to/yugabyte/batched-nested-loop-to-reduce-read-requests-to-the-distributed-storage-j5i)
 - [OR Filter on Two Tables](https://dev.to/yugabyte/or-filter-on-two-tables-and-batched-nested-loops-aa)

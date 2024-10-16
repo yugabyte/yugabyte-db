@@ -10,11 +10,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB provides a rich set of expressions and operators that form the building blocks of SQL queries and data manipulation. This page serves as a comprehensive guide to the various types of expressions and operators available and understanding these expressions and operators is crucial for writing efficient and powerful SQL queries.
+YugabyteDB provides a rich set of expressions and operators that form the building blocks of SQL queries and data manipulation. The following is a comprehensive guide to the various types of expressions and operators available. Understanding these expressions and operators is essential for writing efficient and powerful SQL queries.
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -35,17 +35,17 @@ The examples will run on any YugabyteDB universe. To create a universe follow th
 
 The following table lists some of the mathematical operators that you can use in YSQL.
 
-| Operator | Description                                | Example                 |
-| -------- | ------------------------------------------ | ----------------------- |
-| +        | Addition                                   | 1 + 2 results in 3      |
-| -        | Subtraction                                | 1 - 2 results in -1     |
-| *        | Multiplication                             | 2 * 2 results in 4      |
-| /        | Division                                   | 6 / 2 results in 3      |
-| %        | Remainder                                  | 5 % 4 results in 1      |
-| ^        | Exponent (association of left to right)    | 2.0 ^ 3.0 results in 8  |
-| \|/      | Square root                                | \|/ 16.0 results in 4   |
-| \|\|/    | Cube root                                  | \|\|/ 27.0 results in 3 |
-| !        | Factorial (suffix)                         | 5 ! results in 120      |
+| Operator | Description                                | Example    | Result |
+| -------- | ------------------------------------------ | ---------- | ------ |
+| +        | Addition                                   | 1 + 2      | 3   |
+| -        | Subtraction                                | 1 - 2      | -1  |
+| *        | Multiplication                             | 2 * 2      | 4   |
+| /        | Division                                   | 6 / 2      | 3   |
+| %        | Remainder                                  | 5 % 4      | 1   |
+| ^        | Exponent (association of left to right)    | 2.0 ^ 3.0  | 8   |
+| \|/      | Square root                                | \|/ 16.0   | 4   |
+| \|\|/    | Cube root                                  | \|\|/ 27.0 | 3   |
+| !        | Factorial (suffix)                         | 5 !        | 120 |
 
 The following examples show how to use mathematical operators in a `SELECT` statement:
 
@@ -63,7 +63,7 @@ SELECT ||/ 27.0;
 
 ## Comparison operators
 
-Comparison operators are binary. They return a `boolean` value `true` or `false`, depending on whether or not the comparison was asserted.
+Comparison operators are binary. They return a boolean value of true or false, depending on whether or not the comparison was asserted.
 
 The following table lists comparison operators that you can use in YSQL.
 
@@ -101,7 +101,7 @@ The following example shows a `SELECT` statement that returns employees whose em
 SELECT * FROM employees WHERE employee_no > 1222;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 employee_no | name             | department   | salary
@@ -114,9 +114,9 @@ employee_no | name             | department   | salary
 
 The following table describes a string operator that you can use in YSQL.
 
-| Operator | Description                                         | Example                        |
-| -------- | --------------------------------------------------- | ------------------------------ |
-| \|\|     | Concatenates two strings or a string and non-string <br> | 'wo' \|\| 'rd' results in word <br>'number' \|\| 55 results in number 55 <br>2021 \|\| 'is here' results in 2021 is here |
+| Operator | Description                                         | Example                        | Result |
+| -------- | --------------------------------------------------- | ------------------------------ | ------ |
+| \|\|     | Concatenates two strings or a string and non-string | 'wo' \|\| 'rd' <br>'number' \|\| 55 <br>2021 \|\| 'is here' | word <br> number 55 <br> 2021 is here
 
 ## Logical operators
 
@@ -134,7 +134,7 @@ The following example uses the sample table from [Comparison operators](#compari
 SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 employee_no | name             | department   | salary
@@ -146,18 +146,18 @@ employee_no | name             | department   | salary
 
 The following table lists bitwise operators that you can use in YSQL.
 
-| Operator | Description                                                  | Example               |
-| -------- | ------------------------------------------------------------ | --------------------- |
-| &        | Bitwise AND <br>Copies a bit to the result if it exists in both operands. | 91 & 15 results in 11 |
-| \|       | Bitwise OR<br/>Copies a bit to the result if it exists in either operand. | 32 \| 3 results in 35 |
-| #        | Bitwise XOR                                                  | 17 # 5 results in 20  |
-| ~        | Bitwise NOT <br>Flips bits.                                  | ~1 results in -2      |
-| <<       | Bitwise shift left <br>Moves the value of the left operand left by the number of bits specified by the right operand. | 1 << 4 results in 16  |
-| >>       | Bitwise shift right<br/>Moves the value of the left operand right by the number of bits specified by the right operand. | 8 >> 2 results in 2   |
+| Operator | Description                                                  | Example    | Result |
+| -------- | ------------------------------------------------------------ | ---------- | ------ |
+| &        | Bitwise AND <br>Copies a bit to the result if it exists in both operands. | 91 & 15 | 11 |
+| \|       | Bitwise OR<br/>Copies a bit to the result if it exists in either operand. | 32 \| 3 | 35 |
+| #        | Bitwise XOR                                                  | 17 # 5     | 20  |
+| ~        | Bitwise NOT <br>Flips bits.                                  | ~1         | -2  |
+| <<       | Bitwise shift left <br>Moves the value of the left operand left by the number of bits specified by the right operand.   | 1 << 4 | 16  |
+| >>       | Bitwise shift right<br/>Moves the value of the left operand right by the number of bits specified by the right operand. | 8 >> 2 | 2   |
 
 Bitwise operators can be applied to bit data types and data types related to it.
 
-## CAST Operator
+## CAST operator
 
 You can use the `CAST` operator to convert a value of one data type to another.
 
@@ -183,7 +183,7 @@ SELECT
   CAST ('02-DEC-2020' AS DATE);
 ```
 
-The preceding example produces the following output:
+You should see the following output:
 
 ```caddyfile{.nocopy}
  date       | date
@@ -215,7 +215,7 @@ The following example uses the sample table from [Comparison operators](#compari
 SELECT * FROM employees WHERE salary = 60000;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 employee_no | name             | department   | salary
@@ -233,7 +233,7 @@ The following example shows how to use a basic numerical expression in a `SELECT
 SELECT (10 + 5) AS ADDITION;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 addition
@@ -249,7 +249,7 @@ The following example uses the sample table from [Comparison operators](#compari
 SELECT count(*) AS "rows" FROM employees;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 rows
@@ -265,7 +265,7 @@ Date expressions retrieve the current system date and time, as shown in the foll
 SELECT CURRENT_TIMESTAMP;
 ```
 
-The following is the output produced by the preceding example:
+You should see the following output:
 
 ```caddyfile{.nocopy}
 now
@@ -273,7 +273,7 @@ now
 2021-03-15 14:38:28.078+05:30
 ```
 
- You can use these expressions during data manipulation.
+You can use these expressions during data manipulation.
 
 ## CASE expression
 
@@ -327,7 +327,7 @@ FROM employees
 ORDER BY name;
 ```
 
-The preceding example produces the following output, with a column alias `seniority` placed after the `CASE` expression:
+The example produces the following output, with a column alias `seniority` placed after the `CASE` expression:
 
 ```caddyfile{.nocopy}
  employee_no  | name           | seniority

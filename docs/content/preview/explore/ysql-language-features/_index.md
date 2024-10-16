@@ -15,7 +15,7 @@ menu:
 type: indexpage
 showRightNav: true
 ---
-YugabyteDB's [YSQL API](../../api/ysql/) reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+YugabyteDB's [YSQL API](../../api/ysql/) reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer DocDB. This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
@@ -32,12 +32,12 @@ The following table lists the most important YSQL features which you would find 
 
 | YSQL Feature | Description |
 | :----------- | :---------- |
-| [Schemas and Tables](databases-schemas-tables/) | SQL shell with `ysqlsh`, users, databases, tables, and schemas |
+| [Schemas and tables](databases-schemas-tables/) | SQL shell with `ysqlsh`, users, databases, tables, and schemas |
 | [Data Types](data-types/) | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
-| [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl) | Data definition language |
-| [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
-| [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
-| [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
+| [DDL statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl) | Data definition language |
+| [Data manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
+| [Queries and joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
+| [Expressions and operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
 | [Indexes](indexes-constraints/) | Support for indexes and constraints |
 | [Extensions](pg-extensions/) | Support for PostgreSQL extensions |
 
@@ -48,10 +48,10 @@ The following table lists the advanced features in YSQL.
 | YSQL Feature | Description |
 | :----------- | :---------- |
 | [Cursors](advanced-features/cursor/) | Declaration of cursors in YSQL |
-| [Table Partitioning](advanced-features/partitions/) | List, range, and hash partitioning of tables |
+| [Table partitioning](advanced-features/partitions/) | List, range, and hash partitioning of tables |
 | [Views](advanced-features/views/) | Views and updatable views |
 | [Savepoints](advanced-features/savepoints/) | Savepoints in YSQL |
 | [Collations](advanced-features/collations/) | Collations in YSQL |
 | [Foreign data wrappers](advanced-features/foreign-data-wrappers/) | Foreign data wrappers in YSQL |
-| [Stored Procedures](advanced-features/stored-procedures/) | Support for stored procedures |
+| [Stored procedures](advanced-features/stored-procedures/) | Support for stored procedures |
 | [Triggers](advanced-features/triggers/) | Triggers (on data modification) and event triggers (on schema changes) |

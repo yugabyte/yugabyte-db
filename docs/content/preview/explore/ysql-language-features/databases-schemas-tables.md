@@ -1,7 +1,7 @@
 ---
-title: Databases, schemas and tables
+title: Databases, schemas, and tables
 linkTitle: Schemas and tables
-description: Create and operate on databases, schemas and tables
+description: Create and operate on databases, schemas, and tables
 menu:
   preview:
     identifier: explore-ysql-language-features-databases-schemas-tables
@@ -12,11 +12,11 @@ rightNav:
 type: docs
 ---
 
-Creating databases, tables, and schemas involves a structured process that enables efficient data management. Below is a detailed guide to help you understand and implement each step.
+Creating databases, tables, and schemas involves a structured process that enables efficient data management. The following detailed guide can help you understand and implement each step.
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -39,7 +39,7 @@ A database is the highest level of data organization and serves as a container f
 
 ### Create a database
 
-By default, a database named `yugabyte` is already created. To create a new database say, `testdb`, run the following statement:
+By default, a database named `yugabyte` is already created. To create a new database, `testdb`, run the following statement:
 
 ```sql
 CREATE DATABASE testdb;
@@ -47,7 +47,7 @@ CREATE DATABASE testdb;
 
 This creates an empty database where you can create tables.
 
-### Switching to the new database
+### Switch to the new database
 
 To switch or connect to the new database, use the `\c` meta-command as follows:
 
@@ -67,7 +67,7 @@ testdb=#
 To list all databases, use the `\l` or `\list` meta-commands.
 
 ```bash
-yugabyte=# \l
+testdb=# \l
 ```
 
 ```caddyfile{.nocopy}
@@ -86,7 +86,7 @@ yugabyte=# \l
 
 ### Drop database
 
-To drop or delete the database we just created, connect to another database and then use the `DROP` command.
+To drop or delete the database, connect to another database and then use the `DROP` command.
 
 {{<warning>}}
 You cannot drop the database you are connected to.
@@ -116,7 +116,7 @@ DROP DATABASE
 
 A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns. Tables are created in a specific schema (by default public) and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
 
-### Creating a table
+### Create a table
 
 Create a table using the [CREATE TABLE](../../../api/ysql/the-sql-language/statements/ddl_create_table) statement.
 
@@ -146,7 +146,7 @@ yugabyte=# \dt
  public | users               | table | yugabyte
 ```
 
-To list more ionformation about the tables you created, use the `\d+` meta-command.
+To list more information about the tables you created, use the `\d+` meta-command.
 
 ```sql
 yugabyte=# \d+
@@ -164,9 +164,9 @@ yugabyte=# \d+
 The `users_id_seq` sequence you see above is the result of the `serial` datatype that has been used in the definition of the `id` column.
 {{</note>}}
 
-### Inserting Data
+### Insert data
 
-Once the tables are set up, you can insert data into them. To insert a record into the above table, you can use the INSERT command.
+After the tables are set up, you can add data to them. To add a record to the table, you can use the INSERT command.
 
 ```sql
 INSERT INTO users VALUES(1, 'Yoda');
@@ -176,27 +176,27 @@ INSERT INTO users VALUES(1, 'Yoda');
 The above statement does not have an explicit value for the column `email` as a default value of `NULL` has been set for that column.
 {{</note>}}
 
-### Querying Data
+### Query data
 
-You can retrieve data from tables using the SELECT statement. For eg,
+You can retrieve data from tables using the SELECT statement. For example:
 
 ```sql
 SELECT * FROM users;
 ```
 
-To retrieve only certain columns, you can specify the column name as,
+To retrieve only certain columns, you can specify the column name as follows:
 
 ```sql
 SELECT username FROM users;
 ```
 
-### Altering a table
+### Alter a table
 
-Once a table is created, you might need to alter it by adding, removing, or modifying columns. You can use the [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table) command to perform such actions.
+After a table is created, you might need to alter it by adding, removing, or modifying columns. You can use the [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table) command to perform these actions.
 
 #### Add a column
 
-To add a new column say `address`, you can run the following command:
+To add a new column `address`, run the following command:
 
 ```sql
 ALTER TABLE users ADD COLUMN address TEXT;
@@ -207,12 +207,12 @@ ALTER TABLE users ADD COLUMN address TEXT;
 To drop an existing column, say `enabled`, you can run the following command:
 
 ```sql
-ALTER TABLE users DROP COLUMN  enabled ;
+ALTER TABLE users DROP COLUMN enabled ;
 ```
 
 #### Modify a column's name
 
-To modify the name of a column, say to change the name of `id` column to `user_id` you can do:
+To modify the name of a column, say to change the name of the `id` column to `user_id`, do the following:
 
 ```sql
 ALTER TABLE users RENAME COLUMN id to user_id;
@@ -220,9 +220,9 @@ ALTER TABLE users RENAME COLUMN id to user_id;
 
 ## Schemas
 
-A schema is a logical container in a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts. By default, YugabyteDB creates a schema named `public` in each database.
+A schema is a logical container in a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects, and avoiding name conflicts. By default, YugabyteDB creates a schema named `public` in each database.
 
-### Creating a schema
+### Create a schema
 
 To create the schema with name `myschema`, run the following command:
 
@@ -234,7 +234,7 @@ testdb=# CREATE SCHEMA myschema;
 CREATE SCHEMA
 ```
 
-### Listing schemas
+### List schemas
 
 List the schemas as follows:
 
@@ -253,13 +253,11 @@ yugabyte=# \dn
 
 ### Current schema
 
-To see which schema is currently the default, run the following.
+To see which schema is currently the default, run the following:
 
 ```sql
 yugabyte=# SHOW search_path;
 ```
-
-You should see the following output.
 
 ```output
    search_path
@@ -268,9 +266,9 @@ You should see the following output.
 (1 row)
 ```
 
-### Creating tables in a schema
+### Create tables in a schema
 
-To create a table in a specific schema, prefix the table name with the schema name. For example, to create the table `users` in the schema `myschema`.
+To create a table in a specific schema, prefix the table name with the schema name. For example, create the table `users` in the schema `myschema`:
 
 ```sql
 yugabyte=# CREATE TABLE myschema.users(
@@ -287,9 +285,9 @@ yugabyte=# CREATE TABLE myschema.users(
 At this point, the `default` schema is still the selected schema, and running the `\d` meta-command would not list the table you just created.
 {{</note>}}
 
-### Switching schemas
+### Switch schemas
 
-To set `myschema` as the default schema in this session, do the following.
+To set `myschema` as the default schema in this session, do the following:
 
 ```sql
 SET search_path=myschema;
@@ -320,7 +318,7 @@ yugabyte=# \d
 (1 row)
 ```
 
-### Dropping schemas
+### Drop schemas
 
 To drop the schema `myschema` and all the objects inside it, first change the current default schema.
 
@@ -363,7 +361,7 @@ This should output the following:
 You are connected to database "yugabyte" as user "yugabyte" on host "127.0.0.1" at port "5433".
 ```
 
-### Listing users
+### List users
 
 To check all the users provisioned, run the following meta-command:
 
@@ -382,7 +380,7 @@ yugabyte=# \du
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-### Creating a User
+### Create a user
 
 You can create a user with the [CREATE USER](../../../api/ysql/the-sql-language/statements/dcl_create_user) command. For example, to create a user `yoda` with password `feeltheforce` as follows.
 
@@ -390,9 +388,9 @@ You can create a user with the [CREATE USER](../../../api/ysql/the-sql-language/
 CREATE USER yoda WITH PASSWORD 'feeltheforce';
 ```
 
-### Changing a user's password
+### Change a user password
 
-You can change passwords of existing users using the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example,
+You can change passwords of existing users using the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example:
 
 ```sql
 ALTER USER yoda WITH PASSWORD 'thereisnotry';
@@ -400,7 +398,7 @@ ALTER USER yoda WITH PASSWORD 'thereisnotry';
 
 ### User privileges
 
-Users can be granted privileges to perform certain operations on databases and tables. Privileges include actions like `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and more. You can provide privileges to users using the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant) command like:
+Users can be granted privileges to perform certain operations on databases and tables. Privileges include actions like `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and more. You can provide privileges to users using the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant) command:
 
 ```sql
 GRANT SELECT, INSERT ON TABLE users TO yoda;
@@ -408,21 +406,21 @@ GRANT SELECT, INSERT ON TABLE users TO yoda;
 
 ### Superuser privileges
 
-To give a user superuser privileges (full administrative rights), you can use the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example,
+To give a user superuser privileges (full administrative rights), you can use the [ALTER USER](../../../api/ysql/the-sql-language/statements/dcl_alter_user) command. For example:
 
 ```sql
 ALTER USER yoda WITH SUPERUSER;
 ```
 
-To revoke superuser privileges, you can do,
+To revoke superuser privileges, do the following:
 
 ```sql
 ALTER USER yoda WITH NOSUPERUSER;
 ```
 
-### Dropping a user
+### Drop a user
 
-You can drop/delete a user with the [DROP USER](../../../api/ysql/the-sql-language/statements/dcl_drop_user) command like:
+To delete a user, use the [DROP USER](../../../api/ysql/the-sql-language/statements/dcl_drop_user) command:
 
 ```sql
 DROP USER yoda ;

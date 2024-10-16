@@ -16,7 +16,7 @@ type: indexpage
 
    {{<index/item
     title="Stored procedures"
-    body="Use server side stored procedures and functions to avoid client-server traffic."
+    body="Use server-side stored procedures and functions to avoid client-server traffic."
     href="stored-procedures/"
     icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
 

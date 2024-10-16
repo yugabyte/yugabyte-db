@@ -1,6 +1,8 @@
 ---
 title: Data manipulation
+headerTitle: Write data
 linkTitle: Write data
+headcontent: INSERT, UPDATE, and DELETE
 description: Data manipulation - Insert/Modify/Delete in YSQL
 menu:
   preview:

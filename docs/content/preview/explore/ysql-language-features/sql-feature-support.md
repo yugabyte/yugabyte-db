@@ -2,7 +2,7 @@
 title: SQL feature support
 linkTitle: SQL compatibility
 description: Summary of YugabyteDB's conformance to the SQL standard
-headcontent: YugabyteDB supports most standard SQL features.
+headcontent: YugabyteDB supports most standard SQL features
 menu:
   preview:
     identifier: explore-ysql-language-feature-support
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB is a distributed SQL database that implements many [standard SQL](https://en.wikipedia.org/wiki/SQL) features while also introducing some unique capabilities due to its distributed nature. This page provides an overview of SQL features that are fully supported, partially supported and features that are currently work in progress. Whether you're designing new applications or migrating existing workloads, this guide will help you understand how YugabyteDB's SQL capabilities compare to other SQL-based systems, ensuring smooth adoption and development.
+YugabyteDB is a distributed SQL database that implements many [standard SQL](https://en.wikipedia.org/wiki/SQL) features while introducing some unique capabilities due to its distributed nature. The following provides an overview of SQL features that are fully supported, partially supported, and features that are currently work in progress. Whether you're designing new applications or migrating existing workloads, this guide will help you understand how YugabyteDB's SQL capabilities compare to other SQL-based systems, ensuring smooth adoption and development.
 
 ### Data types
 
