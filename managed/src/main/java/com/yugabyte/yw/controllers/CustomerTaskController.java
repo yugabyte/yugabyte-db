@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -35,7 +36,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,8 +61,6 @@ public class CustomerTaskController extends AuthenticatedController {
   @Inject private RuntimeConfGetter confGetter;
   @Inject private Commissioner commissioner;
   @Inject private CustomerTaskManager customerTaskManager;
-
-  static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
@@ -111,8 +109,9 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private CustomerTaskFormData buildCustomerTaskFromData(
-      CustomerTask task, ObjectNode taskProgress, TaskInfo taskInfo) {
+      CustomerTask task, ObjectNode taskProgress) {
     try {
+      TaskInfo taskInfo = task.getTaskInfo();
       CustomerTaskFormData taskData = new CustomerTaskFormData();
       taskData.percentComplete = taskProgress.get("percent").asInt();
       taskData.status = taskProgress.get("status").asText();
@@ -168,10 +167,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
     List<CustomerTask> customerTaskList =
         customerTaskQuery
-            .setMaxRows(
-                confGetter.getConfForScope(
-                    Customer.getOrBadRequest(customer.getUuid()),
-                    CustomerConfKeys.taskDbQueryLimit))
+            .setMaxRows(confGetter.getConfForScope(customer, CustomerConfKeys.taskDbQueryLimit))
             .orderBy("create_time desc")
             .findPagedList()
             .getList();
@@ -180,15 +176,9 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> buildTaskListMap(
-      Customer customer, Collection<CustomerTask> customerTaskList) {
+      Customer customer, List<CustomerTask> customerTaskList) {
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
-
-    Set<UUID> taskUuids =
-        customerTaskList.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet());
-    Map<UUID, TaskInfo> taskInfoMap =
-        TaskInfo.find(taskUuids).stream()
-            .collect(Collectors.toMap(TaskInfo::getUuid, Function.identity()));
     Map<UUID, CustomerTask> lastTaskByTargetMap =
         customerTaskList.stream()
             .filter(c -> c.getCompletionTime() != null)
@@ -212,20 +202,31 @@ public class CustomerTaskController extends AuthenticatedController {
             allowRetryTasksByTargetMap
                 .computeIfAbsent(universeUUID, k -> new HashSet<>())
                 .add(taskUUID));
-    for (CustomerTask task : customerTaskList) {
-      TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
-      commissioner
-          .buildTaskStatus(task, taskInfo, allowRetryTasksByTargetMap, lastTaskByTargetMap)
-          .ifPresent(
-              taskProgress -> {
-                CustomerTaskFormData taskData =
-                    buildCustomerTaskFromData(task, taskProgress, taskInfo);
-                if (taskData != null) {
-                  List<CustomerTaskFormData> taskList =
-                      taskListMap.computeIfAbsent(task.getTargetUUID(), k -> new ArrayList<>());
-                  taskList.add(taskData);
-                }
-              });
+    List<List<CustomerTask>> batches =
+        Lists.partition(
+            customerTaskList,
+            confGetter.getConfForScope(customer, CustomerConfKeys.taskInfoDbQueryBatchSize));
+    for (List<CustomerTask> batch : batches) {
+      Map<UUID, List<TaskInfo>> subTaskInfos =
+          TaskInfo.getSubTasks(
+              batch.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet()));
+      for (CustomerTask task : batch) {
+        commissioner
+            .buildTaskStatus(
+                task,
+                subTaskInfos.getOrDefault(task.getTaskUUID(), Collections.emptyList()),
+                allowRetryTasksByTargetMap,
+                lastTaskByTargetMap)
+            .ifPresent(
+                taskProgress -> {
+                  CustomerTaskFormData taskData = buildCustomerTaskFromData(task, taskProgress);
+                  if (taskData != null) {
+                    List<CustomerTaskFormData> taskList =
+                        taskListMap.computeIfAbsent(task.getTargetUUID(), k -> new ArrayList<>());
+                    taskList.add(taskData);
+                  }
+                });
+      }
     }
     return taskListMap;
   }

@@ -582,7 +582,7 @@ public class CustomerTaskManager {
   public CustomerTask retryCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
     LOG.info(

@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -237,12 +238,13 @@ public class Commissioner {
 
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
-      TaskInfo taskInfo,
+      List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
-    if (task == null || taskInfo == null) {
+    if (task == null) {
       return Optional.empty();
     }
+    TaskInfo taskInfo = task.getTaskInfo();
     ObjectNode responseJson = Json.newObject();
     // Add some generic information about the task
     responseJson.put("title", task.getFriendlyDescription());
@@ -266,11 +268,9 @@ public class Commissioner {
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getUuid());
-    if (optional.isPresent()) {
-      userTaskDetails = taskInfo.getUserTaskDetails(optional.get().getTaskCache());
-    } else {
-      userTaskDetails = taskInfo.getUserTaskDetails();
-    }
+    userTaskDetails =
+        taskInfo.getUserTaskDetails(
+            subTaskInfos, optional.isPresent() ? optional.get().getTaskCache() : null);
     ObjectNode details = Json.newObject();
     if (userTaskDetails != null && userTaskDetails.taskDetails != null) {
       details.set("taskDetails", Json.toJson(userTaskDetails.taskDetails));
@@ -362,17 +362,10 @@ public class Commissioner {
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     if (task == null) {
       // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. Customer task is not found", taskUUID);
+      log.error("Customer task with task UUID {} is not found", taskUUID);
       return Optional.empty();
     }
-    // Check if the task is in the DB.
-    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
-    if (!optional.isPresent()) {
-      // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
-      return Optional.empty();
-    }
-    TaskInfo taskInfo = optional.get();
+    TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
@@ -395,7 +388,8 @@ public class Commissioner {
                     .add(id));
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
-    return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap);
+    return buildTaskStatus(
+        task, taskInfo.getSubTasks(), updatingTaskByTargetMap, lastTaskByTargetMap);
   }
 
   // Returns a map of target to updating task UUID.

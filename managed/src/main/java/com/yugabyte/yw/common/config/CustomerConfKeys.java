@@ -226,4 +226,12 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Default Metric Graph Point Count, if step is not defined in the query",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> taskInfoDbQueryBatchSize =
+      new ConfKeyInfo<>(
+          "yb.task_info_db_query_batch_size",
+          ScopeType.CUSTOMER,
+          "Fetch Batch Size of Task Info",
+          "Knob that can be used to make lesser number of calls to DB",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
