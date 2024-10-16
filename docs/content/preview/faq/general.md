@@ -74,7 +74,7 @@ The roadmap for upcoming releases and the list of recently released features can
 Global organizations of all sizes leverage YugabyteDB to fulfill their application requirements.
 
 {{<lead link="https://www.yugabyte.com/success-stories/">}}
-Success Stories
+Success stories
 {{</lead>}}
 
 ### How do I report a security vulnerability?

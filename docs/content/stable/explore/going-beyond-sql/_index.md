@@ -82,7 +82,7 @@ To learn how to use the built-in connection pooling and understand how it works,
 As Generative AI (Gen-AI) technologies evolve, integrating them with databases opens new avenues for data-driven decision-making and user interactions. By leveraging chatbots as natural language interfaces, you can effortlessly access and interact with data stored in databases, enhancing accessibility and usability. With YugabyteDB's PostgreSQL compatibility, seamless integration with Gen-AI technologies further streamlines user interactions and data-driven workflows.
 
 {{<lead link="./gen-ai-apps">}}
-To learn more about the how to build Gen-AI applications for YugsbyteDB, see [Gen-AI](./gen-ai-apps).
+To learn more about the how to build Gen-AI applications for YugabyteDB, see [Gen-AI](./gen-ai-apps).
 {{</lead>}}
 
 ## Decouple storage and compute resources

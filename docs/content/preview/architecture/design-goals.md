@@ -129,7 +129,7 @@ In addition:
 
 [YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
-{{<lead link=".../query-layer/">}}
+{{<lead link="../query-layer/">}}
 Query layer
 {{</lead>}}
 

@@ -67,36 +67,35 @@ The following examples show how to improve query performance using output of the
 
 ### Set up tables
 
-Create a key value table as follows:
+1. Create a key value table as follows:
 
-```sql
-CREATE TABLE kvstore (
-    key VARCHAR,
-    value VARCHAR,
-    PRIMARY KEY(key)
-);
-```
+    ```sql
+    CREATE TABLE kvstore (
+        key VARCHAR,
+        value VARCHAR,
+        PRIMARY KEY(key)
+    );
+    ```
 
-Add 10,000 key-values into the tables as follows:
+1. Add 10,000 key-values into the tables as follows:
 
-```sql
-SELECT setseed(0.5); -- to help generate the same random values
+    ```sql
+    SELECT setseed(0.5); -- to help generate the same random values
 
-INSERT INTO kvstore(key, value)
-        SELECT substr(md5(random()::text), 1, 7), substr(md5(random()::text), 1, 10)
-        FROM generate_series(1,10000);
+    INSERT INTO kvstore(key, value)
+            SELECT substr(md5(random()::text), 1, 7), substr(md5(random()::text), 1, 10)
+            FROM generate_series(1,10000);
+    ```
 
-```
+1. Run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command on the database to gather statistics for the query planner to use.
 
-Run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command on the database to gather statistics for the query planner to use.
-
-```sql
-ANALYZE kvstore;
-```
+    ```sql
+    ANALYZE kvstore;
+    ```
 
 ## Speed up lookups
 
-Use `EXPLAIN` on a simple query to fetch a value from the `kvstore` table.
+Use `EXPLAIN` on a basic query to fetch a value from the `kvstore` table.
 
 {{<note>}}
 For brevity, all the output for the following examples excludes metrics/counters with value zero. `COSTS OFF` option has also been added to show just the estimated costs.
