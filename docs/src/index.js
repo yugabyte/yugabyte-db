@@ -352,7 +352,7 @@ $(document).ready(() => {
    * Change all page tabs when single tab is changed.
    */
   (() => {
-    $('.td-content .nav-tabs-yb .nav-link').each((index, element) => {
+    $('.td-content ul.nav .nav-link').each((index, element) => {
       let tabId = element.id;
       if (tabId) {
         const regex = /(?<name>.*)-[0-9]+-tab/;
@@ -365,7 +365,7 @@ $(document).ready(() => {
       }
     });
 
-    $(document).on('click', '.td-content .nav-tabs-yb .nav-link', (event) => {
+    $(document).on('click', '.td-content .nav[role="tablist"] .nav-link', (event) => {
       if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
         let tabId = event.target.getAttribute('id');
 
@@ -376,11 +376,15 @@ $(document).ready(() => {
             tabId = `${found.groups.name}-tab`;
           }
 
-          $('.td-content .nav-tabs-yb .nav-link').removeClass('active');
-          $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).addClass('active');
+          $('.td-content .nav[role="tablist"]').each((index, element) => {
+            if ($(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).length > 0) {
+              $('li', element).children('.nav-link').removeClass('active');
+              $('li', element).children(`.nav-link.${tabId}`).addClass('active');
 
-          $('.td-content .nav-tabs-yb').next('.tab-content').find('.tab-pane').removeClass('active show');
-          $('.td-content .nav-tabs-yb').next('.tab-content').find(`.tab-pane[aria-labelledby="${tabId}"]`).addClass('active show');
+              $(element).next('.tab-content').children('.tab-pane').removeClass('active show');
+              $(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).addClass('active show');
+            }
+          });
         }
       }
     });

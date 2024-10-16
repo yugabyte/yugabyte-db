@@ -20,9 +20,9 @@
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
@@ -316,38 +316,134 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
 }
 
 TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
-  // TODO(#23078) Can use pause resume in this test to check different cases, but that requires
-  // skipping schema checks and allowing replication on hidden tables.
-
-  // Disable the background hidden table deletion task, that way the producer table stays hidden.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = -1;
+  // Test that when there are multiple tables with the same name, we are able to correctly link the
+  // target tables to the correct source tables.
 
   const int kNumTablets = 3;
+  const int kNumRowsTable1 = 10;
+  const int kNumRowsTable2 = 3 * kNumRowsTable1;
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
   // Create a table on the producer.
   auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, kNumTablets, &producer_cluster_));
-  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
+  // Insert some rows into the first table.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name));
+  ASSERT_OK(InsertRowsInProducer(0, kNumRowsTable1, producer_table));
 
-  // Drop the table with manual replication, it should move to HIDDEN state.
-  // TODO: remove manual replication restriction once we support DROPs.
-
-  // Delete first on the producer so that the table is hidden.
-  for (Cluster* cluster : {&producer_cluster_, &consumer_cluster_}) {
-    auto conn = ASSERT_RESULT(cluster->Connect());
-    ASSERT_OK(
-        conn.ExecuteFormat("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
-    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
-  }
+  // Drop the table, it should move to HIDDEN state.
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  ASSERT_OK(producer_conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
 
   // Create a new table with the same name.
   auto producer_table_name2 = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, kNumTablets, &producer_cluster_));
-  // Ensure that replication is correctly set up on this new table.
+  // Insert a different number of rows into the second table.
+  auto producer_table2 = ASSERT_RESULT(GetProducerTable(producer_table_name2));
+  ASSERT_OK(InsertRowsInProducer(100, 100 + kNumRowsTable2, producer_table2));
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify that we only see the second table, and that it has the right number of rows.
+  ASSERT_OK(WaitForRowCount(producer_table_name2, kNumRowsTable2, &consumer_cluster_));
+
+  // Ensure that we can write more rows to this table still.
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name2);
+}
+
+TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
+  // Test when a table is created and dropped multiple times.
+  const int kNumIterations = 10;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  for (int i = 0; i < kNumIterations; i++) {
+    ASSERT_OK(producer_conn.Execute("DROP TABLE IF EXISTS live_die_repeat"));
+    ASSERT_OK(producer_conn.Execute("CREATE TABLE live_die_repeat(a int)"));
+    ASSERT_OK(producer_conn.ExecuteFormat("INSERT INTO live_die_repeat VALUES($0)", i + 1));
+  }
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+  propagation_timeout_ = propagation_timeout_ * 2;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure table has the correct row at the end.
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM live_die_repeat")), 1);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn.FetchRow<int32>("SELECT * FROM live_die_repeat")),
+      kNumIterations);
+}
+
+TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
+  // Test that when a table is renamed, the new table is correctly linked to the source table.
+  const std::string kTableNewName = "renamed_table";
+
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  // Create a table on the producer.
+  auto producer_table_name_original = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  // Insert some rows into the table.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name_original));
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table));
+
+  // Rename the table.
+  // TODO(#23951) remove manual flag once we support ALTERs.
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 RENAME TO $1", producer_table_name_original.table_name(), kTableNewName));
+
+  // Insert some more rows into the table.
+  auto producer_table_name_renamed = producer_table_name_original;
+  producer_table_name_renamed.set_table_name(kTableNewName);
+  producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name_renamed));
+  ASSERT_OK(InsertRowsInProducer(10, 30, producer_table));
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // TODO(#23951) need to wait for create and manually run the DDL on the target side for now.
+  ASSERT_OK(StringWaiterLogSink("Successfully processed entry").WaitFor(kTimeout));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "ALTER TABLE $0 RENAME TO $1", producer_table_name_original.table_name(), kTableNewName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify row counts.
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_table_name_renamed));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
 
 }  // namespace yb

@@ -72,6 +72,8 @@ func Write(ctx formatter.Context, restores []ybaclient.RestoreResp) error {
 			return err
 		}
 
+		// logrus.Info(string(output))
+
 		// Write the JSON output to the context
 		_, err = ctx.Output.Write(output)
 		return err
@@ -177,4 +179,9 @@ func (r *Context) CompletionTime() string {
 	} else {
 		return completionTime.Format(time.RFC1123Z)
 	}
+}
+
+// MarshalJSON function
+func (r *Context) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.r)
 }

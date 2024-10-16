@@ -247,13 +247,15 @@ func earAPICall(
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 
-	taskUUID := r.GetTaskUUID()
 	logrus.Info(
 		fmt.Sprintf("Setting encryption at rest configuration in universe %s (%s)\n",
 			formatter.Colorize(universeName, formatter.GreenColor),
 			universeUUID,
 		))
 
-	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+		TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
+		ResourceUUID: util.GetStringPointer(universeUUID),
+	})
 
 }

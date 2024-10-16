@@ -243,6 +243,11 @@ message GetTableSchemaResponsePB {
 
   // If the table is rewritten, this field explicitly stores the PG table id.
   optional bytes pg_table_id = 18;
+
+  // Added on Oct 2024 (v2025.1). This will not be set on versions before this
+  // change, and there is no direct AutoFlag protecting this, so use with
+  // caution.
+  optional bool is_backfilling = 19; // [default = false]
 }
 
 message GetTablegroupSchemaRequestPB {

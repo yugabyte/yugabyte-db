@@ -223,7 +223,7 @@ You can connect to clusters in the following ways:
 
   {{% tab header="Cloud Shell" lang="Cloud Shell" %}}
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+Run the [ysqlsh](../../api/ysqlsh/) or [ycqlsh](../../api/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
 When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
 
@@ -231,7 +231,7 @@ When you connect using Cloud Shell with the YSQL API, the shell window also inco
 
   {{% tab header="Client Shell" lang="Client Shell" %}}
 
-Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
+Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../api/ysqlsh/) and [ycqlsh](../../api/ycqlsh/) client shells installed on your computer.
 
 Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 

@@ -72,9 +72,9 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	}
 	if len(kmsConfigs) < 1 {
 		if util.IsOutputType(formatter.TableFormatKey) {
-			logrus.Infoln("No encryption at rest configurations found\n")
+			logrus.Info("No encryption at rest configurations found\n")
 		} else {
-			logrus.Infoln("[]\n")
+			logrus.Info("[]\n")
 		}
 		return
 	}

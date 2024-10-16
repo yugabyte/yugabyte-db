@@ -29,8 +29,6 @@
 #include "yb/util/tostring.h"
 #include "yb/util/metric_entity.h"
 
-DECLARE_bool(TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files);
-
 namespace yb {
 
 using client::YBTableName;
@@ -1798,12 +1796,10 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCheckpointPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1824,11 +1820,10 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
   ASSERT_OK(FlushTable(table.table_id()));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
+  auto pending_changes = GetAllPendingChangesFromCdc(stream_id, tablets);
+  ASSERT_GE(pending_changes.records.size(), 100);
   LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
+            << pending_changes.records.size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
   ASSERT_OK(FlushTable(table.table_id()));
@@ -1855,12 +1850,9 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
   LOG(INFO) << "Number of intents after restart: " << num_intents_after_restart;
   ASSERT_EQ(num_intents_after_restart, initial_num_intents);
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 200, is_explicit_checkpoint,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  uint32_t record_size = change_resp_2.cdc_sdk_proto_records_size();
+  auto pending_changes2 =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &pending_changes.checkpoint);
+  auto record_size = pending_changes2.records.size();
   // We have run 2 transactions after the last call to "GetChangesFromCDC", thus we expect
   // atleast 200 records if we call "GetChangesFromCDC" now.
   LOG(INFO) << "Number of records after restart: " << record_size;
@@ -1871,20 +1863,21 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
   GetChangesResponsePB change_resp_3;
   if (is_explicit_checkpoint) {
     change_resp_3 = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
-        stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint(),
-        &change_resp_2.cdc_sdk_checkpoint()));
+        stream_id, tablets, &pending_changes2.checkpoint, &pending_changes2.checkpoint));
   } else {
     change_resp_3 =
-        ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
+        ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &pending_changes2.checkpoint));
   }
 
   uint32_t final_record_size = change_resp_3.cdc_sdk_proto_records_size();
   LOG(INFO) << "Number of recrods after no new transactions: " << final_record_size;
   ASSERT_EQ(final_record_size, 0);
 
+  // Verify intent count is reduced compared to the initial intent count.
   int64 final_num_intents;
-  PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
-  ASSERT_EQ(0, final_num_intents);
+  PollForIntentCount(
+      initial_num_intents, 0, IntentCountCompareOption::LessThan, &final_num_intents);
+  LOG(INFO) << "Final number of intents: " << final_num_intents;
 }
 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestIntentCountPersistencyAllNodesRestart);
@@ -1939,14 +1932,12 @@ CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(
     CDCSDKYsqlTest, TestHighIntentCountPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType checkpoint_type) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
-
   // Disable lb as we move tablets around
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 1000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1968,9 +1959,8 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
   ASSERT_OK(FlushTable(table.table_id()));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
+  auto pending_changes = GetAllPendingChangesFromCdc(stream_id, tablets);
+  ASSERT_GE(pending_changes.records.size(), 100);
 
   size_t first_leader_index = -1;
   size_t first_follower_index = -1;
@@ -1996,40 +1986,57 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   test_cluster()->mini_tablet_server(first_leader_index)->Shutdown();
   LOG(INFO) << "TServer hosting tablet leader shutdown";
 
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint,
-      &change_resp_1.cdc_sdk_checkpoint()));
+  auto pending_changes2 =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &pending_changes.checkpoint);
+  ASSERT_GE(pending_changes2.records.size(), 100);
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
 
-  OpId last_seen_checkpoint_op_id = OpId::Invalid();
-  int64_t expected_num_intents =
-      checkpoint_type == cdc::CDCCheckpointType::EXPLICIT ? before_fetch_num_intents
-                                                          : before_fetch_num_intents / 2;
-  for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
-    auto tablet_peer_result =
-        test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
-    if (!tablet_peer_result.ok()) {
-      continue;
-    }
+  // Call GetChanges so that WAL segments on the restarted tserver can be checked for GC which
+  // will eventually lead to intent SST file cleanup. This getchanges call will return 0 records as
+  // we had already consumed all records.
+  auto pending_changes3 =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &pending_changes2.checkpoint);
+  ASSERT_EQ(pending_changes3.records.size(), 0);
 
-    int64_t num_intents;
-    PollForIntentCount(
-        expected_num_intents, i, IntentCountCompareOption::EqualTo, &num_intents);
-    ASSERT_EQ(expected_num_intents, num_intents);
-    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        OpId last_seen_checkpoint_op_id = OpId::Invalid();
+        for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          auto tablet_peer_result =
+              test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
+          if (!tablet_peer_result.ok()) {
+            continue;
+          }
 
-    auto tablet_peer = std::move(*tablet_peer_result);
+          int64_t num_intents = 0;
+          if (is_explicit_checkpoint) {
+            // Intent count remains unchanged as we have not sent any explicit checkpoint so far.
+            PollForIntentCount(
+                before_fetch_num_intents, i, IntentCountCompareOption::EqualTo, &num_intents);
+          } else {
+            // Intent count would have reduced due to implicit checkpointing.
+            PollForIntentCount(
+                before_fetch_num_intents, i, IntentCountCompareOption::LessThan, &num_intents);
+          }
+          LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
 
-    OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
-    LOG(INFO) << "Checkpoint OpId : " << checkpoint << " ,  on tserver index: " << i;
-    if (last_seen_checkpoint_op_id == OpId::Invalid()) {
-      last_seen_checkpoint_op_id = checkpoint;
-    } else {
-      ASSERT_EQ(last_seen_checkpoint_op_id, checkpoint);
-    }
-  }
+          auto tablet_peer = std::move(*tablet_peer_result);
+
+          OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
+          LOG(INFO) << "Checkpoint OpId : " << checkpoint << " ,  on tserver index: " << i;
+          if (last_seen_checkpoint_op_id == OpId::Invalid()) {
+            last_seen_checkpoint_op_id = checkpoint;
+          } else {
+            if (last_seen_checkpoint_op_id != checkpoint) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for verifying intent count & checkpoint"));
 }
 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestIntentCountPersistencyBootstrap);
@@ -2563,12 +2570,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestRangeArrayCompositeType)) {
 // Test GetChanges() can return records of a transaction with size was greater than
 // 'consensus_max_batch_size_bytes'.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -2586,9 +2591,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
   ASSERT_OK(FlushTable(table.table_id()));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
-  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+  auto pending_changes = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << pending_changes.records.size();
+  ASSERT_GE(pending_changes.records.size(), 100);
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(100, 500, &test_cluster_, true));
@@ -2599,28 +2604,24 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
   PollForIntentCount(400, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
   LOG(INFO) << "Number of intents: " << initial_num_intents;
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 400, /* is_explicit_checkpoint */false,
-      &change_resp_1.cdc_sdk_checkpoint()));
+  auto pending_changes2 =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &pending_changes.checkpoint);
 
-  uint32_t record_size = change_resp_2.cdc_sdk_proto_records_size();
+  auto record_size = pending_changes2.records.size();
   // We have run 1 transactions after the last call to "GetChangesFromCDC", thus we expect
   // atleast 400 records if we call "GetChangesFromCDC" now.
   LOG(INFO) << "Number of records after second transaction: " << record_size;
   ASSERT_GE(record_size, 400);
-  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &pending_changes2.checkpoint));
 
+  // Verify intent count is reduced compared to the initial intent count.
   int64 final_num_intents;
-  PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
-  ASSERT_EQ(0, final_num_intents);
+  PollForIntentCount(
+      initial_num_intents, 0, IntentCountCompareOption::LessThan, &final_num_intents);
   LOG(INFO) << "Final number of intents: " << final_num_intents;
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCompaction)) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -2696,10 +2697,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
   uint32_t final_record_size = change_resp_3.cdc_sdk_proto_records_size();
   LOG(INFO) << "Number of recrods after no new transactions: " << final_record_size;
   ASSERT_EQ(final_record_size, 0);
-
-  int64 final_num_intents;
-  PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
-  ASSERT_EQ(0, final_num_intents);
 }
 
 // https://github.com/yugabyte/yugabyte-db/issues/19385
@@ -2731,12 +2728,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, /* is_explicit_checkpoint */ true));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
 
@@ -2765,14 +2759,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */true,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) {
@@ -2797,11 +2786,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
-  GetChangesResponsePB change_resp_1;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
-  LOG(INFO) << "Number of records after first transaction: "
-            << change_resp_1.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id, tablets);
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records.size();
+  ASSERT_GE(change_resp_1.records.size(), 100);
 
   ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
   // SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
@@ -2827,14 +2814,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
     }
   }
 
-  GetChangesResponsePB change_resp_2;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_2, stream_id, tablets, 100, /* is_explicit_checkpoint */false,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  LOG(INFO) << "Number of records after second transaction: "
-            << change_resp_2.cdc_sdk_proto_records_size();
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+  auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_1.checkpoint);
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_2.records.size();
+  ASSERT_GE(change_resp_2.records.size(), 100);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBootStrap)) {
@@ -10791,6 +10773,279 @@ TEST_F(CDCSDKYsqlTest, TestSlotNameInCDCMetricsAttributes) {
   // Old model stream will not contain slot_name attribute in its metrics.
   auto result = metrics[1]->TEST_GetAttribute("slot_name");
   ASSERT_STR_CONTAINS(result.ToString(), "not found in attributes_ map");
+}
+
+TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
+  // The following flag trigger compaction of SST files. Although compaction doesnt really delete
+  // any record when CDC is enabled, it will club the SST files into a single file. The max
+  // record_time of this new file will be the max record_time of the last generated SST file
+  // pre-compaction. Therefore deletion of 'cdc only' intent SST files may or may not happen based
+  // on GCed WAL segments. Therefore, to avoid compaction we set the flag to a high value.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 100;
+
+  int num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
+
+  auto num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  int num_txns = 10;
+  int num_inserts_per_txn = 100;
+  for (int i = 0; i < num_txns; i++) {
+    ASSERT_OK(WriteRowsHelper(
+        i * num_inserts_per_txn /* start */,
+        (i * num_inserts_per_txn) + num_inserts_per_txn /* end */, &test_cluster_, true));
+    ASSERT_OK(WaitForFlushTables(
+        {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+        /* is_compaction = */ false));
+  }
+
+  // Verify there are no txns that are retained in the txn participant due to CDC.
+  const auto& tablet_id = tablets.Get(0).tablet_id();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+            if (peer->tablet_id() != tablet_id) {
+              continue;
+            }
+            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            if (tablet->transaction_participant()->GetNumRunningTransactions() != 0) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for running txns to reduce to 0"));
+
+  // Additionally, get the count of WAL segments and verify that there has been rollover of log
+  // segments.
+  std::unordered_map<std::string, size_t> log_segment_count;
+  GetLogSegmentCountForTablet(tablet_id, &log_segment_count);
+  for (const auto& [_, segment_count] : log_segment_count) {
+    ASSERT_GT(segment_count, 1);
+  }
+
+  // Get the intent entries & intent SST files in each peer.
+  std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+      initial_intents_and_intent_sst_file_count;
+  ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+      tablet_id, &initial_intents_and_intent_sst_file_count));
+  for (const auto& [_, intents] : initial_intents_and_intent_sst_file_count) {
+    auto intent_entries = intents.first;
+    auto intent_sst_files = intents.second;
+    ASSERT_GT(intent_entries, 0);
+    ASSERT_GT(intent_sst_files, 0);
+  }
+
+  int expected_records_size = num_txns * num_inserts_per_txn;
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  auto received_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, expected_records_size, true));
+  LOG(INFO) << "Got " << received_records << " insert records";
+  ASSERT_EQ(expected_records_size, received_records);
+
+  // Wait for UpdatePeersAndMetrics to move the checkpoint & min_start_ht for CDC unstreamed txns.
+  SleepFor(
+      MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
+
+  // Following things will be verified:
+  // 1. No log segments have been actually GCed due to CDC's time-based retention policy
+  // (cdc_wal_retention_time_secs).
+  // 2. Post CDC's consumption and acknowledgment, intent count & intent SST file count has reduced
+  // compared to pre-consumption.
+  std::unordered_map<std::string, size_t> final_log_segment_count;
+  GetLogSegmentCountForTablet(tablet_id, &final_log_segment_count);
+  for (const auto& [peer, segment_count] : final_log_segment_count) {
+    ASSERT_EQ(segment_count, log_segment_count[peer]);
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+            final_intents_and_intent_sst_file_count;
+        RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+            tablet_id, &final_intents_and_intent_sst_file_count));
+        for (const auto& [peer, final_intents] : final_intents_and_intent_sst_file_count) {
+          if (final_intents.first >= initial_intents_and_intent_sst_file_count[peer].first ||
+              final_intents.second >= initial_intents_and_intent_sst_file_count[peer].second) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for cleanup of intent entries & intent SST files after CDC consumption"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnStreamDeletion) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  int num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+
+  int kNumTables = 1;
+  vector<YBTableName> table(kNumTables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+  std::unordered_set<TableId> expected_tables;
+  std::unordered_set<TabletId> expected_tablets;
+
+  // Create and populate data in the all 3 tables.
+  ASSERT_OK(CreateTables(kNumTables, &table, &tablets, &expected_tables, &expected_tablets));
+
+  const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Before we delete the stream, get the initial stream metadata as well as cdc state table
+  // entries.
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_tablets.size(), expected_tables.size(),
+      /* unqualified_table_ids_count */ 0, 60,
+      "Timed out waiting to verify stream metadata & cdc_state table after stream creation"));
+
+  for (int i = 0; i < kNumTables; i++) {
+    ASSERT_OK(WriteEnumsRows(
+        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kNamespaceName,
+        kTableName));
+  }
+
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(WaitForFlushTables(
+      {table[0].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  const auto& tablet_id = tablets[0].Get(0).tablet_id();
+  std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+      initial_intents_and_intent_sst_file_count;
+  ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+      tablet_id, &initial_intents_and_intent_sst_file_count));
+  for (const auto& [_, intents] : initial_intents_and_intent_sst_file_count) {
+    auto intent_entries = intents.first;
+    auto intent_sst_files = intents.second;
+    ASSERT_GT(intent_entries, 0);
+    ASSERT_GT(intent_sst_files, 0);
+  }
+
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+
+  // Verify that cdc state entries have been deleted as part of delete stream.
+  expected_tablets.clear();
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Verify the intent count is reduced to 0 on all the peers.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+            final_intents_and_intent_sst_file_count;
+        RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+            tablet_id, &final_intents_and_intent_sst_file_count));
+        for (const auto& [peer, final_intents] : final_intents_and_intent_sst_file_count) {
+          if (final_intents.first != 0 || final_intents.second != 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for cleanup of intent entries & intent SST files after CDC consumption"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnTableRemovalFromCDCStream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  int num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+
+  const int kNumTables = 3;
+  vector<YBTableName> table(kNumTables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+  std::unordered_set<TableId> expected_tables;
+  std::unordered_set<TabletId> expected_tablets;
+
+  // Create and populate data in the table.
+  ASSERT_OK(CreateTables(kNumTables, &table, &tablets, &expected_tables, &expected_tablets));
+
+  const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Before we delete the stream, get the initial stream metadata as well as cdc state table
+  // entries.
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_tablets.size(), expected_tables.size(),
+      /* unqualified_table_ids_count */ 0, 60,
+      "Timed out waiting to verify stream metadata & cdc_state table after stream creation"));
+
+  for (int i = 0; i < kNumTables; i++) {
+    ASSERT_OK(WriteEnumsRows(
+        100 /* start */, 200 /* end */, &test_cluster_, Format("_$0", i), kNamespaceName,
+        kTableName));
+  }
+
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(WaitForFlushTables(
+      {table[0].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  const auto& tablet_id = tablets[0].Get(0).tablet_id();
+  std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+      initial_intents_and_intent_sst_file_count;
+  ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+      tablet_id, &initial_intents_and_intent_sst_file_count));
+  for (const auto& [_, intents] : initial_intents_and_intent_sst_file_count) {
+    auto intent_entries = intents.first;
+    auto intent_sst_files = intents.second;
+    ASSERT_GT(intent_entries, 0);
+    ASSERT_GT(intent_sst_files, 0);
+  }
+
+  // Remove test_table_0 from CDC stream.
+  ASSERT_OK(RemoveUserTableFromCDCSDKStream(stream_id, table[0].table_id()));
+
+  // Stream metadata should no longer contain the removed table i.e. test_table_0.
+  expected_tables.erase(table[0].table_id());
+  std::unordered_set<TableId> expected_unqualified_tables = {table[0].table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_tables,
+      "Waiting for GetDBStreamInfo after table removal from CDC stream.",
+      expected_unqualified_tables);
+
+  // Verify that cdc state entries of table have been updated to max/deleted as part of table
+  // removal.
+  for (const auto& tablet : tablets[0]) {
+    expected_tablets.erase(tablet.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Final intent count should be reduced to 0 on all peers of tablets of test_table_0.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+            final_intents_and_intent_sst_file_count;
+        RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+            tablet_id, &final_intents_and_intent_sst_file_count));
+        for (const auto& [peer, final_intents] : final_intents_and_intent_sst_file_count) {
+          if (final_intents.first != 0 || final_intents.second != 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for cleanup of intent entries & intent SST files after CDC consumption"));
 }
 
 }  // namespace cdc

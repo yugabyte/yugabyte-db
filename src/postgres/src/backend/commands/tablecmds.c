@@ -760,6 +760,15 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Check consistency of arguments
 	 */
+	if (IsYugaByteEnabled() && stmt->relation->relpersistence == RELPERSISTENCE_UNLOGGED)
+	{
+		/* UNLOGGED persistence is NO-OP in YugabyteDB. */
+		ereport(NOTICE,
+				(errmsg("unlogged option is currently ignored in YugabyteDB, "
+								"all non-temp tables will be logged")));
+		stmt->relation->relpersistence = RELPERSISTENCE_PERMANENT;
+	}
+
 	if (stmt->oncommit != ONCOMMIT_NOOP
 		&& stmt->relation->relpersistence != RELPERSISTENCE_TEMP)
 		ereport(ERROR,
@@ -2235,12 +2244,10 @@ ExecuteTruncateGuts(List *explicit_rels,
 		 * a new relfilenode in the current (sub)transaction, then we can just
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
+		 * YB: Check if the unsafe truncate method should be used.
 		 */
-		if (IsYBRelation(rel) && !yb_enable_alter_table_rewrite)
-		{
-			// Call YugaByte API to truncate tables.
-			YbTruncate(rel);
-		}
+		if (YbUseUnsafeTruncate(rel))
+			YbUnsafeTruncate(rel);
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
 		{

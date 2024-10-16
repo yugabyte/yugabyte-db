@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -88,5 +89,37 @@ public class DrConfigTest extends FakeDBApplication {
     assertEquals(0, activeXClusterConfig.getDbIds().size());
     assertEquals(ConfigType.Txn, activeXClusterConfig.getType());
     assertEquals(config.getConfigUUID(), found.getStorageConfigUuid());
+  }
+
+  @Test
+  public void testUniqueReplicationGroupName() {
+    Set<String> sourceDbId1 = Set.of("db1", "db2");
+    DrConfig drConfig1 =
+        DrConfig.create(
+            "replication1",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbId1);
+    DrConfig found1 = DrConfig.getOrBadRequest(drConfig1.getUuid());
+    XClusterConfig activeXClusterConfig1 = found1.getActiveXClusterConfig();
+    assertEquals(drConfig1.getUuid(), found1.getUuid());
+
+    Set<String> sourceDbId2 = Set.of("db2");
+    DrConfig drConfig2 =
+        DrConfig.create(
+            "replication",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbId2);
+    DrConfig found2 = DrConfig.getOrBadRequest(drConfig2.getUuid());
+    XClusterConfig activeXClusterConfig2 = found2.getActiveXClusterConfig();
+    assertEquals(drConfig2.getUuid(), found2.getUuid());
+    assertNotEquals(
+        activeXClusterConfig1.getReplicationGroupName(),
+        activeXClusterConfig2.getReplicationGroupName());
   }
 }

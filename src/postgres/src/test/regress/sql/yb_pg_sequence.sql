@@ -3,6 +3,7 @@
 --
 
 -- various error cases
+CREATE UNLOGGED SEQUENCE sequence_testx;
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 MAXVALUE -20;

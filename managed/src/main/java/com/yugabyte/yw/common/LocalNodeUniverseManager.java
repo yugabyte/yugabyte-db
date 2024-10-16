@@ -12,9 +12,11 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -34,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class LocalNodeUniverseManager {
   @Inject LocalNodeManager localNodeManager;
+  @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
@@ -107,6 +110,15 @@ public class LocalNodeUniverseManager {
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public JsonNode runYcqlCommand(
+      Universe universe,
+      Boolean authEnabled,
+      String userName,
+      String password,
+      RunQueryFormData query) {
+    return ycqlQueryExecutor.executeQuery(universe, query, authEnabled, userName, password);
   }
 
   public ShellResponse executeNodeAction(

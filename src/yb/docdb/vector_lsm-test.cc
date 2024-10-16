@@ -13,10 +13,15 @@
 
 #include "yb/docdb/docdb_test_base.h"
 
+#include <google/protobuf/any.pb.h>
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/vector_lsm.h"
+#include "yb/docdb/vector_lsm-test.pb.h"
 
 #include "yb/dockv/doc_key.h"
+
+#include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
 
@@ -31,8 +36,10 @@ using namespace std::literals;
 namespace yb::docdb {
 
 using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
-using UsearchIndexFactory = MakeChunkFactory<vectorindex::UsearchIndexFactory, FloatVectorLSM>;
-using HnswlibIndexFactory = MakeChunkFactory<vectorindex::HnswlibIndexFactory, FloatVectorLSM>;
+using UsearchIndexFactory = MakeVectorIndexFactory<
+    vectorindex::UsearchIndexFactory, FloatVectorLSM>;
+using HnswlibIndexFactory = MakeVectorIndexFactory<
+    vectorindex::HnswlibIndexFactory, FloatVectorLSM>;
 
 class VectorLSMKeyValueStorageRocksDbWrapper : public VectorLSMKeyValueStorage {
  public:
@@ -96,11 +103,87 @@ class VectorLSMKeyValueStorageRocksDbWrapper : public VectorLSMKeyValueStorage {
   const ColumnId column_id_;
 };
 
+class TestFrontier : public rocksdb::UserFrontier {
+ public:
+  std::unique_ptr<UserFrontier> Clone() const override {
+    return std::make_unique<TestFrontier>(*this);
+  }
+
+  std::string ToString() const override {
+    return YB_CLASS_TO_STRING(vertex_id);
+  }
+
+  void ToPB(google::protobuf::Any* any) const override {
+    VectorLSMTestFrontierPB pb;
+    pb.set_vertex_id(vertex_id_);
+    any->PackFrom(pb);
+  }
+
+  bool Equals(const UserFrontier& pre_rhs) const override {
+    const auto& lhs = *this;
+    const auto& rhs = down_cast<const TestFrontier&>(pre_rhs);
+    return YB_CLASS_EQUALS(vertex_id);
+  }
+
+  void Update(const UserFrontier& pre_rhs, rocksdb::UpdateUserValueType update_type) override {
+    const auto& rhs = down_cast<const TestFrontier&>(pre_rhs);
+    switch (update_type) {
+      case rocksdb::UpdateUserValueType::kLargest:
+        vertex_id_ = std::max(vertex_id_, rhs.vertex_id_);
+        return;
+      case rocksdb::UpdateUserValueType::kSmallest:
+        vertex_id_ = std::min(vertex_id_, rhs.vertex_id_);
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(rocksdb::UpdateUserValueType, update_type);
+  }
+
+  bool IsUpdateValid(const UserFrontier& rhs, rocksdb::UpdateUserValueType type) const override {
+    return true;
+  }
+
+  Slice FilterAsSlice() override {
+    return Slice();
+  }
+
+  void ResetFilter() override {
+  }
+
+  void FromOpIdPBDeprecated(const OpIdPB& op_id) override {
+  }
+
+  Status FromPB(const google::protobuf::Any& any) override {
+    VectorLSMTestFrontierPB pb;
+    if (!any.UnpackTo(&pb)) {
+      return STATUS_FORMAT(Corruption, "Unpack test frontier failed");
+    }
+    vertex_id_ = pb.vertex_id();
+    return Status::OK();
+  }
+
+  uint64_t GetHybridTimeAsUInt64() const override {
+    return 0;
+  }
+
+  vectorindex::VertexId vertex_id() const {
+    return vertex_id_;
+  }
+
+  void SetVertexId(vectorindex::VertexId vertex_id) {
+    vertex_id_ = vertex_id;
+  }
+
+ private:
+  vectorindex::VertexId vertex_id_;
+};
+
+using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
+
 class VectorLSMTest : public DocDBTestBase,
                       public testing::WithParamInterface<vectorindex::ANNMethodKind> {
  protected:
   VectorLSMTest()
-      : insert_thread_pool_(rpc::ThreadPoolOptions {
+      : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
         }) {
@@ -115,7 +198,24 @@ class VectorLSMTest : public DocDBTestBase,
     return Schema();
   }
 
-  rpc::ThreadPool insert_thread_pool_;
+  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+
+  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+
+  Status InsertCube(
+      FloatVectorLSM& lsm, size_t dimensions,
+      size_t block_size = std::numeric_limits<size_t>::max(),
+      vectorindex::VertexId min_vertex_id = 0);
+
+  void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
+
+  void CheckQueryVector(
+      FloatVectorLSM& lsm, size_t dimensions, const FloatVectorLSM::Vector& query_vector,
+      size_t max_num_results);
+
+  void TestBootstrap(bool flush);
+
+  rpc::ThreadPool thread_pool_;
   std::optional<VectorLSMKeyValueStorageRocksDbWrapper> key_value_storage_;
 };
 
@@ -123,7 +223,7 @@ std::string VertexKey(vectorindex::VertexId vertex_id) {
   return Format("vertex_$0", vertex_id);
 }
 
-auto ChunkFactory(vectorindex::ANNMethodKind ann_method) {
+auto VectorIndexFactory(vectorindex::ANNMethodKind ann_method) {
   switch (ann_method) {
     case vectorindex::ANNMethodKind::kUsearch:
       return UsearchIndexFactory::Create;
@@ -133,68 +233,164 @@ auto ChunkFactory(vectorindex::ANNMethodKind ann_method) {
   return decltype(&UsearchIndexFactory::Create)(nullptr);
 }
 
-TEST_P(VectorLSMTest, Simple) {
-  constexpr int kDimensions = 4;
-
-  FloatVectorLSM lsm;
-  {
-    FloatVectorLSM::Options options = {
-      .storage_dir = JoinPathSegments(rocksdb_dir_, "vector_lsm"),
-      .chunk_factory = [factory = ChunkFactory(GetParam())]() {
-          vectorindex::HNSWOptions hnsw_options = {
-            .dimensions = kDimensions,
-          };
-          return factory(hnsw_options);
-        },
-      .points_per_chunk = 1000,
-      .key_value_storage = &*key_value_storage_,
-      .insert_thread_pool = &insert_thread_pool_,
-    };
-    ASSERT_OK(lsm.Open(std::move(options)));
-  }
-  {
-    FloatVectorLSM::InsertEntries entries;
-    for (vectorindex::VertexId i = 1; i <= (1 << kDimensions); ++i) {
-      auto bits = i - 1;
-      FloatVector vector(kDimensions);
-      for (int d = 0; d != kDimensions; ++d) {
-        vector[d] = 1.f * ((bits >> d) & 1);
-      }
-      entries.emplace_back(FloatVectorLSM::InsertEntry {
-        .vertex_id = i,
-        .base_table_key = KeyBuffer(Slice(VertexKey(i))),
-        .vector = std::move(vector),
-      });
+FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
+  FloatVectorLSM::InsertEntries result;
+  for (vectorindex::VertexId i = 1; i <= (1ULL << dimensions); ++i) {
+    auto bits = i - 1;
+    FloatVector vector(dimensions);
+    for (size_t d = 0; d != dimensions; ++d) {
+      vector[d] = 1.f * ((bits >> d) & 1);
     }
-    HybridTime write_time(1000, 0);
-    ASSERT_OK(lsm.Insert(entries, write_time));
+    result.emplace_back(FloatVectorLSM::InsertEntry {
+      .vertex_id = i,
+      .base_table_key = KeyBuffer(Slice(VertexKey(i))),
+      .vector = std::move(vector),
+    });
   }
+  return result;
+}
 
+Status VectorLSMTest::InsertCube(
+    FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
+    vectorindex::VertexId min_vertex_id) {
+  HybridTime write_time(1000, 0);
+  auto entries = CubeInsertEntries(dimensions);
+  for (size_t i = 0; i < entries.size(); i += block_size) {
+    auto begin = entries.begin() + i;
+    auto end = entries.begin() + std::min(i + block_size, entries.size());
+    if (begin->vertex_id < min_vertex_id) {
+      ptrdiff_t delta = min_vertex_id - begin->vertex_id;
+      if (delta >= end - begin) {
+        continue;
+      }
+      begin += delta;
+    }
+    FloatVectorLSM::InsertEntries block_entries(begin, end);
+    TestFrontiers frontiers;
+    frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
+    frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
+    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, frontiers));
+  }
+  return Status::OK();
+}
+
+Status VectorLSMTest::OpenVectorLSM(
+    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+  FloatVectorLSM::Options options = {
+    .storage_dir = JoinPathSegments(rocksdb_dir_, "vector_lsm"),
+    .vector_index_factory = [factory = VectorIndexFactory(GetParam()), dimensions]() {
+        vectorindex::HNSWOptions hnsw_options = {
+          .dimensions = dimensions,
+        };
+        return factory(hnsw_options);
+      },
+    .points_per_chunk = points_per_chunk,
+    .key_value_storage = &*key_value_storage_,
+    .thread_pool = &thread_pool_,
+    .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
+  };
+  return lsm.Open(std::move(options));
+}
+
+Status VectorLSMTest::InitVectorLSM(
+    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, points_per_chunk));
+  return InsertCube(lsm, dimensions, points_per_chunk);
+}
+
+void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
+  CheckQueryVector(lsm, dimensions, FloatVectorLSM::Vector(dimensions, 0.f), dimensions + 1);
+  CheckQueryVector(lsm, dimensions, FloatVectorLSM::Vector(dimensions, 1.f), dimensions + 1);
+}
+
+void VectorLSMTest::CheckQueryVector(
+    FloatVectorLSM& lsm, size_t dimensions, const FloatVectorLSM::Vector& query_vector,
+    size_t max_num_results) {
   bool stop = false;
-  FloatVectorLSM::Vector query_vector(kDimensions, 0.f);
+
+  FloatVectorLSM::SearchResults expected_results;
+  for (const auto& entry : CubeInsertEntries(dimensions)) {
+    expected_results.push_back({
+      .distance = lsm.TEST_Distance(query_vector, entry.vector),
+      .base_table_key = entry.base_table_key,
+    });
+  }
+  auto less_condition = [](const auto& lhs, const auto& rhs) {
+    return lhs.distance == rhs.distance ? lhs.base_table_key < rhs.base_table_key
+                                        : lhs.distance < rhs.distance;
+  };
+  std::sort(expected_results.begin(), expected_results.end(), less_condition);
+
+  expected_results.resize(std::min(expected_results.size(), max_num_results));
+
   while (!stop) {
     stop = !lsm.TEST_HasBackgroundInserts();
 
     FloatVectorLSM::SearchOptions options = {
-      .max_num_results = kDimensions + 1,
+      .max_num_results = max_num_results,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
-
-    ASSERT_EQ(search_result.size(), options.max_num_results);
-
-    ASSERT_EQ(search_result[0].distance, 0);
-    ASSERT_EQ(search_result[0].base_table_key.AsSlice().ToBuffer(), VertexKey(1));
-
     LOG(INFO) << "Search result: " << AsString(search_result);
 
-    std::sort(search_result.begin(), search_result.end(), [](const auto& lhs, const auto& rhs) {
-      return lhs.base_table_key < rhs.base_table_key;
-    });
-    for (int d = 0; d != kDimensions; ++d) {
-      ASSERT_EQ(search_result[d + 1].distance, 1);
-      ASSERT_EQ(search_result[d + 1].base_table_key.AsSlice().ToBuffer(), VertexKey(1 + (1 << d)));
+    ASSERT_EQ(search_result.size(), expected_results.size());
+
+    std::sort(search_result.begin(), search_result.end(), less_condition);
+
+    for (size_t i = 0; i != expected_results.size(); ++i) {
+      ASSERT_EQ(search_result[i].distance, expected_results[i].distance);
+      ASSERT_EQ(search_result[i].base_table_key, expected_results[i].base_table_key);
     }
   }
+}
+
+TEST_P(VectorLSMTest, Simple) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, 1000));
+
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+TEST_P(VectorLSMTest, MultipleChunks) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kChunkSize = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+void VectorLSMTest::TestBootstrap(bool flush) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kChunkSize = 4;
+
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+    if (flush) {
+      ASSERT_OK(lsm.Flush());
+    }
+  }
+
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
+    auto frontier_ptr = lsm.GetFlushedFrontier();
+    auto& frontier = *down_cast<TestFrontier*>(frontier_ptr.get());
+    ASSERT_OK(InsertCube(lsm, kDimensions, kChunkSize, frontier.vertex_id()));
+
+    VerifyVectorLSM(lsm, kDimensions);
+  }
+}
+
+TEST_P(VectorLSMTest, Bootstrap) {
+  TestBootstrap(false);
+}
+
+TEST_P(VectorLSMTest, BootstrapWithFlush) {
+  TestBootstrap(true);
 }
 
 TEST_F(VectorLSMTest, MergeChunkResults) {

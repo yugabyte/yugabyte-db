@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
@@ -102,9 +102,9 @@ For detailed steps for configuring popular third party tools, see [GUI clients](
 
 ## Related information
 
-- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ysqlsh](../../../api/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
-- [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ycqlsh](../../../api/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps

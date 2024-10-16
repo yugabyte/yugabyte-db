@@ -15,6 +15,8 @@ menu:
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager
     weight: 99
+    params:
+      classes: separator
 breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:

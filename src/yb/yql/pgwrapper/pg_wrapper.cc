@@ -302,6 +302,9 @@ DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
+    "Enable nop alter role statement optimization.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
   if (value != "database" && value != "tablet") {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";

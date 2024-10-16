@@ -3,6 +3,8 @@ package models
 // MigrationAssessmentReport - Details of the migration assessment report
 type MigrationAssessmentReport struct {
 
+    AssessmentStatus bool `json:"assessment_status"`
+
     Summary AssessmentReportSummary `json:"summary"`
 
     SourceEnvironment SourceEnvironmentInfo `json:"source_environment"`

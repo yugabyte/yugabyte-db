@@ -8,7 +8,7 @@ linkTitle: >
 description: >
   Case study: describes the use of PL/pgSQL procedures for provisioning roles with privileges on only the current database. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: provisioning-roles-for-current-database
     parent: language-plpgsql-subprograms
     weight: 30

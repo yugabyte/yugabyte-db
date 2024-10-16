@@ -48,6 +48,7 @@
 #include "yb/ash/wait_state_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -348,6 +349,8 @@ class Log : public RefCountedThreadSafe<Log> {
     }
   }
 
+  HybridTime GetMinStartHTOfRunningTxnsFromGCSegments() const;
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -521,6 +524,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   void WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
+  // Updates 'min_start_time_running_txns_from_gc_segments_' from the available segments for GC.
+  void UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& segments) const;
+
   LogOptions options_;
 
   // The dir path where the write-ahead log for this tablet is stored.
@@ -665,6 +671,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Minimum replicate index for the current log being written. Used for CDC read initialization.
   std::atomic<int64_t> min_replicate_index_{-1};
+
+  // Stores the min_start_time_running_txns from WAL segments that are available for GC based on
+  // index.
+  mutable std::atomic<HybridTime> min_start_time_running_txns_from_gc_segments_ =
+      HybridTime::kInvalid;
 
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};

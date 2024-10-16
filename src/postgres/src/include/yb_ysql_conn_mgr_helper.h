@@ -30,6 +30,12 @@
 #pragma once
 
 /*
+ * `yb_is_auth_backend` is used to identify if the backend is spawned just for
+ * authentication purposes.
+ */
+extern bool yb_is_auth_backend;
+
+/*
  * `yb_is_client_ysqlconnmgr` is used to identify that the current connection is
  * created by a Ysql Connection Manager.
  */
@@ -87,12 +93,15 @@ extern void YbHandleSetSessionParam(int yb_client_id);
 
 /*
  * Create the shared memory segment and send the shmem key to the client
- * connection as a HINT. 
- * NOTE: This function is only to be called during the
- * processing of `AUTHENTICATION PASSTHROUGH REQUEST` packet, once the `AUTH_OK`
- * packet is sent to the Ysql Connection Manager.
+ * connection as a HINT.
+ *
+ * NOTE: This function is only to be called during the authentication of a
+ *       logical connection via the YSQL Connection Manager.
+ * The authentication can happen via the `AUTHENTICATION PASSTHROUGH REQUEST`
+ * packet or the lightweight authentication backend.
  */
 extern void YbCreateClientId();
+extern void YbCreateClientIdWithDatabaseOid(Oid database_oid);
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
 

@@ -1044,7 +1044,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return SpecificGFlags.construct(gflags, gflags);
   }
 
-  protected String getAllErrorsStr(TaskInfo taskInfo) {
+  public static String getAllErrorsStr(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
     for (TaskInfo subTask : taskInfo.getSubTasks()) {
       if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
@@ -1089,6 +1089,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     }
     if (node.isMaster) {
       localNodeManager.killProcess(nodeName, ServerType.MASTER);
+    }
+  }
+
+  protected void startProcessesOnNode(UUID universeUuid, String nodeName)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (node.isTserver) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.TSERVER);
+    }
+    if (node.isMaster) {
+      localNodeManager.startProcess(universeUuid, nodeName, ServerType.MASTER);
     }
   }
 

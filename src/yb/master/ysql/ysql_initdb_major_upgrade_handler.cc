@@ -153,9 +153,25 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
 }
 
 void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch& epoch) {
-  auto status = RunMajorVersionCatalogUpgrade(epoch);
-  WARN_NOT_OK(
-      MajorVersionCatalogUpgradeFinished(status, epoch), "Failed to run major version upgrade");
+  auto status = RunMajorVersionUpgradeImpl(epoch);
+  WARN_NOT_OK(MajorVersionCatalogUpgradeFinished(status, epoch),
+              "Failed to run major version upgrade");
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
+  RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
+  return Status::OK();
+}
+
+// pg_upgrade does not migrate the catalog version table, so we have to explicitly copy the contents
+// of the pre-existing catalog table to the PG15 version of the table.
+Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId},
+                                                           epoch.leader_term));
+  RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables({kPgYbCatalogVersionTableIdPg11},
+                                             {kPgYbCatalogVersionTableId}, epoch.leader_term));
+  return Status::OK();
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch) {

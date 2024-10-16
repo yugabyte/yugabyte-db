@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 var tserverGflagsString string
@@ -169,15 +170,15 @@ var createUniverseCmd = &cobra.Command{
 			})
 		}
 
-		rCreate, response, err := authAPI.CreateAllClusters().
+		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universeUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
+		universeUUID := rTask.GetResourceUUID()
+		taskUUID := rTask.GetTaskUUID()
 
 		var universeData []ybaclient.UniverseResp
 
@@ -210,11 +211,15 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universe.Write(universesCtx, universeData)
-
-		} else {
-			logrus.Infoln(msg + "\n")
+			return
 		}
-
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 

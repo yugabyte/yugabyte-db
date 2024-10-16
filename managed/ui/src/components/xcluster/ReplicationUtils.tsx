@@ -663,7 +663,7 @@ export const isTableToggleable = (
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
-  xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
+  xClusterConfig ? getIsTransactionalAtomicityEnabled(xClusterConfig.type) : true;
 
 /**
  * If targetUniverse is undefined, then we just consider whether the source universe supports
@@ -700,6 +700,10 @@ export const getIsTransactionalAtomicitySupported = (
         }) < 0))
   );
 };
+
+export const getIsTransactionalAtomicityEnabled = (xClusterConfigType: XClusterConfigType) =>
+  xClusterConfigType === XClusterConfigType.TXN ||
+  xClusterConfigType === XClusterConfigType.DB_SCOPED;
 
 /**
  * Returns a string identifier for a given namespace using fields provided from the

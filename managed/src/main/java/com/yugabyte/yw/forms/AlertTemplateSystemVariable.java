@@ -52,15 +52,15 @@ public enum AlertTemplateSystemVariable {
   YUGABYTE_AFFECTED_NODE_NAMES(
       "yugabyte_affected_node_names",
       "List of node names, affected by particular alert, separated by comma",
-      "$annotations.affected_node_names"),
+      "$labels.affected_node_names"),
   YUGABYTE_AFFECTED_NODE_ADDRESSES(
       "yugabyte_affected_node_addresses",
       "List of node addresses, affected by particular alert, separated by comma",
-      "$annotations.affected_node_addresses"),
+      "$labels.affected_node_addresses"),
   YUGABYTE_AFFECTED_NODE_IDENTIFIERS(
       "yugabyte_affected_node_identifiers",
       "List of onprem node identifiers, affected by particular alert, separated by comma",
-      "$annotations.affected_node_identifiers"),
+      "$labels.affected_node_identifiers"),
   YUGABYTE_ALERT_LABELS_JSON(
       "yugabyte_alert_labels_json",
       "All alert labels in json format",

@@ -46,7 +46,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -108,9 +108,9 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       lenient().when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      lenient().when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      lenient().when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {

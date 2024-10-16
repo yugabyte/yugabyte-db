@@ -248,7 +248,7 @@ main {
         a {
           color: #2B59C3;
 
-          :hover{
+          :hover {
             text-decoration: none;
           }
         }
@@ -302,6 +302,28 @@ main {
           svg {
             path {
               fill: #4E5F6D;
+            }
+          }
+        }
+      }
+
+			&.tip {
+        background: rgba(205, 239, 225, 0.4);
+        border: 1px solid #cdefe1;
+
+        .content-area {
+          .desc {
+            color: #25323D;
+            a {
+              color: #507ce1;
+            }
+          }
+        }
+
+        .icon {
+          svg {
+            path {
+              fill: #097345;
             }
           }
         }

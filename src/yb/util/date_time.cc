@@ -397,6 +397,13 @@ int64_t DateTime::AdjustPrecision(int64_t val,
   return val;
 }
 
+// returns floor of the timestamp rounded to output_precision
+int64_t DateTime::FloorTimestamp(
+    int64_t val, size_t input_precision, const size_t output_precision) {
+  auto interim_val = AdjustPrecision(val, input_precision, output_precision);
+  return AdjustPrecision(interim_val, output_precision, input_precision);
+}
+
 namespace {
 
 std::vector<std::regex> InputFormatRegexes() {

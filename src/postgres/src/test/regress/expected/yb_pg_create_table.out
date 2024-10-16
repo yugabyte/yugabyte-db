@@ -17,25 +17,26 @@ CREATE TABLE tas_case (a text) WITH ("Oids" = true);
 WARNING:  storage parameter Oids is unsupported, ignoring
 ERROR:  unrecognized parameter "Oids"
 CREATE UNLOGGED TABLE unlogged1 (a int primary key);			-- OK
-ERROR:  UNLOGGED database object not supported yet
-LINE 1: CREATE UNLOGGED TABLE unlogged1 (a int primary key);
-               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
 CREATE TEMPORARY TABLE unlogged2 (a int primary key);			-- OK
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
     relname     | relkind | relpersistence
 ----------------+---------+----------------
+ unlogged1      | r       | p
+ unlogged1_pkey | i       | p
  unlogged2      | r       | t
  unlogged2_pkey | i       | t
-(2 rows)
+(4 rows)
 
 REINDEX INDEX unlogged2_pkey;
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
     relname     | relkind | relpersistence
 ----------------+---------+----------------
+ unlogged1      | r       | p
+ unlogged1_pkey | i       | p
  unlogged2      | r       | t
  unlogged2_pkey | i       | t
-(2 rows)
+(4 rows)
 
 DROP TABLE unlogged2;
 CREATE TABLE pg_temp.implicitly_temp (a int primary key);		-- OK

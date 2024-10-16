@@ -18,42 +18,31 @@
 #include <sys/types.h>
 
 #include <algorithm>
-#include <bitset>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/logging.h"
 
-#include "yb/dockv/partial_row.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_split_manager.h"
@@ -63,16 +52,6 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/format.h"
-#include "yb/util/math_util.h"
-#include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
-#include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -141,6 +120,8 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
 
 DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
     "Amount of time to delay clearing the fully applied schema.");
+
+DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
 
 namespace yb {
 namespace master {
@@ -794,32 +775,18 @@ void BackfillTable::LaunchBackfillOrAbort() {
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
-  if (master_->xcluster_manager()->IsTableReplicationConsumer(indexed_table_->id())) {
-    auto res = master_->xcluster_manager()->GetXClusterSafeTime(indexed_table_->namespace_id());
-    if (res.ok()) {
-      SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
-             indexed_table_->namespace_id());
+  std::vector<TableId> index_table_ids;
+  std::transform(
+      index_infos_.begin(), index_infos_.end(), std::back_inserter(index_table_ids),
+      [](const IndexInfoPB& idx_info) { return idx_info.table_id(); });
 
-      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << *res << " as the backfill read time";
-      return SetSafeTimeAndStartBackfill(*res);
-    } else {
-      if (res.status().IsNotFound()) {
-        VLOG_WITH_PREFIX(1) << "Table does not belong to transactional replication, continue with "
-                               "GetSafeTimeForTablet";
-      } else {
-        return res.status();
-      }
-    }
+  auto opt_xcluster_backfill_time =
+      VERIFY_RESULT(master_->xcluster_manager()->TryGetXClusterSafeTimeForBackfill(
+          index_table_ids, indexed_table_, epoch()));
+
+  if (opt_xcluster_backfill_time) {
+    return SetSafeTimeAndStartBackfill(*opt_xcluster_backfill_time);
   }
-  // NOTE: Colocated indexes in a transactional xCluster will use the regular tablet safe time.
-  // Only the parent table is part of the xCluster replication, so new data that is added to the
-  // index on the source universe automatically flows to the target universe even before the index
-  // is created on it.
-  // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
-  // xCluster. This is because both backfill entries and xCluster replicated entries use the same
-  // external HT field. To ensure transactional correctness we just need to pick a time higher than
-  // the time that was picked on the source side. Since the table is created on the source universe
-  // before the target this is always guaranteed to be true.
 
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);

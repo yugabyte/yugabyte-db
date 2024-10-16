@@ -79,12 +79,12 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return all_results;
   }
 
-  Status SaveToFile(const std::string& file_path) const override {
+  Status SaveToFile(const std::string& path) override {
     return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
   }
 
-  Status AttachToFile(const std::string& input_path) override {
-    return STATUS(NotSupported, "Attaching to file is not implemented for ShardedVectorIndex");
+  Status LoadFromFile(const std::string& path) override {
+    return STATUS(NotSupported, "Loading from file is not implemented for ShardedVectorIndex");
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {

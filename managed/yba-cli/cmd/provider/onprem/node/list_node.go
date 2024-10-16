@@ -76,9 +76,9 @@ var listNodesCmd = &cobra.Command{
 		}
 		if len(rList) < 1 {
 			if util.IsOutputType(formatter.TableFormatKey) {
-				logrus.Infoln("No node instances found\n")
+				logrus.Info("No node instances found\n")
 			} else {
-				logrus.Infoln("[]\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

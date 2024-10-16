@@ -64,6 +64,8 @@ export enum QUERY_KEY {
   getGflagByName = 'getGlagByName'
 }
 
+export const PROMETHEUS_URL_QUERY_KEY = 'prometheusUrl';
+
 // --------------------------------------------------------------------------------------
 // React Query Key Factories
 // --------------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ linkTitle: >
   "return" statement
 description: Describes the syntax and semantics various PL/pgSQL "return" statement variants[YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: return-statement
     parent: basic-statements
     weight: 40

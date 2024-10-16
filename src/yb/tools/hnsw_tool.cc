@@ -339,7 +339,7 @@ class BenchmarkTool {
     if (!args_.load_index_from_path.empty()) {
       LOG(INFO) << "Loading index from " << args_.load_index_from_path;
       auto load_start_time = MonoTime::Now();
-      RETURN_NOT_OK(vector_index_->AttachToFile(args_.load_index_from_path));
+      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path));
       LOG(INFO) << "Loaded index from " << args_.load_index_from_path
                 << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
     } else {

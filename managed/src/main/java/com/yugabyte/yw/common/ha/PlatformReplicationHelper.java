@@ -225,7 +225,10 @@ public class PlatformReplicationHelper {
 
       // Fill in the context.
       VelocityContext context = new VelocityContext();
-      context.put("interval", SwamperHelper.getScrapeIntervalSeconds(confGetter.getStaticConf()));
+      context.put(
+          "interval",
+          SwamperHelper.getScrapeIntervalSeconds(
+              confGetter.getGlobalConf(GlobalConfKeys.metricScrapeIntervalStandby)));
       context.put("address", remoteAddr);
       context.put("https", https);
       context.put("auth", confGetter.getGlobalConf(GlobalConfKeys.metricsAuth));
@@ -305,7 +308,7 @@ public class PlatformReplicationHelper {
 
   void switchPrometheusToFederated(URL remoteAddr) {
     try {
-      LOG.info("Switching local prometheus to federated");
+      LOG.info("Switching local prometheus to federated or updating it");
       File configFile = prometheusConfigHelper.getPrometheusConfigFile();
       File configDir = configFile.getParentFile();
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
@@ -359,7 +362,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  void ensurePrometheusConfig() {
+  public void ensurePrometheusConfig() {
     HighAvailabilityConfig.get()
         .ifPresent(
             haConfig ->

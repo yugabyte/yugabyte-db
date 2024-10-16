@@ -226,6 +226,15 @@ select * from test2;
 (1 row)
 
 drop table test2;
+select * into unlogged table test3 from atacc1;
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+select * from test3;
+ b  | c  | d
+----+----+----
+ 21 | 22 | 23
+(1 row)
+
+drop table test3;
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
 ERROR:  check constraint "checkb" of relation "atacc1" is violated by some row
@@ -935,3 +944,17 @@ SELECT * FROM tbl_serial_primary_key;
 (1 row)
 
 DROP TABLE tbl_serial_primary_key;
+-- Test LOGGED / UNLOGGED, SET, RESET
+CREATE UNLOGGED TABLE test_tbl (i int); -- ok, UNLOGGED is ignored
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+ALTER TABLE test_tbl SET UNLOGGED; -- ok, ignored
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp tables will be logged
+ALTER TABLE test_tbl SET LOGGED; -- ok
+ALTER TABLE test_tbl SET (fillfactor = 101); -- fails: out of limit
+NOTICE:  storage parameters are currently ignored in YugabyteDB
+ERROR:  value 101 out of bounds for option "fillfactor"
+DETAIL:  Valid values are between "10" and "100".
+ALTER TABLE test_tbl SET (fillfactor = 100); -- ok
+NOTICE:  storage parameters are currently ignored in YugabyteDB
+ALTER TABLE test_tbl RESET (fillfactor); -- ok
+NOTICE:  storage parameters are currently ignored in YugabyteDB

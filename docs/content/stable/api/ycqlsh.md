@@ -4,11 +4,6 @@ headerTitle: ycqlsh
 linkTitle: ycqlsh
 description: Shell for interacting with the YugabyteDB YCQL API.
 headcontent: Shell for interacting with the YugabyteDB YCQL API
-menu:
-  stable:
-    identifier: ycqlsh
-    parent: admin
-    weight: 20
 rightNav:
   hideH4: true
 type: docs
@@ -26,76 +21,7 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 ### Installation
 
-ycqlsh is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
-
-If you prefer, you can install a standalone version using any of the following methods:
-
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
-  <li>
-    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Linux x86
-    </a>
-  </li>
-  <li>
-    <a href="#linuxarm" class="nav-link" id="linuxarm-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm" aria-selected="true">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Linux ARM
-    </a>
-  </li>
-  <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
-      <i class="fa-brands fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-
-```sh
-curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
-```
-
-  </div>
-  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
-
-```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
-cd yugabyte-client-{{< yb-version version="stable" >}}/
-./bin/post_install.sh
-```
-
-  </div>
-  <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
-
-```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-aarch64.tar.gz
-cd yugabyte-client-{{< yb-version version="stable" >}}
-./bin/post_install.sh
-```
-
-  </div>
-  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-
-```sh
-docker pull yugabytedb/yugabyte-client:latest
-```
-
-  </div>
-</div>
-
-&nbsp;
+ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
 
 ### Starting ycqlsh
 

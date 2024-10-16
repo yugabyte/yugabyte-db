@@ -1393,6 +1393,10 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
       min_op_idx, xrepl_min_replicated_index, segments_to_gc));
 
+  if (segments_to_gc->size() > 0) {
+    UpdateMinStartTimeRunningTxnsFromGCSegments((*segments_to_gc));
+  }
+
   const auto max_to_delete =
       std::max<ssize_t>(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   ssize_t segments_to_gc_size = segments_to_gc->size();
@@ -2103,6 +2107,10 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
   return Status::OK();
 }
 
+HybridTime Log::GetMinStartHTOfRunningTxnsFromGCSegments() const {
+  return min_start_time_running_txns_from_gc_segments_.load(std::memory_order_acquire);
+}
+
 Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
@@ -2254,6 +2262,29 @@ void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
   // valid HT value.
   VLOG_WITH_PREFIX(2) << "setting min_start_ht_running_txns to " << min_start_ht_running_txns;
   footer_builder_.set_min_start_time_running_txns(min_start_ht_running_txns.ToUint64());
+}
+
+void Log::UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& segments_to_gc) const {
+  for (const auto& segment : segments_to_gc) {
+    if (segment->HasFooter() && segment->footer().has_min_start_time_running_txns()) {
+      auto curr_seg_min_start_time =
+          HybridTime(segment->footer().min_start_time_running_txns());
+      VLOG_WITH_PREFIX(3) << "Current segment's minimum start HT of running txns: "
+                          << curr_seg_min_start_time;
+
+      auto curr_min_start_time_running_txns_from_gc_segments_ =
+          GetMinStartHTOfRunningTxnsFromGCSegments();
+      if (!curr_min_start_time_running_txns_from_gc_segments_.is_valid() ||
+          curr_seg_min_start_time > curr_min_start_time_running_txns_from_gc_segments_) {
+        VLOG_WITH_PREFIX(1) << "Setting min_start_time_running_txns_from_gc_segments to "
+                            << curr_seg_min_start_time
+                            << ", previous min_start_time_running_txns_from_gc_segments: "
+                            << curr_min_start_time_running_txns_from_gc_segments_;
+        min_start_time_running_txns_from_gc_segments_.store(
+            curr_seg_min_start_time, std::memory_order_release);
+      }
+    }
+  }
 }
 
 }  // namespace log

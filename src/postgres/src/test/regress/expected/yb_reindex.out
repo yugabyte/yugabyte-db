@@ -627,12 +627,12 @@ INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
-                          QUERY PLAN
---------------------------------------------------------------
+                              QUERY PLAN
+-----------------------------------------------------------------------
  Append
-   ->  Index Only Scan using parted_odd_i_idx on parted_odd
+   ->  Index Only Scan using parted_odd_i_idx on parted_odd parted_1
          Index Cond: (i = 10)
-   ->  Index Only Scan using parted_even_i_idx on parted_even
+   ->  Index Only Scan using parted_even_i_idx on parted_even parted_2
          Index Cond: (i = 10)
 (5 rows)
 
@@ -659,23 +659,34 @@ SELECT i FROM parted_odd WHERE i = (2 * 5);
  10
 (1 row)
 
+-- REINDEX fails if not all child indexes are marked invalid
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'parted_i_idx'::regclass;
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'parted_odd_i_idx'::regclass;
 \c
-REINDEX INDEX parted_i_idx;
-ERROR:  REINDEX is not yet implemented for partitioned indexes
+REINDEX INDEX parted_i_idx; -- fail
+ERROR:  cannot reindex public indexes
+DETAIL:  For safety, indexes should not be serving reads during REINDEX.
+HINT:  Run UPDATE pg_index SET indisvalid = false WHERE indexrelid = '<index_name>'::regclass.
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'parted_even_i_idx'::regclass;
+\c
+REINDEX INDEX parted_i_idx; -- succeed
+-- we can also reindex just a child index
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'parted_odd_i_idx'::regclass;
+\c
 REINDEX INDEX parted_odd_i_idx;
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
-                          QUERY PLAN
---------------------------------------------------------------
+                              QUERY PLAN
+-----------------------------------------------------------------------
  Append
-   ->  Index Only Scan using parted_odd_i_idx on parted_odd
+   ->  Index Only Scan using parted_odd_i_idx on parted_odd parted_1
          Index Cond: (i = 10)
-   ->  Index Only Scan using parted_even_i_idx on parted_even
+   ->  Index Only Scan using parted_even_i_idx on parted_even parted_2
          Index Cond: (i = 10)
 (5 rows)
 

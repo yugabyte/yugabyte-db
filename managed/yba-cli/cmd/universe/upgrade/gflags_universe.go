@@ -161,14 +161,13 @@ var upgradeGflagsCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Upgrading universe %s (%s) gflags\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
 				universeUUID,
 			))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

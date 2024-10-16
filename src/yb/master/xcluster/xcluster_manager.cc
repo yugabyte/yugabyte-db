@@ -21,6 +21,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_status.h"
+#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
@@ -56,6 +57,11 @@ DEFINE_test_flag(bool, xcluster_enable_sequence_replication, false,
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
+
+DEFINE_RUNTIME_bool(auto_add_new_index_to_bidirectional_xcluster, false,
+    "If the indexed table is part of a bi-directional xCluster setup, then automatically add new "
+    "indexes for this table to replication. This flag must be set on both universes, and the index "
+    "must be created concurrently on both universes.");
 
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
@@ -268,8 +274,11 @@ Status XClusterManager::GetXClusterSafeTime(
   return XClusterTargetManager::GetXClusterSafeTime(resp, epoch);
 }
 
-Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
+Result<std::optional<HybridTime>> XClusterManager::TryGetXClusterSafeTimeForBackfill(
+    const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+    const LeaderEpoch& epoch) const {
+  return XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+      index_table_ids, indexed_table, epoch);
 }
 
 Status XClusterManager::GetXClusterSafeTimeForNamespace(
@@ -714,6 +723,14 @@ bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
          XClusterTargetManager::IsTableReplicated(table_id);
 }
 
+bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
+  // In theory this would return true for B in the case of chaining A -> B -> C, but we don't
+  // support chaining in xCluster.
+  // Replicating between 3 universes will need bi-directional xCluster A <=> B <=> C <=> A.
+  return XClusterSourceManager::IsTableReplicated(table_id) &&
+         XClusterTargetManager::IsTableReplicated(table_id);
+}
+
 Status XClusterManager::HandleTabletSplit(
     const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
     const LeaderEpoch& epoch) {
@@ -753,6 +770,14 @@ Status XClusterManager::SetupUniverseReplication(
       "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
 
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
+}
+
+Status XClusterManager::SetupUniverseReplication(
+    XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
+  SCHECK(
+      !data.automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+  return XClusterTargetManager::SetupUniverseReplication(std::move(data), epoch);
 }
 
 /*
@@ -833,6 +858,18 @@ Status XClusterManager::DeleteUniverseReplication(
             << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Status XClusterManager::AddTableToReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+    const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "Adding table " << source_table_id << " to replication group "
+            << replication_group_id
+            << (target_table_id ? " with target table " + *target_table_id : "");
+
+  return XClusterTargetManager::AddTableToReplicationGroup(
+      replication_group_id, source_table_id, bootstrap_id, target_table_id, epoch);
 }
 
 Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {

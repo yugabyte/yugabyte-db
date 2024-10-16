@@ -261,4 +261,62 @@ TEST_F(Pg15UpgradeTest, Schemas) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, Sequences) {
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
+  // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
+  // We must Shutdown before we can Restart.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+
+  const auto kSelectNextVal = "SELECT nextval('$0')";
+  const auto kSequencePg11 = "seq_pg11";
+  const auto kSequencePg15 = "seq_pg15";
+  int seq_val_pg11 = 1;
+  int seq_val_pg15 = 1;
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
+
+  auto take_3_values = [&kSelectNextVal](pgwrapper::PGConn& conn, const std::string& sequence,
+                                         int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(kSelectNextVal, sequence)));
+      ASSERT_EQ(seq_val++, result);
+    }
+  };
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
+
+  // Take three values from a random tserver, twice (to validate caching on the new sequence)
+  for (int i = 0; i < 2; i++) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg15, seq_val_pg15));
+  }
+}
+
 }  // namespace yb

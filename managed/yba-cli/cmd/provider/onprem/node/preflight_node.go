@@ -16,6 +16,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/onprem"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // preflightNodesCmd represents the provider command
@@ -101,13 +102,13 @@ var preflightNodesCmd = &cobra.Command{
 				NodeAction: "PRECHECK_DETACHED",
 			},
 		)
-		rPreflight, response, err := detachedNodeActionAPI.Execute()
+		rTask, response, err := detachedNodeActionAPI.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Preflight")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
-		nodeUUID := rPreflight.GetResourceUUID()
-		taskUUID := rPreflight.GetTaskUUID()
+		nodeUUID := rTask.GetResourceUUID()
+		taskUUID := rTask.GetTaskUUID()
 
 		if len(nodeUUID) == 0 {
 			nodeUUID = preflightNode.GetNodeUuid()
@@ -159,10 +160,16 @@ var preflightNodesCmd = &cobra.Command{
 			}
 
 			onprem.Write(nodesCtx, nodeInstanceList)
-
-		} else {
-			logrus.Infoln(msg + "\n")
+			return
 		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "preflight",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+
 	},
 }
 

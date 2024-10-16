@@ -14,6 +14,8 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
+#include "yb/consensus/log.h"
+
 namespace yb {
 namespace cdc {
 
@@ -1103,6 +1105,131 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
   ASSERT_EQ(2020, get_changes_resp.records.size());
+}
+
+// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
+TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALSegmentBySegment)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
+
+  auto tablet = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  uint32_t batch_size = 100;
+  uint32_t total_single_shard_txns = 5000;
+  uint32_t total_multi_shard_txns = 50;
+
+  auto expected_count = PerformSingleAndMultiShardInsertsInSeparateThreads(
+      total_single_shard_txns, total_multi_shard_txns, batch_size, &test_cluster_);
+
+  GetAllPendingChangesResponse change_resp;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = GetAllPendingChangesFromCdc(stream_id, tablet);
+        return change_resp.records.size() ==
+               1 + 3 * total_single_shard_txns +
+                   2 * (total_multi_shard_txns * batch_size + 2 * total_multi_shard_txns);
+      },
+      MonoDelta::FromSeconds(15), "Timed out waiting for records"));
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], change_resp.record_count[i]);
+  }
+}
+
+// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
+TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALWithUncommittedTxn)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
+
+  auto tablet = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Start a txn and do not commit it.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (999999, 999999)"));
+
+  int batch_size = 100;
+  int total_single_shard_txns = 5000;
+  int total_multi_shard_txns = 50;
+
+  auto expected_count = PerformSingleAndMultiShardInsertsInSeparateThreads(
+      total_single_shard_txns, total_multi_shard_txns, batch_size, &test_cluster_, 1);
+
+  // Since there exists a running txn with start time lesser than any other committed txn we will
+  // not receive any records in the GetChanges response.
+  auto get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
+  ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 0);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablet);
+
+  for (int i = 1; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], change_resp.record_count[i]);
+  }
+}
+
+// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
+TEST_F(
+    CDCSDKConsistentStreamTest,
+    YB_DISABLE_TEST_IN_TSAN(TestConsumptionContinuationAfterSegmentGC)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRows(0, 100, &test_cluster_));
+
+  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+  ASSERT_EQ(change_resp.records.size(), 301);
+
+  GetChangesRequestPB change_req;
+  PrepareChangeRequestWithExplicitCheckpoint(
+      &change_req, stream_id, tablets, &change_resp.checkpoint, &change_resp.checkpoint);
+  auto empty_resp = ASSERT_RESULT(GetChangesFromCDC(change_req));
+  ASSERT_EQ(empty_resp.cdc_sdk_proto_records_size(), 0);
+
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        auto log = tablet_peer->log();
+        ASSERT_OK(log->AllocateSegmentAndRollOver());
+      }
+    }
+  }
+
+  ASSERT_OK(WriteRows(100, 200, &test_cluster_));
+
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain * kTimeMultiplier));
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(tablet_peer->RunLogGC());
+      }
+    }
+  }
+
+  change_resp = GetAllPendingChangesFromCdc(stream_id, tablets, &empty_resp.cdc_sdk_checkpoint());
+  ASSERT_EQ(change_resp.records.size(), 300);
 }
 
 }  // namespace cdc

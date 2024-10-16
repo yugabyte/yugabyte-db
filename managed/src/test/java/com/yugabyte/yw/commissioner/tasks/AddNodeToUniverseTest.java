@@ -69,7 +69,7 @@ import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
@@ -101,9 +101,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
 

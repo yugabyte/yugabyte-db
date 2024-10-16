@@ -977,11 +977,19 @@ YBInitPostgresBackend(
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
-		if (yb_ash_enable_infra)
-			YbAshInit();
 
-		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-			YbQueryDiagnosticsInstallHook();
+		/*
+		 * The auth-backend doesn't execute user queries. So we don't need ASH
+		 * and query diagnostics.
+		 */
+		if (!YbIsAuthBackend())
+		{
+			if (yb_ash_enable_infra)
+				YbAshInit();
+
+			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+				YbQueryDiagnosticsInstallHook();
+		}
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -1631,6 +1639,8 @@ int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
+bool yb_enable_nop_alter_role_optimization = true;
+bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
@@ -5518,6 +5528,11 @@ bool YbIsYsqlConnMgrWarmupModeEnabled()
 	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
 }
 
+bool YbIsAuthBackend()
+{
+	return yb_is_auth_backend;
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 {
@@ -5540,4 +5555,14 @@ SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
 	if (indexRel->rd_indoption[0] & INDOPTION_DESC)
 		return SORTBY_DESC;
 	return SORTBY_ASC;
+}
+
+/*
+ * Determine if the unsafe truncate (i.e., without table rewrite) should
+ * be used for a given relation and its indexes.
+ */
+bool YbUseUnsafeTruncate(Relation rel)
+{
+	return IsYBRelation(rel) &&
+		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
 }

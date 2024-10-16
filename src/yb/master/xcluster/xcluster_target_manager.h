@@ -32,6 +32,7 @@ class UniverseReplicationInfo;
 class XClusterSafeTimeService;
 struct XClusterInboundReplicationGroupStatus;
 class XClusterConsumerReplicationStatusPB;
+struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
  public:
@@ -174,6 +175,9 @@ class XClusterTargetManager {
       const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
       const LeaderEpoch& epoch);
 
+  Status SetupUniverseReplication(
+      XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch);
+
   Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check);
 
@@ -194,6 +198,15 @@ class XClusterTargetManager {
       bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
       const LeaderEpoch& epoch);
 
+  Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+      const LeaderEpoch& epoch);
+
+  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const;
+
  private:
   // Gets the replication group status for the given replication group id. Does not populate the
   // table statuses.
@@ -213,6 +226,10 @@ class XClusterTargetManager {
       const TableId& table_id) const EXCLUDES(table_stream_ids_map_mutex_);
 
   Status ProcessPendingSchemaChanges(const LeaderEpoch& epoch);
+
+  Result<HybridTime> PrepareAndGetBackfillTimeForBiDirectionalIndex(
+      const std::vector<TableId>& index_table_ids, const TableId& indexed_table,
+      const LeaderEpoch& epoch) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

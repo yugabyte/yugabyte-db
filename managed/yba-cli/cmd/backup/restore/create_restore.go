@@ -19,6 +19,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/restore"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createRestoreCmd represents the universe backup command
@@ -175,13 +176,13 @@ var createRestoreCmd = &cobra.Command{
 			Parallelism:           util.GetInt32Pointer(int32(parallelism)),
 		}
 
-		rCreate, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The restore task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -193,49 +194,54 @@ var createRestoreCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-
-				var limit int32 = 10
-				var offset int32 = 0
-				restoreAPIDirection := "DESC"
-				restoreAPISort := "createTime"
-
-				universeUUIDList := make([]string, 0)
-				if len(strings.TrimSpace(universeUUID)) > 0 {
-					universeUUIDList = append(universeUUIDList, universeUUID)
-				}
-
-				restoreAPIFilter := ybaclient.RestoreApiFilter{
-					UniverseUUIDList: universeUUIDList,
-				}
-
-				restoreAPIQuery := ybaclient.RestorePagedApiQuery{
-					Filter:    restoreAPIFilter,
-					Direction: restoreAPIDirection,
-					Limit:     limit,
-					Offset:    offset,
-					SortBy:    restoreAPISort,
-				}
-
-				restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
-
-				// Execute restore list request
-				r, response, err := restoreListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(
-						response, err, "Restore", "Create - Get Restore")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				restoreCtx := formatter.Context{
-					Command: "create",
-					Output:  os.Stdout,
-					Format:  restore.NewRestoreFormat(viper.GetString("output")),
-				}
-				restore.Write(restoreCtx, r.GetEntities())
 			}
-		} else {
-			logrus.Infoln(msg + "\n")
+			var limit int32 = 10
+			var offset int32 = 0
+			restoreAPIDirection := "DESC"
+			restoreAPISort := "createTime"
+
+			universeUUIDList := make([]string, 0)
+			if len(strings.TrimSpace(universeUUID)) > 0 {
+				universeUUIDList = append(universeUUIDList, universeUUID)
+			}
+
+			restoreAPIFilter := ybaclient.RestoreApiFilter{
+				UniverseUUIDList: universeUUIDList,
+			}
+
+			restoreAPIQuery := ybaclient.RestorePagedApiQuery{
+				Filter:    restoreAPIFilter,
+				Direction: restoreAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    restoreAPISort,
+			}
+
+			restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
+
+			// Execute restore list request
+			r, response, err := restoreListRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(
+					response, err, "Restore", "Create - Get Restore")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			restoreCtx := formatter.Context{
+				Command: "list",
+				Output:  os.Stdout,
+				Format:  restore.NewRestoreFormat(viper.GetString("output")),
+			}
+			restore.Write(restoreCtx, r.GetEntities())
+			return
 		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 	},
 }

@@ -143,7 +143,7 @@ Perform the following steps to run the Atlas server:
     Sample data added to Apache Atlas Server.
     ```
 
-1. You can verify that the `janusgraph` and `atlas_audit` keyspaces were created using the [ycqlsh](../../admin/ycqlsh/#starting-ycqlsh) shell as follows:
+1. You can verify that the `janusgraph` and `atlas_audit` keyspaces were created using the [ycqlsh](../../api/ycqlsh/#starting-ycqlsh) shell as follows:
 
     ```sql
     ycqlsh> DESC KEYSPACES;

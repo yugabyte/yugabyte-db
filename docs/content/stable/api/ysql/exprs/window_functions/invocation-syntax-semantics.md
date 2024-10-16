@@ -4,7 +4,7 @@ linkTitle: Invocation syntax and semantics
 headerTitle: Window function invocation—SQL syntax and semantics
 description: This section specifies the syntax and semantics of the OVER clause and the WINDOW clause. You may also invoke aggregate functions t_is way.
 menu:
-  stable:
+  stable_api:
     identifier: window-functions-aggregate-functions-syntax-semantics
     parent: window-functions
     weight: 20

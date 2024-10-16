@@ -443,36 +443,36 @@ select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
 begin; alter table alterlock set (fillfactor = 100);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table alterlock set (fillfactor = 100);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 commit;
 begin; alter table alterlock reset (fillfactor);
-ERROR:  ALTER TABLE RESET not supported yet
-LINE 1: alter table alterlock reset (fillfactor);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 commit;
 begin; alter table alterlock set (toast.autovacuum_enabled = off);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table alterlock set (toast.autovacuum_enabled = off);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 commit;
 begin; alter table alterlock set (autovacuum_enabled = off);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table alterlock set (autovacuum_enabled = off);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 commit;
 begin; alter table alterlock alter column f2 set (n_distinct = 1);
 ERROR:  ALTER TABLE ALTER column not supported yet
@@ -484,12 +484,12 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 rollback;
 -- test that mixing options with different lock levels works as expected
 begin; alter table alterlock set (autovacuum_enabled = off, fillfactor = 80);
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table alterlock set (autovacuum_enabled = off, fillfac...
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 commit;
 begin; alter table alterlock alter column f2 set storage extended;
 ERROR:  ALTER TABLE ALTER column not supported yet

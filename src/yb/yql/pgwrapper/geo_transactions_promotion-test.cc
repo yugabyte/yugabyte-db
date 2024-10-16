@@ -10,13 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
+#include "yb/client/transaction_pool.h"
 
 #include "yb/master/catalog_manager.h"
+
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
@@ -45,6 +50,7 @@ DECLARE_uint64(TEST_sleep_before_entering_wait_queue_ms);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(transactions_status_poll_interval_ms);
 
 namespace yb {
 
@@ -63,6 +69,9 @@ using namespace std::literals;
 
 class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
  public:
+  // Name of 3-node local zone, which we are not connected to.
+  static constexpr auto kLocalZone = "local_txn_zone";
+
   void SetUp() override {
     constexpr size_t tables_per_region = 2;
 
@@ -77,7 +86,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     ASSERT_OK(client_->SetReplicationInfo(GetClusterDefaultReplicationInfo()));
     for (int i = 0; i < 3; ++i) {
       auto options = ASSERT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", "rack1", "local_txn_zone"));
+          "cloud0", Format("rack$0", kLocalRegion), kLocalZone));
       ASSERT_OK(cluster_->AddTabletServer(options));
     }
     num_tservers_ += 3;
@@ -138,6 +147,23 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       placement_block->set_min_num_replicas(1);
     }
     return replication_info;
+  }
+
+  void SetupTablesAndTablespaces(size_t tables_per_region) {
+    GeoTransactionsTestBase::SetupTablesAndTablespaces(tables_per_region);
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLESPACE tablespace_local WITH (replica_placement='{
+          "num_replicas": 3,
+          "placement_blocks":[{
+            "cloud": "cloud0",
+            "region": "rack$0",
+            "zone": "$1",
+            "min_num_replicas": 1
+          }]
+        }')
+    )#", kLocalRegion, kLocalZone));
   }
 
   void CreateLocalTransactionTable() {
@@ -605,6 +631,86 @@ TEST_F(GeoTransactionsPromotionTest,
   };
   CheckPromotion(TestTransactionType::kAbort, TestTransactionSuccess::kTrue, pre_commit_hook);
   CheckPromotion(TestTransactionType::kCommit, TestTransactionSuccess::kTrue, pre_commit_hook);
+}
+
+TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestParticipantLeaderStepDown)) {
+  constexpr auto kLocalTable = "test_local";
+  const auto kOtherTable = Format("$0$1_1", kTablePrefix, kOtherRegion);
+
+  constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(value int, other_value int) TABLESPACE tablespace_local "
+      "SPLIT INTO 1 TABLETS",
+      kLocalTable));
+
+  auto local_table_id = ASSERT_RESULT(GetTableIDFromTableName(kLocalTable));
+  LOG(INFO) << "Table ID: " << local_table_id;
+
+  auto local_tablet_ids = ListTabletIdsForTable(cluster_.get(), local_table_id);
+  ASSERT_EQ(1, local_tablet_ids.size());
+  auto local_tablet_id = *local_tablet_ids.begin();
+  LOG(INFO) << "Tablet ID: " << local_tablet_id;
+
+  ASSERT_OK(WaitForTableLeaders(cluster_.get(), local_table_id, kWaitTimeout));
+
+  auto local_tablet_peers = ListTableTabletPeers(cluster_.get(), local_table_id);
+  ASSERT_EQ(3, local_tablet_peers.size());
+
+  tablet::TabletPeerPtr leader_peer;
+  tablet::TabletPeerPtr follower_peer;
+  for (auto peer : local_tablet_peers) {
+    if (peer->IsLeaderAndReady()) {
+      leader_peer = peer;
+    } else {
+      follower_peer = peer;
+    }
+  }
+  ASSERT_TRUE(leader_peer != nullptr);
+  ASSERT_TRUE(follower_peer != nullptr);
+
+  LOG(INFO) << "Leader Peer: " << leader_peer->permanent_uuid();
+  LOG(INFO) << "Follower Peer: " << follower_peer->permanent_uuid();
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kLocalTable));
+
+  google::SetVLOGLevel("transaction_participant", 4);
+
+  // Trigger promotion.
+  LOG(INFO) << "Trigger promotion";
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kOtherTable));
+
+  auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
+  ASSERT_OK(WaitFor(
+      [last_transaction] { return last_transaction->OldTransactionAborted(); },
+      kWaitTimeout,
+      "Wait for old transaction to be aborted"));
+
+  // Wait for participants to notice old transaction was aborted and clean up based on that.
+  StringWaiterLogSink log_waiter{
+      Format("P $0: Transaction status update:", follower_peer->permanent_uuid())};
+  ASSERT_OK(log_waiter.WaitFor(kWaitTimeout));
+  for (size_t i = 0; i < 2; ++i) {
+    StringWaiterLogSink poll_log_waiter{
+        Format("P $0: Poll: Finished", follower_peer->permanent_uuid())};
+    ASSERT_OK(poll_log_waiter.WaitFor(
+        FLAGS_transactions_status_poll_interval_ms * 2ms * kTimeMultiplier));
+  }
+
+  LOG(INFO) << "Step down " << leader_peer->permanent_uuid();
+  ASSERT_OK(StepDown(leader_peer, follower_peer->permanent_uuid(), ForceStepDown::kTrue));
+
+  LOG(INFO) << "Commit";
+  ASSERT_OK(conn.CommitTransaction());
+
+  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM $0", kLocalTable)));
+  ASSERT_EQ(1, count);
 }
 
 TEST_F_EX(GeoTransactionsPromotionTest,

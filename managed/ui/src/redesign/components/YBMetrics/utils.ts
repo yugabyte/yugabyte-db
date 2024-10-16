@@ -10,7 +10,7 @@ import { MetricSettings, MetricTrace } from '../../helpers/dtos';
  */
 export const getPrometheusUrls = (directUrls: string[], useBrowserFqdn: boolean) =>
   directUrls.map((directUrl) => {
-    if (!useBrowserFqdn || window.location.hostname === 'localhost') {
+    if (!useBrowserFqdn) {
       return directUrl;
     }
 

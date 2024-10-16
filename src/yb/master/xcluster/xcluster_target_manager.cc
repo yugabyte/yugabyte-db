@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/client/xcluster_client.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -21,6 +22,7 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
@@ -31,6 +33,7 @@
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
@@ -40,6 +43,15 @@
 DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
     "When xCluster replication sends a DDL change, wait for the user to enter a "
     "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
+
+DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
+    "Time in seconds within which index must be created on other universe when the indexed table "
+    "is part of bidirectional xCluster replication. Applies only when "
+    "--auto_add_new_index_to_bidirectional_xcluster "
+    "is set.");
+
+DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
 
@@ -1135,8 +1147,47 @@ Status XClusterTargetManager::SetupUniverseReplication(
     }
   }
 
-  auto setup_replication_task =
-      VERIFY_RESULT(CreateSetupUniverseReplicationTask(master_, catalog_manager_, req, epoch));
+  SCHECK_PB_FIELDS_NOT_EMPTY(
+      *req, replication_group_id, producer_master_addresses, producer_table_ids);
+
+  // Construct data struct.
+  XClusterSetupUniverseReplicationData data;
+  data.replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  data.source_masters.CopyFrom(req->producer_master_addresses());
+  data.transactional = req->transactional();
+  data.automatic_ddl_mode = req->automatic_ddl_mode();
+
+  for (const auto& bootstrap_id : req->producer_bootstrap_ids()) {
+    data.stream_ids.push_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
+  }
+
+  for (const auto& source_ns_id : req->producer_namespaces()) {
+    SCHECK(!source_ns_id.id().empty(), InvalidArgument, "Invalid Namespace Id");
+    SCHECK(!source_ns_id.name().empty(), InvalidArgument, "Invalid Namespace name");
+    SCHECK_EQ(
+        source_ns_id.database_type(), YQLDatabase::YQL_DATABASE_PGSQL, InvalidArgument,
+        "Invalid Namespace database_type");
+
+    data.source_namespace_ids.push_back(source_ns_id.id());
+
+    NamespaceIdentifierPB target_ns_id;
+    target_ns_id.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    target_ns_id.set_name(source_ns_id.name());
+    auto ns_info = VERIFY_RESULT(catalog_manager_.FindNamespace(target_ns_id));
+    data.target_namespace_ids.push_back(ns_info->id());
+  }
+
+  data.source_table_ids.insert(
+      data.source_table_ids.begin(), req->producer_table_ids().begin(),
+      req->producer_table_ids().end());
+
+  return SetupUniverseReplication(std::move(data), epoch);
+}
+
+Status XClusterTargetManager::SetupUniverseReplication(
+    XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
+  auto setup_replication_task = VERIFY_RESULT(
+      CreateSetupUniverseReplicationTask(master_, catalog_manager_, std::move(data), epoch));
 
   {
     std::lock_guard l(replication_setup_tasks_mutex_);
@@ -1268,6 +1319,170 @@ Status XClusterTargetManager::DeleteUniverseReplication(
   CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
+}
+
+Status XClusterTargetManager::AddTableToReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+    const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+    const LeaderEpoch& epoch) {
+  AlterUniverseReplicationHelper::AddTablesToReplicationData data;
+  data.replication_group_id = replication_group_id;
+  data.source_table_ids_to_add.push_back(source_table_id);
+  data.source_bootstrap_ids_to_add.push_back(bootstrap_id);
+  data.target_table_id = target_table_id;
+
+  return AlterUniverseReplicationHelper::AddTablesToReplication(
+      master_, catalog_manager_, data, epoch);
+}
+
+Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+    const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+    const LeaderEpoch& epoch) const {
+  auto& xcluster_manager = *master_.xcluster_manager();
+
+  SCHECK_FORMAT(
+      indexed_table->IsBackfilling(), IllegalState, "$0 is not backfilling", indexed_table->id());
+
+  const bool is_colocated = indexed_table->colocated();
+  auto indexed_table_id = indexed_table->id();
+
+  if (is_colocated) {
+    indexed_table_id = indexed_table->LockForRead()->pb.parent_table_id();
+  }
+
+  if (FLAGS_auto_add_new_index_to_bidirectional_xcluster &&
+      xcluster_manager.IsTableBiDirectionallyReplicated(indexed_table_id)) {
+    auto backfill_ht = VERIFY_RESULT_PREPEND(
+        PrepareAndGetBackfillTimeForBiDirectionalIndex(index_table_ids, indexed_table_id, epoch),
+        "Failed while preparing index for xCluster");
+
+    LOG(INFO) << "Using " << backfill_ht << " as the backfill read time";
+    return backfill_ht;
+  }
+
+  if (is_colocated) {
+    // Colocated indexes in a transactional xCluster will use the regular tablet safe time.
+    // Only the parent table is part of the xCluster replication, so new data that is added to the
+    // index on the source universe automatically flows to the target universe even before the index
+    // is created on it.
+    // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
+    // xCluster. This is because both backfill entries and xCluster replicated entries use the same
+    // external HT field. To ensure transactional correctness we just need to pick a time higher
+    // than the time that was picked on the source side. Since the table is created on the source
+    // universe before the target this is always guaranteed to be true.
+
+    return std::nullopt;
+  }
+
+  if (xcluster_manager.IsTableReplicationConsumer(indexed_table_id)) {
+    auto safe_time_result = GetXClusterSafeTime(indexed_table->namespace_id());
+    if (safe_time_result.ok()) {
+      SCHECK(
+          !safe_time_result->is_special(), InvalidArgument,
+          "Invalid xCluster safe time for namespace ", indexed_table->namespace_id());
+
+      LOG(INFO) << "Using xCluster safe time " << *safe_time_result << " as the backfill read time";
+      return *safe_time_result;
+    }
+
+    if (safe_time_result.status().IsNotFound()) {
+      VLOG(1) << "Table " << indexed_table->id()
+              << "does not belong to transactional replication, continue with "
+                 "GetSafeTimeForTablet";
+      return std::nullopt;
+    }
+
+    return safe_time_result.status();
+  }
+
+  return std::nullopt;
+}
+
+Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectionalIndex(
+    const std::vector<TableId>& index_table_ids, const TableId& indexed_table_id,
+    const LeaderEpoch& epoch) const {
+  // Online index creation in Yugabyte is based on the F1 paper, and has 4 stages: Delete Only,
+  // Insert and Delete Only, Backfill, Read, Insert and delete. Consistency is guaranteed as long as
+  // no two nodes in the system are more than 2 stages apart. Within a single universe the
+  // CatalogVersion is bumped to enforce this.
+  //
+  // With bi-directional xCluster writes happen on both universes, each with its own CatalogVersion.
+  // The regular Create Index flow does not have a way to synchronize the stages across the
+  // universes, which before this change meant the user could not write to the indexed table while
+  // creating indexes. Its important to note that in bi-directional xCluster the users have the
+  // responsibility to insert into different key ranges on each universe. This is important as
+  // xCluster which operates at the physical layer does not enforce YSQL layer constraints like
+  // Foreign keys.
+  //
+  // In order to allow Online Create Index we synchronize the two universe but only at the Backfill
+  // stage. We allow them to diverse by more than 2 stages, since for any given key range each
+  // universe will locally ensures the 2 stage apart policy. Only the backfill stage reads and
+  // writes data across the entire key range, so this alone needs to be synchronized across the two
+  // universe.
+  //
+  // The stream for the new index table has already been created as part of its DocDB table
+  // creation. (See CreateXClusterStreamForBiDirectionalIndexTask) This function performs the
+  // following steps:
+  // 1. Wait for the index and its stream to get created on the other universe.
+  // 2. Wait for the index on the other universe to reach atleast its backfill stage.
+  // 3. Add our index table to the xCluster replication group.
+  // 4. Pick the backfill read time.
+  // 5. Wait for the indexed table to catch up to the backfill time.
+  //
+  // For colocated tables, only the parent table is part of replication, so we skip the steps
+  // related to stream creation, and adding index to replication.
+
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromSeconds(FLAGS_add_new_index_to_bidirectional_xcluster_timeout_secs);
+
+  LOG(INFO) << "Preparing indexes " << yb::ToString(index_table_ids) << " on table "
+            << indexed_table_id << " for bi-directional xCluster replication";
+
+  auto indexed_table_streams = GetStreamIdsForTable(indexed_table_id);
+  // Complex scenarios like replicating between 3 universes with multiple bi-directional replication
+  // groups A <=> B <=> C <=> A is not supported.
+  SCHECK_EQ(
+      indexed_table_streams.size(), 1, IllegalState,
+      Format("Expected 1 xCluster stream for table $0", indexed_table_id));
+
+  auto& [replication_id, indexed_table_stream_id] = *indexed_table_streams.begin();
+
+  auto replication_group = catalog_manager_.GetUniverseReplication(replication_id);
+  SCHECK_FORMAT(replication_group, NotFound, "Replication group $0 not found", replication_id);
+
+  auto remote_client = VERIFY_RESULT(GetXClusterRemoteClientHolder(*replication_group));
+
+  std::vector<std::shared_ptr<MultiStepMonitoredTask>> tasks;
+  for (const auto& index_table_id : index_table_ids) {
+    auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+    tasks.emplace_back(std::make_shared<AddBiDirectionalIndexToXClusterTargetTask>(
+        std::move(index_table_info), replication_group, remote_client, master_, epoch, deadline));
+  }
+
+  Synchronizer sync;
+  RETURN_NOT_OK(MultiStepMonitoredTask::StartTasks(
+      tasks, [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  RETURN_NOT_OK(sync.Wait());
+
+  // All indexes have reached the backfill stage on both universes. We can proceed once the indexed
+  // table is caught up.
+  const auto backfill_ht = master_.clock()->Now();
+  const auto backfill_time_micros =
+      backfill_ht.GetPhysicalValueMicros() + (3 * FLAGS_max_clock_skew_usec);
+
+  LOG(INFO) << "Waiting for replication of indexed table " << indexed_table_id << " stream "
+            << indexed_table_stream_id << " to catch up to backfill time " << backfill_ht;
+  RETURN_NOT_OK_PREPEND(
+      remote_client->GetXClusterClient().WaitForReplicationDrain(
+          indexed_table_stream_id, backfill_time_micros, deadline),
+      Format(
+          "Error waiting for replication drain of indexed table $0 stream $1", indexed_table_id,
+          indexed_table_stream_id));
+  LOG(INFO) << "Indexed table " << indexed_table_id << " xCluster stream "
+            << indexed_table_stream_id << " caught up to backfill time " << backfill_ht;
+
+  return backfill_ht;
 }
 
 }  // namespace yb::master

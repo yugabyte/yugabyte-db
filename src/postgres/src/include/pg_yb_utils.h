@@ -605,6 +605,11 @@ extern int yb_insert_on_conflict_read_batch_size;
  */
 extern bool yb_enable_fkey_catcache;
 
+/*
+ * Enable the nop alter role statement optimization.
+ */
+extern bool yb_enable_nop_alter_role_optimization;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -702,6 +707,12 @@ YbDdlRollbackEnabled () {
 }
 
 extern bool yb_use_hash_splitting_by_default;
+
+/*
+ * If set to true, non-key columns of secondary indexes are updated in-place
+ * when no key columns are modified.
+ */
+extern bool yb_enable_inplace_index_update;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -1234,8 +1245,12 @@ extern bool YbUseFastBackwardScan();
 
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
+extern bool YbIsAuthBackend();
+
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
+
+bool YbUseUnsafeTruncate(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

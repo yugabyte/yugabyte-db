@@ -4,7 +4,7 @@ headerTitle: YCQL operators
 linkTitle: Operators
 description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
 menu:
-  preview:
+  preview_api:
     parent: api-cassandra
     weight: 1360
 aliases:

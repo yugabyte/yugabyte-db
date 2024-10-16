@@ -165,7 +165,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
       sourceUniverseUuid: drConfigQuery.data?.primaryUniverseUuid,
       targetUniverseUuid: drConfigQuery.data?.drReplicaUniverseUuid,
       tableUuids: inConfigTableUuids,
-      configType: XClusterConfigType.TXN,
+      configType: drConfigQuery.data?.type,
       includeDetails: true
     }),
     () =>
@@ -173,7 +173,7 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
         drConfigQuery.data?.primaryUniverseUuid ?? '',
         drConfigQuery.data?.drReplicaUniverseUuid ?? '',
         inConfigTableUuids,
-        XClusterConfigType.TXN,
+        drConfigQuery.data?.type ?? XClusterConfigType.TXN,
         true
       ),
     { enabled: !!drConfigQuery.data }

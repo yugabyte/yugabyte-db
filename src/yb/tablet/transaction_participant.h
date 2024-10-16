@@ -217,18 +217,22 @@ class TransactionParticipant : public TransactionStatusManager {
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   // Update transaction metadata to change the status tablet for the given transaction.
-  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+  Status UpdateTransactionStatusLocation(
       const TransactionId& transaction_id, const TabletId& new_status_tablet);
 
   std::string DumpTransactions() const;
 
-  void SetIntentRetainOpIdAndTime(const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+  void SetIntentRetainOpIdAndTime(
+      const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+      HybridTime min_start_ht_cdc_unstreamed_txns);
 
   OpId GetRetainOpId() const;
 
   CoarseTimePoint GetCheckpointExpirationTime() const;
 
   OpId GetLatestCheckPoint() const;
+
+  HybridTime GetMinStartHTCDCUnstreamedTxns() const;
 
   HybridTime GetMinStartTimeAmongAllRunningTransactions() const;
 

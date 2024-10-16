@@ -27,6 +27,14 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         Json.toJson(formData));
   }
 
+  protected Result getDrConfig(UUID drConfigUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        app,
+        "GET",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID,
+        user.createAuthToken());
+  }
+
   protected Result setDatabasesDrConfig(UUID drConfigUUID, DrConfigSetDatabasesForm formData) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         app,

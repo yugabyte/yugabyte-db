@@ -2786,7 +2786,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET LOGGED */
 			| SET LOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET LOGGED", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetLogged;
@@ -2795,10 +2794,16 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET UNLOGGED */
 			| SET UNLOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET UNLOGGED", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-					n->subtype = AT_SetUnLogged;
+					/*
+					 * UNLOGGED persistence is NO-OP in YB.
+					 */
+					ereport(NOTICE,
+							(errmsg("unlogged option is currently ignored in YugabyteDB, "
+											"all non-temp tables will be logged")));
+					/* n->subtype = AT_SetUnLogged; */
+					n->subtype = AT_SetLogged;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
@@ -2981,7 +2986,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET (...) */
 			| SET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetRelOptions;
@@ -2991,7 +2995,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> RESET (...) */
 			| RESET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE RESET", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_ResetRelOptions;
@@ -3945,9 +3948,9 @@ OptTemp:	TEMPORARY					{ $$ = RELPERSISTENCE_TEMP; }
 							 parser_errposition(@1)));
 					$$ = RELPERSISTENCE_TEMP;
 				}
+			/* CREATE UNLOGGED TABLE / SEQUENCE / VIEW */
 			| UNLOGGED
 				{
-					parser_ybc_signal_unsupported(@1, "UNLOGGED database object", 1129);
 					$$ = RELPERSISTENCE_UNLOGGED;
 				}
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
@@ -4245,7 +4248,11 @@ ColConstraintElem:
 
 opt_unique_null_treatment:
 			NULLS_P DISTINCT		{ $$ = true; }
-			| NULLS_P NOT DISTINCT	{ $$ = false; }
+			| NULLS_P NOT DISTINCT
+				{
+					parser_ybc_signal_unsupported(@1, "UNIQUE NULLS NOT DISTINCT", 24399);
+					$$ = false;
+				}
 			| /*EMPTY*/				{ $$ = true; }
 		;
 
@@ -5065,6 +5072,7 @@ create_mv_target:
 				}
 		;
 
+			/* CREATE UNLOGGED MATERIALIZED VIEW */
 OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
@@ -13802,6 +13810,7 @@ OptTempTableName:
 					$$ = $4;
 					$$->relpersistence = RELPERSISTENCE_TEMP;
 				}
+			/* SELECT ... INTO UNLOGGED <table-name> */
 			| UNLOGGED opt_table qualified_name
 				{
 					$$ = $3;

@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB FAQS
-headerTitle: General FAQ
-linkTitle: General FAQ
+headerTitle: FAQ
+linkTitle: FAQ
 description: YugabyteDB FAQ — How does YugabyteDB work? When is YugabyteDB database a good fit? What APIs does YugabyteDB support? And other frequently asked questions.
 aliases:
   - /preview/faq/product/
@@ -12,6 +12,8 @@ menu:
     identifier: faq-general
     parent: faq
     weight: 10
+    params:
+      classes: separator
 type: docs
 unversioned: true
 rightNav:

@@ -292,11 +292,6 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
 DEFINE_test_flag(bool, skip_remove_intent, false,
                  "If true, remove intent will be skipped");
 
-DEFINE_test_flag(bool, cdc_immediate_transaction_cleanup_cleanup_intent_files, false,
-                 "Do intent SST file cleanup even when cdc_immediate_transaction_cleanup is on. "
-                 "This can cause data loss (#22227) but we don't run into that issue during some "
-                 "unit tests.");
-
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 using namespace std::placeholders;
@@ -1055,9 +1050,12 @@ Status Tablet::OpenKeyValueTablet() {
   if (transaction_participant_) {
     // We need to set the "cdc_sdk_min_checkpoint_op_id" so that intents don't get
     // garbage collected after transactions are loaded.
+    // Passing HybridTime::kInvalid for "min_start_ht_cdc_unstreamed_txns" to prevent
+    // unintended cleanup of intent SST files.
     transaction_participant_->SetIntentRetainOpIdAndTime(
         metadata_->cdc_sdk_min_checkpoint_op_id(),
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+        /* min_start_ht_cdc_unstreamed_txns */ HybridTime::kInvalid);
     RETURN_NOT_OK(transaction_participant_->SetDB(
         doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
     if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
@@ -1144,19 +1142,6 @@ void Tablet::DoCleanupIntentFiles() {
     return;
   }
 
-  // This codepath may in some cases delete SST files that we still need for CDC, if
-  // cdc_immediate_transaction_cleanup is enabled (#22227). This is a temporary fix and should
-  // be removed when #22227 is resolved.
-  if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) &&
-      !GetAtomicFlag(&FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files)) {
-    auto cdc_op_id = transaction_participant_->GetLatestCheckPoint();
-    if (cdc_op_id != OpId::Max()) {
-      VLOG_WITH_PREFIX_AND_FUNC(1)
-          << "Skipping because CDC is in use with cdc_immediate_transaction_cleanup enabled";
-      return;
-    }
-  }
-
   HybridTime best_file_max_ht = HybridTime::kMax;
   OpId best_file_op_id = OpId::Max();
   std::vector<rocksdb::LiveFileMetaData> files;
@@ -1206,12 +1191,15 @@ void Tablet::DoCleanupIntentFiles() {
       break;
     }
 
-    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
-      auto cdc_op_id = transaction_participant_->GetLatestCheckPoint();
-      if (cdc_op_id.valid() && (!best_file_op_id.valid() || cdc_op_id < best_file_op_id)) {
+    auto min_start_ht_cdc_unstreamed_txns =
+        transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
+    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) &&
+        metadata_->is_under_cdc_sdk_replication()) {
+      if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
+          min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
         VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Cannot delete because of CDC: " << cdc_op_id
-            << ", best file op id: " << best_file_op_id;
+            << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
+            << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
         break;
       }
     }
@@ -1224,8 +1212,9 @@ void Tablet::DoCleanupIntentFiles() {
 
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "Intents SST file will be deleted: " << best_file->ToString()
-        << ", max ht: " << best_file_max_ht << ", min running transaction start ht: "
-        << min_running_start_ht;
+        << ", max ht: " << best_file_max_ht
+        << ", min running transaction start ht: " << min_running_start_ht
+        << ", min_start_ht_cdc_unstreamed_txns: " << min_start_ht_cdc_unstreamed_txns;
     auto flush_status = regular_db_->Flush(rocksdb::FlushOptions());
     if (!flush_status.ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
@@ -2317,9 +2306,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 
 Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-    bool initial_retention_barrier) {
-
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
+    HybridTime min_start_ht_cdc_unstreamed_txns) {
   // WAL, History, Intents Retention
   if (VERIFY_RESULT(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
                                                           cdc_sdk_intents_op_id,
@@ -2329,12 +2317,16 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     // Intents Retention setting on txn_participant
     // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
     // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
+    // be deleted, provided their maximum record time is earlier than this value.
     auto txn_participant = transaction_participant();
     if (txn_participant) {
-
-      VLOG_WITH_PREFIX(1) << "Intents opid retention duration = " << cdc_sdk_op_id_expiration;
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+          << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
+          << min_start_ht_cdc_unstreamed_txns;
       txn_participant->SetIntentRetainOpIdAndTime(
-          cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration);
+          cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
       if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
         CleanupIntentFiles();
       }
@@ -2360,9 +2352,13 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   }
   auto intent_retention_duration =
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+
+  auto min_start_ht_cdc_unstreamed_txns = GetMinStartHTCDCUnstreamedTxns(log);
+
   return SetAllCDCRetentionBarriersUnlocked(
       cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
-      require_history_cutoff, true /* initial_retention_barrier */);
+      require_history_cutoff, true /* initial_retention_barrier */,
+      min_start_ht_cdc_unstreamed_txns);
 }
 
 // This is called From ChangeMetadaOperation::Apply during the
@@ -2412,15 +2408,29 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     if (log) {
       log->set_cdc_min_replicated_index(cdc_wal_index);
     }
+
+    auto min_start_ht_cdc_unstreamed_txns = GetMinStartHTCDCUnstreamedTxns(log);
+
     RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
         cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-        require_history_cutoff, false /* initial_retention_barrier */));
+        require_history_cutoff, false /* initial_retention_barrier */,
+        min_start_ht_cdc_unstreamed_txns));
     return true;
   } else {
     VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
   }
 
   return false;
+}
+
+HybridTime Tablet::GetMinStartHTCDCUnstreamedTxns(log::Log* log) const {
+  if (log) {
+    return log->GetMinStartHTOfRunningTxnsFromGCSegments();
+  }
+
+  VLOG_WITH_PREFIX_AND_FUNC(1)
+      << "log not available, returning invalid HT for min_start_ht_cdc_unstreamed_txns";
+  return HybridTime::kInvalid;
 }
 
 Status Tablet::CreatePreparedChangeMetadata(

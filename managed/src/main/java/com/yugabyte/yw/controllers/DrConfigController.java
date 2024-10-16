@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
@@ -197,10 +198,20 @@ public class DrConfigController extends AuthenticatedController {
                   targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
               .getSeconds();
       createForm.pitrParams.snapshotIntervalSec =
-          confGetter
-              .getConfForScope(
-                  targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
-              .getSeconds();
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
+    } else if (createForm.pitrParams.snapshotIntervalSec == 0L) {
+      createForm.pitrParams.snapshotIntervalSec =
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
     }
     validatePitrParams(createForm.pitrParams);
 
@@ -716,6 +727,7 @@ public class DrConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.verifyTablesNotInReplication(
             ybService,
             tableIds,
+            xClusterConfig.getTableType(),
             ConfigType.Txn,
             sourceUniverse.getUniverseUUID(),
             sourceTableInfoList,
@@ -1870,6 +1882,11 @@ public class DrConfigController extends AuthenticatedController {
 
     if (formData.pitrParams != null) {
       changeInParams = true;
+      if (formData.pitrParams.snapshotIntervalSec == 0L) {
+        formData.pitrParams.snapshotIntervalSec =
+            Math.min(
+                formData.pitrParams.retentionPeriodSec - 1, drConfig.getPitrSnapshotIntervalSec());
+      }
       validatePitrParams(formData.pitrParams);
       Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
       Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
@@ -2027,6 +2044,7 @@ public class DrConfigController extends AuthenticatedController {
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,
         tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
         ConfigType.Txn,
         targetUniverse.getUniverseUUID(),
         targetTableInfoList,

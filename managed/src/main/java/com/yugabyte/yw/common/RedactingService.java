@@ -51,6 +51,8 @@ public class RedactingService {
           // GCP private key
           .add("$..['config.config_file_contents.private_key_id']")
           .add("$..['config.config_file_contents.private_key']")
+          .add("$..config_file_contents.private_key")
+          .add("$..config_file_contents.private_key_id")
           .add("$..config.private_key_id")
           .add("$..config.private_key")
           .add("$..credentials.private_key_id")
