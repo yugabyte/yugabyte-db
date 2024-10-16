@@ -6765,6 +6765,10 @@
           "enum" : [ "ysql", "ycql" ],
           "type" : "string"
         },
+        "useLdapSsl" : {
+          "description" : "Use LDAP SSL",
+          "type" : "boolean"
+        },
         "useLdapTls" : {
           "description" : "Use LDAP TLS",
           "type" : "boolean"
