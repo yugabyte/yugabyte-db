@@ -67,7 +67,7 @@ Flag: `yb_enable_read_committed_isolation=true`
 Read Committed isolation level handles serialization errors and avoids the need to retry errors in the application logic. Read Committed provides feature compatibility, and is the default isolation level in PostgreSQL. When migrating applications from PostgreSQL to YugabyteDB, read committed is the preferred isolation level.
 
 {{<lead link="../../../architecture/transactions/read-committed/">}}
-To learn more about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
+To learn about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
 #### Cost-based optimizer
@@ -87,7 +87,7 @@ Flag: `enable_wait_queues=true`
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
 {{<lead link="../../../architecture/transactions/concurrency-control/">}}
-To learn more about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+To learn about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
 #### Batched nested loop join
@@ -97,7 +97,7 @@ Configuration parameter: `yb_enable_batchednl=true`
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
 {{<lead link="../join-strategies/">}}
-To learn more about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
+To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
 #### Default ascending indexing

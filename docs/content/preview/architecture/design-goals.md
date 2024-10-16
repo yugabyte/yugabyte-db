@@ -5,8 +5,6 @@ linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB
 headcontent: Goals and ideas considered during designing YugabyteDB
 image: fa-sharp fa-thin fa-lightbulb-exclamation-on
-aliases:
-  - /preview/architecture/design-goals/
 menu:
   preview:
     identifier: architecture-design-goals
@@ -17,15 +15,27 @@ type: docs
 
 ## Scalability
 
-YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link dest="../../explore/linear-scalability/">}}
+YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components.
 
-## High Availability
+{{<lead link="../../explore/linear-scalability/">}}
+Scalability
+{{</lead>}}
 
-YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link dest="../../explore/fault-tolerance">}}
+## High availability
 
-## Fault Tolerance
+YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election.
 
-YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link dest="../../explore/fault-tolerance">}}
+{{<lead link="../../explore/fault-tolerance/">}}
+High Availability
+{{</lead>}}
+
+## Fault tolerance
+
+YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption.
+
+{{<lead link="../../explore/fault-tolerance/">}}
+Fault tolerance
+{{</lead>}}
 
 ## Consistency
 
@@ -66,7 +76,11 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link dest="../../explore/colocation">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons.
+
+{{<lead link="../../explore/colocation/">}}
+Colocating tables
+{{</lead>}}
 
 ## Security
 
@@ -113,7 +127,11 @@ In addition:
 
 ## Cassandra compatibility
 
-[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link dest="../query-layer">}}
+[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
+
+{{<lead link="../query-layer/">}}
+Query layer
+{{</lead>}}
 
 ## Performance
 
@@ -124,7 +142,9 @@ Written in C++ to ensure high performance and the ability to use large memory he
 - high data density (total data set size per node)
 - ability to handle ever-growing event data use cases
 
-For more information, see [High performance in YugabyteDB](../docdb/performance/).
+{{<lead link="../docdb/performance/">}}
+High performance in YugabyteDB
+{{</lead>}}
 
 ## Geographically distributed deployments
 
@@ -144,6 +164,10 @@ YugabyteDB has been designed with several cloud-native principles in mind.
 ## Kubernetes-ready
 
 YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link dest="../../deploy/kubernetes/">}}
+
+{{<lead link="../../deploy/kubernetes/">}}
+Deploy in Kubernetes
+{{</lead>}}
 
 ## Open source
 
