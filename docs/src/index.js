@@ -352,7 +352,7 @@ $(document).ready(() => {
    * Change all page tabs when single tab is changed.
    */
   (() => {
-    $('.td-content .nav[role="tablist"] .nav-link').each((index, element) => {
+    $('.td-content ul.nav .nav-link').each((index, element) => {
       let tabId = element.id;
       if (tabId) {
         const regex = /(?<name>.*)-[0-9]+-tab/;
