@@ -166,7 +166,7 @@ To allow YSQL Hashicorp Vault plugin to communicate securely over SSL with Yugab
 
 Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-To start a secure local YugabyteDB cluster using `yugabyted`, refer to [Create a local multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster).
+To start a secure local YugabyteDB cluster using yugabyted, refer to [Create a local multi-node cluster](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster).
 
 For a YugabyteDB Aeon cluster, or a local YugabyteDB cluster with SSL/TLS enabled, set the SSL-related connection parameters along with other connection information while adding the database by either of the following ways:
 
