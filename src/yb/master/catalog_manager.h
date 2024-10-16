@@ -564,6 +564,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status ProcessTabletReport(TSDescriptor* ts_desc,
+                             const NodeInstancePB& ts_instance,
                              const TabletReportPB& report,
                              const LeaderEpoch& epoch,
                              TabletReportUpdatesPB *report_update,
@@ -2711,7 +2712,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Process tablets batch while processing tablet report.
   Status ProcessTabletReportBatch(
       TSDescriptor* ts_desc,
-      bool is_incremental,
+      const NodeInstancePB& ts_instance,
+      const TabletReportPB& report,
       ReportedTablets::iterator begin,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
@@ -2720,7 +2722,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
-  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
+  TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
 
   // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
   // maintain lock ordering.

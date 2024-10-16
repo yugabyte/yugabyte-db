@@ -8424,7 +8424,8 @@ bool CatalogManager::ProcessCommittedConsensusState(
 
 Status CatalogManager::ProcessTabletReportBatch(
     TSDescriptor* ts_desc,
-    bool is_incremental,
+    const NodeInstancePB& ts_instance,
+    const TabletReportPB& full_report,
     ReportedTablets::iterator begin,
     ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
@@ -8450,6 +8451,12 @@ Status CatalogManager::ProcessTabletReportBatch(
   for (auto& [table_id, table] : table_info_map) {
     table_write_locks[table_id] = table->LockForWrite();
   }
+
+  // Check whether this is the most recent report from this tserver before performing any
+  // mutations. If not, we need to stop processing here to avoid overwriting the contents of the
+  // more recent report. If a more recent report comes after this check, it cannot concurrently
+  // modify the tables / tablets in this batch because we hold write locks on the tables.
+  RETURN_NOT_OK(ts_desc->IsReportCurrent(ts_instance, &full_report));
 
   map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
   // Second Pass.
@@ -8566,8 +8573,8 @@ Status CatalogManager::ProcessTabletReportBatch(
     if (report.has_committed_consensus_state()) {
       const bool tablet_was_running = tablet_lock->is_running();
       if (ProcessCommittedConsensusState(
-              ts_desc, is_incremental, report, epoch, &table_write_locks, tablet, tablet_lock,
-              &it->tables, rpcs)) {
+              ts_desc, full_report.is_incremental(), report, epoch, &table_write_locks, tablet,
+              tablet_lock, &it->tables, rpcs)) {
         // If the tablet was mutated, add it to the tablets to be re-persisted.
         //
         // Done here and not on a per-mutation basis to avoid duplicate entries.
@@ -8576,7 +8583,8 @@ Status CatalogManager::ProcessTabletReportBatch(
           new_running_tablets[table->id()].insert(tablet->id());
         }
       }
-    } else if (is_incremental &&
+    } else if (
+        full_report.is_incremental() &&
         (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING)) {
       // When a tablet server is restarted, it sends a full tablet report with all of its tablets
       // in the NOT_STARTED state, so this would make the load balancer think that all the
@@ -8643,6 +8651,7 @@ Status CatalogManager::ProcessTabletReportBatch(
 }
 
 Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
+                                           const NodeInstancePB& ts_instance,
                                            const TabletReportPB& full_report,
                                            const LeaderEpoch& epoch,
                                            TabletReportUpdatesPB* full_report_update,
@@ -8764,7 +8773,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
     std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
-        ts_desc, full_report.is_incremental(), batch_begin, tablet_iter, epoch, full_report_update,
+        ts_desc, ts_instance, full_report, batch_begin, tablet_iter, epoch, full_report_update,
         &rpcs);
     if (!status.ok()) {
       for (auto& rpc : rpcs) {
