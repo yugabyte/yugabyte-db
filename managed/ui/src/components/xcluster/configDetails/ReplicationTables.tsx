@@ -69,7 +69,7 @@ import {
   TableTypeLabel,
   YBTable
 } from '../../../redesign/helpers/dtos';
-import { XClusterReplicationTable, XClusterTable } from '../XClusterTypes';
+import { XClusterReplicationTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
 import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
@@ -246,10 +246,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     isTableInfoIncludedInConfig,
     { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
-  const inConfigTableUuids = getInConfigTableUuid(xClusterConfig.tableDetails);
+  const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
   const isDropTablePermitted = (table: XClusterReplicationTable) =>
     isTableInfoIncludedInConfig &&
-    inConfigTableUuids.includes(getTableUuid(table)) &&
+    inConfigTableUuids.has(getTableUuid(table)) &&
     xClusterConfig.type !== XClusterConfigType.DB_SCOPED;
 
   const sourceUniverse = sourceUniverseQuery.data;
@@ -329,6 +329,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               <XClusterTableStatusLabel
                 status={xClusterTable.status}
                 errors={xClusterTable.replicationStatusErrors}
+                isDrInterface={props.isDrInterface}
               />
             )}
           >
