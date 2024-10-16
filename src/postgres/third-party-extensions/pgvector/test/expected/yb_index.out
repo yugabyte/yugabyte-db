@@ -1,3 +1,13 @@
+SELECT oid FROM pg_type where typname = 'vector';
+ oid  
+------
+ 8078
+(1 row)
+
+SET yb_enable_docdb_vector_type = false;
+CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
+ERROR:  all nodes in the cluster need to upgrade before creating a vector table
+SET yb_enable_docdb_vector_type = true;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
 WARNING:  ybdummyann is meant for internal-testing only and does not yield ordered results

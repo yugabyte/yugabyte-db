@@ -2,8 +2,10 @@
 \echo Use "CREATE EXTENSION vector" to load this file. \quit
 
 -- type
-
+SET yb_binary_restore TO true;
+SELECT binary_upgrade_set_next_pg_type_oid(8078);
 CREATE TYPE vector;
+SET yb_binary_restore TO false;
 
 CREATE FUNCTION vector_in(cstring, oid, integer) RETURNS vector
 	AS 'MODULE_PATHNAME' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;

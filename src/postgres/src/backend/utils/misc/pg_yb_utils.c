@@ -1594,6 +1594,7 @@ bool yb_enable_nop_alter_role_optimization = true;
 bool yb_enable_inplace_index_update = true;
 bool yb_enable_advisory_locks = false;
 bool yb_ignore_freeze_with_copy = true;
+bool yb_enable_docdb_vector_type = false;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,

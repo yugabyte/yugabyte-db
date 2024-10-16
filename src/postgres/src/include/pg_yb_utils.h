@@ -729,6 +729,8 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+extern bool yb_enable_docdb_vector_type;
+
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
  * supported.

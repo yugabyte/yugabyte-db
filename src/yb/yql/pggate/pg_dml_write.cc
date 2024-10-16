@@ -248,6 +248,7 @@ class PackableBindColumn final : public dockv::PackableValue {
         PackAsUInt64<uint64_t>(type_entity, datum, ValueEntryType::kUInt64, out);
         return;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -315,6 +316,7 @@ class PackableBindColumn final : public dockv::PackableValue {
       case YB_YQL_DATA_TYPE_UINT64:
         return 9;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;

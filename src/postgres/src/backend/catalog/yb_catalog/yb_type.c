@@ -1450,6 +1450,10 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 	{ CSTRINGARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ VECTOROID, YB_YQL_DATA_TYPE_VECTOR, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum }
 };
 
 /*

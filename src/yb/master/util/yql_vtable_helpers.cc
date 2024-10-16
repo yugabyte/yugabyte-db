@@ -128,6 +128,7 @@ QLValuePB GetValueHelper<std::string>::Apply(const std::string& strval, const Da
     case DataType::STRING:
       value_pb.set_string_value(strval);
       break;
+    case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       value_pb.set_binary_value(strval);
       break;

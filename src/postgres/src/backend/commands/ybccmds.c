@@ -254,6 +254,12 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 	const AttrNumber attnum = att->attnum;
 	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
+
+	if (att->atttypid == VECTOROID && !yb_enable_docdb_vector_type)
+		elog(ERROR,
+			 "all nodes in the cluster need to upgrade before creating "
+			 "a vector table");
+
 	HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 											 NameStr(att->attname),
 											 attnum,
