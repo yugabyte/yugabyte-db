@@ -17,12 +17,12 @@ YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) ma
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
-The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
+The yugabyted executable file is located in the YugabyteDB home's `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
-You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
 {{% note title="Running on macOS" %}}
