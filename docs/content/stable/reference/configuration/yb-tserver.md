@@ -442,9 +442,9 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with up to two CPU cores, the default value is considered as `4`.
   - For three or more CPU cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
@@ -469,9 +469,9 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with three or four CPU cores, the default value is considered as `4`.
   - Beyond four cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
