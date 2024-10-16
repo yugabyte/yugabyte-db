@@ -25,7 +25,7 @@ import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '.
 import {
   formatUuidForXCluster,
   getCategorizedNeedBootstrapPerTableResponse,
-  getInConfigTableUuidsToTableDetailsMap,
+  getNoSetupBootstrapRequiredTableUuids,
   getXClusterConfigTableType,
   shouldAutoIncludeIndexTables
 } from '../../ReplicationUtils';
@@ -290,6 +290,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
+  const noSetupBootstrapRequiredTableUuids = new Set<string>(
+    getNoSetupBootstrapRequiredTableUuids(xClusterConfig.tableDetails)
+  );
   const onSubmit = async (formValues: EditTablesFormValues) => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES: {
@@ -319,18 +322,15 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse = {};
           const hasSelectionError = false;
 
-          const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
-            xClusterConfig.tableDetails
+          const tableUuidsToVerifyBootstrapRequirement = formValues.tableUuids.filter((tableUuid) =>
+            noSetupBootstrapRequiredTableUuids.has(tableUuid)
           );
-          const tableUuidsToAdd = formValues.tableUuids.filter(
-            (tableUuid) => !tableUuidToTableDetails.has(tableUuid)
-          );
-          if (tableUuidsToAdd.length) {
+          if (tableUuidsToVerifyBootstrapRequirement.length) {
             try {
               xClusterConfigNeedBootstrapPerTableResponse = await isBootstrapRequired(
                 sourceUniverseUuid,
                 targetUniverseUuid,
-                tableUuidsToAdd,
+                tableUuidsToVerifyBootstrapRequirement,
                 xClusterConfig.type,
                 true /* includeDetails */
               );
@@ -377,7 +377,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           if (hasSelectionError === false) {
             setIsTableSelectionValidated(true);
           }
-          return tableUuidsToAdd.length > 0
+          return tableUuidsToVerifyBootstrapRequirement.length > 0
             ? setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY)
             : editTableMutation.mutateAsync(formValues);
         }
@@ -406,11 +406,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
 
   const selectedTableUuids = formMethods.watch('tableUuids');
   const isFormDisabled = formMethods.formState.isSubmitting;
-  const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
-    xClusterConfig.tableDetails
-  );
   const tableUuidsToAdd = selectedTableUuids.filter(
-    (tableUuid) => !tableUuidToTableDetails.has(tableUuid)
+    (tableUuid) => !noSetupBootstrapRequiredTableUuids.has(tableUuid)
   );
   const getSubmitLabel = () => {
     switch (currentFormStep) {

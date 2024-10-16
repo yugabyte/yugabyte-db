@@ -29,6 +29,7 @@ interface ExpandedConfigTableSelectProps {
   tables: MainTableRestartReplicationCandidate[];
   selectedTableUuids: string[];
   tableType: XClusterTableType;
+  isDrInterface: boolean;
   handleTableSelect: (row: MainTableRestartReplicationCandidate, isSelected: boolean) => void;
   handleTableGroupSelect: (
     isSelected: boolean,
@@ -40,6 +41,7 @@ export const ExpandedConfigTableSelect = ({
   tables,
   selectedTableUuids,
   tableType,
+  isDrInterface,
   handleTableSelect,
   handleTableGroupSelect
 }: ExpandedConfigTableSelectProps) => {
@@ -117,6 +119,7 @@ export const ExpandedConfigTableSelect = ({
             <XClusterTableStatusLabel
               status={xClusterTableStatus}
               errors={xClusterTable.replicationStatusErrors}
+              isDrInterface={isDrInterface}
             />
           )}
         >

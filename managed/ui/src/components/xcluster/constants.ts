@@ -57,7 +57,7 @@ export const XClusterTableStatus = {
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 
 /**
- * Tables status which indicate the table only exists on the target.
+ * Tables status which indicate the table only exists on the target universe.
  */
 export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
   XClusterTableStatus.DROPPED,
@@ -65,10 +65,23 @@ export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatu
   XClusterTableStatus.EXTRA_TABLE_ON_TARGET
 ];
 
+/**
+ * Table statuses which are considered in the xCluster config, but may require bootstrapping if present in
+ * the edit table selection.
+ */
+export const POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.DROPPED_FROM_TARGET
+];
+
 export const UNCONFIGURED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
   XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+];
+
+export const MISMATCHED_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
   XClusterTableStatus.EXTRA_TABLE_ON_TARGET,
-  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_SOURCE,
   XClusterTableStatus.DROPPED_FROM_TARGET
 ];
 
@@ -329,9 +342,9 @@ export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
 export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
 export const XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL =
-  'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-tables/';
+  'https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-tables/';
 export const XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL =
-  'https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/xcluster-replication/xcluster-replication-ddl/';
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/xcluster-replication/xcluster-replication-ddl/#order-of-operations';
 
 export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
 export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';
