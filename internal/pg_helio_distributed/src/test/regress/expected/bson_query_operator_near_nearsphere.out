@@ -205,8 +205,6 @@ SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
 ERROR:  Error in specification { "key" : { "t" : 1 }, "name" : "my_invalid_idx", "partialFilterExpression" : { "geo" : { "$near" : [ 1, 1 ] } } } :: caused by :: $geoNear, $near, and $nearSphere are not allowed in this context
 BEGIN;
-SET LOCAL enable_seqscan to off;
-SET LOCAL seq_page_cost TO 9999999;
 -- $near operator
 -- Test with legacy coordinate pair
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0]}}}');
@@ -604,42 +602,6 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 (9 rows)
 
 -- Test with GeoJson objects in documents
--- Test with legacy coordinate pair
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0]}}}');
-                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                        
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
- { "_id" : { "$numberInt" : "13" }, "a" : { "geo" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "35.429999999999999716" }, { "$numberDouble" : "35.439999999999997726" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.300000000000000711" } ] ] } } }
- { "_id" : { "$numberInt" : "14" }, "a" : { "geo" : { "type" : "MultiLineString", "coordinates" : [ [ [ { "$numberDouble" : "35.829999999999998295" }, { "$numberDouble" : "35.840000000000003411" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.600000000000001421" } ] ] ] } } }
- { "_id" : { "$numberInt" : "10" }, "a" : { "geo" : { "type" : "Point", "coordinates" : [ { "$numberDouble" : "35.299999999999997158" }, { "$numberDouble" : "35.399999999999998579" } ] } } }
- { "_id" : { "$numberInt" : "15" }, "a" : { "geo" : { "type" : "MultiPolygon", "coordinates" : [ [ [ [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ], [ { "$numberDouble" : "38.643999999999998352" }, { "$numberDouble" : "35.323099999999996612" } ], [ { "$numberDouble" : "38.710000000000000853" }, { "$numberDouble" : "39.320000000000000284" } ], [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ] ] ] ] } } }
- { "_id" : { "$numberInt" : "12" }, "a" : { "geo" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ], [ { "$numberDouble" : "38.600000000000001421" }, { "$numberDouble" : "35.299999999999997158" } ], [ { "$numberDouble" : "38.700000000000002842" }, { "$numberDouble" : "39.200000000000002842" } ], [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ] ] ] } } }
-(6 rows)
-
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$minDistance": 0.8}}}');
-                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                        
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "10" }, "a" : { "geo" : { "type" : "Point", "coordinates" : [ { "$numberDouble" : "35.299999999999997158" }, { "$numberDouble" : "35.399999999999998579" } ] } } }
- { "_id" : { "$numberInt" : "15" }, "a" : { "geo" : { "type" : "MultiPolygon", "coordinates" : [ [ [ [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ], [ { "$numberDouble" : "38.643999999999998352" }, { "$numberDouble" : "35.323099999999996612" } ], [ { "$numberDouble" : "38.710000000000000853" }, { "$numberDouble" : "39.320000000000000284" } ], [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ] ] ] ] } } }
- { "_id" : { "$numberInt" : "12" }, "a" : { "geo" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ], [ { "$numberDouble" : "38.600000000000001421" }, { "$numberDouble" : "35.299999999999997158" } ], [ { "$numberDouble" : "38.700000000000002842" }, { "$numberDouble" : "39.200000000000002842" } ], [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ] ] ] } } }
-(3 rows)
-
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$maxDistance": 0.8}}}');
-                                                                                                                                                     document                                                                                                                                                      
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
- { "_id" : { "$numberInt" : "13" }, "a" : { "geo" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "35.429999999999999716" }, { "$numberDouble" : "35.439999999999997726" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.300000000000000711" } ] ] } } }
- { "_id" : { "$numberInt" : "14" }, "a" : { "geo" : { "type" : "MultiLineString", "coordinates" : [ [ [ { "$numberDouble" : "35.829999999999998295" }, { "$numberDouble" : "35.840000000000003411" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.600000000000001421" } ] ] ] } } }
-(3 rows)
-
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$minDistance": 0.8, "$maxDistance": 1}}}');
-                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                        
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "10" }, "a" : { "geo" : { "type" : "Point", "coordinates" : [ { "$numberDouble" : "35.299999999999997158" }, { "$numberDouble" : "35.399999999999998579" } ] } } }
- { "_id" : { "$numberInt" : "15" }, "a" : { "geo" : { "type" : "MultiPolygon", "coordinates" : [ [ [ [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ], [ { "$numberDouble" : "38.643999999999998352" }, { "$numberDouble" : "35.323099999999996612" } ], [ { "$numberDouble" : "38.710000000000000853" }, { "$numberDouble" : "39.320000000000000284" } ], [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ] ] ] ] } } }
- { "_id" : { "$numberInt" : "12" }, "a" : { "geo" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ], [ { "$numberDouble" : "38.600000000000001421" }, { "$numberDouble" : "35.299999999999997158" } ], [ { "$numberDouble" : "38.700000000000002842" }, { "$numberDouble" : "39.200000000000002842" } ], [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ] ] ] } } }
-(3 rows)
-
 -- Test with GeoJson point
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"type": "Point", "coordinates": [0, 0]}}}}');
                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                        
@@ -713,7 +675,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 (3 rows)
 
 -- Test order of documents
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [5, 6]}}}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": { "type": "Point", "coordinates": [5, 6] }}}}');
                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
@@ -912,18 +874,35 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
 (11 rows)
 
 ROLLBACK;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0]}}}');
+                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "geo" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "35.359999999999999432" }, { "$numberDouble" : "35.420000000000001705" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberInt" : "30" } ] ] } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "geo" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "35.429999999999999716" }, { "$numberDouble" : "35.439999999999997726" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.300000000000000711" } ] ] } } }
+ { "_id" : { "$numberInt" : "14" }, "a" : { "geo" : { "type" : "MultiLineString", "coordinates" : [ [ [ { "$numberDouble" : "35.829999999999998295" }, { "$numberDouble" : "35.840000000000003411" } ], [ { "$numberDouble" : "32.299999999999997158" }, { "$numberDouble" : "30.600000000000001421" } ] ] ] } } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "geo" : { "type" : "Point", "coordinates" : [ { "$numberDouble" : "35.299999999999997158" }, { "$numberDouble" : "35.399999999999998579" } ] } } }
+ { "_id" : { "$numberInt" : "15" }, "a" : { "geo" : { "type" : "MultiPolygon", "coordinates" : [ [ [ [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ], [ { "$numberDouble" : "38.643999999999998352" }, { "$numberDouble" : "35.323099999999996612" } ], [ { "$numberDouble" : "38.710000000000000853" }, { "$numberDouble" : "39.320000000000000284" } ], [ { "$numberDouble" : "35.311999999999997613" }, { "$numberDouble" : "35.441000000000002501" } ] ] ] ] } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : { "geo" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ], [ { "$numberDouble" : "38.600000000000001421" }, { "$numberDouble" : "35.299999999999997158" } ], [ { "$numberDouble" : "38.700000000000002842" }, { "$numberDouble" : "39.200000000000002842" } ], [ { "$numberDouble" : "35.729999999999996874" }, { "$numberDouble" : "35.74000000000000199" } ] ] ] } } }
+(6 rows)
+
 -- check update
 BEGIN;
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
-                                                               update                                                               
+                                                                                                                                                                update                                                                                                                                                                 
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
+(1 row)
+
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+                                                                                                                                                                update                                                                                                                                                                 
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
-                                                               update                                                               
+                                                                                                                                                                update                                                                                                                                                                 
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""8""}, ""n"" : { ""$numberLong"" : ""9""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 ROLLBACK;
@@ -1591,9 +1570,9 @@ ROLLBACK;
 -- update with sharded
 BEGIN;
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
-                                                               update                                                               
+                                                                                                                                                                update                                                                                                                                                                 
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""9""}, ""n"" : { ""$numberLong"" : ""9""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 ROLLBACK;
@@ -1665,38 +1644,24 @@ SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6,
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SET citus.log_remote_commands TO on;
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "near_sphere_distinct", "key": "zone", "query": {"loc.coordinates": { "$near": [0, 0], "$maxDistance": 1}} }');
-NOTICE:  executing the command locally: SELECT helio_api_catalog.bson_distinct_agg(document) AS document FROM (SELECT DISTINCT helio_api_catalog.bson_distinct_unwind(agg_stage_1_1.document, 'zone'::text) AS document FROM (SELECT collection.document FROM helio_data.documents_5231_523025 collection WHERE (((helio_api_catalog.bson_validate_geometry(collection.document, 'loc.coordinates'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(collection.document, 'loc.coordinates'::text) OPERATOR(helio_api_internal.@|><|) '{ "loc.coordinates" : { "key" : "loc.coordinates", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist" } }'::helio_core.bson)) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '5231'::bigint)) ORDER BY (helio_api_catalog.bson_validate_geometry(collection.document, 'loc.coordinates'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "loc.coordinates", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist" }'::helio_core.bson)) agg_stage_1_1) agg_stage_1
                                    document                                    
 ---------------------------------------------------------------------
  { "values" : [ { "$numberInt" : "3" } ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+-- find and modify fails with geonear
 -- With sort on findAndModify with near, sort takes precedence
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 documents_5231 WHERE ((shard_key_value OPERATOR(pg_catalog.=) '5231'::bigint) AND ((helio_api_catalog.bson_validate_geometry(document, 'loc.coordinates'::text) IS NOT NULL) AND (helio_api_catalog.bson_validate_geometry(document, 'loc.coordinates'::text) OPERATOR(helio_api_internal.@|><|) '{ "loc.coordinates" : { "key" : "loc.coordinates", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist" } }'::helio_core.bson))) ORDER BY (helio_api_catalog.bson_orderby(document, ('\x0e000000105f696400ffffffff00'::bytea)::helio_core.bson)) DESC, (helio_api_catalog.bson_validate_geometry(document, 'loc.coordinates'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "loc.coordinates", "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "maxDistance" : { "$numberInt" : "1" }, "distanceField" : "dist" }'::helio_core.bson) LIMIT 1 FOR UPDATE OF documents_5231
-NOTICE:  executing the command locally: UPDATE helio_data.documents_5231_523025 documents_5231 SET document = '{ "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "10" } }'::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) '(0,8)'::tid) AND (shard_key_value OPERATOR(pg_catalog.=) '5231'::bigint))
-                                                                                          find_and_modify                                                                                           
----------------------------------------------------------------------
- ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""8"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
-(1 row)
-
+ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson ORDER BY helio_api_catalog.bson_orderby(document, $3::helio_core.bson) DESC LIMIT 1 FOR UPDATE"
 -- If no sort clause then near decides the ordering
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
-NOTICE:  executing the command locally: SELECT ctid, object_id, document FROM helio_data.documents_5231_523025 documents_5231 WHERE ((shard_key_value OPERATOR(pg_catalog.=) '5231'::bigint) AND (helio_api_catalog.bson_validate_geometry(document, 'loc.coordinates'::text) IS NOT NULL)) ORDER BY (helio_api_catalog.bson_validate_geometry(document, 'loc.coordinates'::text) OPERATOR(helio_api_catalog.<|-|>) '{ "key" : "loc.coordinates", "near" : [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], "distanceField" : "dist" }'::helio_core.bson) LIMIT 1 FOR UPDATE OF documents_5231
-NOTICE:  executing the command locally: UPDATE helio_data.documents_5231_523025 documents_5231 SET document = '{ "_id" : { "$numberInt" : "11" }, "a" : { "$numberInt" : "10" } }'::helio_core.bson WHERE ((ctid OPERATOR(pg_catalog.=) '(0,11)'::tid) AND (shard_key_value OPERATOR(pg_catalog.=) '5231'::bigint))
-                                                                                           find_and_modify                                                                                           
----------------------------------------------------------------------
- ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""11"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
-(1 row)
-
-SET citus.log_remote_commands TO off;
--- Check findAndModify updated the right set of documents
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere_distinct", "filter": { "a": 10}}');
-                              document                              
----------------------------------------------------------------------
- { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "10" } }
- { "_id" : { "$numberInt" : "11" }, "a" : { "$numberInt" : "10" } }
-(2 rows)
-
+ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context
+CONTEXT:  SQL statement "SELECT ctid, object_id, document FROM helio_data.documents_5231 WHERE shard_key_value = $1 AND document OPERATOR(helio_api_catalog.@@) $2::helio_core.bson LIMIT 1 FOR UPDATE"

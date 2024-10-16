@@ -80,9 +80,6 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 
 
 BEGIN;
-SET LOCAL enable_seqscan to off;
-SET LOCAL seq_page_cost TO 9999999;
-
 -- $near operator
 
 -- Test with legacy coordinate pair
@@ -140,12 +137,6 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 
 -- Test with GeoJson objects in documents
 
--- Test with legacy coordinate pair
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0]}}}');
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$minDistance": 0.8}}}');
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$maxDistance": 0.8}}}');
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0], "$minDistance": 0.8, "$maxDistance": 1}}}');
-
 -- Test with GeoJson point
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"type": "Point", "coordinates": [0, 0]}}}}');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 5000000}}}');
@@ -159,7 +150,7 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"$geometry": {"type": "Point", "coordinates": [0, 0]}, "$minDistance": 4500000, "$maxDistance": 5000000}}}}');
 
 -- Test order of documents
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [5, 6]}}}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": { "type": "Point", "coordinates": [5, 6] }}}}');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": {"coordinates": [5, 6]}}}}');
 
 -- Verify that @@ operator handles the near / nearSphere operators
@@ -181,9 +172,13 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db',
 
 ROLLBACK;
 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.geo": { "$nearSphere": [0, 0]}}}');
+
+
 -- check update
 BEGIN;
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
+SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
 ROLLBACK;
 
@@ -304,16 +299,12 @@ SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 9, "zone": 4, 
 SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 10, "zone": 5, "loc": { "type": "Point", "coordinates": [20, 20]} }', NULL);
 SELECT helio_api.insert_one('db','near_sphere_distinct','{ "_id": 11, "zone": 6, "loc": { "type": "Point", "coordinates": [30, 30]} }', NULL);
 
-SET citus.log_remote_commands TO on;
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere_distinct", "indexes": [{"key": {"loc.coordinates": "2d"}, "name": "my_2d_loccoord_idx" }]}', true);
+
 SELECT document FROM bson_aggregation_distinct('db', '{ "distinct": "near_sphere_distinct", "key": "zone", "query": {"loc.coordinates": { "$near": [0, 0], "$maxDistance": 1}} }');
 
+-- find and modify fails with geonear
 -- With sort on findAndModify with near, sort takes precedence
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [0, 0], "$maxDistance": 1} }, "sort": {"_id": -1}, "update": {"a": 10}, "fields": {"_id": 1}}');
-
 -- If no sort clause then near decides the ordering
 SELECT helio_api.find_and_modify('db', '{"findAndModify": "near_sphere_distinct", "query": { "loc.coordinates": { "$near": [30, 30]} }, "update": {"a": 10}, "fields": {"_id": 1}}');
-
-SET citus.log_remote_commands TO off;
-
--- Check findAndModify updated the right set of documents
-SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere_distinct", "filter": { "a": 10}}');

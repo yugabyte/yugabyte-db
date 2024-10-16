@@ -17,6 +17,7 @@
 #include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_index_support.h"
 #include "geospatial/bson_geospatial_common.h"
 
 
@@ -129,6 +130,16 @@ List * CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 										 SortGroupClause **sortClause);
 pgbson * GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 									 const char *mongoOperatorName);
+bool CanGeonearQueryUseAlternateIndex(OpExpr *geoNearOpExpr,
+									  GeonearRequest **request);
+void GetAllGeoIndexesFromRelIndexList(List *indexlist, List **_2dIndexList,
+									  List **_2dsphereIndexList);
+char * CheckGeonearEmptyKeyCanUseIndex(GeonearRequest *request, List *_2dIndexList,
+									   List *_2dsphereIndexList, bool *useSphericalIndex);
+void UpdateGeoNearQueryTreeToUseAlternateIndex(PlannerInfo *root, RelOptInfo *rel,
+											   OpExpr *geoNearOpExpr, const char *key,
+											   bool useSphericalIndex, bool isEmptyKey);
+bool TryFindGeoNearOpExpr(PlannerInfo *root, ReplaceExtensionFunctionContext *context);
 
 inline static bool
 Is2dWithSphericalDistance(const GeonearRequest *request)
@@ -193,6 +204,35 @@ ThrowGeoNearNotAllowedInContextError()
 				errcode(ERRCODE_HELIO_LOCATION5626500),
 				errmsg(
 					"$geoNear, $near, and $nearSphere are not allowed in this context")));
+}
+
+static inline void
+pg_attribute_noreturn()
+ThrowGeoNearUnableToFindIndex()
+{
+	ereport(ERROR, (errcode(ERRCODE_HELIO_UNABLETOFINDINDEX),
+					errmsg(
+						"planner returned error :: caused by :: unable to find index for $geoNear query")));
+}
+
+static inline void
+pg_attribute_noreturn()
+ThrowNoGeoIndexesFound()
+{
+	ereport(ERROR, (
+				errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+				errmsg("$geoNear requires a 2d or 2dsphere index, but none were found")));
+}
+
+static inline void
+pg_attribute_noreturn()
+ThrowAmbigousIndexesFound(const char * indexType)
+{
+	ereport(ERROR, (
+				errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+				errmsg(
+					"There is more than one %s index; unsure which to use for $geoNear",
+					indexType)));
 }
 
 #endif

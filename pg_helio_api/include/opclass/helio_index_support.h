@@ -14,6 +14,8 @@
 #include <opclass/helio_bson_text_gin.h>
 #include <vector/vector_utilities.h>
 #include <optimizer/planner.h>
+#include "planner/mongo_query_operator.h"
+
 struct IndexOptInfo;
 
 /*
@@ -32,6 +34,27 @@ typedef struct ReplaceFunctionContextInput
 } ReplaceFunctionContextInput;
 
 /*
+ * Data used to enforce index to special query operators like $geoNear, $text etc
+ */
+typedef struct ForceIndexQueryOperatorData
+{
+	/* Type of the mongo query operator used */
+	MongoQueryOperatorType type;
+
+	/*
+	 * If pushed to index by default by Postgres, then the it points to the index path otherwise NULL
+	 * In case this is NULL, we try to push to the available index
+	 */
+	IndexPath *path;
+
+	/*
+	 * Any operator specific metadata or state.
+	 * e.g. For $geoNear, it is the operatorExpression which is used for deciding the index pushdown
+	 */
+	void *opExtraState;
+} ForceIndexQueryOperatorData;
+
+/*
  * Context object passed between ReplaceExtensionFunctionOperatorsInPaths
  * and ReplaceExtensionFunctionOperatorsInRestrictionPaths. This takes context
  * about what index paths were replaced and uses that in the replacement of
@@ -39,12 +62,7 @@ typedef struct ReplaceFunctionContextInput
  */
 typedef struct ReplaceExtensionFunctionContext
 {
-	/* The query data used for Text indexes (can have NULL indexOptions) */
-	QueryTextIndexData indexOptionsForText;
 	SearchQueryEvalData queryDataForVectorSearch;
-
-	/* Whether or not the index paths/restriction paths have text query */
-	bool hasTextIndexQuery;
 
 	/* Whether or not the index paths/restriction paths have vector search query */
 	bool hasVectorSearchQuery;
@@ -54,6 +72,9 @@ typedef struct ReplaceExtensionFunctionContext
 
 	/* The input data context for the call */
 	ReplaceFunctionContextInput inputData;
+
+	/* The index data for operators can be put inside this, which are mutually exclusive and should require index */
+	ForceIndexQueryOperatorData forceIndexQueryOpData;
 } ReplaceExtensionFunctionContext;
 
 /* Type of the parent node in the query plan of a query for $in optimization. This is not
@@ -78,6 +99,8 @@ List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 void ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
 											  List *pathsList, PlanParentType parentType,
 											  ReplaceExtensionFunctionContext *context);
+void ForceIndexForQueryOperators(PlannerInfo *root, RelOptInfo *rel,
+								 ReplaceExtensionFunctionContext *context);
 
 
 bool IsBtreePrimaryKeyIndex(struct IndexOptInfo *indexInfo);

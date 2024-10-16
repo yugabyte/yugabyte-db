@@ -563,6 +563,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the operator class for BSON Text operations with helio_rum */
 	Oid BsonRumTextPathOperatorFamily;
 
+	/* OID of the operator class for BSON GIST geography */
+	Oid BsonGistGeographyOperatorFamily;
+
+	/* OID of the operator class for BSON GIST geometry */
+	Oid BsonGistGeometryOperatorFamily;
+
 	/* OID of the operator class for BSON Single Path operations with helio_rum */
 	Oid BsonRumSinglePathOperatorFamily;
 
@@ -5432,6 +5438,52 @@ BsonRumTextPathOperatorFamily(void)
 	}
 
 	return Cache.BsonRumTextPathOperatorFamily;
+}
+
+
+/*
+ * OID of the operator class for BSON GIST spherical geometries
+ */
+Oid
+BsonGistGeographyOperatorFamily(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonGistGeographyOperatorFamily == InvalidOid)
+	{
+		/* Handles extension version upgrades */
+		bool missingOk = false;
+		Oid amId = GIST_AM_OID;
+		Cache.BsonGistGeographyOperatorFamily = get_opfamily_oid(
+			amId, list_make2(makeString(ApiCatalogSchemaName), makeString(
+								 "bson_gist_geography_ops_2d")),
+			missingOk);
+	}
+
+	return Cache.BsonGistGeographyOperatorFamily;
+}
+
+
+/*
+ * OID of the operator class for BSON GIST spherical geometries
+ */
+Oid
+BsonGistGeometryOperatorFamily(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonGistGeometryOperatorFamily == InvalidOid)
+	{
+		/* Handles extension version upgrades */
+		bool missingOk = false;
+		Oid amId = GIST_AM_OID;
+		Cache.BsonGistGeometryOperatorFamily = get_opfamily_oid(
+			amId, list_make2(makeString(ApiCatalogSchemaName), makeString(
+								 "bson_gist_geometry_ops_2d")),
+			missingOk);
+	}
+
+	return Cache.BsonGistGeometryOperatorFamily;
 }
 
 

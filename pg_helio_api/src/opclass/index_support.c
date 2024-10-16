@@ -20,11 +20,13 @@
 #include <nodes/supportnodes.h>
 #include <nodes/makefuncs.h>
 #include <catalog/pg_am.h>
+#include <optimizer/paths.h>
 #include <optimizer/pathnode.h>
 #include "nodes/pg_list.h"
 #include <pg_config_manual.h>
 
 #include "query/query_operator.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "planner/mongo_query_operator.h"
 #include "opclass/helio_index_support.h"
 #include "opclass/helio_gin_index_mgmt.h"
@@ -48,6 +50,55 @@ typedef struct
 	bool isInvalidCandidateForRange;
 } DollarRangeElement;
 
+typedef List *(*UpdateIndexList)(List *indexes,
+								 ReplaceExtensionFunctionContext *context);
+typedef bool (*MatchIndexPath)(IndexPath *path, void *state);
+typedef bool (*ModifyTreeToUseAlternatePath)(PlannerInfo *root, RelOptInfo *rel,
+											 ReplaceExtensionFunctionContext *context,
+											 MatchIndexPath matchIndexPath);
+typedef void (*NoIndexFoundHandler)(void);
+
+
+/*
+ * Force index pushdown operator support functions
+ */
+typedef struct
+{
+	/*
+	 * Mongo query operator type
+	 */
+	MongoQueryOperatorType operator;
+
+	/*
+	 * Update the index list to filter out non-applicable
+	 * indexes and then try creating index paths agains to
+	 * push down to the now available index.
+	 */
+	UpdateIndexList updateIndexes;
+
+	/*
+	 * After a new set of paths are generated this function would
+	 * be called to match if the path is what the operator expects it
+	 * to be, usually the path is checked to be an index path and the operator
+	 * specific quals are pushed to the index
+	 */
+	MatchIndexPath matchIndexPath;
+
+	/*
+	 * If updating index list doesn't help in creating any interesting index
+	 * paths, then just ask the operator to do any necessary updates to the
+	 * query tree and try any alternate path, this can be any path based on
+	 * the query operator and should return true to notify that a valid
+	 * path exist.
+	 */
+	ModifyTreeToUseAlternatePath alternatePath;
+
+	/*
+	 * Handler when no applicable index was found
+	 */
+	NoIndexFoundHandler noIndexHandler;
+} ForceIndexSupportFuncs;
+
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -70,6 +121,54 @@ static Path * OptimizeBitmapQualsForBitmapAnd(BitmapAndPath *path,
 static IndexPath * OptimizeIndexPathForFilters(IndexPath *indexPath,
 											   ReplaceExtensionFunctionContext *context);
 static Expr * OpExprForAggregationStageSupportFunction(Node *supportRequest);
+static Path * FindIndexPathForQueryOperator(RelOptInfo *rel, List *pathList,
+											ReplaceExtensionFunctionContext *context,
+											MatchIndexPath matchIndexPath,
+											void *matchContext);
+static bool IsMatchingPathForQueryOperator(RelOptInfo *rel, Path *path,
+										   ReplaceExtensionFunctionContext *context,
+										   MatchIndexPath matchIndexPath,
+										   void *matchContext);
+
+/*-------------------------------*/
+/* Force index support functions */
+/*-------------------------------*/
+static List * UpdateIndexListForGeonear(List *existingIndex,
+										ReplaceExtensionFunctionContext *context);
+static bool MatchIndexPathForGeonear(IndexPath *path, void *matchContext);
+static bool TryUseAlternateIndexGeonear(PlannerInfo *root, RelOptInfo *rel,
+										ReplaceExtensionFunctionContext *context,
+										MatchIndexPath matchIndexPath);
+static List * UpdateIndexListForText(List *existingIndex,
+									 ReplaceExtensionFunctionContext *context);
+static bool MatchIndexPathForText(IndexPath *path, void *matchContext);
+static bool PushTextQueryToRuntime(PlannerInfo *root, RelOptInfo *rel,
+								   ReplaceExtensionFunctionContext *context,
+								   MatchIndexPath matchIndexPath);
+static void ThrowNoTextIndexFound(void);
+static bool MatchIndexPathEquals(IndexPath *path, void *matchContext);
+
+
+static const ForceIndexSupportFuncs ForceIndexOperatorSupport[] =
+{
+	{
+		.operator = QUERY_OPERATOR_GEONEAR,
+		.updateIndexes = &UpdateIndexListForGeonear,
+		.matchIndexPath = &MatchIndexPathForGeonear,
+		.alternatePath = &TryUseAlternateIndexGeonear,
+		.noIndexHandler = &ThrowGeoNearUnableToFindIndex
+	},
+	{
+		.operator = QUERY_OPERATOR_TEXT,
+		.updateIndexes = &UpdateIndexListForText,
+		.matchIndexPath = &MatchIndexPathForText,
+		.noIndexHandler = &ThrowNoTextIndexFound,
+		.alternatePath = &PushTextQueryToRuntime,
+	}
+};
+
+static const int ForceIndexOperatorsCount = sizeof(ForceIndexOperatorSupport) /
+											sizeof(ForceIndexSupportFuncs);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -378,6 +477,122 @@ IsBtreePrimaryKeyIndex(IndexOptInfo *indexInfo)
 		   indexInfo->unique &&
 		   indexInfo->indexkeys[0] == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
 		   indexInfo->indexkeys[1] == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER;
+}
+
+
+/*
+ * ForceIndexForQueryOperators ensures that the index path is available for a
+ * query operator which requires a mandatory index, e.g ($geoNear, $text etc).
+ *
+ * Today we assume that only one such operator is used in a query, because we only try to
+ * prioritize one index path, if the operator is not pushed to the index.
+ *
+ * Note: This function doesn't do any validation to make sure only one such operator is provided
+ * in the query, so this should be done during the query construction.
+ */
+void
+ForceIndexForQueryOperators(PlannerInfo *root, RelOptInfo *rel,
+							ReplaceExtensionFunctionContext *context)
+{
+	if (context->forceIndexQueryOpData.type == QUERY_OPERATOR_UNKNOWN ||
+		(context->forceIndexQueryOpData.type == QUERY_OPERATOR_GEONEAR &&
+		 !TryFindGeoNearOpExpr(root, context)))
+	{
+		/* If no special operator requirement or geonear with no geonear operator (other geo operators)
+		 * then return */
+		return;
+	}
+
+	/*
+	 * First check if the query for special operator is pushed to index and there are multiple index paths, then
+	 * discard other paths so that only the index path for the special operator is used.
+	 */
+	if (context->forceIndexQueryOpData.path != NULL)
+	{
+		if (list_length(rel->pathlist) == 1)
+		{
+			/* If there is only one index path, then return */
+			return;
+		}
+
+		Path *matchingPath = FindIndexPathForQueryOperator(rel, rel->pathlist, context,
+														   MatchIndexPathEquals,
+														   context->forceIndexQueryOpData.
+														   path);
+		rel->partial_pathlist = NIL;
+		rel->pathlist = list_make1(matchingPath);
+		return;
+	}
+
+	ForceIndexSupportFuncs *forceIndexFuncs = NULL;
+	for (int i = 0; i < ForceIndexOperatorsCount; i++)
+	{
+		if (ForceIndexOperatorSupport[i].operator == context->forceIndexQueryOpData.type)
+		{
+			forceIndexFuncs = (ForceIndexSupportFuncs *) &ForceIndexOperatorSupport[i];
+		}
+	}
+
+	if (forceIndexFuncs == NULL)
+	{
+		/* No index support functions !!, can't do anything */
+		return;
+	}
+
+	List *oldIndexList = rel->indexlist;
+	List *oldPathList = rel->pathlist;
+	List *oldPartialPathList = rel->partial_pathlist;
+
+	/* Only consider the indexes that we want to push to based on the operator */
+	List *newIndexList = forceIndexFuncs->updateIndexes(oldIndexList, context);
+
+	/* Generate interesting index paths again with filtered indexes */
+	rel->indexlist = newIndexList;
+	rel->pathlist = NIL;
+	rel->partial_pathlist = NIL;
+
+	create_index_paths(root, rel);
+
+	/* Check if index path was created for the operator based on matching criteria */
+	Path *matchingPath = FindIndexPathForQueryOperator(rel, rel->pathlist,
+													   context,
+													   forceIndexFuncs->matchIndexPath,
+													   context->forceIndexQueryOpData.
+													   opExtraState);
+	if (matchingPath == NULL)
+	{
+		/* We didn't find any index path for the query operators by just updating the
+		 * indexlist, if the operator supports alternate index pushdown delegate to the
+		 * operator otherwise its just a failure to find the index.
+		 */
+		bool alternatePathCreated = false;
+		if (forceIndexFuncs->alternatePath != NULL)
+		{
+			alternatePathCreated =
+				forceIndexFuncs->alternatePath(root, rel, context,
+											   forceIndexFuncs->matchIndexPath);
+		}
+
+		if (!alternatePathCreated)
+		{
+			forceIndexFuncs->noIndexHandler();
+		}
+	}
+
+	rel->indexlist = oldIndexList;
+	if (rel->pathlist == NIL)
+	{
+		/* Just use the old pathlist if no new paths are added and there is no error
+		 * because we want to continue with the query
+		 */
+		rel->pathlist = oldPathList;
+		rel->partial_pathlist = oldPartialPathList;
+	}
+
+	/* Replace the func exprs to opExpr for consistency if new quals are added above */
+	rel->baserestrictinfo =
+		ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
+															context);
 }
 
 
@@ -1014,34 +1229,52 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 					BsonRumTextPathOperatorFamily())
 				{
 					/* If there's no options, set it. Otherwise, fail with "too many paths" */
-					context->hasTextIndexQuery = true;
-					if (context->indexOptionsForText.indexOptions == NULL)
-					{
-						context->indexOptionsForText.indexOptions = options;
-					}
-					else
+					QueryTextIndexData *textIndexData =
+						context->forceIndexQueryOpData.opExtraState;
+					if (textIndexData != NULL)
 					{
 						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 										errmsg("Too many text expressions")));
 					}
+					context->forceIndexQueryOpData.type = QUERY_OPERATOR_TEXT;
+					context->forceIndexQueryOpData.path = indexPath;
+					textIndexData = palloc0(sizeof(QueryTextIndexData));
+					textIndexData->indexOptions = options;
+					context->forceIndexQueryOpData.opExtraState = (void *) textIndexData;
 
 					ReplaceExtensionFunctionContext childContext = {
-						{ 0 }, { 0 }, false, false, false, context->inputData
+						{ 0 }, false, false, context->inputData,
+						{ .path = NULL, .type = QUERY_OPERATOR_UNKNOWN, .opExtraState =
+							  NULL }
 					};
-					childContext.indexOptionsForText.indexOptions = options;
+					childContext.forceIndexQueryOpData = context->forceIndexQueryOpData;
 					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
 						rinfo->clause,
 						&childContext);
-					context->indexOptionsForText = childContext.indexOptionsForText;
 				}
 				else
 				{
 					ReplaceExtensionFunctionContext childContext = {
-						{ 0 }, { 0 }, false, false, false, context->inputData
+						{ 0 }, false, false, context->inputData,
+						{ .path = NULL, .type = QUERY_OPERATOR_UNKNOWN, .opExtraState =
+							  NULL }
 					};
 					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
 						rinfo->clause,
 						&childContext);
+				}
+			}
+
+			if (indexPath->indexinfo->relam == GIST_AM_OID &&
+				list_length(indexPath->indexorderbys) == 1)
+			{
+				/* Specific to geonear: Check if the geonear query is pushed to index */
+				Expr *orderByExpr = linitial(indexPath->indexorderbys);
+				if (IsA(orderByExpr, OpExpr) && ((OpExpr *) orderByExpr)->opno ==
+					BsonGeonearDistanceOperatorId())
+				{
+					context->forceIndexQueryOpData.type = QUERY_OPERATOR_GEONEAR;
+					context->forceIndexQueryOpData.path = indexPath;
 				}
 			}
 
@@ -1081,8 +1314,11 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 			 * the serialization details of the index. This is then later used in $meta
 			 * queries to get the rank
 			 */
-			context->hasTextIndexQuery = true;
-			if (context->indexOptionsForText.indexOptions != NULL)
+			context->forceIndexQueryOpData.type = QUERY_OPERATOR_TEXT;
+			QueryTextIndexData *textIndexData =
+				(QueryTextIndexData *) context->forceIndexQueryOpData.opExtraState;
+
+			if (textIndexData != NULL && textIndexData->indexOptions != NULL)
 			{
 				/* TODO: Make TextIndex force use the index path if available
 				 * Today this isn't guaranteed if there's another path picked
@@ -1090,13 +1326,12 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 				 */
 				context->inputData.isRuntimeTextScan = true;
 				OpExpr *expr = GetOpExprClauseFromIndexOperator(operator, args,
-																context->
-																indexOptionsForText.
+																textIndexData->
 																indexOptions);
 				Expr *finalExpr = (Expr *) GetFuncExprForTextWithIndexOptions(
-					expr->args, context->indexOptionsForText.indexOptions,
+					expr->args, textIndexData->indexOptions,
 					context->inputData.isRuntimeTextScan,
-					&context->indexOptionsForText);
+					textIndexData);
 				if (finalExpr != NULL)
 				{
 					return finalExpr;
@@ -1106,8 +1341,30 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 		else if (operator->indexStrategy != BSON_INDEX_STRATEGY_INVALID)
 		{
 			return (Expr *) GetOpExprClauseFromIndexOperator(operator, args,
-															 context->indexOptionsForText.
-															 indexOptions);
+															 NULL);
+		}
+	}
+	else if (IsA(clause, NullTest))
+	{
+		NullTest *nullTest = (NullTest *) clause;
+		if (context->forceIndexQueryOpData.type == QUERY_OPERATOR_UNKNOWN &&
+			nullTest->nulltesttype == IS_NOT_NULL &&
+			IsA(nullTest->arg, FuncExpr))
+		{
+			Oid functionOid = ((FuncExpr *) nullTest->arg)->funcid;
+			if (functionOid == BsonValidateGeographyFunctionId() ||
+				functionOid == BsonValidateGeometryFunctionId())
+			{
+				/*
+				 * The query contains a geospatial operator, now assume that it is a potential
+				 * geonear query as well, because today for few instances we can't uniquely identify
+				 * if the query is a geonear query.
+				 *
+				 * e.g. Sharded collections cases where ORDER BY is not pushed to the shards so we only
+				 * get the PFE of geospatial operators.
+				 */
+				context->forceIndexQueryOpData.type = QUERY_OPERATOR_GEONEAR;
+			}
 		}
 	}
 	else if (IsA(clause, BoolExpr))
@@ -1289,4 +1546,355 @@ OptimizeIndexPathForFilters(IndexPath *indexPath,
 		ReplaceExtensionFunctionOperatorsInRestrictionPaths(
 			indexPath->indexinfo->indrestrictinfo, context);
 	return indexPath;
+}
+
+
+/*
+ * There maybe index paths created if any other applicable index is found
+ * cheaper than the geospatial indexes. For geonear force index pushdown
+ * we only consider all the geospatial indexes
+ */
+static List *
+UpdateIndexListForGeonear(List *existingIndex,
+						  ReplaceExtensionFunctionContext *context)
+{
+	List *newIndexesListForGeonear = NIL;
+	ListCell *indexCell;
+	foreach(indexCell, existingIndex)
+	{
+		IndexOptInfo *index = lfirst_node(IndexOptInfo, indexCell);
+		if (index->relam == GIST_AM_OID && index->ncolumns > 0 &&
+			(index->opfamily[0] == BsonGistGeographyOperatorFamily() ||
+			 index->opfamily[0] == BsonGistGeometryOperatorFamily()))
+		{
+			newIndexesListForGeonear = lappend(newIndexesListForGeonear, index);
+		}
+	}
+	return newIndexesListForGeonear;
+}
+
+
+/*
+ * Pushed the text index query to runtime with index options if
+ * no index path can be created
+ */
+static bool
+PushTextQueryToRuntime(PlannerInfo *root, RelOptInfo *rel,
+					   ReplaceExtensionFunctionContext *context,
+					   MatchIndexPath matchIndexPath)
+{
+	QueryTextIndexData *textIndexData =
+		(QueryTextIndexData *) context->forceIndexQueryOpData.opExtraState;
+	if (textIndexData != NULL && textIndexData->indexOptions != NULL)
+	{
+		context->inputData.isRuntimeTextScan = true;
+		return true;
+	}
+	return false;
+}
+
+
+/*
+ * This method checks if the geonear query is eligible for using an alternate
+ * index based on the type of query and then creates the index path for with
+ * updated index quals again
+ */
+static bool
+TryUseAlternateIndexGeonear(PlannerInfo *root, RelOptInfo *rel,
+							ReplaceExtensionFunctionContext *context,
+							MatchIndexPath matchIndexPath)
+{
+	OpExpr *geoNearOpExpr = (OpExpr *) context->forceIndexQueryOpData.opExtraState;
+	if (geoNearOpExpr == NULL)
+	{
+		return false;
+	}
+
+	GeonearRequest *request;
+	List *_2dIndexList = NIL;
+	List *_2dsphereIndexList = NIL;
+	GetAllGeoIndexesFromRelIndexList(rel->indexlist, &_2dIndexList,
+									 &_2dsphereIndexList);
+
+	if (CanGeonearQueryUseAlternateIndex(geoNearOpExpr, &request))
+	{
+		char *keyToUse = request->key;
+		bool useSphericalIndex = true;
+		bool isEmptyKey = strlen(request->key) == 0;
+		if (isEmptyKey)
+		{
+			keyToUse =
+				CheckGeonearEmptyKeyCanUseIndex(request, _2dIndexList,
+												_2dsphereIndexList,
+												&useSphericalIndex);
+		}
+		UpdateGeoNearQueryTreeToUseAlternateIndex(root, rel, geoNearOpExpr, keyToUse,
+												  useSphericalIndex, isEmptyKey);
+	}
+	else
+	{
+		/* No index pushdown possible for geonear just error out */
+		ThrowGeoNearUnableToFindIndex();
+	}
+
+	/* Because we have updated the quals to make use of index which could not be considered
+	 * earlier as the indpred don't match and the sort_pathkeys are different, so we need
+	 * to make sure that the sort_pathkey are constructed and index predicates are validated with the new quals.
+	 */
+	root->sort_pathkeys = make_pathkeys_for_sortclauses(root,
+														root->parse->sortClause,
+														root->parse->targetList);
+
+	/*
+	 * Make the query_pathkeys same as sort_pathkeys because we are only intereseted in making
+	 * the index path for the geonear sort clause.
+	 *
+	 * create_index_paths will use the query_pathkeys to match the index with order by clause
+	 * and generate the index path
+	 */
+	root->query_pathkeys = root->sort_pathkeys;
+
+	/* `check_index_predicates` will set the indpred for indexes based on new quals and also
+	 * sets indrestrictinfo which is all the quals less the ones that are implicitly implied by the index predicate.
+	 * So for creating this we need to used the original restrictinfo list,
+	 * we can safely use that because we updated the quals in place.
+	 */
+	check_index_predicates(root, rel);
+
+	/* Try to create the index paths again with only the quals needed
+	 * so that all the other indexes are ignored.
+	 */
+	rel->pathlist = NIL;
+	rel->partial_pathlist = NIL;
+
+	create_index_paths(root, rel);
+
+	Path *matchedPath =
+		FindIndexPathForQueryOperator(rel, rel->pathlist,
+									  context, matchIndexPath,
+									  context->forceIndexQueryOpData.opExtraState);
+	if (matchedPath != NULL)
+	{
+		/* Discard any other path */
+		rel->pathlist = list_make1(matchedPath);
+		ReplaceExtensionFunctionOperatorsInPaths(root, rel, rel->pathlist,
+												 PARENTTYPE_NONE, context);
+		return true;
+	}
+	return false;
+}
+
+
+/*
+ * We need to use all the available indexes for text queries as
+ * these can be used in OR clauses. And BitmapOrPath requires
+ * the indexes in all the OR arms to be present otherwise it can't
+ * create a BitmapOrPath.
+ * e.g. {$or [{$text: ..., a: 2}, {other: 1}]}. This needs to have
+ * an index on `other` so that this text query can be pushed to the index.
+ *
+ * more info at generate_bitmap_or_paths
+ */
+static List *
+UpdateIndexListForText(List *existingIndex, ReplaceExtensionFunctionContext *context)
+{
+	ListCell *indexCell;
+	bool isValidTextIndexFound = false;
+	foreach(indexCell, existingIndex)
+	{
+		IndexOptInfo *index = lfirst_node(IndexOptInfo, indexCell);
+		if (index->relam == RumIndexAmId() && index->nkeycolumns > 0)
+		{
+			for (int i = 0; i < index->nkeycolumns; i++)
+			{
+				if (index->opfamily[i] == BsonRumTextPathOperatorFamily())
+				{
+					isValidTextIndexFound = true;
+					QueryTextIndexData *textIndexData =
+						(QueryTextIndexData *) context->forceIndexQueryOpData.opExtraState;
+					if (textIndexData == NULL)
+					{
+						textIndexData = palloc0(sizeof(QueryTextIndexData));
+						context->forceIndexQueryOpData.opExtraState =
+							(void *) textIndexData;
+					}
+					textIndexData->indexOptions = index->opclassoptions[i];
+
+					break;
+				}
+			}
+		}
+	}
+
+	if (!isValidTextIndexFound)
+	{
+		ThrowNoTextIndexFound();
+	}
+
+	return existingIndex;
+}
+
+
+/*
+ * This today checks BitmapHeapPath, BitmapOrPath, BitmapAndPath and IndexPath
+ * and returns true if it has an index path which matches the
+ * query operator based on `matchIndexPath` function.
+ */
+static bool
+IsMatchingPathForQueryOperator(RelOptInfo *rel, Path *path,
+							   ReplaceExtensionFunctionContext *context,
+							   MatchIndexPath matchIndexPath,
+							   void *matchContext)
+{
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
+	if (IsA(path, BitmapHeapPath))
+	{
+		BitmapHeapPath *bitmapHeapPath = (BitmapHeapPath *) path;
+		return IsMatchingPathForQueryOperator(rel, bitmapHeapPath->bitmapqual,
+											  context, matchIndexPath, matchContext);
+	}
+	else if (IsA(path, BitmapOrPath))
+	{
+		BitmapOrPath *bitmapOrPath = (BitmapOrPath *) path;
+		if (FindIndexPathForQueryOperator(rel, bitmapOrPath->bitmapquals, context,
+										  matchIndexPath, matchContext) != NULL)
+		{
+			return true;
+		}
+		return false;
+	}
+	else if (IsA(path, BitmapAndPath))
+	{
+		BitmapAndPath *bitmapAndPath = (BitmapAndPath *) path;
+		if (FindIndexPathForQueryOperator(rel, bitmapAndPath->bitmapquals, context,
+										  matchIndexPath, matchContext) != NULL)
+		{
+			return true;
+		}
+		return false;
+	}
+	else if (IsA(path, IndexPath))
+	{
+		IndexPath *indexPath = (IndexPath *) path;
+		if (matchIndexPath(indexPath, matchContext))
+		{
+			return true;
+		}
+		return false;
+	}
+	return false;
+}
+
+
+/*
+ * Checks the newly constructed pathlist to see if the query operator that needs index are
+ * pushed to the right index and returns the topLevel path which includes the indexpath for
+ * the operator
+ *
+ * Returns a NULL path in case no index path was found
+ */
+static Path *
+FindIndexPathForQueryOperator(RelOptInfo *rel, List *pathList,
+							  ReplaceExtensionFunctionContext *context,
+							  MatchIndexPath matchIndexPath,
+							  void *matchContext)
+{
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
+	if (list_length(pathList) == 0)
+	{
+		return NULL;
+	}
+	ListCell *cell;
+	foreach(cell, pathList)
+	{
+		Path *path = (Path *) lfirst(cell);
+		if (IsMatchingPathForQueryOperator(rel, path, context, matchIndexPath,
+										   matchContext))
+		{
+			return path;
+		}
+	}
+	return NULL;
+}
+
+
+/*
+ * Matches the index path for $geoNear query and checks if the index path
+ * has a predicate which equals to geonear operator left side arguments which
+ * is basically the predicate qual to match to the index
+ */
+static bool
+MatchIndexPathForGeonear(IndexPath *indexPath, void *matchContext)
+{
+	if (indexPath->indexinfo->relam == GIST_AM_OID &&
+		indexPath->indexinfo->nkeycolumns > 0 &&
+		(indexPath->indexinfo->opfamily[0] == BsonGistGeographyOperatorFamily() ||
+		 indexPath->indexinfo->opfamily[0] == BsonGistGeometryOperatorFamily()))
+	{
+		OpExpr *geoNearOpExpr = (OpExpr *) matchContext;
+		if (geoNearOpExpr == NULL)
+		{
+			return false;
+		}
+
+		if (equal(linitial(geoNearOpExpr->args),
+				  linitial(indexPath->indexinfo->indexprs)))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+
+/*
+ * This function just performs a pointer equality for two index
+ * paths provided
+ */
+static bool
+MatchIndexPathEquals(IndexPath *path, void *matchContext)
+{
+	Node *matchedIndexPath = (Node *) matchContext;
+
+	if (!IsA(matchedIndexPath, IndexPath))
+	{
+		return false;
+	}
+
+	return path == (IndexPath *) matchedIndexPath;
+}
+
+
+/*
+ * Matches the indexPath for $text query. It just checks if the index used
+ * is a text index, as there can only be at max one text index for a collection.
+ */
+static bool
+MatchIndexPathForText(IndexPath *indexPath, void *matchContext)
+{
+	if (indexPath->indexinfo->relam == RumIndexAmId() &&
+		indexPath->indexinfo->ncolumns > 0)
+	{
+		for (int ind = 0; ind < indexPath->indexinfo->ncolumns; ind++)
+		{
+			if (indexPath->indexinfo->opfamily[ind] == BsonRumTextPathOperatorFamily())
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+
+pg_attribute_noreturn()
+static void
+ThrowNoTextIndexFound()
+{
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INDEXNOTFOUND),
+					errmsg("text index required for $text query")));
 }

@@ -181,6 +181,8 @@ Oid VectorHNSWCosineSimilarityOperatorFamilyId(void);
 Oid VectorHNSWIPSimilarityOperatorFamilyId(void);
 Oid VectorHNSWL2SimilarityOperatorFamilyId(void);
 Oid BsonRumTextPathOperatorFamily(void);
+Oid BsonGistGeographyOperatorFamily(void);
+Oid BsonGistGeometryOperatorFamily(void);
 Oid BsonRumSinglePathOperatorFamily(void);
 Oid Float8MinusOperatorId(void);
 Oid Float8MultiplyOperatorId(void);

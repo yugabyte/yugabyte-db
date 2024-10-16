@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 
-
+#include <catalog/pg_collation.h>
 #include <nodes/parsenodes.h>
 #include <nodes/makefuncs.h>
 
@@ -195,7 +195,8 @@ inline static Const *
 MakeTextConst(const char *cstring, uint32_t stringLength)
 {
 	text *textValue = cstring_to_text_with_len(cstring, stringLength);
-	return makeConst(TEXTOID, -1, InvalidOid, -1, PointerGetDatum(textValue), false,
+	return makeConst(TEXTOID, -1, DEFAULT_COLLATION_OID, -1, PointerGetDatum(textValue),
+					 false,
 					 false);
 }
 

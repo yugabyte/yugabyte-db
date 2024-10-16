@@ -4047,6 +4047,18 @@ UpdateQueryOperatorContextSortList(Query *query, List *sortClauses,
 
 	Assert(list_length(sortClauses) == list_length(targetEntries));
 
+	if ((query->commandType == CMD_UPDATE || query->commandType == CMD_DELETE ||
+		 query->hasForUpdate) && TargetListContainsGeonearOp(targetEntries))
+	{
+		/*
+		 * Block geonear, near and nearSphere operators in update, delete operations.
+		 * PG natively doesn't support ORDER BY queries with update and delete operations.
+		 * Also SELECT ctid... FOR UPDATE isn't guaranteed to have valid ctid if the order by
+		 * is pushed to index with recheck.
+		 */
+		ThrowGeoNearNotAllowedInContextError();
+	}
+
 	ParseState *pstate = make_parsestate(NULL);
 	pstate->p_next_resno = list_length(query->targetList) + 1;
 	pstate->p_expr_kind = EXPR_KIND_ORDER_BY;

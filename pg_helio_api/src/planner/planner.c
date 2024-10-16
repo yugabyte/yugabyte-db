@@ -33,6 +33,7 @@
 #include <executor/spi.h>
 #include <parser/parse_relation.h>
 
+#include "geospatial/bson_geospatial_geonear.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "planner/helio_planner.h"
@@ -79,12 +80,12 @@ static Query * ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundP
 static bool ReplaceMongoCollectionFunctionWalker(Node *node,
 												 ReplaceMongoCollectionContext *context);
 static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams);
-static bytea * TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte);
 static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 										 uint64 *collectionId);
 static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 										RangeTblEntry *rte);
 static inline bool IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel);
+
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
@@ -465,13 +466,15 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	ReplaceExtensionFunctionContext indexContext = {
 		.queryDataForVectorSearch = { 0 },
 		.hasVectorSearchQuery = false,
-		.hasTextIndexQuery = false,
-		.indexOptionsForText = { 0 },
 		.primaryKeyLookupPath = NULL,
 		.inputData = {
 			.collectionId = collectionId,
-			.isRuntimeTextScan = false,
 			.isShardQuery = isShardQuery
+		},
+		.forceIndexQueryOpData = {
+			.type = QUERY_OPERATOR_UNKNOWN,
+			.path = NULL,
+			.opExtraState = NULL
 		}
 	};
 
@@ -498,23 +501,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
 															&indexContext);
 
-	if (indexContext.hasTextIndexQuery &&
-		indexContext.indexOptionsForText.indexOptions == NULL)
-	{
-		/* In case we got a scenario where the query planner thought it was better to push to a different
-		 * index or a seqscan, instead of just failing, try to find the index options and update the
-		 * restriction paths: This differs from Mongo that tries to force the text index anyway.
-		 */
-		indexContext.indexOptionsForText.indexOptions = TryFindTextIndexForRelation(
-			rel, rte);
-		if (indexContext.indexOptionsForText.indexOptions != NULL)
-		{
-			indexContext.inputData.isRuntimeTextScan = true;
-			rel->baserestrictinfo =
-				ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
-																	&indexContext);
-		}
-	}
+	ForceIndexForQueryOperators(root, rel, &indexContext);
 
 	/* Now before modifying any paths, walk to check for raw path optimizations */
 	UpdatePathsWithOptimizedExtensionCustomPlans(root, rel, rte);
@@ -538,12 +525,15 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	/* For vector, text search inject custom scan path to track lifetime of
 	 * $meta/ivfprobes.
 	 */
-	if (indexContext.hasTextIndexQuery &&
-		indexContext.indexOptionsForText.indexOptions != NULL &&
-		indexContext.indexOptionsForText.query != (Datum) 0)
+	if (indexContext.forceIndexQueryOpData.type == QUERY_OPERATOR_TEXT)
 	{
-		AddExtensionQueryScanForTextQuery(root, rel, rte,
-										  &indexContext.indexOptionsForText);
+		QueryTextIndexData *textIndexData =
+			(QueryTextIndexData *) indexContext.forceIndexQueryOpData.opExtraState;
+		if (textIndexData != NULL && textIndexData->indexOptions != NULL &&
+			textIndexData->query != (Datum) 0)
+		{
+			AddExtensionQueryScanForTextQuery(root, rel, rte, textIndexData);
+		}
 	}
 	else if (indexContext.hasVectorSearchQuery)
 	{
@@ -1119,46 +1109,6 @@ HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams)
 									  HasUnresolvedExternParamsWalker,
 									  boundParams);
 	}
-}
-
-
-static bytea *
-TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte)
-{
-	List *indexList = rel->indexlist;
-	if (rel->indexlist == NIL && rte->relid != InvalidOid)
-	{
-		Relation relation = RelationIdGetRelation(rte->relid);
-		if (relation != NULL)
-		{
-			indexList = RelationGetIndexList(relation);
-			RelationClose(relation);
-		}
-	}
-
-	ListCell *index;
-	foreach(index, indexList)
-	{
-		IndexOptInfo *indexInfo = lfirst(index);
-		if (indexInfo->opclassoptions == NULL)
-		{
-			continue;
-		}
-
-		if (indexInfo->relam == RumIndexAmId())
-		{
-			for (int i = 0; i < indexInfo->nkeycolumns; i++)
-			{
-				if (indexInfo->opclassoptions[i] != NULL &&
-					indexInfo->opfamily[i] == BsonRumTextPathOperatorFamily())
-				{
-					return (bytea *) indexInfo->opclassoptions[i];
-				}
-			}
-		}
-	}
-
-	return NULL;
 }
 
 

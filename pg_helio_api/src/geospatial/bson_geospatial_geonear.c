@@ -10,6 +10,7 @@
 
 #include <postgres.h>
 #include <float.h>
+#include <access/reloptions.h>
 #include <math.h>
 #include <miscadmin.h>
 #include <catalog/pg_am.h>
@@ -37,6 +38,11 @@ static double GetDoubleValueForDistance(const bson_value_t *value, const char *o
 
 static void ValidateGeoNearWithIndexBounds(const Bson2dGeometryPathOptions *options,
 										   Point referencePoint);
+static pgbson * AddKeyAndGetQueryBson(const pgbson *queryDoc, const char *key);
+static void UpdateGeonearArgsInPlace(List *args, Oid validateFunctionOid,
+									 Datum keyDatum, Datum geoNearQueryDatum);
+static bool CheckBsonProjectGeonearFunctionExpr(FuncExpr *expr,
+												FuncExpr **geoNearProjectFuncExpr);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -501,22 +507,6 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 					errmsg("$geoNear requires a 'distanceField' option as a String")));
 	}
 
-	if (request->key == NULL)
-	{
-		/* MongoDB supports optional key as far as there is one 2d and/or one 2dsphere index available and it chooses
-		 * the index by first looking for a `2d` and then a `2dsphere` index. This is bad here for 2 reasons & is a required field:
-		 *
-		 *      1) Imagine a scenario where the user adds a new geospatial index and all the previous $geoNear queries start
-		 *      failing because now system can't guess the index to use.
-		 *
-		 *      2) We also don't want to open the cached relation entries of the table at the time of making the query AST for
-		 *      $geoNear queries which is not the right thing to do just to guess the index to use
-		 */
-		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_TYPEMISMATCH),
-					errmsg("$geoNear requires a 'key' option as a String")));
-	}
-
 	if (request->spherical && (request->referencePoint.x < -180.0 ||
 							   request->referencePoint.x > 180 ||
 							   request->referencePoint.y < -90.0 ||
@@ -533,6 +523,12 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Legacy point is out of bounds for spherical query")));
 		}
+	}
+
+	if (request->key == NULL)
+	{
+		/* Set key empty for internal use */
+		request->key = "";
 	}
 
 	return request;
@@ -828,7 +824,7 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 											   list_make2(docExpr,
 														  keyConst),
 											   InvalidOid,
-											   InvalidOid,
+											   DEFAULT_COLLATION_OID,
 											   COERCE_EXPLICIT_CALL);
 
 	/* Add the geo index pfe to match to the index */
@@ -880,6 +876,295 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 }
 
 
+/*
+ * There are 2 cases where we can push geonear queries to an alternate geo index.
+ * CanGeonearQueryUseAlternateIndex identifies these 2 scenarios.
+ *
+ * 1. If no `key` is provided in the geonear spec, then by default there is no index path created
+ *    but we can choose either a 2d or 2dsphere index based on availability if these are the only
+ *    2 geospatial indexes available.
+ * 2. If a geonear legacy spherical query is provided then it can also use a 2dsphere index when no
+ *    suitable 2d index is available.
+ *    e.g.
+ *    {
+ *        "$geoNear": { near: [0, 0], spherical: true, key: 'key' ...}
+ *    }
+ *    This kind of geonear query must use 2d index if one is availbale on `key` otherwise a 2dsphere
+ *    index can also be used on the same `key`.
+ *
+ * Returns true when any of the above scenario is true, and sets the GeonearRequest
+ */
+bool
+CanGeonearQueryUseAlternateIndex(OpExpr *geoNearOpExpr,
+								 GeonearRequest **request)
+{
+	Node *geoNearQuerySpec = lsecond(geoNearOpExpr->args);
+	if (!IsA(geoNearQuerySpec, Const))
+	{
+		return false;
+	}
+	Const *geoNearConst = (Const *) geoNearQuerySpec;
+	pgbson *geoNearDoc = DatumGetPgBson(geoNearConst->constvalue);
+	GeonearRequest *req = ParseGeonearRequest(geoNearDoc);
+	if (strlen(req->key) == 0 || Is2dWithSphericalDistance(req))
+	{
+		*request = req;
+		return true;
+	}
+
+	return false;
+}
+
+
+/*
+ * Try to find the geonear expression in the query. If the query is non-sharded
+ * it can be obtained from sortclauses but if it is sharded then ORDER BY is not
+ * pushed to the shards so we need to get it from the targetlist.
+ */
+bool
+TryFindGeoNearOpExpr(PlannerInfo *root, ReplaceExtensionFunctionContext *context)
+{
+	List *sorClause = root->parse->sortClause;
+	if (sorClause != NIL)
+	{
+		ListCell *sortClauseCell;
+		foreach(sortClauseCell, sorClause)
+		{
+			SortGroupClause *sortClause = lfirst_node(SortGroupClause,
+													  sortClauseCell);
+			Expr *tleExpr = (Expr *) get_sortgroupclause_expr(sortClause,
+															  root->processed_tlist);
+
+			if (IsA(tleExpr, OpExpr))
+			{
+				OpExpr *opExpr = (OpExpr *) tleExpr;
+				if (opExpr->opno == BsonGeonearDistanceOperatorId())
+				{
+					context->forceIndexQueryOpData.opExtraState = (void *) opExpr;
+					return true;
+				}
+			}
+		}
+	}
+	else
+	{
+		/* Maybe a Sharded case try to get expr from targetlist */
+		ListCell *targetCell;
+		foreach(targetCell, root->processed_tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(targetCell);
+			Expr *tleExpr = tle->expr;
+			if (IsA(tleExpr, OpExpr))
+			{
+				OpExpr *opExpr = (OpExpr *) tleExpr;
+				if (opExpr->opno == BsonGeonearDistanceOperatorId())
+				{
+					context->forceIndexQueryOpData.opExtraState = (void *) opExpr;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+
+/*
+ * Updates the geonear related quals, projection and sort clause in the query,
+ * based on the index we want to use.
+ *
+ * `geonearOpExpr` is the original geonear operator expression in query
+ * `key`: The key for the geonear spec to be used, this can be different from original
+ *        in case of empty key and we want to force push to an index.
+ * `useSpherical`: This is true in case geonear legacy query needs to be pushed to 2dsphere index.
+ * `isEmptyKey`: represents if key is empty in the original geonear query.
+ */
+void
+UpdateGeoNearQueryTreeToUseAlternateIndex(PlannerInfo *root, RelOptInfo *rel,
+										  OpExpr *geoNearOpExpr, const char *key,
+										  bool useSphericalIndex, bool isEmptyKey)
+{
+	FuncExpr *geoNearFuncExpr = (FuncExpr *) linitial(geoNearOpExpr->args);
+	Const *keyConst = lsecond(geoNearFuncExpr->args);
+	Datum keyDatum = keyConst->constvalue;
+
+	Const *querySpecConst = (Const *) lsecond(geoNearOpExpr->args);
+	Datum querySpecDatum = querySpecConst->constvalue;
+	if (isEmptyKey)
+	{
+		pgbson *queryDoc = DatumGetPgBson(querySpecConst->constvalue);
+		pgbson *queryDocWithKey = AddKeyAndGetQueryBson(queryDoc, key);
+
+		keyDatum = CStringGetTextDatum(key);
+		querySpecDatum = PointerGetDatum(queryDocWithKey);
+	}
+
+	Oid validateFunctionOid = geoNearFuncExpr->funcid;
+	if (useSphericalIndex)
+	{
+		validateFunctionOid = BsonValidateGeographyFunctionId();
+	}
+
+	/* Update the geonear ORDER BY operator expression */
+	UpdateGeonearArgsInPlace(geoNearOpExpr->args, validateFunctionOid, keyDatum,
+							 querySpecDatum);
+
+	/* Update the base restrict info */
+	ListCell *rInfocell;
+	foreach(rInfocell, rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, rInfocell);
+		if (IsA(rinfo->clause, OpExpr))
+		{
+			OpExpr *opExpr = (OpExpr *) rinfo->clause;
+			if (opExpr->opno == BsonGeonearDistanceRangeOperatorId())
+			{
+				pgbson_writer rangeSpecWriter;
+				PgbsonWriterInit(&rangeSpecWriter);
+				PgbsonWriterAppendDocument(&rangeSpecWriter, key, strlen(key),
+										   DatumGetPgBson(querySpecDatum));
+				pgbson *rangeQueryDoc = PgbsonWriterGetPgbson(&rangeSpecWriter);
+				Datum rangeQueryDatum = PointerGetDatum(rangeQueryDoc);
+
+				UpdateGeonearArgsInPlace(opExpr->args, validateFunctionOid, keyDatum,
+										 rangeQueryDatum);
+			}
+		}
+		else if (IsA(rinfo->clause, NullTest))
+		{
+			NullTest *nullTest = (NullTest *) rinfo->clause;
+			if (nullTest->nulltesttype == IS_NOT_NULL &&
+				IsA(nullTest->arg, FuncExpr))
+			{
+				FuncExpr *funcExpr = (FuncExpr *) nullTest->arg;
+				if (funcExpr->funcid == BsonValidateGeometryFunctionId() ||
+					funcExpr->funcid == BsonValidateGeographyFunctionId())
+				{
+					funcExpr->funcid = validateFunctionOid;
+
+					Const *nullTestKeyConst = (Const *) lsecond(funcExpr->args);
+					nullTestKeyConst->constvalue = keyDatum;
+				}
+			}
+		}
+	}
+
+	/* Update the target list projector for geonear to have updated query with key */
+	if (isEmptyKey)
+	{
+		ListCell *tlistCell;
+		foreach(tlistCell, root->parse->targetList)
+		{
+			TargetEntry *tle = lfirst_node(TargetEntry, tlistCell);
+			if (!tle->resjunk && IsA(tle->expr, FuncExpr))
+			{
+				FuncExpr *funcExpr = NULL;
+				if (CheckBsonProjectGeonearFunctionExpr((FuncExpr *) tle->expr,
+														&funcExpr))
+				{
+					Const *queryConst = (Const *) lsecond(funcExpr->args);
+					queryConst->constvalue = querySpecDatum;
+				}
+			}
+		}
+	}
+}
+
+
+/*
+ * Get all the geo indexes paths from the index list.
+ */
+void
+GetAllGeoIndexesFromRelIndexList(List *indexlist, List **_2dIndexList,
+								 List **_2dsphereIndexList)
+{
+	ListCell *index;
+	foreach(index, indexlist)
+	{
+		IndexOptInfo *indexInfo = lfirst(index);
+		if (indexInfo->relam == GIST_AM_OID && indexInfo->indpred != NULL)
+		{
+			if (indexInfo->nkeycolumns >= 1 &&
+				(indexInfo->opfamily[0] == BsonGistGeographyOperatorFamily() ||
+				 indexInfo->opfamily[0] == BsonGistGeometryOperatorFamily()))
+			{
+				bool is2dIndex = indexInfo->opfamily[0] ==
+								 BsonGistGeometryOperatorFamily();
+
+				Bson2dGeographyPathOptions *options =
+					(Bson2dGeographyPathOptions *) indexInfo->opclassoptions[0];
+				const char *indexPath;
+				uint32_t indexPathLength;
+				Get_Index_Path_Option(options, path, indexPath, indexPathLength);
+
+				const char *copiedPath = pnstrdup(indexPath, indexPathLength);
+				if (is2dIndex)
+				{
+					*_2dIndexList = lappend(*_2dIndexList, (void *) copiedPath);
+				}
+				else
+				{
+					*_2dsphereIndexList = lappend(*_2dsphereIndexList,
+												  (void *) copiedPath);
+				}
+			}
+		}
+	}
+}
+
+
+/*
+ * Checks if the geonear query request can be pushed down to the available indexes.
+ * If yes then returns the path to use as the key and also sets `useSphericalIndex`
+ * to true if 2dsphere index is to be used.
+ */
+char *
+CheckGeonearEmptyKeyCanUseIndex(GeonearRequest *request,
+								List *_2dIndexList,
+								List *_2dsphereIndexList,
+								bool *useSphericalIndex)
+{
+	int _2dIndexCount = list_length(_2dIndexList);
+	int _2dsphereIndexCount = list_length(_2dsphereIndexList);
+	if (_2dIndexCount == 0 && _2dsphereIndexCount == 0)
+	{
+		ThrowNoGeoIndexesFound();
+	}
+
+	if (_2dIndexCount > 1)
+	{
+		ThrowAmbigousIndexesFound("2d");
+	}
+
+	if (_2dsphereIndexCount > 1)
+	{
+		ThrowAmbigousIndexesFound("2dsphere");
+	}
+
+	/* No suitable index found for geoneary legacy non-spherical queries */
+	if (!request->isGeoJsonPoint && !request->spherical && _2dIndexCount == 0)
+	{
+		ThrowGeoNearUnableToFindIndex();
+	}
+
+	/* GeoJson Query can only use 2dsphere index*/
+	if (request->isGeoJsonPoint && _2dsphereIndexCount == 0)
+	{
+		ThrowGeoNearUnableToFindIndex();
+	}
+
+	/* Prioritize 2d index if available */
+	if (_2dIndexCount == 1)
+	{
+		*useSphericalIndex = false;
+		return (char *) linitial(_2dIndexList);
+	}
+
+	*useSphericalIndex = true;
+	return (char *) linitial(_2dsphereIndexList);
+}
+
+
 /* Check if the value of min/max distance is a valid number. */
 static double
 GetDoubleValueForDistance(const bson_value_t *value, const char *opName)
@@ -923,4 +1208,90 @@ ValidateGeoNearWithIndexBounds(const Bson2dGeometryPathOptions *options,
 						errmsg("point not in interval of [ %g, %g ]",
 							   options->minBound, options->maxBound)));
 	}
+}
+
+
+/*
+ * Adds the key into the geonear spec based on the matched index metadata
+ */
+static pgbson *
+AddKeyAndGetQueryBson(const pgbson *queryDoc, const char *key)
+{
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+
+	PgbsonWriterAppendUtf8(&writer, "key", 3, key);
+
+	bson_iter_t queryIter;
+	PgbsonInitIterator(queryDoc, &queryIter);
+	while (bson_iter_next(&queryIter))
+	{
+		PgbsonWriterAppendValue(&writer, bson_iter_key(&queryIter),
+								bson_iter_key_len(&queryIter),
+								bson_iter_value(&queryIter));
+	}
+	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+/*
+ * Makes asserts on the args to check if it is of format [bson_validate_geometry/geography(doc, 'path'), <geoNearKeySpec>]
+ * and updates the key and geoNearSpec in place.
+ *
+ * This should only be used for geonear operator expressions which have above arguments
+ */
+static void
+UpdateGeonearArgsInPlace(List *args, Oid validateFunctionOid, Datum keyDatum, Datum
+						 geoNearQueryDatum)
+{
+	Assert(list_length(args) == 2);
+	Node *validateExpr = linitial(args);
+
+	Assert(IsA(validateExpr, FuncExpr));
+	FuncExpr *validateFuncExpr = (FuncExpr *) validateExpr;
+
+	Assert(list_length(validateFuncExpr->args) == 2);
+
+	Node *querySpecExpr = lsecond(args);
+	Assert(IsA(querySpecExpr, Const));
+	Const *querySpecConst = (Const *) querySpecExpr;
+
+	Const *validateFunctionKeyConst = lsecond(validateFuncExpr->args);
+
+	validateFuncExpr->funcid = validateFunctionOid;
+	validateFunctionKeyConst->constvalue = keyDatum;
+	querySpecConst->constvalue = geoNearQueryDatum;
+}
+
+
+/*
+ * Recursively check for bson_dollar_project_geonear in targetlist and gets the function expression
+ */
+static bool
+CheckBsonProjectGeonearFunctionExpr(FuncExpr *expr, FuncExpr **geoNearProjectFuncExpr)
+{
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
+	if (expr->funcid == BsonDollarProjectGeonearFunctionOid())
+	{
+		*geoNearProjectFuncExpr = expr;
+		return true;
+	}
+
+	ListCell *lc;
+	foreach(lc, expr->args)
+	{
+		Node *arg = lfirst(lc);
+		if (IsA(arg, FuncExpr))
+		{
+			if (CheckBsonProjectGeonearFunctionExpr((FuncExpr *) arg,
+													geoNearProjectFuncExpr))
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
