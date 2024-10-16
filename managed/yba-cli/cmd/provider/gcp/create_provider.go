@@ -26,8 +26,8 @@ var createGCPProviderCmd = &cobra.Command{
 	Long:    "Create a GCP provider in YugabyteDB Anywhere",
 	Example: `yba provider gcp create -n dkumar-cli \
 	--network yugabyte-network \
-	--region region-name=us-west1,shared-subnet=<subnet> \
-	--region region-name=us-west2,shared-subnet=<subnet> \
+	--region region-name=us-west1::shared-subnet=<subnet> \
+	--region region-name=us-west2::shared-subnet=<subnet> \
 	--credentials <path-to-credentials-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
@@ -263,27 +263,27 @@ func init() {
 
 	createGCPProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs: "+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,"+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::shared-subnet=<subnet-id>::"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name and Shared subnet are required key-value pairs.",
 				formatter.GreenColor)+
 			" YB Image (AMI) and Instance Template are optional. "+
 			"Each region can be added using separate --region flags. "+
-			"Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>")
+			"Example: --region region-name=us-west1::shared-subnet=<shared-subnet-id>")
 
 	createGCPProviderCmd.Flags().StringArray("image-bundle", []string{},
 		"[Optional] Intel x86_64 image bundles associated with GCP provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
 			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=22")
 
 	createGCPProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")

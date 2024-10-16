@@ -347,17 +347,17 @@ func init() {
 
 	updateAzureProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Optional] Add region associated with the Azure provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vnet=<virtual-network>,sg-id=<security-group-id>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"vnet=<virtual-network>::sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
 			" Security Group ID is optional. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateAzureProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the Azure Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>\"."+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>\"."+
 			formatter.Colorize("Zone name, Region name and subnet IDs are required values. ",
 				formatter.GreenColor)+
 			"Secondary subnet ID is optional. Each --add-region definition "+
@@ -372,25 +372,25 @@ func init() {
 			"--remove-region definition. Removing a region removes the corresponding zones.")
 	updateAzureProviderCmd.Flags().StringArray("remove-zone", []string{},
 		"[Optional] Remove zone associated to the Azure Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
 			"Each zone needs to be removed using a separate --remove-zone flag.")
 
 	updateAzureProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the Azure provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vnet=<virtual-network>,sg-id=<security-group-id>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"vnet=<virtual-network>::sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" Virtual network and Security Group ID are optional. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateAzureProviderCmd.Flags().StringArray("edit-zone", []string{},
 		"[Optional] Edit zone associated to the Azure Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>::"+
 			"secondary-subnet=<secondary-subnet-id>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
@@ -399,28 +399,24 @@ func init() {
 
 	updateAzureProviderCmd.Flags().StringArray("add-image-bundle", []string{},
 		"[Optional] Add Intel x86_64 image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
-			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --add-image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Each image bundle can be added using separate --add-image-bundle flag.")
 
 	updateAzureProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
 		"[Optional] Edit Intel x86_64 image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-uuid=<image-bundle-uuid>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle UUID is a required key-value pair.",
 				formatter.GreenColor)+
-			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --edit-image-bundle <image-bundle-uuid>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Each image bundle can be added using separate --edit-image-bundle flag.")
 
 	updateAzureProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
 		"[Optional] Image bundle UUID to be removed from the provider. "+

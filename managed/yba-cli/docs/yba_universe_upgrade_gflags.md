@@ -14,7 +14,7 @@ yba universe upgrade gflags [flags]
 
 ```
 yba universe upgrade gflags --name <universe-name> \
-	--add-master-gflags "<key-1>"="<value-1>","key-2"="<value-2>","key-3"="<value-3>"
+	 --add-master-gflags "<key-1>"="<value-1>","key-2"="<value-2>","key-3"="<value-3>"
 ```
 
 ### Options

@@ -444,3 +444,11 @@ func IsCloudBasedProvider(providerType string) bool {
 	return providerType == AWSProviderType ||
 		providerType == AzureProviderType || providerType == GCPProviderType
 }
+
+const (
+	// Separator variable for strings that are in key value format
+	Separator = "::"
+
+	// KeyValueSeparator variable for strings that are in key value format
+	KeyValueSeparator = "="
+)
