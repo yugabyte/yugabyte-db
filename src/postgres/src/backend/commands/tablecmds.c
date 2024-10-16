@@ -4840,8 +4840,11 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		/*
 		 * Foreign tables have no storage, nor do partitioned tables and
 		 * indexes.
+		 * YB: We want to allow rewrites on partitioned tables to avoid
+		 * schema inconsistencies during backup/restore (see GH#24458).
 		 */
-		if (!RELKIND_CAN_HAVE_STORAGE(tab->relkind))
+		if (!RELKIND_CAN_HAVE_STORAGE(tab->relkind) &&
+			(!IsYugaByteEnabled() || tab->relkind != RELKIND_PARTITIONED_TABLE))
 			continue;
 		/*
 		 * YB Note: The following only applies to the old ALTER TYPE code.

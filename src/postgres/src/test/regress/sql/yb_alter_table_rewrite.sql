@@ -105,11 +105,14 @@ DROP USER user1;
 CREATE TABLE test_partitioned(a int, PRIMARY KEY (a ASC), b text) PARTITION BY RANGE (a);
 CREATE TABLE test_partitioned_part1 PARTITION OF test_partitioned FOR VALUES FROM (1) TO (6);
 CREATE TABLE test_partitioned_part2 PARTITION OF test_partitioned FOR VALUES FROM (6) TO (11);
+CREATE INDEX test_partitioned_index ON test_partitioned(b);
 INSERT INTO test_partitioned VALUES(generate_series(1, 10), 'text');
 ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING length(b);
 ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
 ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
 SELECT * FROM test_partitioned;
+EXPLAIN (COSTS OFF) SELECT * FROM test_partitioned WHERE b = 4;
+SELECT * FROM test_partitioned WHERE b = 4;
 
 -- Test table rewrite on temp tables.
 CREATE TEMP TABLE temp_table_rewrite_test(a int);
