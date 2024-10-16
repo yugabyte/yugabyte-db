@@ -86,7 +86,7 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
         }
         break;
       }
-      VectorLSMUpdate update;
+      VectorLSMUpdatePB update;
       if (!update.ParseFromArray(block_slice.data(), narrow_cast<int>(block_slice.size()))) {
         return STATUS_FORMAT(
             Corruption, "Parse $0 ($1, size: $2) failed: $3",
@@ -141,7 +141,7 @@ Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
 //  - 4 bytes - size of serialized update body.
 //  - serialized update body.
 //  - CRC sum for the serialized update body.
-Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdate& update) {
+Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdatePB& update) {
   constexpr auto kHeaderSize = sizeof(EntrySizeType);
   std::string bytes;
   bytes.append(kHeaderSize, '\0');

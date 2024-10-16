@@ -13,11 +13,14 @@
 
 #pragma once
 
+#include <future>
+
 #include "yb/common/hybrid_time.h"
 
 #include "yb/dockv/key_bytes.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -62,9 +65,9 @@ class VectorLSMInsertRegistry;
 template<vectorindex::IndexableVectorType Vector,
          vectorindex::ValidDistanceResultType DistanceResult>
 struct VectorLSMTypes {
-  using Chunk = vectorindex::VectorIndexIf<Vector, DistanceResult>;
-  using ChunkPtr = vectorindex::VectorIndexIfPtr<Vector, DistanceResult>;
-  using ChunkFactory = vectorindex::VectorIndexFactory<Vector, DistanceResult>;
+  using VectorIndex = vectorindex::VectorIndexIf<Vector, DistanceResult>;
+  using VectorIndexPtr = vectorindex::VectorIndexIfPtr<Vector, DistanceResult>;
+  using VectorIndexFactory = vectorindex::VectorIndexFactory<Vector, DistanceResult>;
   using SearchResults = std::vector<VectorLSMSearchEntry<DistanceResult>>;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
   using InsertEntries = std::vector<InsertEntry>;
@@ -89,10 +92,11 @@ template<vectorindex::IndexableVectorType Vector,
 struct VectorLSMOptions {
   using Types = VectorLSMTypes<Vector, DistanceResult>;
   std::string storage_dir;
-  typename Types::ChunkFactory chunk_factory;
+  typename Types::VectorIndexFactory vector_index_factory;
   size_t points_per_chunk;
   VectorLSMKeyValueStorage* key_value_storage;
   rpc::ThreadPool* thread_pool;
+  std::function<rocksdb::UserFrontiersPtr()> frontiers_factory;
 };
 
 template<vectorindex::IndexableVectorType VectorType,
@@ -102,9 +106,9 @@ class VectorLSM {
   using DistanceResult = DistanceResultType;
   using Vector = VectorType;
   using Types = VectorLSMTypes<Vector, DistanceResult>;
-  using Chunk = typename Types::Chunk;
-  using ChunkPtr = typename Types::ChunkPtr;
-  using ChunkFactory = typename Types::ChunkFactory;
+  using VectorIndex = typename Types::VectorIndex;
+  using VectorIndexPtr = typename Types::VectorIndexPtr;
+  using VectorIndexFactory = typename Types::VectorIndexFactory;
   using SearchResults = typename Types::SearchResults;
   using InsertEntry = typename Types::InsertEntry;
   using InsertEntries = typename Types::InsertEntries;
@@ -117,22 +121,34 @@ class VectorLSM {
 
   Status Open(Options options);
 
-  Status Insert(std::vector<InsertEntry> entries, HybridTime write_time);
+  rocksdb::UserFrontierPtr GetFlushedFrontier();
+
+  Status Insert(
+      std::vector<InsertEntry> entries, HybridTime write_time,
+      const rocksdb::UserFrontiers& value);
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
+
+  Status Flush();
 
   size_t TEST_num_immutable_chunks() const;
   bool TEST_HasBackgroundInserts() const;
 
+  DistanceResult TEST_Distance(const Vector& lhs, const Vector& rhs) const;
+
   struct MutableChunk;
+  struct ImmutableChunk;
 
  private:
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk() REQUIRES(mutex_);
+  Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
+
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
   template<class... Args>
-  void SaveChunk(Args&&... args) EXCLUDES(mutex_);
-  Status DoSaveChunk(size_t chunk_index, const ChunkPtr& chunk) EXCLUDES(mutex_);
+  void SaveChunk(std::promise<Status>* promise, Args&&... args) EXCLUDES(mutex_);
+  Status DoSaveChunk(
+      size_t chunk_serial_no, const std::shared_ptr<ImmutableChunk>& chunk) EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk() REQUIRES(mutex_);
 
@@ -143,7 +159,7 @@ class VectorLSM {
   size_t current_chunk_serial_no_ GUARDED_BY(mutex_) = 0;
   std::atomic<size_t> num_chunks_being_saved_ = 0;
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
-  std::vector<ChunkPtr> immutable_chunks_ GUARDED_BY(mutex_);
+  std::vector<std::shared_ptr<ImmutableChunk>> immutable_chunks_ GUARDED_BY(mutex_);
   std::unique_ptr<InsertRegistry> insert_registry_;
   // Does not change after Open.
   size_t metadata_file_no_ = 0;
@@ -151,7 +167,7 @@ class VectorLSM {
 };
 
 template <template<class, class> class Factory, class VectorIndex>
-using MakeChunkFactory =
+using MakeVectorIndexFactory =
     Factory<typename VectorIndex::Vector, typename VectorIndex::DistanceResult>;
 
 template<vectorindex::ValidDistanceResultType DistanceResult>

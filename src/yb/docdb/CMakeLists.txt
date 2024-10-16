@@ -17,10 +17,10 @@ set(YB_PCH_PREFIX docdb)
 
 YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
-        MESSAGES TRUE
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES docdb.proto vector_lsm.proto)
+        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto
+        NO_SERVICE_PROTO_FILES vector_lsm.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -130,7 +130,19 @@ target_link_libraries(yb_docdb_test_common
         yb_test_util
         yb_dockv_test_util)
 
-set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
+YRPC_GENERATE(
+        DOCDB_TEST_PROTO_SRCS DOCDB_TEST_PROTO_HDRS DOCDB_TEST_PROTO_TGTS
+        MESSAGES TRUE
+        SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+        NO_SERVICE_PROTO_FILES vector_lsm-test.proto)
+
+ADD_YB_LIBRARY(docdb_test_proto
+        SRCS ${DOCDB_TEST_PROTO_SRCS}
+        DEPS protobuf yb_common_proto
+        NONLINK_DEPS ${DOCDB_TEST_PROTO_TGTS})
+
+set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common docdb_test_proto ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
