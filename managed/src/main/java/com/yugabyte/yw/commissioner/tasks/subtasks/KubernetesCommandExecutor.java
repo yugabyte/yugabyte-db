@@ -1175,7 +1175,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         tserverGFlags.put("ysql_conn_mgr_port", String.valueOf(ysqlServerRpcPort));
         tserverGFlags.put(
             "pgsql_proxy_bind_address",
-            (primaryClusterIntent.enableIPV6 ? "[::]" : "0.0.0.0")
+            (primaryClusterIntent.enableIPV6 ? "[::]:" : "0.0.0.0:")
                 + String.valueOf(internalYsqlServerRpcPort));
       }
     }
