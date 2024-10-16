@@ -24,7 +24,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
-You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
 {{% note title="Running on macOS" %}}
@@ -50,7 +50,7 @@ $ ./bin/yugabyted start
 
 ### Online help
 
-You can access command-line help for `yugabyted` by running one of the following examples from the YugabyteDB home:
+You can access command-line help for yugabyted by running one of the following examples from the YugabyteDB home:
 
 ```sh
 $ ./bin/yugabyted -h
@@ -60,7 +60,7 @@ $ ./bin/yugabyted -h
 $ ./bin/yugabyted -help
 ```
 
-For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
+For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
 
 ```sh
 $ ./bin/yugabyted start -h
@@ -743,7 +743,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
-: When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
+: When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
 --read_replica *read_replica_node*
@@ -980,9 +980,9 @@ The `create_checkpoint` command takes a snapshot of the database and determines 
 
 #### add_to_checkpoint
 
-Use the sub-command `yugabyted xcluster add_to_checkpoint` to add new databases to an existing xcluster checkpoint between two clusters. This command needs to be run from the source cluster of the replication.
+Use the sub-command `yugabyted xcluster add_to_checkpoint` to add new databases to an existing xCluster checkpoint between two clusters. This command needs to be run from the source cluster of the replication.
 
-For example, to add new databases to xcluster replication, first checkpoint them using the following command:
+For example, to add new databases to xCluster replication, first checkpoint them using the following command:
 
 ```sh
 ./bin/yugabyted xcluster add_to_checkpoint \
@@ -990,7 +990,7 @@ For example, to add new databases to xcluster replication, first checkpoint them
     --databases <comma_seperated_database_names>
 ```
 
-The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to added to the replication need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
+The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be added to the replication need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
 
 ##### add_to_checkpoint flags
 
@@ -1004,7 +1004,7 @@ The `add_to_checkpoint` command takes a snapshot of the database and determines 
 : Comma separated list of databases to be added to existing replication.
 
 --replication_id *xcluster-replication-id*
-: Replication ID of the xcluster replication to which database(s) is to be added.
+: Replication ID of the xCluster replication that you are adding databases to.
 
 #### set_up
 
@@ -1034,12 +1034,12 @@ For example, to set up xCluster replication between two clusters, run the follow
 : The replication ID of the xCluster replication to be set up.
 
 --bootstrap_done *xcluster-bootstrap-done*
-: This flag indicates that bootstrapping step has been completed.
+: Indicates that the bootstrapping step has been completed.
 : After running `yugabyted xcluster create_checkpoint` for an xCluster replication, yugabyted outputs a message with database(s) for which bootstrapping is required along with the commands required for bootstrapping.
 
 #### add_to_replication
 
-Use the sub-command `yugabyted xcluster add_to_replication` to add databases to an existing xCluster replication between two clusters. Run this command from the source cluster of the replication.
+Use the sub-command `yugabyted xcluster add_to_replication` to add databases to an existing xCluster replication. Run this command from the source cluster of the replication.
 
 For example, to add new databases to an existing xCluster replication between two clusters, run the following command from a node on the source cluster:
 
@@ -1063,7 +1063,7 @@ For example, to add new databases to an existing xCluster replication between tw
 : IP address of a node in the target cluster.
 
 --replication_id *xcluster-replication-id*
-: Replication ID of the xcluster replication to which database(s) is to be added.
+: Replication ID of the xCluster replication that you are adding databases to.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
@@ -1135,7 +1135,7 @@ For example, remove a database from an xCluster replication using the following 
 
 ```sh
 ./bin/yugabyted xcluster remove_database_from_replication \
-    --databases <comma_seperated_database_names> \
+    --databases <comma_separated_database_names> \
     --replication_id <replication_id> \
     --target_address <ip_of_any_target_cluster_node>
 ```
@@ -1152,7 +1152,7 @@ For example, remove a database from an xCluster replication using the following 
 : IP address of a node in the target cluster.
 
 --replication_id *xcluster-replication-id*
-: Replication ID of the xcluster replication from which database(s) is to be removed.
+: Replication ID of the xCluster replication that you are deleting databases from.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be removed from existing replication.
