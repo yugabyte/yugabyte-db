@@ -378,8 +378,8 @@ $(document).ready(() => {
 
           $('.td-content .nav[role="tablist"]').each((index, element) => {
             if ($(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).length > 0) {
-              $(element).find('.nav-link').removeClass('active');
-              $(element).find(`.nav-link.${tabId}`).addClass('active');
+              $('li', element).children('.nav-link').removeClass('active');
+              $('li', element).children(`.nav-link.${tabId}`).addClass('active');
 
               $(element).next('.tab-content').children('.tab-pane').removeClass('active show');
               $(element).next('.tab-content').children(`.tab-pane[aria-labelledby="${tabId}"]`).addClass('active show');
