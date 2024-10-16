@@ -5421,8 +5421,14 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 	Form_pg_class classform;
 
 	/* Indexes, sequences must have Invalid frozenxid; other rels must not */
+	/*
+	 * YB: Partitioned indexes can reach here as we allow reindexes on
+	 * them during table rewrite.
+	 */
 	Assert((relation->rd_rel->relkind == RELKIND_INDEX ||
-			relation->rd_rel->relkind == RELKIND_SEQUENCE) ?
+			relation->rd_rel->relkind == RELKIND_SEQUENCE ||
+			(IsYugaByteEnabled() &&
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)) ?
 		   freezeXid == InvalidTransactionId :
 		   TransactionIdIsNormal(freezeXid));
 	Assert(TransactionIdIsNormal(freezeXid) == MultiXactIdIsValid(minmulti));
@@ -5449,9 +5455,11 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
 		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
-			   relation->rd_rel->relkind == RELKIND_RELATION);
+			   relation->rd_rel->relkind == RELKIND_RELATION ||
+			   relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX);
 
-		if (relation->rd_rel->relkind == RELKIND_INDEX &&
+		if ((relation->rd_rel->relkind == RELKIND_INDEX ||
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 			!relation->rd_index->indisprimary)
 			/*
 			 * Note: caller is responsible for dropping the old DocDB table

@@ -4654,7 +4654,8 @@ YbGetSplitOptions(Relation rel)
 	 */
 	split_options->split_type =
 		rel->yb_table_properties->num_hash_key_columns > 0 ||
-		(rel->rd_rel->relkind == RELKIND_RELATION &&
+		((rel->rd_rel->relkind == RELKIND_RELATION ||
+		  rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE) &&
 		 RelationGetPrimaryKeyIndex(rel) == InvalidOid) ? NUM_TABLETS :
 		SPLIT_POINTS;
 	split_options->num_tablets = rel->yb_table_properties->num_tablets;
