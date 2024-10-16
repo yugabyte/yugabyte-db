@@ -33,6 +33,7 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     gap: theme.spacing(0.5),
     alignItems: "center",
+    justifyContent: "center",
     width: "fit-content",
     "& span:first-letter": {
       textTransform: "uppercase",

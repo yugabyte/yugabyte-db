@@ -4,7 +4,7 @@ import TodoIcon from "@app/assets/todo.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import { YBAccordion, YBTooltip } from "@app/components";
-
+import type { Trans as TransType } from "react-i18next";
 const useStyles = makeStyles((theme) => ({
   paper: {
     borderColor: theme.palette.grey[200],
@@ -43,18 +43,20 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-type StepCardStatus = "TODO" | "IN_PROGRESS" | "DONE";
+type StepCardStatus = "TODO" | "IN_PROGRESS" | "DONE" | "WARNING";
 
 interface StepCardProps {
-  title: string;
+  title: string | React.ReactElement<typeof TransType>;
   showTooltip?: boolean;
   showTodo?: boolean;
   showInProgress?: boolean;
   hideContent?: boolean;
+  isTodo?: boolean;
   isDone?: boolean;
   isLoading?: boolean;
   accordion?: boolean;
   defaultExpanded?: boolean;
+  contentSeparator?: boolean;
   renderChips?: () => React.ReactNode;
   children?: (state: StepCardStatus) => React.ReactNode;
 }
@@ -65,9 +67,11 @@ export const StepCard: FC<StepCardProps> = ({
   showTodo = false,
   showInProgress = false,
   hideContent = false,
+  isTodo = false,
   isDone = false,
   isLoading = false,
   accordion = false,
+  contentSeparator = false,
   defaultExpanded = isLoading,
   renderChips,
   children,
@@ -76,32 +80,44 @@ export const StepCard: FC<StepCardProps> = ({
   const theme = useTheme();
   const { t } = useTranslation();
 
-  const getStepCardStatus = (isDone: boolean, isLoading: boolean) => {
+  const getStepCardStatus = (isDone: boolean, isLoading: boolean, isTodo: boolean) => {
     if (isLoading) {
       return "IN_PROGRESS";
+    }
+    if (isTodo) {
+      return "WARNING";
     }
     return isDone ? "DONE" : "TODO";
   };
 
-  const content = children?.(getStepCardStatus(isDone, isLoading));
+  const content = children?.(getStepCardStatus(isDone, isLoading, isTodo));
 
   return (
     <Accordionify
       accordion={accordion}
       renderChips={renderChips}
       defaultExpanded={defaultExpanded}
+      contentSeparator={contentSeparator}
       titleComponent={
         <Box display="flex" alignItems="center" gridGap={theme.spacing(3)}>
-          {!isDone && !isLoading && (
+          {!isDone && !isLoading && !isTodo && (
             <Box className={classes.dotWrapper}>
               <Box className={classes.dot} />
             </Box>
           )}
-          {(isDone || isLoading) && (
+          {((isDone && !isTodo) || isLoading) && (
             <YBBadge
               className={classes.badge}
               text=""
               variant={isDone ? BadgeVariant.Success : BadgeVariant.InProgress}
+            />
+          )}
+          {isTodo &&  (
+            <YBBadge
+              className={classes.badge}
+              text=""
+              iconComponent={TodoIcon}
+              variant={BadgeVariant.InProgress}
             />
           )}
           <Box flex={1} display="flex" alignItems="center" gridGap={6}>
@@ -143,6 +159,7 @@ interface AccordionifyProps {
   renderChips?: () => React.ReactNode;
   children: React.ReactNode;
   defaultExpanded?: boolean;
+  contentSeparator?: boolean;
 }
 
 export const Accordionify: FC<AccordionifyProps> = ({
@@ -151,6 +168,7 @@ export const Accordionify: FC<AccordionifyProps> = ({
   renderChips,
   children,
   defaultExpanded,
+  contentSeparator
 }) => {
   const classes = useStyles();
 
@@ -160,6 +178,7 @@ export const Accordionify: FC<AccordionifyProps> = ({
         titleContent={titleComponent}
         renderChips={renderChips}
         defaultExpanded={defaultExpanded}
+        contentSeparator={contentSeparator}
       >
         <Box width="100%" mt={-3}>
           {children}

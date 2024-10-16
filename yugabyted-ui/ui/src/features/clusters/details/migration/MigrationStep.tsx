@@ -12,6 +12,7 @@ import {
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
   useGetVoyagerMigrationAssesmentDetailsQuery,
+  MigrationAssesmentInfo
 } from "@app/api/src";
 
 interface MigrationStepProps {
@@ -42,6 +43,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
   const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration?.migration_uuid || "migration_uuid_not_found",
   });
+  const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
   const { refetch: refetchMigrationAssesmentInfo } = useGetMigrationAssessmentInfoQuery(
     {
       uuid: migration?.migration_uuid || "migration_uuid_not_found",
@@ -94,7 +96,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
           return (
             <StepComponent
               key={index}
-              operatingSystem={index === 0 ? migrationAssessmentData?.operating_system: "git"}
+              operatingSystem={index === 0 ? mAssessmentData?.operating_system: "git"}
               step={index}
               heading={steps[step]}
               migration={migration}
