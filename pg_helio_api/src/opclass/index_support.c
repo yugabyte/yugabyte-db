@@ -934,13 +934,6 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 	else if (IsA(path, IndexPath))
 	{
 		IndexPath *indexPath = (IndexPath *) path;
-		const VectorIndexDefinition *vectorDefinition =
-			GetVectorIndexDefinitionByIndexAmOid(
-				indexPath->indexinfo->relam);
-		if (vectorDefinition != NULL)
-		{
-			context->hasVectorSearchQuery = true;
-		}
 
 		/* Ignore primary key lookup paths parented in a bitmap scan:
 		 * This can happen because a RUM index lookup can produce a 0 cost query as well
@@ -952,7 +945,16 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		{
 			context->primaryKeyLookupPath = indexPath;
 		}
-		else if (vectorDefinition != NULL)
+
+		const VectorIndexDefinition *vectorDefinition = NULL;
+		if (indexPath->indexorderbys != NIL)
+		{
+			/* Only check for vector when there's an order by */
+			vectorDefinition = GetVectorIndexDefinitionByIndexAmOid(
+				indexPath->indexinfo->relam);
+		}
+
+		if (vectorDefinition != NULL)
 		{
 			/*
 			 *  indexPath->indexorderbys contains a list of order by expressions. For vector search, it is of the following form.
@@ -976,6 +978,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 			Const *vectorConst = (Const *) lsecond(sortExpr->args);
 
+			context->hasVectorSearchQuery = true;
 			context->queryDataForVectorSearch.VectorPathName =
 				vectorPathConst->constvalue;
 			context->queryDataForVectorSearch.QueryVector = vectorConst->constvalue;
