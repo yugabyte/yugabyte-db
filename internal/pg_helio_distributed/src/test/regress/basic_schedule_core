@@ -162,3 +162,10 @@ test: bson_query_operator_pfe_index_pushdown
 
 # Adhoc Query optimization tests
 test: bson_query_operator_in_opt
+
+test: bson_aggregation_stage_merge_tests
+test: commands_create_indexes_text
+test: commands_db_stats
+test: bson_aggregation_stage_index_stats
+test: bson_aggregation_pipeline_tests_coll_agnostic
+test: commands_coll_mod

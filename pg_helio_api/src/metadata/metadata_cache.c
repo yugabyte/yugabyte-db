@@ -2855,7 +2855,7 @@ ApiIndexStatsAggregationFunctionOid(void)
 
 	if (Cache.IndexStatsAggregationFunctionOid == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
+		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
 											makeString("index_stats_aggregation"));
 		Oid paramOids[2] = { TEXTOID, TEXTOID };
 		bool missingOK = false;

@@ -7,6 +7,8 @@ SET search_path TO helio_api;
 #include "operators/bson_dollar_text_operators--1.24-0.sql"
 #include "udfs/ttl/ttl_support_functions--1.24-0.sql"
 #include "schema/bson_rum_text_path_ops--1.24-0.sql"
+#include "udfs/commands_diagnostic/db_stats--1.24-0.sql"
+#include "udfs/commands_diagnostic/index_stats--1.24-0.sql"
 #include "udfs/aggregation/bson_coercion_compat--1.24-0.sql"
 
 RESET search_path;

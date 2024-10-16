@@ -17,6 +17,7 @@
  helio_api | create_indexes_background            | record           | p_database_name text, p_index_spec helio_core.bson, OUT retval helio_core.bson, OUT ok boolean, OUT requests helio_core.bson                                                                                                    | func
  helio_api | create_user                          | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | cursor_get_more                      | record           | database text, getmorespec helio_core.bson, continuationspec helio_core.bson, OUT cursorpage helio_core.bson, OUT continuation helio_core.bson                                                                                  | func
+ helio_api | db_stats                             | helio_core.bson  | p_database_name text, p_scale double precision DEFAULT 1, p_freestorage boolean DEFAULT false                                                                                                                                   | func
  helio_api | delete                               | record           | p_database_name text, p_delete helio_core.bson, p_insert_documents helio_core.bsonsequence DEFAULT NULL::helio_core.bsonsequence, p_transaction_id text DEFAULT NULL::text, OUT p_result helio_core.bson, OUT p_success boolean | func
  helio_api | distinct_query                       | helio_core.bson  | database text, distinctspec helio_core.bson, OUT document helio_core.bson                                                                                                                                                       | func
  helio_api | drop_collection                      | boolean          | p_database_name text, p_collection_name text, p_write_concern helio_core.bson DEFAULT NULL::helio_core.bson, p_collection_uuid uuid DEFAULT NULL::uuid, p_track_changes boolean DEFAULT true                                    | func
@@ -37,7 +38,7 @@
  helio_api | update_user                          | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | users_info                           | helio_core.bson  | p_spec helio_core.bson                                                                                                                                                                                                          | func
  helio_api | validate                             | helio_core.bson  | database text, validatespec helio_core.bson, OUT document helio_core.bson                                                                                                                                                       | func
-(34 rows)
+(35 rows)
 
 \df helio_api_catalog.*
                                                                                                 List of functions
