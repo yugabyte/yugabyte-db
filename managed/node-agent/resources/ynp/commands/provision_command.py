@@ -41,7 +41,6 @@ class ProvisionCommand(Command):
     def validate(self):
         # Validate the required packages needed for the provision to be successful.
         self._validate_required_packages()
-        self._validate_permissions()
 
     def _load_modules(self):
         package = importlib.import_module(self.base_package)
@@ -148,6 +147,8 @@ class ProvisionCommand(Command):
                 continue
             if module in self.cloud_only_modules:
                 continue
+            if module == 'InstallNodeAgent' and not self.config[key].is_install_node_agent:
+                continue
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
@@ -212,21 +213,6 @@ class ProvisionCommand(Command):
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
             sys.exit()
-
-    # def _validate_permissions(self):
-    #     Commenting this block for now. Will remove later if not required.
-    #     key = next(iter(self.config), None)
-    #     gp_dir = os.path.dirname(os.path.dirname(self.config[key]["ynp_dir"]))
-    #     installer_dir = os.path.join(gp_dir, "bin")
-    #     mode = os.stat(installer_dir).st_mode
-    #     yugabyte_has_read = bool(mode & stat.S_IROTH)
-    #     yugabyte_has_execute = bool(mode & stat.S_IXOTH)
-    #     if yugabyte_has_read and yugabyte_has_execute:
-    #         logger.info(f"yugabyte user has read and execute permissions on {installer_dir}")
-    #     else:
-    #         logger.error(f"yugabyte does NOT have sufficient permissions on {installer_dir}")
-    #         logger.error(f"Please fix the permissions on {installer_dir} and try again.")
-    #         sys.exit(1)
 
     def _validate_required_packages(self):
         package_manager = None

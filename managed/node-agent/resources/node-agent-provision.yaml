@@ -31,6 +31,9 @@ ynp:
   # Used for storing temporary files during setup.
   tmp_directory: /tmp
 
+  # Install node_agent as part of provisioning.
+  is_install_node_agent: true
+
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.
