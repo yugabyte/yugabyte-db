@@ -275,6 +275,7 @@ static inline int od_backend_startup(od_server_t *server,
 			return -1;
 		case YB_OID_DETAILS:
 			rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+			machine_msg_free(msg);
 			if (rc == -1)
 				return -1;
 			if (yb_is_route_invalid(route))
