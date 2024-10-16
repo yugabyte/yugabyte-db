@@ -2175,11 +2175,7 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-  constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO t SELECT s FROM generate_series(1, $0) AS s", kRows));
-  constexpr auto kLongTimeQuery = "SELECT COUNT(*) FROM t";
+  constexpr auto kLongTimeQuery = "SELECT pg_sleep(30)";
   std::atomic<MonoTime> termination_start;
   MonoTime termination_end;
   {
@@ -2192,11 +2188,12 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
       const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
       while (MonoTime::Now() < deadline) {
         const auto local_termination_start = MonoTime::Now();
-        auto res = ASSERT_RESULT(thread_conn.FetchFormat(
-          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
-          kLongTimeQuery));
-        auto lines = PQntuples(res.get());
-        if (lines) {
+        const auto lines = ASSERT_RESULT(thread_conn.FetchRows<bool>(
+            Format(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
+                kLongTimeQuery)));
+        if (!lines.empty()) {
+          ASSERT_TRUE(lines.size() == 1 && lines.front());
           termination_start.store(local_termination_start, std::memory_order_release);
           break;
         }
@@ -2206,8 +2203,8 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
     latch.Wait();
     const auto res = conn.Fetch(kLongTimeQuery);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(res.status().ToString(),
-                        "terminating connection due to administrator command");
+    ASSERT_TRUE(res.status().IsNetworkError());
+    ASSERT_STR_CONTAINS(res.status().ToString(), "server closed the connection unexpectedly");
     termination_end = MonoTime::Now();
   }
   const auto termination_duration =
