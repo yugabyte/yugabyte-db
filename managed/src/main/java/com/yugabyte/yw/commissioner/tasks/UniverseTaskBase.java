@@ -6456,7 +6456,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               ybcBackup)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
-      backupScheduleSubTasks.run();
+      if (scheduleParams.enablePointInTimeRestore) {
+        backupScheduleSubTasks.run();
+      }
 
       // Mark universe update succeeded
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())

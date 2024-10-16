@@ -1231,7 +1231,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // timestamp_history_retention_sec gflag final value
     Duration timestampHistoryRetentionPlatform =
         Schedule.getMaxBackupIntervalInUniverseForPITRestore(
-            universeFromDB.getUniverseUUID(), true /* includeIntermediate */);
+            universeFromDB.getUniverseUUID(),
+            true /* includeIntermediate */,
+            null /* excludeScheduleUUID */);
     if (timestampHistoryRetentionPlatform.toSeconds() > 0L) {
       long historyRetentionBufferSecs =
           confGetter.getConfForScope(

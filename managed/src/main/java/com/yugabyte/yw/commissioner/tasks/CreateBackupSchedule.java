@@ -66,7 +66,7 @@ public class CreateBackupSchedule extends BackupScheduleBase {
   public void run() {
     addAllCreateBackupScheduleTasks(
         getBackupScheduleUniverseSubtasks(
-            getUniverse(), taskParams().scheduleParams, false /* isDelete */),
+            getUniverse(), taskParams().scheduleParams, null /* deleteScheduleUUID */),
         taskParams().scheduleParams,
         taskParams().customerUUID,
         ybcManager.getStableYbcVersion());

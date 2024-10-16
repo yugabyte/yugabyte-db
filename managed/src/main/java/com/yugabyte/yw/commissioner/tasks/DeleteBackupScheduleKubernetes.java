@@ -38,7 +38,9 @@ public class DeleteBackupScheduleKubernetes extends BackupScheduleBaseKubernetes
   public void run() {
     addAllDeleteBackupScheduleTasks(
         getBackupScheduleUniverseSubtasks(
-            getUniverse(), taskParams().scheduleParams, true /* isDelete */),
+            getUniverse(),
+            taskParams().scheduleParams,
+            taskParams().scheduleUUID /* deleteScheduleUUID */),
         taskParams().scheduleParams,
         taskParams().customerUUID,
         taskParams().scheduleUUID);
