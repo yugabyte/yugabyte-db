@@ -5166,3 +5166,13 @@ SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
 		return SORTBY_DESC;
 	return SORTBY_ASC;
 }
+
+/*
+ * Determine if the unsafe truncate (i.e., without table rewrite) should
+ * be used for a given relation and its indexes.
+ */
+bool YbUseUnsafeTruncate(Relation rel)
+{
+	return IsYBRelation(rel) &&
+		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+}

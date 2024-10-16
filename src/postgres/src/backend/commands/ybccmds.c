@@ -986,8 +986,13 @@ YbOnTruncateUpdateCatalog(Relation rel)
 	CommandCounterIncrement();
 }
 
+/*
+ * Execute an unsafe YB truncate operation (without table rewrite):
+ * For non-colocated tables: perform a tablet-level truncate.
+ * For colocated tables: add a table-level tombstone.
+ */
 void
-YbTruncate(Relation rel)
+YbUnsafeTruncate(Relation rel)
 {
 	YBCPgStatement handle;
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1043,7 +1048,7 @@ YbTruncate(Relation rel)
 			continue;
 		}
 
-		YbTruncate(indexRel);
+		YbUnsafeTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
 
