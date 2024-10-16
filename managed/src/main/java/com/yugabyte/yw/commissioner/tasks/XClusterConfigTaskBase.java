@@ -2822,7 +2822,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             ybClientService,
             xClusterConfig,
             clusterConfig,
-            targetTableInfoList);
+            targetTableInfoList,
+            sourceTableInfoList);
     sourceTableConfigs =
         getSourceOnlyTable(
             xClusterUniverseService,
@@ -2852,19 +2853,48 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       YBClientService ybClientService,
       XClusterConfig xClusterConfig,
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
     try {
       Set<String> tableIdsInReplicationOnTargetUniverse =
           getConsumerTableIdsFromClusterConfig(
               clusterConfig, xClusterConfig.getReplicationGroupName());
 
-      return extractTablesNotInReplication(
-          xClusterConfig,
-          xClusterConfig.getTargetUniverseUUID(),
-          ybClientService,
-          tableIdsInReplicationOnTargetUniverse,
-          targetTableInfoList,
-          XClusterTableConfig.Status.ExtraTableOnTarget);
+      List<XClusterTableConfig> result =
+          extractTablesNotInReplication(
+              xClusterConfig,
+              xClusterConfig.getTargetUniverseUUID(),
+              ybClientService,
+              tableIdsInReplicationOnTargetUniverse,
+              targetTableInfoList,
+              XClusterTableConfig.Status.ExtraTableOnTarget);
+
+      if (xClusterConfig.getType().equals(ConfigType.Db)) {
+        // For DB replication, we need to check if the table is part of the replication group on the
+        // source universe. If it is not, then the table is dropped from the source universe.
+        List<String> sourceTableIdsInReplication =
+            xClusterConfig.getTableDetails().stream()
+                .map(tableInfo -> tableInfo.getTableId())
+                .collect(Collectors.toList());
+        List<String> targetTableIdsForSourceTableIdsInReplication = new ArrayList<>();
+        getSourceTableIdTargetTableIdMap(sourceTableInfoList, targetTableInfoList)
+            .forEach(
+                (sourceTableId, targetTableId) -> {
+                  if (sourceTableIdsInReplication.contains(sourceTableId)) {
+                    targetTableIdsForSourceTableIdsInReplication.add(targetTableId);
+                  }
+                });
+        tableIdsInReplicationOnTargetUniverse.stream()
+            .filter(tableId -> !targetTableIdsForSourceTableIdsInReplication.contains(tableId))
+            .forEach(
+                tableId -> {
+                  XClusterTableConfig tableConfig =
+                      new XClusterTableConfig(xClusterConfig, tableId);
+                  tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromSource);
+                  result.add(tableConfig);
+                });
+      }
+      return result;
     } catch (Exception e) {
       log.error(
           "Error getting target only table for xCluster config {}", xClusterConfig.getUuid(), e);

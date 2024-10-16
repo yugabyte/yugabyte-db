@@ -797,7 +797,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  // @Test
+  @Test
   public void testDBScopedXClusterTableConfigStatus()
       throws InterruptedException, JsonMappingException, JsonProcessingException {
     Universe sourceUniverse =
