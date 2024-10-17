@@ -265,10 +265,6 @@ an error would be thrown like:
 
 ```sql{.nocopy}
 ERROR:  23514: new row for relation "employees4" violates check constraint "employees4_department_check"
-DETAIL:  Failing row contains (2, John, X).
-SCHEMA NAME:  public
-TABLE NAME:  employees4
-CONSTRAINT NAME:  employees4_department_check
 ```
 
 You can add a check constraint after the table is created with ALTER TABLE.
@@ -315,4 +311,58 @@ When a NULL value for name is inserted, you will get an error as:
 ERROR:  23502: null value in column "name" violates not-null constraint
 ```
 
+### Foreign key constraint
+
+Foreign Key constraints are used to enforce referential integrity between two tables in a relational database. They create a link between data in two tables, ensuring that relationships between tables remain consistent. Foreign keys help prevent orphaned records by ensuring that references to related data remain valid. For example, consider the scenario where you have a `departments` table that has `dept_id` and other info and an employee table that links the employee with `dept_id`.
+
+```sql
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(100)
+);
+
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(100),
+    dept_id INT,
+        CONSTRAINT fk_department FOREIGN KEY (dept_id)
+            REFERENCES departments(dept_id)
+);
+```
+
+As you have a foreign key constraint set up between these 2 tables, you will not be able to insert a row into the `employees` tables with an invalid `dept_id`. It will throw a `violates foreign key constraint` error like:
+
+```sql
+INSERT INTO employees VALUES(1, 'Brian', 2000);
+```
+
+```sql{.nocopy}
+ERROR:  23503: insert or update on table "employees" violates foreign key constraint "fk_department"
+```
+
 ### Deferring constraints
+
+By default, constraints are checked immediately after each statement (INITIALLY IMMEDIATE), but with INITIALLY DEFERRED, the check is postponed until the transaction is committed. This is particularly useful when performing complex operations that might temporarily violate constraints but are resolved by the time the transaction is complete, particularly in the context of foreign key constraints.
+
+Using DEFERRABLE INITIALLY DEFERRED allows you to perform complex changes in a transaction without constraint violations, making sure that integrity checks are only performed when the transaction is about to complete. Without this, the following transaction will error out in Step 1.
+
+```sql
+BEGIN;
+    -- Step 1: Insert a new the employee's info
+    -- NOTE: dept `2000` does not exist as of now
+    INSERT INTO employees VALUES(1, 'Brian', 2000);
+
+    -- Step 2: Insert the new department
+    INSERT INTO department VALUES(2000, 'Area-51');
+
+-- Commit the transaction, which checks the constraints at this point
+COMMIT;
+```
+
+But when you add the `DEFERRABLE INITIALLY DEFERRED` clause, the above transaction will succeed!
+
+```sql
+    dept_id INT,
+        CONSTRAINT fk_department FOREIGN KEY (dept_id)
+            REFERENCES departments(dept_id) DEFERRABLE INITIALLY DEFERRED
+```
