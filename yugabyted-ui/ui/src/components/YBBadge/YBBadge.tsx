@@ -70,7 +70,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.success[700],
   },
   successIcon: {
-    color: theme.palette.success[700],
+    color: theme.palette.success[500],
   },
   error: {
     background: theme.palette.error[100],

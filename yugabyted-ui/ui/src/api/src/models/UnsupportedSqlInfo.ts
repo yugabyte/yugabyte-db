@@ -12,6 +12,8 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { UnsupportedSqlObjectData } from './UnsupportedSqlObjectData';
 
 
 /**
@@ -32,6 +34,18 @@ export interface UnsupportedSqlInfo  {
    * @memberof UnsupportedSqlInfo
    */
   count?: number;
+  /**
+   * 
+   * @type {UnsupportedSqlObjectData[]}
+   * @memberof UnsupportedSqlInfo
+   */
+  objects?: UnsupportedSqlObjectData[];
+  /**
+   * 
+   * @type {string}
+   * @memberof UnsupportedSqlInfo
+   */
+  docs_link?: string;
 }
 
 

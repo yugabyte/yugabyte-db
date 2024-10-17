@@ -1097,6 +1097,21 @@ UnsupportedSqlInfo:
       type: string
     count:
       type: integer
+    objects:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlObjectData'
+    docs_link:
+      type: string
+UnsupportedSqlObjectData:
+  title: Unsupported SQL Object Data
+  description: Unsupported SQL Object Data
+  type: object
+  properties:
+    object_name:
+      type: string
+    sql_statement:
+      type: string
 RecommendedRefactoringGraph:
   title: Refectoring recommendations per SQL object type
   description: Refectoring recommendations for migrating SQL objects

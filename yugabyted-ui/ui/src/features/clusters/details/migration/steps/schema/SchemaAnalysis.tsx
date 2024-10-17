@@ -20,8 +20,8 @@ export type SchemaAnalysisData = {
     unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
   };
 };
-const EXPORT_SCHEMA_DOCS_URL =
-      "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema"
+const ANALYZE_SCHEMA_DOCS_URL =
+    "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#analyze-schema"
 const useStyles = makeStyles((theme) => ({
   paper: {
     border: "1px solid",
@@ -110,10 +110,14 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
             enableBackdropDismiss
             titleSeparator
             size="md"
-
-            style={{maxHeight:400, margin:"auto", maxWidth:"fit-content"}}
+            overrideHeight={400}
            >
               <Box p={1}>
+                <Box my={2} width="fit-content">
+                  <Typography variant="body2">
+                    {t("clusterDetail.voyager.migrateSchema.schemaAnalysisDesc")}
+                  </Typography>
+                </Box>
                 <YBCodeBlock
                   text={
                     "# Replace the argument values with those applicable " +
@@ -127,12 +131,12 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
                 <Box mt={2} mb={2} width="fit-content">
                   <Link
                     className={classes.docsLink}
-                    href={EXPORT_SCHEMA_DOCS_URL}
+                    href={ANALYZE_SCHEMA_DOCS_URL}
                     target="_blank"
                   >
                     <BookIcon className={classes.menuIcon} />
                     <Typography variant="body2">
-                      {t("clusterDetail.voyager.migrateSchema.schemaExportLearn")}
+                      {t("clusterDetail.voyager.migrateSchema.schemaAnalysisLearn")}
                     </Typography>
                   </Link>
                 </Box>
