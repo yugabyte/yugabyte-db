@@ -126,14 +126,15 @@ public class XClusterTableConfig extends Model {
 
   // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Failed("Failed", -1),
-    Error("Error", -2), // Not stored in YBA DB.
-    Warning("Warning", -3), // Not stored in YBA DB.
-    UnableToFetch("UnableToFetch", -4), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch", 4), // Not stored in YBA DB.
     Updating("Updating", 1),
     Bootstrapping("Bootstrapping", 2),
     Validated("Validated", 3),
     Running("Running", 0),
+    // The following statuses will leads to alert creation.
+    Failed("Failed", -1),
+    Error("Error", -2), // Not stored in YBA DB.
+    Warning("Warning", -3), // Not stored in YBA DB.
     DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
     DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
     ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
