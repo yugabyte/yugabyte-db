@@ -188,6 +188,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "ability to configure debug logs for connection manager to be at the same levels as " +
         "tserver log levels.";
 
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,
