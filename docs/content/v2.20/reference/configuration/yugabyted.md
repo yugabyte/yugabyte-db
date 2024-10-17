@@ -125,7 +125,7 @@ Examples:
 : The IP address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin.
 
 --config *config-file*
-: Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
+: yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -263,7 +263,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
@@ -304,7 +304,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
@@ -352,7 +352,7 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
@@ -381,7 +381,7 @@ Usage: yugabyted stop [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be stopped.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be stopped.
@@ -410,7 +410,7 @@ Usage: yugabyted destroy [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be destroyed.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be destroyed.
@@ -439,7 +439,7 @@ Usage: yugabyted status [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose status is desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose status is desired.
@@ -468,7 +468,7 @@ Usage: yugabyted version [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose version is desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose version is desired.
@@ -500,7 +500,7 @@ Usage: yugabyted collect_logs [flags]
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose logs are desired.
@@ -544,7 +544,7 @@ Use the `yugabyted connect ycql` subcommand to connect to YugabyteDB with [ycqls
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server to connect to.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server to connect to.
@@ -588,7 +588,7 @@ Use the `yugabyted demo destroy` subcommand to shut down the yugabyted single-no
 : Print the help message and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server to connect to or destroy.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server to connect to or destroy.
