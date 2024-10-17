@@ -12,23 +12,27 @@ aliases:
 type: docs
 ---
 
-This document describes how to use triggers when performing data manipulation and definition.
+Triggers are special types of stored procedures that automatically execute in response to specific events on a particular table or view in a database. Triggers allow you to define automated actions that occur whenever data is modified, enabling you to enforce business rules, validate data, or maintain audit trails. Let us explore this feature via some examples
 
-{{% explore-setup-single %}}
+## Setup
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-## Overview
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
 
-In YSQL, a function invoked automatically when an event associated with a table occurs is called a trigger. The event is typically caused by modification of data during `INSERT`, `UPDATE`, and `DELETE`. The even can also be caused by schema changes.
+{{</nav/panel>}}
 
-You create a trigger by defining a function and then attaching this trigger function to a table. You can create a trigger at a row level or a statement level, depending on the number of times the trigger is to be invoked and when. For example, when executing an `UPDATE` statement that affects five rows, the row-level trigger is invoked five times, whereas the statement-level trigger is invoked only once. In addition, you can enable the trigger to be invoked before or after an event: when the trigger is invoked before an event, it may skip the operation for the current row or modify the row itself; if the trigger is invoked after the event, the trigger has access to all the changes.
-
-When YugabyteDB is being used by different applications, triggers allow you to keep the cross-functional behavior in the database that is performed automatically every time the table data is modified. In addition, triggers let you maintain data integrity rules that can only be implemented at the database level.
-
-When using triggers, it is important to be aware of their existence and understand their logic. Otherwise, it is difficult to predict the timing and effects of data changes.
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 ## Create triggers
 
-Creating a trigger in YSQL is a two-step process: you start by creating a trigger function via the `CREATE FUNCTION` statement, and then you bind the trigger function to a table using the `CREATE TRIGGER` statement.
+Creating a trigger in SQL involves defining an automatic action that is executed in response to specified events on a table, such as INSERT, UPDATE, or DELETE. Triggers are created using the CREATE TRIGGER statement, where you specify the event, timing (before or after the event), and the action to be performed.
 
 The `CREATE FUNCTION` statement has the following syntax:
 
@@ -109,9 +113,9 @@ The following example demonstrates how to bind the trigger function to the `empl
 
 ```sql
 CREATE TRIGGER dept_changes
-BEFORE UPDATE ON employees
-FOR EACH ROW
-EXECUTE PROCEDURE record_dept_changes();
+  BEFORE UPDATE ON employees
+  FOR EACH ROW
+  EXECUTE PROCEDURE record_dept_changes();
 ```
 
 The trigger name in the preceding example is `dept_changes`. The trigger function is automatically invoked before the value of the `department` column is updated.

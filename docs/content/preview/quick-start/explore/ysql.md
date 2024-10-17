@@ -620,7 +620,7 @@ Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Stored procedures
 
-A [stored procedure](../../../explore/ysql-language-features/stored-procedures/) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
+A [stored procedure](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
 1. Create the procedure for the commission transfer between employees. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 
