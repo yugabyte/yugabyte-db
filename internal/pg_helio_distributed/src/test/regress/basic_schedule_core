@@ -30,6 +30,7 @@ test: bson_dollar_operators_negation_tests_index
 test: bson_dollar_operators_negation_tests_explain_index
 test: bson_dollar_operators_negation_tests_explain_runtime
 
+test: create_indexes_cosmos_vector
 test: bson_dollar_ops_text_search_tests bson_dollar_ops_expr_tests
 test: bson_dollar_ops_json_schema_build_tree_tests bson_dollar_ops_json_schema_query_tests
 
