@@ -189,23 +189,47 @@ SELECT department FROM employees
   ORDER BY department ASC NULLS FIRST;
 ```
 
-### Duplicate rows
+### Subqueries
 
-You can use the `DISTINCT` clause to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list. For example, to get the list of departments, you can run:
+A subquery is a query nested inside another SQL query. It is used to perform a query within the context of a larger query, allowing more complex data retrieval and manipulation. Subqueries can be placed inside SELECT, INSERT, UPDATE, or DELETE statements, or within clauses such as WHERE, FROM, or HAVING.
+
+Suppose you want to find students with scores above the average score in the scores table. For this you can run:
 
 ```sql
-SELECT DISTINCT department FROM employees;
+SELECT name
+FROM students
+WHERE id IN (
+    SELECT id
+    FROM scores
+    WHERE score > (SELECT AVG(score) FROM scores)
+);
 ```
 
-You will get the following output. Note that even though there are 2 employees in Sales, only one row for Sales has been returned. This is the effect of `DISTINCT`
+Here, `SELECT AVG(score) FROM scores` is the subquery that calculates the average score and passes it on to `SELECT id FROM scores` which itself is another subquery that finds the ids of the students with score greater than the average score.
 
-```caddyfile{.nocopy}
- department
-------------
- Marketing
- Operations
- Sales
+### CTEs
+
+Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other types of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference like a table from another SQL statement.
+
+You can use the following syntax to create a basic CTE:
+
+```sql
+WITH cte_name (columns) AS (cte_query) statement;
 ```
+
+For example to create a table of combinations of all subjects and student names
+
+```sql
+WITH subjects AS ( --> cte name : subjects
+    SELECT DISTINCT(subject) FROM scores AS subject --> cte query
+)
+-- below is the statemet
+SELECT name, subject
+  FROM subjects CROSS JOIN students
+  ORDER BY name, subject;
+```
+
+Here, the distinct list of subjects is formed via the cte query and referred as `subjects` table in the sql statement.
 
 ## Filtering
 
@@ -306,7 +330,25 @@ You will get the details of all those whose names start with `Luci`.
         1223 | Lucille Ball | Operations
 ```
 
-## Group
+### Duplicate rows
+
+You can use the `DISTINCT` clause to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list. For example, to get the list of departments, you can run:
+
+```sql
+SELECT DISTINCT department FROM employees;
+```
+
+You will get the following output. Note that even though there are 2 employees in Sales, only one row for Sales has been returned. This is the effect of `DISTINCT`
+
+```caddyfile{.nocopy}
+ department
+------------
+ Marketing
+ Operations
+ Sales
+```
+
+## Grouping
 
 Use `GROUP BY` when you need to organize or summarize data based on specified columns. Grouping is often combined with aggregate functions like COUNT(), SUM(), AVG(), or MAX() to perform calculations on each group. For example, to calculate the number of employees in each department, you can do the following:
 
@@ -365,6 +407,7 @@ CREATE TABLE scores (
     PRIMARY KEY(id, subject)
 );
 
+-- Not needed, but helpful for speeding up queries
 CREATE INDEX idx_name on students(name);
 CREATE INDEX idx_id on scores(id);
 ```
@@ -387,6 +430,7 @@ INSERT INTO scores (id, subject, score)
         FROM subjects CROSS JOIN students
         WHERE id <= 3
         ORDER BY id;
+
 INSERT INTO scores (id, subject, score) VALUES (10, 'English', 40);
 ```
 
@@ -408,11 +452,7 @@ You will get an output similar to:
  Natasha | English |    85
  Natasha | History |    94
  Natasha | Math    |    97
- Natasha | Science |    75
- Natasha | Spanish |    78
- Lisa    | English |    94
- Lisa    | History |    93
- Lisa    | Math    |    85
+ ...
  Lisa    | Science |    41
  Lisa    | Spanish |    94
  Mike    | English |    55
@@ -506,7 +546,7 @@ You will see `null` values from both tables.
 
 ### Cross join
 
-A CROSS JOIN returns the Cartesian product of two tables, meaning it combines every row from the first table with every row from the second table. This type of join doesn't require any condition to match rows between the tables. For example, when you cross join the students table (5 rows) with the scores (16 rows), the result set includes all combinations of student names with all subjects (80 rows).
+A CROSS JOIN returns the Cartesian product of two tables, meaning it combines every row from the first table with every row from the second table. This type of join doesn't require any condition to match rows between the tables. For example, when you cross join the students table (`5` rows) with the scores (`16` rows), the resultset includes all combinations of student names with all subjects (`5*16 = 80` rows)
 
 ```sql
 SELECT name, subject
@@ -534,58 +574,3 @@ CROSS JOIN scores;
  Mike    | Spanish
 (80 rows)
 ```
-
-## Subqueries
-
-A subquery is a query nested inside another SQL query. It is used to perform a query in the context of a larger query, allowing more complex data retrieval and manipulation. Subqueries can be placed inside SELECT, INSERT, UPDATE, or DELETE statements, or in clauses such as WHERE, FROM, or HAVING.
-
-Suppose you want to find students with scores above the average score in the scores table. For this you can run:
-
-```sql
-SELECT name
-FROM students
-WHERE id IN (
-    SELECT id
-    FROM scores
-    WHERE score > (SELECT AVG(score) FROM scores)
-);
-```
-
-In this example, `SELECT AVG(score) FROM scores` is the subquery that calculates the average score and passes it on to `SELECT id FROM scores`, which itself is another subquery that finds the ids of the students with score greater than the average score.
-
-You can use a subquery that is an input of the `EXISTS` operator which returns true if the subquery returns any rows. The `EXISTS` operator returns false in cases where the subquery does not return any rows. The `EXISTS` operator does not access the content of the rows; it only needs to know the number of rows returned by the subquery. For example, you can rewrite the above query using EXISTS as follows:
-
-```sql
-SELECT name
-FROM students
-WHERE EXISTS (
-    SELECT 1
-    FROM scores
-    WHERE score > (SELECT AVG(score) FROM scores)
-    AND id = students.id
-);
-```
-
-## Common table expressions
-
-Common table expressions (CTEs) allow you to execute recursive, hierarchical, and other types of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference like a table from another SQL statement.
-
-You can use the following syntax to create a basic CTE:
-
-```sql
-WITH cte_name (columns) AS (cte_query) statement;
-```
-
-For example, to create a table of combinations of all subjects and student names, do the following:
-
-```sql
-WITH subjects AS (                                  --> cte name is subjects
-    SELECT DISTINCT(subject) FROM scores AS subject --> cte query
-)
--- below is the statemet
-SELECT name, subject
-  FROM subjects CROSS JOIN students
-  ORDER BY name, subject;
-```
-
-In this case, the distinct list of subjects is formed via the CTE query and referred to as the `subjects` table in the SQL statement.
