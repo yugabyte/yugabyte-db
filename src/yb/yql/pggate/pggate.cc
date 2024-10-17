@@ -154,6 +154,33 @@ class ExplicitRowLockErrorInfoAdapter {
   std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo> error_info_;
 };
 
+std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
+    const PgObjectId& index_id, const PgPrepareParameters* prepare_params) {
+  if (!index_id.IsValid()) {
+    return std::nullopt;
+  }
+  return PgSelect::IndexQueryInfo{
+      index_id, prepare_params && prepare_params->querying_colocated_table};
+}
+
+Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const PgObjectId& index_id, const PgPrepareParameters* prepare_params, bool is_region_local) {
+  // Scenarios:
+  // - Sequential Scan: PgSelect to read from table_id.
+  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
+  // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
+  // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
+  //     Note that for SysTable, only one request is send for both table_id and index_id.
+  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+    RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
+    return VERIFY_RESULT(PgSelectIndex::Make(pg_session, index_id, is_region_local));
+  }
+
+  return VERIFY_RESULT(PgSelect::Make(
+      pg_session, table_id, is_region_local, MakeIndexQueryInfo(index_id, prepare_params)));
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -1324,25 +1351,23 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
     return nullptr;
   }
 
-  auto stmt = std::make_unique<PgInsert>(
-      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ true);
-  RETURN_NOT_OK(stmt->Prepare());
   PgStatement *result = nullptr;
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), &result));
+  RETURN_NOT_OK(AddToCurrentPgMemctx(
+      VERIFY_RESULT(PgInsert::Make(
+          pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ true)),
+      &result));
   return result;
 }
 
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
                             bool is_region_local,
                             PgStatement **handle,
-                            YBCPgTransactionSetting transaction_setting,
-                            PgStatement *block_insert_stmt) {
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgInsert>(
-      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ false);
-  RETURN_NOT_OK(stmt->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+    VERIFY_RESULT(PgInsert::Make(
+        pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ false)),
+    handle);
 }
 
 Status PgApiImpl::ExecInsert(PgStatement *handle) {
@@ -1388,11 +1413,9 @@ Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
                             PgStatement **handle,
                             YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgUpdate>(
-      pg_session_, table_id, is_region_local, transaction_setting);
-  RETURN_NOT_OK(stmt->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, is_region_local, transaction_setting)),
+      handle);
 }
 
 Status PgApiImpl::ExecUpdate(PgStatement *handle) {
@@ -1410,11 +1433,9 @@ Status PgApiImpl::NewDelete(const PgObjectId& table_id,
                             PgStatement **handle,
                             YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgDelete>(
-      pg_session_, table_id, is_region_local, transaction_setting);
-  RETURN_NOT_OK(stmt->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, is_region_local, transaction_setting)),
+      handle);
 }
 
 Status PgApiImpl::ExecDelete(PgStatement *handle) {
@@ -1425,27 +1446,14 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
-Status PgApiImpl::NewSample(const PgObjectId& table_id,
-                            int targrows,
-                            bool is_region_local,
-                            PgStatement **handle) {
+Status PgApiImpl::NewSample(
+    const PgObjectId& table_id, bool is_region_local, int targrows,
+    const SampleRandomState& rand_state, PgStatement** handle) {
   *handle = nullptr;
-  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local,
-                                           clock_->Now());
-  RETURN_NOT_OK(sample->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
-  return Status::OK();
-}
-
-Status PgApiImpl::InitRandomState(
-    PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(
-      down_cast<PgSample *>(handle)->InitRandomState(rstate_w, rand_state_s0, rand_state_s1));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      VERIFY_RESULT(PgSample::Make(
+          pg_session_, table_id, is_region_local, targrows, rand_state, clock_->Now())),
+      handle);
 }
 
 Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
@@ -1487,11 +1495,10 @@ Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
                                        PgStatement **handle,
                                        YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgTruncateColocated>(
-      pg_session_, table_id, is_region_local, transaction_setting);
-  RETURN_NOT_OK(stmt->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      VERIFY_RESULT(PgTruncateColocated::Make(
+          pg_session_, table_id, is_region_local, transaction_setting)),
+      handle);
 }
 
 Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
@@ -1507,33 +1514,11 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
 Status PgApiImpl::NewSelect(
     const PgObjectId& table_id, const PgObjectId& index_id,
     const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle) {
-  // Scenarios:
-  // - Sequential Scan: PgSelect to read from table_id.
-  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
-  // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
-  // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
-  //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
-  std::unique_ptr<PgDmlRead> stmt;
-  PgDml::PrepareParameters dml_prepare_params;
-  if (prepare_params) {
-    dml_prepare_params.querying_colocated_table = prepare_params->querying_colocated_table;
-    dml_prepare_params.index_only_scan = prepare_params->index_only_scan;
-    dml_prepare_params.fetch_ybctids_only = prepare_params->fetch_ybctids_only;
-    if (prepare_params->index_only_scan && prepare_params->use_secondary_index) {
-      RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
-      stmt = std::make_unique<PgSelectIndex>(
-          pg_session_, index_id, is_region_local, dml_prepare_params);
-    }
-  }
-
-  if (!stmt) {
-    stmt = std::make_unique<PgSelect>(
-        pg_session_, table_id, is_region_local, dml_prepare_params, index_id);
-  }
-  RETURN_NOT_OK(stmt->Prepare());
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      VERIFY_RESULT(MakeSelectStatement(
+          pg_session_, table_id, index_id, prepare_params, is_region_local)),
+      handle);
 }
 
 Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {

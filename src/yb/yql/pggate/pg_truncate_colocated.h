@@ -14,33 +14,35 @@
 
 #pragma once
 
+#include <optional>
+
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_dml_write.h"
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_statement.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// Colocated TRUNCATE
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgTruncateColocated : public PgDmlWrite {
  public:
-  PgTruncateColocated(
-      PgSession::ScopedRefPtr pg_session,
-      const PgObjectId& table_id,
-      bool is_region_local,
-      YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting) {}
-
   StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE; }
 
+  static Result<std::unique_ptr<PgTruncateColocated>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      YBCPgTransactionSetting transaction_setting) {
+    std::unique_ptr<PgTruncateColocated> result{new PgTruncateColocated{
+        pg_session, transaction_setting}};
+    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    return result;
+  }
+
  private:
+  PgTruncateColocated(
+      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
+      : PgDmlWrite(pg_session, transaction_setting) {}
+
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED;
   }
 };
 
-}  // namespace pggate
-}  // namespace yb
+} // namespace yb::pggate

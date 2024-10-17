@@ -14,31 +14,33 @@
 
 #pragma once
 
-#include "yb/yql/pggate/pg_session.h"
+#include <memory>
+
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_dml_write.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// UPDATE
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgUpdate : public PgDmlWrite {
  public:
-  PgUpdate(PgSession::ScopedRefPtr pg_session,
-           const PgObjectId& table_id,
-           bool is_region_local,
-           YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting) {}
-
   StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }
 
+  static Result<std::unique_ptr<PgUpdate>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      YBCPgTransactionSetting transaction_setting) {
+    std::unique_ptr<PgUpdate> result{new PgUpdate{pg_session, transaction_setting}};
+    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    return result;
+  }
+
  private:
+  PgUpdate(const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
+      : PgDmlWrite(pg_session, transaction_setting) {}
+
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_UPDATE;
   }
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

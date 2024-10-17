@@ -23,9 +23,6 @@ namespace yb::pggate {
 
 class PgDmlWrite : public PgDml {
  public:
-  // Prepare write operations.
-  virtual Status Prepare();
-
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
 
@@ -51,11 +48,11 @@ class PgDmlWrite : public PgDml {
 
  protected:
   PgDmlWrite(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-      bool is_region_local, YBCPgTransactionSetting transaction_setting, bool packed = false);
+      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+      bool packed = false);
 
-  // Allocate write request.
-  void AllocWriteRequest();
+  // Prepare write operations.
+  Status Prepare(const PgObjectId& table_id, bool is_region_local);
 
   // Allocate column expression.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;

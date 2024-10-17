@@ -22,29 +22,17 @@
 
 namespace yb::pggate {
 
-PgSelectIndex::PgSelectIndex(
-    PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id,
-    bool is_region_local, const PrepareParameters& prepare_params)
-    : PgSelect(std::move(pg_session), index_id, is_region_local, prepare_params) {
+PgSelectIndex::PgSelectIndex(const PgSession::ScopedRefPtr& pg_session)
+    : PgSelect(pg_session) {
 }
 
-Status PgSelectIndex::PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req) {
-  if (!read_req) {
-    return PgSelect::Prepare();
-  }
-
-  RSTATUS_DCHECK(!prepare_params_.index_only_scan, InvalidArgument, "Unexpected Index scan type");
-  // For (system and user) colocated tables, SelectIndex is a part of Select and being sent
-  // together with the SELECT protobuf request. A read doc_op and request is not needed in this
-  // case.
-  RSTATUS_DCHECK(
-      prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
-
+Status PgSelectIndex::PrepareSubquery(
+    const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   // Setup target and bind descriptor.
-  target_ = bind_ = PgTable(VERIFY_RESULT(LoadTable()));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(index_id)));
 
   read_req_ = std::move(read_req);
-  read_req_->dup_table_id(table_id_.GetYbTableId()); // TODO(LW_PERFORM)
+  read_req_->dup_table_id(index_id.GetYbTableId()); // TODO(LW_PERFORM)
 
   // Prepare index key columns.
   PrepareBinds();
@@ -78,6 +66,20 @@ Result<bool> PgSelectIndex::GetNextYbctidBatch() {
   }
 
   return false;
+}
+
+bool PgSelectIndex::KeepOrder() const {
+  return read_req_->has_is_forward_scan();
+}
+
+Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool is_region_local,
+    std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
+  std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};
+  RETURN_NOT_OK(read_req
+      ? result->PrepareSubquery(index_id, std::move(read_req))
+      : result->Prepare(index_id, is_region_local));
+  return result;
 }
 
 }  // namespace yb::pggate

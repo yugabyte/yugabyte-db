@@ -1410,18 +1410,13 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
-YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
-                         const YBCPgOid table_relfilenode_oid,
-                         int targrows,
-                         bool is_region_local,
-                         YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
-}
-
-YBCStatus YBCPgInitRandomState(
-    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
-  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state_s0, rand_state_s1));
+YBCStatus YBCPgNewSample(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid, bool is_region_local,
+    int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
+    YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewSample(
+      {database_oid, table_relfilenode_oid}, is_region_local,
+      targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1}, handle));
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
