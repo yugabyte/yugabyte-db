@@ -129,6 +129,10 @@ Alternatively, you can use the following environment variables when starting pos
 - `AWS_CONFIG_FILE`: an alternative location for the config file
 - `AWS_PROFILE`: the name of the profile from the credentials and config file (default profile name is `default`)
 
+> [!NOTICE]
+> To be able to write into a object store location, you need to grant `parquet_object_store_write` role to your current postgres user.
+> Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
+
 ## Copy Options
 `pg_parquet` supports the following options in the `COPY TO` command:
 - `format parquet`: you need to specify this option to read or write Parquet files which does not end with `.parquet[.<compression>]` extension. (This is the only option that `COPY FROM` command supports.),
