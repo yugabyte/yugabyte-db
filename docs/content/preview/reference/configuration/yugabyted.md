@@ -461,7 +461,7 @@ For example, delete a read replica cluster using the following command:
 
 ### connect
 
-Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../api/ysqlsh/) or [ycqlsh](../../../api/ycqlsh/).
 
 #### Syntax
 
@@ -478,11 +478,11 @@ The following sub-commands are available for the `yugabyted connect` command:
 
 #### ysql
 
-Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../admin/ysqlsh/).
+Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../api/ysqlsh/).
 
 #### ycql
 
-Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh/).
 
 #### Flags
 
@@ -523,7 +523,7 @@ Use the `yugabyted demo connect` sub-command to load the  [Northwind sample data
 
 #### destroy
 
-Use the `yuagbyted demo destroy` sub-command to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This sub-command also deletes the `yb_demo_northwind` database.
+Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This sub-command also deletes the `yb_demo_northwind` database.
 
 #### Flags
 

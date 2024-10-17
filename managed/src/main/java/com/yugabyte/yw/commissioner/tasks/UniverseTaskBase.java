@@ -356,7 +356,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
           TaskType.MasterFailover,
-          TaskType.SyncMasterAddresses);
+          TaskType.SyncMasterAddresses,
+          TaskType.PauseUniverse,
+          TaskType.ResumeUniverse,
+          TaskType.PauseXClusterUniverses,
+          TaskType.ResumeXClusterUniverses);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -424,7 +428,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.VMImageUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.KubernetesOverridesUpgrade,
-          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */);
+          TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */,
+          TaskType.PauseUniverse /* TODO Validate this, added for YBM only */,
+          TaskType.ResumeUniverse /* TODO Validate this, added for YBM only */,
+          TaskType.PauseXClusterUniverses /* TODO Validate this, added for YBM only */,
+          TaskType.ResumeXClusterUniverses /* TODO Validate this, added for YBM only */);
 
   private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
@@ -5846,7 +5854,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // If it's in the middle of a repair, there's no replication on source.
       if (!(xClusterConfig.isUsedForDr() && xClusterConfig.getDrConfig().isHalted())) {
         // TODO: add forceDelete.
-        createDeleteReplicationOnSourceTask(xClusterConfig)
+        createDeleteReplicationOnSourceTask(xClusterConfig, forceDelete)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     } else {
@@ -6351,13 +6359,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param xClusterConfig config used
    * @return the created subtask group
    */
-  protected SubTaskGroup createDeleteReplicationOnSourceTask(XClusterConfig xClusterConfig) {
+  protected SubTaskGroup createDeleteReplicationOnSourceTask(
+      XClusterConfig xClusterConfig, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteReplicationOnSource");
-    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
-    xClusterConfigParams.xClusterConfig = xClusterConfig;
+    DeleteReplicationOnSource.Params deleteReplicationOnSourceParams =
+        new DeleteReplicationOnSource.Params();
+    deleteReplicationOnSourceParams.xClusterConfig = xClusterConfig;
+    deleteReplicationOnSourceParams.ignoreErrors = ignoreErrors;
 
     DeleteReplicationOnSource task = createTask(DeleteReplicationOnSource.class);
-    task.initialize(xClusterConfigParams);
+    task.initialize(deleteReplicationOnSourceParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

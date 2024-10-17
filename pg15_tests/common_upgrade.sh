@@ -7,32 +7,31 @@ pghost3=127.0.0.$((ip_start + 2))
 
 # TEST_always_return_consensus_info_for_succeeded_rpc=false is needed to upgrade a release build to
 # debug.
-# On MacOS, pg_client_use_shared_memory harms initdb performance significantly.
-common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false,pg_client_use_shared_memory=false"
+common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false"
 # yb_enable_expression_pushdown=false is needed because the expression pushdown rewriter is not yet
 # implemented.
 common_tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
-
-pg11_enable_db_catalog_flag="allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode,ysql_enable_db_catalog_version_mode=true"
 
 # Downloads, runs, and pushds the directory for pg11.
 # Sets $pg11path to the pg11 directory.
 run_and_pushd_pg11() {
   prefix="/tmp"
-  ybversion_pg11="2.20.2.2"
-  ybbuild="b1"
+  ybversion_pg11="2024.2.0.0"
+  ybbuild="b58"
+  ybhash="d78199a0d53b4ab2bd86e6805a46a38fad783ba2"
   if [[ $OSTYPE = linux* ]]; then
-    arch="linux-x86_64"
+    arch="release-clang17-centos-x86_64"
     tarbin="tar"
   fi
   if [[ $OSTYPE = darwin* ]]; then
-    arch="darwin-x86_64"
+    arch="release-clang-darwin-arm64"
     tarbin="gtar"
   fi
   ybfilename_pg11="yugabyte-$ybversion_pg11-$ybbuild-$arch.tar.gz"
+  ybfilename_pg11_web="yugabyte-$ybversion_pg11-$ybhash-$arch.tar.gz"
 
   if [ ! -f "$prefix"/"$ybfilename_pg11" ]; then
-    curl "https://downloads.yugabyte.com/releases/$ybversion_pg11/$ybfilename_pg11" \
+    curl "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/$ybversion_pg11-$ybbuild/$ybfilename_pg11_web" \
       -o "$prefix"/"$ybfilename_pg11"
   fi
 
@@ -44,15 +43,7 @@ run_and_pushd_pg11() {
 
   pg11path="$prefix/yugabyte-$ybversion_pg11"
   pushd "$pg11path"
-  yb_ctl_destroy_create --rf=3
-  ysqlsh <<EOT
-  SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-  SELECT yb_fix_catalog_version_table(true);
-  SET yb_non_ddl_txn_for_sys_tables_allowed = false;
-EOT
-  yb_ctl restart \
-  --tserver_flags="$common_tserver_flags,$pg11_enable_db_catalog_flag" \
-  --master_flags="$pg11_enable_db_catalog_flag"
+  yb_ctl_destroy_create --rf=3 --tserver_flags="$common_tserver_flags"
 }
 
 upgrade_masters() {

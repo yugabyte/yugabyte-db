@@ -7,15 +7,17 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "math"
     "net/http"
+    "os"
     "path/filepath"
+    "runtime"
     "strconv"
     "strings"
     "time"
-    "math"
-    "os"
-    "runtime"
+
     "github.com/jackc/pgtype"
+    "github.com/jackc/pgx/v4"
     "github.com/jackc/pgx/v4/pgxpool"
     "github.com/labstack/echo/v4"
 )
@@ -27,32 +29,38 @@ const LOGGER_FILE_NAME = "api_voyager"
 // Need to ignore rows with migration_phase 3 i.e. schema analysis
 const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = 
 `SELECT * FROM (
-    SELECT migration_uuid, highest_export_phase, MAX(invocation_sequence) AS
-    highest_export_invocation FROM (
-        SELECT migration_uuid, MAX(migration_phase) AS
-        highest_export_phase, invocation_sequence FROM (
-            SELECT migration_uuid, migration_phase, invocation_sequence FROM
-            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE
-                migration_phase <= 4 AND migration_phase != 3
-        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
-    ) AS highest_export_rows GROUP BY migration_uuid, highest_export_phase
-) AS export FULL JOIN 
-(
-    SELECT migration_uuid, highest_import_phase, MAX(invocation_sequence) AS
-    highest_import_invocation FROM (
-        SELECT migration_uuid, MAX(migration_phase) AS
-        highest_import_phase, invocation_sequence FROM (
-            SELECT migration_uuid, migration_phase, invocation_sequence FROM
-            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE migration_phase > 4
-        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
-    ) AS highest_import_rows GROUP BY migration_uuid, highest_import_phase
-) AS import USING (migration_uuid) FULL JOIN
-(
-    SELECT migration_uuid, lowest_phase, MIN(invocation_sequence) AS
-    lowest_invocation FROM (
-        SELECT migration_uuid, MIN(migration_phase) AS lowest_phase, invocation_sequence FROM
-        ybvoyager_visualizer.ybvoyager_visualizer_metadata GROUP BY migration_uuid, invocation_sequence
-    ) AS lowest_rows GROUP BY migration_uuid, lowest_phase
+
+    SELECT migration_uuid, migration_phase AS highest_export_phase,
+            MAX(invocation_sequence) AS highest_export_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MAX(migration_phase) AS highest_export_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            WHERE migration_phase IN (4,2,1) GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
+) AS export FULL JOIN (
+
+    SELECT migration_uuid, migration_phase AS highest_import_phase,
+            MAX(invocation_sequence) AS highest_import_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MAX(migration_phase) AS highest_export_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            WHERE migration_phase > 4 AND migration_phase <=6 GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
+) AS import USING (migration_uuid) FULL JOIN (
+
+    SELECT migration_uuid, migration_phase AS lowest_phase,
+            MIN(invocation_sequence) AS lowest_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MIN(migration_phase) AS lowest_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
 ) AS lowest USING (migration_uuid)`
 
 const RETRIEVE_VOYAGER_MIGRATION_DETAILS string = "SELECT database_name, schema_name, " +
@@ -77,7 +85,7 @@ const RETRIEVE_MIGRATE_SCHEMA_PHASES_INFO string = "SELECT migration_UUID, " +
 
 const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
     "ybvoyager_visualizer.ybvoyager_visualizer_table_metrics " +
-    "WHERE migration_UUID=$1" +
+    "WHERE migration_UUID=$1 " +
     "ORDER BY schema_name"
 
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
@@ -461,14 +469,6 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
         migrationDetailsStruct.Complexity = "N/A"
         if complexity.Status == pgtype.Present {
             migrationDetailsStruct.Complexity = complexity.String
-        } else {
-            log.Infof(fmt.Sprintf("Complexity not set for migration uuid: [%s]",
-                migrationDetailsStruct.MigrationUuid))
-            if migrationDetailsStruct.MigrationPhase >= 1 &&
-                migrationDetailsStruct.InvocationSequence >= 2 {
-                go helpers.CalculateAndUpdateComplexity(log, conn,
-                    migrationDetailsStruct.MigrationUuid, 1, 2)
-            }
         }
     }
     return nil
@@ -933,16 +933,8 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     future := make(chan AssessmentReportQueryFuture)
     go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
 
-    assessmentReportVisualisationData := <- future
-
-    if assessmentReportVisualisationData.Error != nil {
-        return ctx.String(http.StatusInternalServerError,
-            assessmentReportVisualisationData.Error.Error())
-    }
-
-    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
-
     voyagerAssessmentReportResponse := models.MigrationAssessmentReport{
+        AssessmentStatus:       true,
         Summary:                models.AssessmentReportSummary{},
         SourceEnvironment:      models.SourceEnvironmentInfo{},
         SourceDatabase:         models.SourceDatabaseInfo{},
@@ -952,6 +944,19 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         UnsupportedFunctions:   []models.UnsupportedSqlInfo{},
         UnsupportedFeatures:    []models.UnsupportedSqlInfo{},
     }
+
+    assessmentReportVisualisationData := <- future
+    if assessmentReportVisualisationData.Error != nil {
+        if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+            voyagerAssessmentReportResponse.AssessmentStatus = false
+            return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
+        } else {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
+        }
+    }
+
+    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
 
     estimatedTime := int64(math.Round(
         assessmentReport.Sizing.SizingRecommendation.EstimatedTimeInMinForImport))
@@ -1091,19 +1096,21 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         }
         log.Infof(fmt.Sprintf("migration uuid: %s", migrationUuid))
         var assessmentReportPayload string
+        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
         row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
+
         err := row.Scan(&assessmentReportPayload)
-        // log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
+
         if err != nil {
+
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
-                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+                LOGGER_FILE_NAME, "RETRIEVE_ASSESSMENT_REPORT"))
             log.Errorf(err.Error())
             MigrationAsessmentReportResponse.Error = err
             future <- MigrationAsessmentReportResponse
             return
         }
 
-        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
         err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
@@ -1135,8 +1142,12 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         assessmentReportVisualisationData := <- future
 
         if assessmentReportVisualisationData.Error != nil {
-            return ctx.String(http.StatusInternalServerError,
-                assessmentReportVisualisationData.Error.Error())
+            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+                return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+            } else {
+                return ctx.String(http.StatusInternalServerError,
+                    assessmentReportVisualisationData.Error.Error())
+            }
         }
 
         assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
@@ -1196,8 +1207,12 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         }
 
         if assessmentReportVisualisationData.Error != nil {
-            return ctx.String(http.StatusInternalServerError,
-                assessmentReportVisualisationData.Error.Error())
+            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+                return ctx.JSON(http.StatusOK, targetRecommendationDetails)
+            } else {
+                return ctx.String(http.StatusInternalServerError,
+                    assessmentReportVisualisationData.Error.Error())
+            }
         }
 
         assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport

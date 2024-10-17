@@ -26,6 +26,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
@@ -682,6 +684,11 @@ public class CustomerTask extends Model {
       accessMode = READ_ONLY,
       example = "shagarwal@yugabyte.com")
   private String userEmail;
+
+  @OneToOne(optional = false)
+  @JoinColumn(name = "task_uuid", insertable = false, updatable = false)
+  @JsonIgnore
+  private TaskInfo taskInfo;
 
   public void markAsCompleted() {
     markAsCompleted(new Date());

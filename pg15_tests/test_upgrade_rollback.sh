@@ -25,15 +25,7 @@ build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 list_tables inclu
 # Roll back
 # Restart node 2 tserver as PG11
 pushd $pg11path
-# YB_TODO: Since D31087 isn't in the PG11 "from" build, we need to undo PG15's pg_data symlink
-# and restore the pg_data_11 directory to pg_data.
-# When D31087 is in the PG11 build, replace the lines from stop_node to start_node with:
-#   yb_ctl restart_node 2
-# D31087 is present in 2.21 onwards, 2024.1 onwards.
-yb_ctl stop_node 2
-rm "$data_dir/node-2/disk-1/pg_data"
-mv "$data_dir/node-2/disk-1/pg_data_11" "$data_dir/node-2/disk-1/pg_data"
-yb_ctl start_node 2 --tserver_flags="$pg11_enable_db_catalog_flag" --master_flags="$pg11_enable_db_catalog_flag"
+yb_ctl restart_node 2 --tserver_flags="$common_tserver_flags"
 popd
 # Issue the rollback RPC
 echo rollback starting at $(date +"%r")

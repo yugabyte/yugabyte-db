@@ -144,20 +144,45 @@ For example, if your metrics retention is 14 days on your active instance, and y
 
 ### Enable certificate validation
 
-After HA is operational, it is recommended that you enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
+After HA is operational, you should enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/).
+1. Add Certificate Authority (CA) certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/). This allows a standby to connect to the active instance if the standby is promoted to active status.
 
-    - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) certificate.
-    - If YBA was set up to use automatically generated self-signed certificates and you installed YBA using YBA Installer, locate the CA certificate at `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on both the YBA active and standby instances. (If you configured a custom install root, replace `/opt/yugabyte` with the path you configured.)
-    - If YBA was set up to use automatically-generated self-signed certificates and you installed YBA using Replicated, locate the CA certificate at `/var/lib/replicated/secrets/ca.crt` on the YBA active and standby instances.
-    - Add the CA certificates for both the active and standby instances to the YugabyteDB Anywhere trust store of the active instance. This allows a standby to connect to the active instance if the standby is promoted to active status.
+    **Auto-generated CA certificates**
+
+    If YBA was set up to use automatically generated self-signed certificates (the default), the CA certificate is in the following location on the active and standby instances:
+
+    | Installation | Certificate Location |
+    | :--- | :--- |
+    | YBA Installer | `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` <br/>If you configured a [custom install root](../../install-yugabyte-platform/install-software/installer/#configuration-options), replace `/opt/yugabyte` with the path you configured. |
+    | Replicated | `/var/lib/replicated/secrets/ca.crt` |
+    | Kubernetes | Locate the CA certificate by running the following command:<br/>`kubectl get secret -n <namespace> <helm-release-name>-yugaware-tls-pem -o jsonpath="{.data['ca\.pem']}" \| base64 -d`<br/>Replace `<namespace>` and `<helm_release_name>` with appropriate values. |
+
+    **Custom CA certificates**
+
+    If YBA was set up to use a custom server certificate, locate the corresponding CA certificate. Ensure the CA certificate includes the full chain (root and intermediate).
 
 1. On the active instance, navigate to **Admin > High Availability > Replication Configuration**, click **Actions**, and choose **Enable Certificate Validation**.
 
-    This tests the connection between the active instance and all standby instances with the certificates in the trust store.
+When you click **Enable Certificate Validation**, YBA tests the connection between the active instance and all standby instances with the certificates in the trust store. If the validation fails for any of the standbys, the entire enablement will fail and certificate validation will remain disabled. Check the CA certificate files added to the trust store and try again.
 
-    If the validation fails for any of the standbys, the entire enablement will fail and certificate validation will remain disabled. Check the CA certificate files added to the trust store and try again.
+#### Test custom CA certificates
+
+If you are using a custom CA certificate and certificate validation fails, you can test the CA certificate using the following command (on the active and standby nodes):
+
+```sh
+openssl verify -CAfile CA.crt /path/to/server_cert.pem
+```
+
+Where `path/to/server_cert.pem` is the location you provided during installation (`server_cert_path` for [YBA Installer](../../install-yugabyte-platform/install-software/installer/#configuration-options)).
+
+If the command fails, check that the certificate chain is correct. You may need to concatenate the intermediate and root certificates to create a CA trust chain. To do this, you can use the `cat` command. For example:
+
+```sh
+cat CA_root.crt CA_intermediate.crt > CA_combined.crt
+```
+
+Upload the combined certificate to the trust store and try enabling certificate validation again.
 
 ### Use a load balancer
 

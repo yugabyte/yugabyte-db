@@ -16,7 +16,7 @@ This page explores keyspaces and tables in YCQL using the command line shell `yc
 
 ## YCQL shell
 
-Use the [ycqlsh shell](../../../admin/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because `ycqlsh` is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/tools/cqlsh.html), most `cqlsh` commands work as is in `ycqlsh`. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
+Use the [ycqlsh shell](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because `ycqlsh` is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/tools/cqlsh.html), most `cqlsh` commands work as is in `ycqlsh`. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
 
 Using `ycqlsh`, you can:
 

@@ -404,7 +404,7 @@ func init() {
 			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
-				"All are required key-value pairs.",
+				"Image bundle name and region name are required key-value pairs.",
 				formatter.GreenColor)+" Each --image-bundle definition "+
 			"must have atleast one corresponding --image-bundle-region-override "+
 			"definition for every region added."+
@@ -429,7 +429,7 @@ func init() {
 			"\"image-bundle-uuid=<image-bundle-uuid>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
-				"All are required key-value pairs.",
+				"Image bundle UUID and region name are required key-value pairs.",
 				formatter.GreenColor)+
 			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
 			"Example: --edit-image-bundle-region-override <image-bundle-uuid>=<uuid>,"+
@@ -796,7 +796,7 @@ func addAWSImageBundles(
 
 		if len(regionOverrides) < numberOfRegions {
 			logrus.Fatalf(formatter.Colorize(
-				"Machine Image must be provided for every region added.\n",
+				"Overrides must be provided for every region added.\n",
 				formatter.RedColor,
 			))
 		}

@@ -1993,7 +1993,7 @@ class TransactionParticipant::Impl
   void SubmitUpdateTransaction(
       std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     WARN_NOT_OK(
-        participant_context_.SubmitUpdateTransaction(std::move(operation), term),
+        participant_context_.SubmitUpdateTransaction(operation, term),
         Format("Could not submit transaction status update operation: $0", operation->ToString()));
   }
 

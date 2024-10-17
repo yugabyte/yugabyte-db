@@ -470,12 +470,7 @@ func BuildImageBundleRegionOverrideMapFromString(
 					formatter.RedColor))
 		}
 	}
-	if _, ok := override["machine-image"]; !ok {
-		logrus.Fatalln(
-			formatter.Colorize(
-				"Machine image not specified in image bundle region override.\n",
-				formatter.RedColor))
-	}
+
 	if _, ok := override["region-name"]; !ok {
 		logrus.Fatalln(
 			formatter.Colorize(

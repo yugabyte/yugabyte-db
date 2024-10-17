@@ -137,8 +137,8 @@ main(int argc, char **argv)
 
 	output_check_banner(live_check);
 
-	/* 
-	 * This checks for Postgres versions. 
+	/*
+	 * This checks for Postgres versions.
 	 * The check isn't relevant to Yugabyte right now.
 	 */
 	if (!is_yugabyte_enabled())
@@ -147,8 +147,8 @@ main(int argc, char **argv)
 	get_sock_dir(&old_cluster, live_check);
 	get_sock_dir(&new_cluster, false);
 
-	/* 
-	 * This checks for global state information initialized 
+	/*
+	 * This checks for global state information initialized
 	 * during initdb and is not relevant for YB currently.
 	 */
 	if (!is_yugabyte_enabled())
@@ -350,7 +350,7 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
-#ifdef YB_TODO 
+#ifdef YB_TODO
 	/* Investigate/implement this check */
 	check_pghost_envvar();
 #endif
@@ -478,10 +478,10 @@ create_new_objects(void)
 	 * So handle it in a separate non-parallelized pass.
 	 */
 #ifdef YB_TODO
-	/* 
-	 * Fix template1 restore, currently throws 
+	/*
+	 * Fix template1 restore, currently throws
 	 *   UPDATE pg_catalog.pg_database SET datistemplate = false WHERE datname = 'template1';
-	 *   pg_database not found 
+	 *   pg_database not found
 	 */
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{

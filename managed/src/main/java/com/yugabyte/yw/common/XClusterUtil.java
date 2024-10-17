@@ -10,8 +10,8 @@ import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 
 public class XClusterUtil {
-  public static final String MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE = "2024.1.1.0-b49";
-  public static final String MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW = "2.23.0.0-b394";
+  public static final String MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_STABLE = "2024.1.3.0-b105";
+  public static final String MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW = "2.23.0.0-b394";
 
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_STABLE = "2024.1.0.0-b71";
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_PREVIEW = "2.23.0.0-b157";
@@ -31,8 +31,8 @@ public class XClusterUtil {
     }
     return Util.compareYBVersions(
             softwareVersion,
-            MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
-            MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW,
+            MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
+            MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW,
             true /* suppressFormatError */)
         >= 0;
   }
@@ -66,8 +66,8 @@ public class XClusterUtil {
               "Db scoped XCluster is not supported in this version of the source universe (%s);"
                   + " please upgrade to a stable version >= %s or preview version >= %s",
               sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-              MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
-              MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW));
+              MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
+              MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW));
     }
     if (!supportsDbScopedXCluster(targetUniverse)) {
       throw new PlatformServiceException(
@@ -76,8 +76,8 @@ public class XClusterUtil {
               "Db scoped XCluster is not supported in this version of the target universe (%s);"
                   + " please upgrade to a stable version >= %s or preview version >= %s",
               targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-              MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
-              MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW));
+              MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
+              MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW));
     }
   }
 

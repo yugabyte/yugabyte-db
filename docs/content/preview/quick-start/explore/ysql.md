@@ -48,7 +48,7 @@ The examples in this tutorial use two tables, representing departments and emplo
 
 ### Open the YSQL shell
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -518,7 +518,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../api/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)

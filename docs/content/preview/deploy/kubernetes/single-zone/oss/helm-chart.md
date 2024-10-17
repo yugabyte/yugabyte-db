@@ -379,12 +379,21 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
  --namespace yb-demo
 ```
 
-## Upgrade cluster
+## Upgrade the software version of YugabyteDB
 
-You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the following example, the Docker image specified is `2.1.6.0-b17`:
+You can upgrade the software on the YugabyteDB cluster with the following command. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
 
 ```sh
-helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n yb-demo
+helm repo update
+helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}} --wait -n yb-demo
+```
+
+## Update the configuration of YugabyteDB pods
+
+You can update most settings in the helm chart by running a `helm upgrade` with the new values. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
+
+```sh
+helm upgrade yb-demo yugabytedb/yugabyte --set resource.tserver.requests.cpu=4 --wait -n yb-demo
 ```
 
 ## Delete cluster

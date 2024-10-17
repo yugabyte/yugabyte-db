@@ -2980,6 +2980,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_inplace_index_update", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables the in-place update of non-key columns of secondary indexes "
+						 "when key columns of the index are not updated. This is useful when "
+						 "updating the included columns in a covering index among others."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_inplace_index_update,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable preloading of foreign key information into the relation cache."),
 			NULL,

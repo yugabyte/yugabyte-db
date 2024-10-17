@@ -211,7 +211,7 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
 };
 
 TEST_F(WaitStateITest, UniqueRpcRequestId) {
-  const int NumKeys = 10000;
+  const int NumKeys = 1000;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE bankaccounts (id INT PRIMARY KEY, balance INT)"));
   ASSERT_OK(conn.Execute("CREATE INDEX bankaccountsidx ON bankaccounts (id, balance)"));

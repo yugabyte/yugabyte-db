@@ -23,7 +23,7 @@ namespace yb::docdb {
 
 struct VectorLSMMetadataLoadResult {
   size_t next_free_file_no = 0;
-  std::vector<VectorLSMUpdate> updates;
+  std::vector<VectorLSMUpdatePB> updates;
 
   std::string ToString() const;
 };
@@ -32,6 +32,6 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
     rocksdb::Env* env, const std::string& dir);
 Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
     rocksdb::Env* env, const std::string& dir, size_t file_index);
-Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdate& update);
+Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdatePB& update);
 
 }  // namespace yb::docdb

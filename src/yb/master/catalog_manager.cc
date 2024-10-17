@@ -7715,6 +7715,9 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
             << ":\n"
             << yb::ToString(l->pb.indexes());
   }
+
+  resp->set_is_backfilling(table->IsBackfilling());
+
   resp->set_is_compatible_with_previous_version(l->pb.updates_only_index_permissions());
   resp->mutable_partition_schema()->CopyFrom(l->pb.partition_schema());
   if (IsReplicationInfoSet(l->pb.replication_info())) {

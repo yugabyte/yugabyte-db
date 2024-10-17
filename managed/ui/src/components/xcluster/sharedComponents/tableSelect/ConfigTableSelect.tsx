@@ -373,6 +373,7 @@ export const ConfigTableSelect = ({
               tableType={configTableType}
               handleTableSelect={handleTableToggle}
               handleTableGroupSelect={handleTableGroupToggle}
+              isDrInterface={isDrInterface}
             />
           )}
           expandColumnOptions={{

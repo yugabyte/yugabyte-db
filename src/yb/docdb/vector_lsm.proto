@@ -14,20 +14,27 @@ syntax = "proto3";
 
 package yb.docdb;
 
+import "google/protobuf/any.proto";
+
 option java_package = "org.yb.docdb";
 
-// Information about added chunk.
-// Currently it contains only chunk serial no, but could contain some extra data in future.
-message VectorLSMChunk {
-  uint64 serial_no = 1;
+message VectorLSMBoundaryPB {
+  google.protobuf.Any user_frontier = 1;
 }
 
-message VectorLSMUpdate {
+// Information about added chunk.
+message VectorLSMChunkPB {
+  uint64 serial_no = 1;
+  VectorLSMBoundaryPB smallest = 4;
+  VectorLSMBoundaryPB largest = 5;
+}
+
+message VectorLSMUpdatePB {
   // When reset is true, all previous updates should be ignored.
   bool reset = 1;
 
   // Chunks could be added and removed within the single update.
   // But the same chunk cannot be added and removed within the single update.
-  repeated VectorLSMChunk add_chunks = 2;
+  repeated VectorLSMChunkPB add_chunks = 2;
   repeated uint64 remove_chunks = 3;
 }

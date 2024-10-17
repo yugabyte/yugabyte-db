@@ -41,7 +41,6 @@ class ProvisionCommand(Command):
     def validate(self):
         # Validate the required packages needed for the provision to be successful.
         self._validate_required_packages()
-        self._validate_permissions()
 
     def _load_modules(self):
         package = importlib.import_module(self.base_package)
@@ -59,7 +58,6 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
-            temp_file.write("set -e\n")
             key = next(iter(self.config), None)
             if key is not None:
                 context = self.config[key]
@@ -133,13 +131,11 @@ class ProvisionCommand(Command):
     def populate_sudo_check(self, file):
         file.write("\n######## Check the SUDO Access #########\n")
         file.write("SUDO_ACCESS=\"false\"\n")
-        file.write("set +e\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
-        file.write("set -e\n")
 
     def _generate_template(self):
         os_distribution, os_family, os_version = self._get_os_info()
@@ -150,6 +146,8 @@ class ProvisionCommand(Command):
             if module is None:
                 continue
             if module in self.cloud_only_modules:
+                continue
+            if module == 'InstallNodeAgent' and not self.config[key].is_install_node_agent:
                 continue
             context = self.config[key]
 
@@ -215,21 +213,6 @@ class ProvisionCommand(Command):
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
             sys.exit()
-
-    # def _validate_permissions(self):
-    #     Commenting this block for now. Will remove later if not required.
-    #     key = next(iter(self.config), None)
-    #     gp_dir = os.path.dirname(os.path.dirname(self.config[key]["ynp_dir"]))
-    #     installer_dir = os.path.join(gp_dir, "bin")
-    #     mode = os.stat(installer_dir).st_mode
-    #     yugabyte_has_read = bool(mode & stat.S_IROTH)
-    #     yugabyte_has_execute = bool(mode & stat.S_IXOTH)
-    #     if yugabyte_has_read and yugabyte_has_execute:
-    #         logger.info(f"yugabyte user has read and execute permissions on {installer_dir}")
-    #     else:
-    #         logger.error(f"yugabyte does NOT have sufficient permissions on {installer_dir}")
-    #         logger.error(f"Please fix the permissions on {installer_dir} and try again.")
-    #         sys.exit(1)
 
     def _validate_required_packages(self):
         package_manager = None
@@ -311,7 +294,7 @@ class ProvisionCommand(Command):
                     )
                 sys.exit(1)
 
-    def run_preflight_checks(self, extra_vars):
+    def run_preflight_checks(self):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)

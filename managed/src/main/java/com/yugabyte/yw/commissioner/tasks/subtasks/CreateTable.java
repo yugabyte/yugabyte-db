@@ -96,9 +96,10 @@ public class CreateTable extends AbstractTaskBase {
     boolean tableCreated = false;
     int attempt = 0;
     Instant timeout = Instant.now().plusSeconds(TOTAL_ATTEMPTS_DURATION_SEC);
+    int internalYsqlServerRpcPort =
+        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort;
     while (Instant.now().isBefore(timeout) || attempt < MIN_RETRY_COUNT) {
       NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
-      int internalYsqlServerRpcPort = randomTServer.internalYsqlServerRpcPort;
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
               randomTServer,

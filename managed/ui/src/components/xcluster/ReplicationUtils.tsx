@@ -22,7 +22,9 @@ import {
   BootstrapCategory,
   XClusterSchemaChangeMode,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
-  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+  MISMATCHED_TABLE_STATUSES,
+  POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -535,6 +537,36 @@ export const getDrConfigUuids = (universe: Universe | undefined) => ({
   targetDrConfigUuids: universe?.drConfigUuidsAsTarget ?? []
 });
 
+/**
+ * Returns an object of counts for table groups of concern.
+ * - Tables in error status
+ *     - User needs to restart replication
+ * - Tables with incomplete ddl operations or incorrect ddl operation order
+ *     - User may need to add or remove these tables from replication to resolve the issue
+ *       of mismatched tables.
+ */
+export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce(
+    (
+      tableCountsOfConcern: {
+        error: number;
+        mismatchedTable: number;
+      },
+      xClusterTableDetails
+    ) => {
+      if (xClusterTableDetails.status === XClusterTableStatus.ERROR) {
+        tableCountsOfConcern.error += 1;
+      } else if (MISMATCHED_TABLE_STATUSES.includes(xClusterTableDetails.status)) {
+        tableCountsOfConcern.mismatchedTable += 1;
+      }
+      return tableCountsOfConcern;
+    },
+    {
+      error: 0,
+      mismatchedTable: 0
+    }
+  );
+
 export const hasLinkedXClusterConfig = (universes: Universe[]) =>
   universes.some((universe) => {
     const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
@@ -728,15 +760,22 @@ export const getNamespaceIdentifierToNamespaceUuidMap = (
   );
 
 /**
- * Returns a map of table UUIDs to table details for all tables which are part of the replication config.
+ * Get the set of table UUIDs for which we will not check for bootstrap required.
+ *
+ * These are tables which are already in the replication config with one exception:
+ * - Tables dropped on the target.
+ * These tables may need to be bootstrapped if selected when submitting the edit table request.
  */
-export const getInConfigTableUuidsToTableDetailsMap = (tableDetails: XClusterTableDetails[]) =>
-  tableDetails.reduce((tableUuidToTableDetails, tableDetails) => {
-    if (!UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status)) {
-      tableUuidToTableDetails.set(tableDetails.tableId, tableDetails);
+export const getNoSetupBootstrapRequiredTableUuids = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce((inConfigTableUuids: string[], tableDetails) => {
+    if (
+      !UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status) &&
+      !POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES.includes(tableDetails.status)
+    ) {
+      inConfigTableUuids.push(tableDetails.tableId);
     }
-    return tableUuidToTableDetails;
-  }, new Map<string, XClusterTableDetails>());
+    return inConfigTableUuids;
+  }, []);
 
 /**
  * Filters out the extra table details and returns the table UUIDs for only tables in

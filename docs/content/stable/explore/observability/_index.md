@@ -4,7 +4,6 @@ headerTitle: Observability
 linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Monitoring, alerting, and analyzing metrics
-image: /images/section_icons/secure/authorization.png
 menu:
   stable:
     identifier: explore-observability
@@ -77,15 +76,16 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | :--- | :---------- |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
+| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
-<!-- ## Active Session History
+## Active Session History
 
-[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues. -->
+[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
 
 ## Learn more
 
@@ -94,54 +94,54 @@ To get more details about the various steps of a query execution, use the [Expla
       title="Prometheus integration"
       body="Export YugabyteDB metrics into Prometheus to inspect various metrics."
       href="./prometheus-integration/"
-      icon="fa-solid fa-chart-line">}}
+      icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
       title="Grafana dashboard"
       body="Create dashboards using Prometheus metrics to understand the health and performance of YugabyteDB clusters."
       href="./grafana-dashboard/grafana/"
-      icon="fa-solid fa-chart-bar">}}
+      icon="fa-thin fa-diagram-lean-canvas">}}
 
   {{<index/item
       title="View live queries with pg_stat_activity"
       body="Troubleshoot problems and identify long-running queries with the activity view."
       href="./pg-stat-activity/"
-      icon="/images/section_icons/manage/diagnostics.png">}}
+      icon="fa-thin fa-wave-pulse">}}
 
-  <!-- {{<index/item
+  {{<index/item
       title="View YQL and tablet metadata with yb_local_tablets"
       body="See metadata about the YSQL and YCQL statements, and system tablets of a node."
       href="./yb-local-tablets/"
-      icon="fa-solid fa-tablets">}} -->
+      icon="fa-thin fa-tablets">}}
 
   {{<index/item
       title="View terminated queries with yb_terminated_queries"
       body="Identify terminated queries with the get queries function."
       href="./yb-pg-stat-get-queries/"
-      icon="/images/section_icons/explore/monitoring.png">}}
+      icon="fa-thin fa-traffic-light-stop">}}
 
   {{<index/item
       title="View COPY status with pg_stat_progress_copy"
       body="Get the COPY command status, number of tuples processed, and other COPY progress reports with this view."
       href="./pg-stat-progress-copy/"
-      icon="/images/section_icons/explore/json_documents.png">}}
+      icon="fa-thin fa-copy">}}
 
   {{<index/item
       title="Get lock information insights with pg_locks"
       body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
       href="./pg-locks/"
-      icon="/images/section_icons/explore/secure.png">}}
+      icon="fa-thin fa-lock">}}
 
   {{<index/item
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
       href="../query-1-performance/pg-stat-statements"
-      icon="fa-solid fa-signal">}}
+      icon="fa-thin fa-signal">}}
 
   {{<index/item
       title="Monitor clusters using key metrics"
       body="Understand the different metrics in YugabyteDB to monitor your cluster"
       href="../../launch-and-manage/monitor-and-alert/metrics"
-      icon="fa-solid fa-bell">}}
+      icon="fa-thin fa-eyes">}}
 
 {{</index/block>}}

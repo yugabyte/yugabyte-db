@@ -306,6 +306,7 @@ public class CustomerTaskManager {
                   customerTask.resetCompletionTime();
                   customerTask.setCorrelationId(corrId);
                   commitTransaction();
+                  return customerTask;
                 } catch (Exception e) {
                   throw new RuntimeException(
                       "Unable to delete the previous task info: " + taskUUID);
@@ -581,7 +582,7 @@ public class CustomerTaskManager {
   public CustomerTask retryCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
     LOG.info(

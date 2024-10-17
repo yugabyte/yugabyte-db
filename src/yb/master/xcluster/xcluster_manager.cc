@@ -58,6 +58,11 @@ DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
 
+DEFINE_RUNTIME_bool(auto_add_new_index_to_bidirectional_xcluster, false,
+    "If the indexed table is part of a bi-directional xCluster setup, then automatically add new "
+    "indexes for this table to replication. This flag must be set on both universes, and the index "
+    "must be created concurrently on both universes.");
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -269,8 +274,11 @@ Status XClusterManager::GetXClusterSafeTime(
   return XClusterTargetManager::GetXClusterSafeTime(resp, epoch);
 }
 
-Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
+Result<std::optional<HybridTime>> XClusterManager::TryGetXClusterSafeTimeForBackfill(
+    const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+    const LeaderEpoch& epoch) const {
+  return XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+      index_table_ids, indexed_table, epoch);
 }
 
 Status XClusterManager::GetXClusterSafeTimeForNamespace(
@@ -712,6 +720,14 @@ bool XClusterManager::IsTableReplicationConsumer(const TableId& table_id) const 
 
 bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
   return XClusterSourceManager::IsTableReplicated(table_id) ||
+         XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
+  // In theory this would return true for B in the case of chaining A -> B -> C, but we don't
+  // support chaining in xCluster.
+  // Replicating between 3 universes will need bi-directional xCluster A <=> B <=> C <=> A.
+  return XClusterSourceManager::IsTableReplicated(table_id) &&
          XClusterTargetManager::IsTableReplicated(table_id);
 }
 

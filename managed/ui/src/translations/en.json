@@ -1175,10 +1175,22 @@
             "UnableToFetch": "Unable to Fetch",
             "Dropped": "Dropped from DB",
             "TableInfoMissing": "Table Info Missing",
-            "ExtraTableOnSource": "Extra Table On Source",
-            "ExtraTableOnTarget": "Extra Table on Target",
-            "DroppedFromSource": "Dropped From Source",
-            "DroppedFromTarget": "Dropped From Target",
+            "ExtraTableOnSource": {
+              "label": "Extra Table On Source",
+              "tooltip": "This table is present on the {{sourceUniverseTerm}} but is not being replicated. Did you mean to add this to the set of tables in replication?"
+            },
+            "ExtraTableOnTarget": {
+              "label": "Extra Table on Target",
+              "tooltip": "This table is present on the {{targetUniverseTerm}} but is not being replicated. Did you mean to add this to the set of tables in replication?"
+            },
+            "DroppedFromSource": {
+              "label": "Dropped From Source",
+              "tooltip": "This table is included in the {{xClusterOffering}} configuration but is missing on the {{sourceUniverseTerm}}. It needs to be dropped and removed from the {{xClusterOffering}} configuration."
+            },
+            "DroppedFromTarget": {
+              "label": "Dropped From Target",
+              "tooltip": "This table is included in the {{xClusterOffering}} configuration but is missing on the DR {{targetUniverseTerm}}. It needs to be dropped and removed from the {{sourceUniverseTerm}} configuration."
+            },
             "ReplicationError": "Replication Error"
           }
         },
@@ -1239,6 +1251,9 @@
           }
         },
         "shared": {
+          "banner": {
+            "mismatchedTables": "<bold>Warning!</bold> Database schema does not match across {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables. DDL operations must be performed in a <ddlChangeStepsDocsLink>specified order</ddlChangeStepsDocsLink>."
+          },
           "confirmAlert": {
             "instruction": "Confirm alert threshold for acceptable replication lag",
             "infoText": {
@@ -1968,7 +1983,7 @@
           "authProvider": "Group Authentication Provider",
           "groupName": "Group DN (Name)",
           "groupNameLDAPPlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
-          "groupNamePlaceholder":"Group Name",
+          "groupNamePlaceholder": "Group Name",
           "groupRolesTitle": "Group Roles",
           "authProviderDisabled": "You need to first configure {{auth_provider}} before you can add its user groups.",
           "configureLDAPRoleSettings": "<b>Note!</b> You need to <a>configure LDAP role settings for membership lookup</a> before adding its user groups.",
@@ -2344,8 +2359,8 @@
       "header": "Database Audit Log",
       "enableDatabaseLog": "Enable Database Audit Logging",
       "emptyMsg1": "Capture session database audit logs to comply with government, financial, or ISO certification.",
-      "emptyMsg2": "Additionally, export the logs to a 3rd party monitoring tool or download them usingthe API.",
-      "learnMoreLog": "Learn more about <1>datbase audit logging</1> and exporting audit log",
+      "emptyMsg2": "Additionally, export the logs to a 3rd party monitoring tool or download them using the API.",
+      "learnMoreLog": "Learn more about <1>database audit logging</1> and exporting audit log",
       "learnMore": "Learn more about ",
       "auditLogLink": "datbase audit logging",
       "exportLink": "exporting audit log",

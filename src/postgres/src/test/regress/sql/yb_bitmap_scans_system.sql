@@ -6,9 +6,9 @@ SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 
 /*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 /*+ BitmapScan(pg_authid) */
-SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 
 /*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');

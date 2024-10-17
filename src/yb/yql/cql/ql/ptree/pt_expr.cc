@@ -44,6 +44,8 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
+DECLARE_bool(cql_revert_to_partial_microsecond_support);
+
 namespace yb {
 namespace ql {
 
@@ -413,7 +415,19 @@ Status PTLiteralString::ToString(string *value) const {
 }
 
 Status PTLiteralString::ToTimestamp(int64_t *value) const {
-  *value = VERIFY_RESULT(DateTime::TimestampFromString(value_->c_str())).ToInt64();
+  int64_t value_us = VERIFY_RESULT(DateTime::TimestampFromString(value_->c_str())).ToInt64();
+  int64_t value_ms = DateTime::FloorTimestamp(
+      value_us, DateTime::kInternalPrecision, DateTime::CqlInputFormat.input_precision);
+
+  if (value_ms != value_us) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "timestamp is inserted in YCQL with microseconds precision";
+  }
+
+  *value = value_us;
+  if (!FLAGS_cql_revert_to_partial_microsecond_support) {
+    *value = value_ms;
+  }
   return Status::OK();
 }
 

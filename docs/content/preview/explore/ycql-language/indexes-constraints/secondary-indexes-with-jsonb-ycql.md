@@ -75,7 +75,7 @@ You can use the `DESCRIBE INDEX` command to check the index as follows:
 DESCRIBE INDEX idx_users_jsonb;
 ```
 
-For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe).
+For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../../api/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 

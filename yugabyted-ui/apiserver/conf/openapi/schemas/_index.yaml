@@ -1064,6 +1064,8 @@ MigrationAssessmentReport:
   description: Details of the migration assessment report
   type: object
   properties:
+    assessment_status:
+      type: boolean
     summary:
       $ref: '#/AssessmentReportSummary'
     source_environment:

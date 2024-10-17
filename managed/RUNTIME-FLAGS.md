@@ -19,6 +19,7 @@
 | "Backup Garbage Collector Number of Retries" | "yb.backupGC.number_of_retries" | "CUSTOMER" | "Number of retries during backup deletion" | "Integer" |
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
+| "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |

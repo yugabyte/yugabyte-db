@@ -131,6 +131,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
         CommunicationPorts ports, ConfigureDBApiParams params) {
       ports.ysqlServerHttpPort = params.communicationPorts.ysqlServerHttpPort;
       ports.ysqlServerRpcPort = params.communicationPorts.ysqlServerRpcPort;
+      ports.internalYsqlServerRpcPort = params.communicationPorts.internalYsqlServerRpcPort;
       ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
       ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
     }

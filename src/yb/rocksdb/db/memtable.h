@@ -357,11 +357,7 @@ class MemTable {
 
   void UpdateFrontiers(const UserFrontiers& value) {
     std::lock_guard l(frontiers_mutex_);
-    if (frontiers_) {
-      frontiers_->MergeFrontiers(value);
-    } else {
-      frontiers_ = value.Clone();
-    }
+    rocksdb::UpdateFrontiers(frontiers_, value);
   }
 
   // Frontiers accessors might return stale frontiers if invoked after records have been written to
@@ -436,7 +432,7 @@ class MemTable {
   Env* env_;
 
   mutable SpinMutex frontiers_mutex_;
-  std::unique_ptr<UserFrontiers> frontiers_;
+  UserFrontiersPtr frontiers_;
 
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;

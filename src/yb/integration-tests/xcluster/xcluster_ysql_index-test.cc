@@ -22,6 +22,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -31,6 +32,9 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_bool(TEST_fail_universe_replication_merge);
+DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_string(ysql_yb_test_block_index_phase);
+DECLARE_int32(ysql_yb_index_state_flags_update_delay);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -63,13 +67,18 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
 
     producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
 
-    yb_table_name_ = ASSERT_RESULT(
-        GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kTableName));
-
-    client::YBTablePtr producer_table;
-    ASSERT_OK(producer_client()->OpenTable(yb_table_name_, &producer_table));
-    namespace_id_ = producer_table->name().namespace_id();
-    producer_tables_.push_back(std::move(producer_table));
+    ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto table_name =
+          VERIFY_RESULT(GetYsqlTable(cluster, namespace_name, "" /* schema_name */, kTableName));
+      client::YBTablePtr table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+      cluster->tables_.emplace_back(std::move(table));
+      return Status::OK();
+    }));
+    producer_table_ = producer_tables_.front();
+    consumer_table_ = consumer_tables_.front();
+    yb_table_name_ = producer_table_->name();
+    namespace_id_ = yb_table_name_.namespace_id();
 
     ASSERT_OK(SetupUniverseReplication(
         producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
@@ -97,8 +106,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
 
     consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
         ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
-    // auto r = ASSERT_RESULT(consumer_conn_->HasIndexScan(kId1CountStmt));
-    // ASSERT_FALSE(r);
     ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId2CountStmt)));
 
     ASSERT_OK(ValidateRows());
@@ -110,12 +117,30 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   }
 
   virtual Status CreateObjects() {
-    return RunOnBothClusters([&](Cluster* cluster) { return CreateTable(cluster); });
+    if (!IsColocated()) {
+      return RunOnBothClusters([&](Cluster* cluster) { return CreateTable(cluster); });
+    }
+
+    namespace_name = "colocated_db";
+
+    return RunOnBothClusters([&](Cluster* cluster) {
+      constexpr int colocation_id = 111111;
+      RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, /* colocated = */ true));
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.ExecuteFormat(
+          "CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT) WITH (colocation_id = $1);", kTableName,
+          colocation_id);
+    });
   }
 
   virtual Transactional IsTransactional() { return Transactional::kTrue; }
+  virtual bool IsColocated() { return false; }
 
   virtual Result<std::vector<TableId>> GetReplicationTableIds() {
+    if (IsColocated()) {
+      return std::vector<TableId>{VERIFY_RESULT(GetColocatedDatabaseParentTableId())};
+    }
+
     std::vector<TableId> result;
     for (const auto& table : producer_tables_) {
       result.push_back(table->id());
@@ -124,6 +149,11 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   }
 
   virtual Status CreateIndex(pgwrapper::PGConn& conn) {
+    if (IsColocated()) {
+      return conn.Execute(Format(
+          "CREATE INDEX $0 ON $1 (id2 ASC) WITH(colocation_id =111112)", kIndexName, kTableName));
+    }
+
     return conn.Execute(Format("CREATE INDEX $0 ON $1 (id2 ASC)", kIndexName, kTableName));
   }
 
@@ -132,9 +162,28 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   }
 
   Status ValidateRows() {
+    const auto get_rows = [](pgwrapper::PGConn& conn,
+                             const std::string& col_name) -> Result<std::string> {
+      return yb::ToString(VERIFY_RESULT(
+          conn.FetchRows<int32_t>(Format("SELECT $0 FROM $1 ORDER BY $0", col_name, kTableName))));
+    };
+
     // With should be less than or equal to row_count_ since some inserts may fail due to
     // transactions aborted by the DDLs.
     const auto all_prod_rows = VERIFY_RESULT(GetAllRows(producer_conn_.get()));
+
+    LOG(INFO) << "Producer all rows: " << yb::ToString(all_prod_rows);
+    LOG(INFO) << "Producer id1 values: " << VERIFY_RESULT(get_rows(*producer_conn_, "id1"));
+    LOG(INFO) << "Producer id2 values: " << VERIFY_RESULT(get_rows(*producer_conn_, "id2"));
+    LOG(INFO) << "Consumer all rows: "
+              << yb::ToString(VERIFY_RESULT(GetAllRows(producer_conn_.get())));
+    LOG(INFO) << "Consumer id1 values: " << VERIFY_RESULT(get_rows(*producer_conn_, "id1"));
+    LOG(INFO) << "Consumer id2 values: " << VERIFY_RESULT(get_rows(*producer_conn_, "id2"));
+
+    auto cons_id2 =
+        consumer_conn_->FetchRows<int32_t>(Format("SELECT id2 FROM $0 ORDER BY id2", kTableName));
+    LOG(WARNING) << "Consumer id2 values: " << yb::ToString(cons_id2);
+
     SCHECK_LE(all_prod_rows.size(), row_count_, IllegalState, "Producer row count mismatch.");
     const auto actual_count = all_prod_rows.size();
 
@@ -413,27 +462,7 @@ TEST_F(XClusterYsqlNonTransactionalTest, CreateIndex) {
 
 class XClusterColocatedIndexTest : public XClusterYsqlIndexTest {
  public:
-  virtual Status CreateObjects() override {
-    namespace_name = "colocated_db";
-
-    return RunOnBothClusters([&](Cluster* cluster) {
-      constexpr int colocation_id = 111111;
-      RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, /* colocated = */ true));
-      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-      return conn.ExecuteFormat(
-          "CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT) WITH (colocation_id = $1);", kTableName,
-          colocation_id);
-    });
-  }
-
-  Result<std::vector<TableId>> GetReplicationTableIds() override {
-    return std::vector<TableId>{VERIFY_RESULT(GetColocatedDatabaseParentTableId())};
-  }
-
-  Status CreateIndex(pgwrapper::PGConn& conn) override {
-    return conn.Execute(Format(
-        "CREATE INDEX $0 ON $1 (id2 ASC) WITH(colocation_id =111112)", kIndexName, kTableName));
-  }
+  bool IsColocated() override { return true; }
 };
 
 TEST_F(XClusterColocatedIndexTest, CreateIndexWithWorkload) {
@@ -584,6 +613,246 @@ TEST_F(XClusterDbScopedYsqlIndexProducerOnlyTest, IndexCheckpointLocation) {
   ASSERT_TRUE(cdc_row.has_value());
 
   ASSERT_GT(cdc_row->checkpoint->index, OpId().Min().index);
+}
+
+class XClusterBiDirectionalIndexTest : public XClusterYsqlNonTransactionalTest,
+                                       public ::testing::WithParamInterface<bool> {
+ public:
+  static const xcluster::ReplicationGroupId kReverseReplicationGroupId;
+  static constexpr auto kWaitForOtherUniverseToCreateMsg =
+      "Waiting for index to be created on other universe";
+
+  bool IsColocated() override { return GetParam(); }
+
+  Status WaitForLogMessage(const std::string& message) {
+    return StringWaiterLogSink(message).WaitFor(kRpcTimeout * 1s);
+  }
+
+  virtual Result<std::vector<TableId>> GetRevReplicationTableIds() {
+    if (IsColocated()) {
+      return std::vector<TableId>{
+          VERIFY_RESULT(GetColocatedDatabaseParentTableId(&consumer_cluster_))};
+    }
+
+    std::vector<TableId> consumer_table_ids;
+    for (const auto& table : consumer_tables_) {
+      consumer_table_ids.push_back(table->id());
+    }
+    return consumer_table_ids;
+  }
+
+  virtual Result<xrepl::StreamId> GetSourceTableStreamId() {
+    if (IsColocated()) {
+      return GetCDCStreamID(VERIFY_RESULT(GetColocatedDatabaseParentTableId(&consumer_cluster_)));
+    }
+
+    return GetCDCStreamID(producer_table_->id());
+  }
+
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_add_new_index_to_bidirectional_xcluster) = true;
+
+    XClusterYsqlNonTransactionalTest::SetUp();
+
+    // Setup the reverse replication.
+    ASSERT_OK(SetupUniverseReplication(
+        consumer_cluster(), producer_cluster(), producer_client(), kReverseReplicationGroupId,
+        ASSERT_RESULT(GetRevReplicationTableIds())));
+  }
+
+  Status WaitForReplicationsToCatchup() {
+    RETURN_NOT_OK_PREPEND(
+        WaitForReplicationDrain(
+            /*expected_num_nondrained=*/0, /*timeout_secs=*/kRpcTimeout,
+            /*target_time=*/std::nullopt, VERIFY_RESULT(GetReplicationTableIds())),
+        "Failed wait for forward replication drain");
+
+    RETURN_NOT_OK_PREPEND(
+        WaitForReplicationDrain(
+            /* expected_num_nondrained */ 0, /* timeout_secs */ kRpcTimeout,
+            /* target_time */ std::nullopt, VERIFY_RESULT(GetRevReplicationTableIds()),
+            consumer_client()),
+        "Failed wait for reverse replication drain");
+
+    return Status::OK();
+  }
+
+  Status InsertRowsAndValidate() {
+    RETURN_NOT_OK(WaitForReplicationsToCatchup());
+    RETURN_NOT_OK_PREPEND(ValidateRows(), "Row count do not match before insert");
+
+    for (int i = 0; i < 20; i++, row_count_++) {
+      if (row_count_ % 2) {
+        RETURN_NOT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+      } else {
+        RETURN_NOT_OK(consumer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+      }
+    }
+
+    RETURN_NOT_OK(WaitForReplicationsToCatchup());
+    RETURN_NOT_OK(ValidateRows());
+
+    return Status::OK();
+  }
+
+  std::shared_ptr<Synchronizer> AsyncCreateIndex(pgwrapper::PGConn& conn) {
+    auto sync = std::make_shared<Synchronizer>();
+    test_thread_holder_.AddThread(
+        [this, &conn, sync]() { sync->AsStdStatusCallback()(CreateIndex(conn)); });
+
+    return sync;
+  }
+
+ public:
+  TestThreadHolder test_thread_holder_;
+};
+
+const xcluster::ReplicationGroupId XClusterBiDirectionalIndexTest::kReverseReplicationGroupId(
+    "reverse_replication_group");
+
+INSTANTIATE_TEST_CASE_P(Regular, XClusterBiDirectionalIndexTest, ::testing::Values(false));
+INSTANTIATE_TEST_CASE_P(Colocated, XClusterBiDirectionalIndexTest, ::testing::Values(true));
+
+TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
+  // Create a dummy table on producer, so that the table ids for the indexes do not match.
+  ASSERT_OK(producer_conn_->Execute("create type dummy"));
+
+  auto starting_backfill_sink = StringWaiterLogSink("starting backfill with timestamp:");
+  // Create index on producer.
+  auto producer_sync = AsyncCreateIndex(*producer_conn_);
+
+  // Wait for producer to get blocked.
+  ASSERT_OK(WaitForLogMessage(kWaitForOtherUniverseToCreateMsg));
+
+  // Make sure it does not make progress.
+  ASSERT_NOK(producer_sync->WaitFor(5s * kTimeMultiplier));
+  ASSERT_FALSE(starting_backfill_sink.IsEventOccurred());
+
+  // Create index on consumer.
+  auto consumer_sync = AsyncCreateIndex(*consumer_conn_);
+
+  // Validate.
+  ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
+  ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
+  ASSERT_TRUE(starting_backfill_sink.IsEventOccurred());
+
+  // The colocated table uses range partitioning so gets a index scan, whereas the non-colocated
+  // table uses hash partitioning and does a seq scan.
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->HasIndexScan(kId1CountStmt)), IsColocated());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId1CountStmt)), IsColocated());
+
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn_->HasIndexScan(kId2CountStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId2CountStmt)));
+
+  // Make sure the DocDB table ids were different.
+  {
+    auto producer_index = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kIndexName));
+    auto consumer_index = ASSERT_RESULT(
+        GetYsqlTable(&consumer_cluster_, namespace_name, "" /* schema_name */, kIndexName));
+    ASSERT_NE(producer_index.table_id(), consumer_index.table_id());
+  }
+
+  ASSERT_OK(InsertRowsAndValidate());
+}
+
+TEST_P(XClusterBiDirectionalIndexTest, BlockBeforeBackfill) {
+  auto producer_sync = AsyncCreateIndex(*producer_conn_);
+
+  // Wait for producer to get to the backfill phase, and then set the blocking flag so that only
+  // the consumer hits it.
+  ASSERT_OK(WaitForLogMessage(kWaitForOtherUniverseToCreateMsg));
+  ASSERT_OK(SET_FLAG(ysql_yb_test_block_index_phase, "backfill"));
+  SleepFor(3s);
+
+  auto consumer_sync = AsyncCreateIndex(*consumer_conn_);
+
+  // Wait for consumer to hit the block and make sure both side do not make progress.
+  ASSERT_NOK(producer_sync->WaitFor(5s * kTimeMultiplier));
+  ASSERT_NOK(consumer_sync->WaitFor(0s));
+
+  // Unblock and wait for DDL to complete.
+  ASSERT_OK(SET_FLAG(ysql_yb_test_block_index_phase, "none"));
+  ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
+  ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
+
+  ASSERT_OK(InsertRowsAndValidate());
+}
+
+TEST_P(XClusterBiDirectionalIndexTest, PauseIndexedTable) {
+  // Pause the stream on producer and insert some rows.
+  auto stream_id = ASSERT_RESULT(GetSourceTableStreamId());
+  ASSERT_OK(PauseResumeXClusterProducerStreams({stream_id}, /*is_paused=*/true));
+  // Needs to sleep to wait for heartbeat to propagate.
+  SleepFor(3s * kTimeMultiplier);
+  for (int i = 0; i < 10; i++, row_count_++) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+  }
+
+  auto producer_sync = AsyncCreateIndex(*producer_conn_);
+  auto consumer_sync = AsyncCreateIndex(*consumer_conn_);
+
+  // Wait for consumer to hit the block and make consumer does not make progress.
+  ASSERT_OK(WaitForLogMessage("Waiting for replication of indexed table"));
+  ASSERT_NOK(consumer_sync->WaitFor(5s * kTimeMultiplier));
+
+  ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
+
+  // Unblock and wait for DDL to complete.
+  ASSERT_OK(PauseResumeXClusterProducerStreams({stream_id}, /*is_paused=*/false));
+  ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
+
+  ASSERT_OK(InsertRowsAndValidate());
+}
+
+TEST_P(XClusterBiDirectionalIndexTest, CreateIndexWithWorkload) {
+  std::atomic<bool> run_workload(true);
+  auto se = ScopeExit([&run_workload] { run_workload = false; });
+
+  // Run workload in background.
+  test_thread_holder_.AddThread([this, &run_workload]() {
+    auto producer_conn = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+    auto consumer_conn = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+
+    while (run_workload) {
+      Status status;
+      if (row_count_ % 2) {
+        LOG(INFO) << "Inserting row on producer: " << row_count_;
+        status = producer_conn->ExecuteFormat(kInsertStmtFormat, row_count_);
+      } else {
+        LOG(INFO) << "Inserting row on consumer: " << row_count_;
+        status = consumer_conn->ExecuteFormat(kInsertStmtFormat, row_count_);
+      }
+      if (!status.ok()) {
+        // Failure expected from the index create DDL. DDL version is bumped and propagated to pg
+        // clients asynchronously leading to transient errors.
+        ASSERT_STR_CONTAINS(status.message().ToString(), "schema version mismatch");
+      }
+      row_count_++;
+      SleepFor(100ms * kTimeMultiplier);
+    }
+  });
+
+  // Run the workload for some time.
+  SleepFor(3s * kTimeMultiplier);
+
+  // Slow down the index backfill by 3s at every state.
+  ASSERT_OK(SET_FLAG(ysql_yb_index_state_flags_update_delay, 3 * 1000));
+
+  auto producer_sync = AsyncCreateIndex(*producer_conn_);
+  auto consumer_sync = AsyncCreateIndex(*consumer_conn_);
+
+  ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
+  ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
+
+  // Stop the background workload.
+  run_workload = false;
+  test_thread_holder_.JoinAll();
+
+  ASSERT_OK(InsertRowsAndValidate());
 }
 
 }  // namespace yb

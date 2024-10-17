@@ -18,42 +18,42 @@ type: indexpage
     title="Cursors"
     body="Use YSQL cursors to process a result set query."
     href="cursor/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-i-cursor">}}
 
    {{<index/item
-    title="Table Partitioning"
+    title="Table partitioning"
     body="Use YSQL to partition tables in YugabyteDB."
     href="partitions/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-divide">}}
 
    {{<index/item
     title="Views"
     body="Create views, modify and manage them in YSQL."
     href="views/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-window-frame-open">}}
 
    {{<index/item
     title="Savepoints"
     body="Use Savepoints to roll back and restore current state of a transaction seamlessly."
     href="savepoints/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-backward-fast">}}
 
    {{<index/item
     title="Collations"
     body="Use Collations in YSQL to learn sorting and comparing data in a database."
     href="collations/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-arrow-down-a-z">}}
 
    {{<index/item
     title="Foreign data wrappers"
     body="Use foreign data wrappers to access and interact with an external data source."
     href="foreign-data-wrappers/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-gift">}}
 
    {{<index/item
     title="Triggers"
     body="Use triggers when performing data manipulation and definition."
     href="triggers/"
-    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+    icon="fa-thin fa-raygun">}}
 
 {{</index/block>}}

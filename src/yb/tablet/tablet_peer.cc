@@ -726,7 +726,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 }
 
 Status TabletPeer::SubmitUpdateTransaction(
-    std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
+    std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) {
   if (!operation->tablet_is_set()) {
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);

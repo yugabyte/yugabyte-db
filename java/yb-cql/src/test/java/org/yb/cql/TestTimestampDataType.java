@@ -16,6 +16,7 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -395,4 +396,74 @@ public class TestTimestampDataType extends BaseCQLTest {
     destroyMiniCluster();
   }
 
+  @Test
+  public void testTimestampMicrosecsInsertSelect() throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(Collections.emptyMap(),
+        Collections.singletonMap("cql_revert_to_partial_microsecond_support", "false"));
+    setUpCqlClient();
+    String tableName = "test";
+    String testTimestamp = "2024-08-26 09:23:38.319213+0000";
+    String testTimestampMS = "2024-08-26 09:23:38.319000+0000";
+
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    session.execute(
+        String.format("INSERT INTO %s(x, b) VALUES(%d, '%s');", tableName, 1, testTimestamp));
+
+    session.execute(
+        String.format("INSERT INTO %s(x, b) VALUES(%d, %s);", tableName, 2, "currenttimestamp()"));
+
+    session.execute(String.format("INSERT INTO %s(x, b) VALUES(%d, %s);", tableName, 3,
+        "totimestamp(now())")); /* Previously, totimestamp(now()) worked fine */
+
+    String sel_stmt_init = "SELECT b FROM %s WHERE x=%d";
+    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSXXX");
+    String currenttimestamp_string =
+        dateFormat.format(runSelect(sel_stmt_init, tableName, 2).next().getTimestamp(0));
+    String totimestamp_now_string =
+        dateFormat.format(runSelect(sel_stmt_init, tableName, 3).next().getTimestamp(0));
+
+    String sel_stmt = "SELECT COUNT(*) FROM %s WHERE b='%s'";
+
+    assertQuery(String.format(sel_stmt, tableName, testTimestampMS), "Row[1]");
+    assertQuery(String.format(sel_stmt, tableName, currenttimestamp_string), "Row[1]");
+    assertQuery(String.format(sel_stmt, tableName, totimestamp_now_string), "Row[1]");
+
+    destroyMiniCluster();
+  }
+
+  @Test
+  public void testTimestampPKIndexScan() throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(Collections.emptyMap(),
+        Collections.singletonMap("cql_revert_to_partial_microsecond_support", "false"));
+    setUpCqlClient();
+    String tableName = "test";
+    String testTimestamp = "2024-08-26 09:23:38.319213+0000";
+
+    session.execute(String.format("CREATE TABLE %s(x INT, b TIMESTAMP, v1 INT, v2 INT, PRIMARY "
+            + "KEY(x, b)) WITH transactions = {'enabled': 'true'};",
+        tableName));
+    session.execute(String.format("CREATE INDEX idx1 ON %s(v1);", tableName));
+    waitForReadPermsOnAllIndexes(tableName);
+
+    session.execute(String.format("INSERT INTO %s(x, b, v1, v2) VALUES(%d, %s, %d, %d);", tableName,
+        1, "currenttimestamp()", 12, 13));
+    session.execute(String.format("INSERT INTO %s(x, b, v1, v2) VALUES(%d, %s, %d, %d);", tableName,
+        2, "currenttimestamp()", 13, 14));
+    session.execute(String.format("INSERT INTO %s(x, b, v1, v2) VALUES(%d, '%s', %d, %d);",
+        tableName, 3, testTimestamp, 12, 15));
+    session.execute(String.format("INSERT INTO %s(x, b, v1, v2) VALUES(%d, %s, %d, %d);", tableName,
+        4, "totimestamp(now())", 12, 16)); /* Previously, totimestamp(now()) worked fine */
+    String sel_stmt = String.format("SELECT * FROM %s  WHERE v1=12", tableName);
+    assertTrue("Should use index scan",
+        session.execute("EXPLAIN " + sel_stmt).all().toString().contains("Index Scan using"));
+
+    int count = 0;
+    for (Row row : session.execute(sel_stmt)) {
+      count++;
+    }
+    assertEquals(3, count);
+    destroyMiniCluster();
+  }
 }

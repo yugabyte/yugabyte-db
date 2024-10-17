@@ -235,7 +235,7 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ## Connect to the database
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell (`ysqlsh`), run the following.
 

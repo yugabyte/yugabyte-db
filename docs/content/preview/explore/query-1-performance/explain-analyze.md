@@ -13,7 +13,7 @@ rightNav:
 type: docs
 ---
 
-The [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) and [EXPLAIN ANALYZE](../../../api/ysql/the-sql-language/statements/perf_explain/#analyze) commands are used to analyze and display how the [query planner](../../../architecture/query-layer/#planner) has decided to [execute](../../../architecture/query-layer/#executor) a query along with actual runtime performance statistics. These commands provide valuable insights into how YugabyteDB processes a query and by analyzing this output, you can identify potential bottlenecks, such as inefficient index usage, excessive sorting or inefficient join strategy, and other performance issues. This information can guide you to optimize queries, create appropriate indexes, or restructure the underlying data to improve query performance.
+Use [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) and [EXPLAIN ANALYZE](../../../api/ysql/the-sql-language/statements/perf_explain/#analyze) to understand how the [query planner](../../../architecture/query-layer/#planner) has decided to [execute](../../../architecture/query-layer/#executor) a query and view actual runtime performance statistics. These commands provide valuable insights into how YugabyteDB processes a query and by analyzing this output, you can identify potential bottlenecks, such as inefficient index usage, excessive sorting or inefficient join strategy, and other performance issues. This information can guide you to optimize queries, create appropriate indexes, or restructure the underlying data to improve query performance.
 
 {{<note>}}
 The query is executed only when using _EXPLAIN ANALYZE_. With vanilla _EXPLAIN_ (that is, without _ANALYZE_), the output displays only estimates.
@@ -27,80 +27,78 @@ The output is effectively the plan tree followed by a summary of timing and coun
 
 - **Node Information**: Each line of the output represents a node in the query execution plan. The type of node and the operation it performs are typically indicated at the beginning of the line, for example, _Seq Scan_, _Index Scan_, _Nested Loop_, _Hash Join_, and so on.
 - **Cost and Row Estimates**:
-    -   _cost_ attribute is the estimated cost of the node's operation according to YugabyteDB's query planner. This cost is based on factors like I/O operations, CPU usage, and memory requirements.
-    -   _rows_ attribute is the estimated number of rows that will be processed or returned by the node.
+  - _cost_ attribute is the estimated cost of the node's operation according to YugabyteDB's query planner. This cost is based on factors like I/O operations, CPU usage, and memory requirements.
+  - _rows_ attribute is the estimated number of rows that will be processed or returned by the node.
 - **Actual Execution Statistics**:
-    -   _time_: The actual time taken to execute an operation represented by the node during query execution. This is represented in two parts as _T1..T2_ with T1 being the time taken to return the first row, and T2 the time taken to return the last row.
-    -   _rows_: The actual number of rows processed or returned by the node during execution.
+  - _time_: The actual time taken to execute an operation represented by the node during query execution. This is represented in two parts as _T1..T2_ with T1 being the time taken to return the first row, and T2 the time taken to return the last row.
+  - _rows_: The actual number of rows processed or returned by the node during execution.
 - **Other Attributes**: Some nodes may have additional attributes depending on the operation they perform. For example:
-    -   _Filter_: Indicates a filtering operation.
-    -   _Join Type_: Specifies the type of join being performed (for example, Nested Loop, Hash Join, Merge Join).
-    -   _Index Name_: If applicable, the name of the index being used.
-    -   _Sort Key_: The key used for sorting if a sort operation is involved.
-    -   _Sort Method_: The sorting algorithm used (for example, _quicksort_, _mergesort_, and so on.)
+  - _Filter_: Indicates a filtering operation.
+  - _Join Type_: Specifies the type of join being performed (for example, Nested Loop, Hash Join, Merge Join).
+  - _Index Name_: If applicable, the name of the index being used.
+  - _Sort Key_: The key used for sorting if a sort operation is involved.
+  - _Sort Method_: The sorting algorithm used (for example, _quicksort_, _mergesort_, and so on.)
 - **Timings**: At the end of the plan tree, YugabyteDB will add multiple time taken metrics when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. These are aggregate times across all plan nodes. Some of them are,
-    - _Planning Time_: The time taken in milliseconds for the [query planner](../../../architecture/query-layer/#planner) to design the plan tree. Usually this value is higher the first time a query is executed. During subsequent runs, this time will be low as the plans are cached and re-used.
-    - _Execution Time_: The total time taken in milliseconds for the query to execute. This includes all table/index read/write times.
-    - _Storage Read Execution Time_: The total time spent by the YSQL query layer waiting to receive data from the DocDB storage layer. This is measured as the sum of wait times for individual RPCs to read tables and indexes. The YSQL query layer often pipelines requests to read data from the storage layer. That is, the query layer may choose to perform other processing while a request to fetch data from the storage layer is in progress. Only when the query layer has completed all such processing does it wait for the response from the storage layer. Thus the wait time spent by the query layer (_Storage Read Execution Time_) is often lower than the sum of the times for round-trips to read tables and indexes.
-    - _Storage Write Execution Time_: The sum of all round-trip times taken to flush the write requests to tables and indexes.
-    - _Catalog Read Execution Time_: Time taken to read from the system catalog (typically during planning).
-    - _Storage Execution Time_ : Sum of _Storage Read_, _Storage Write_ and _Catalog Read_  execution times.
-    - _Time_: The total time taken by the request from the view point of the client as reported by ysqlsh. This includes _Planning_ and _Execution_ times along with the client to server latency.
+  - _Planning Time_: The time taken in milliseconds for the [query planner](../../../architecture/query-layer/#planner) to design the plan tree. Usually this value is higher the first time a query is executed. During subsequent runs, this time will be low as the plans are cached and re-used.
+  - _Execution Time_: The total time taken in milliseconds for the query to execute. This includes all table/index read/write times.
+  - _Storage Read Execution Time_: The total time spent by the YSQL query layer waiting to receive data from the DocDB storage layer. This is measured as the sum of wait times for individual RPCs to read tables and indexes. The YSQL query layer often pipelines requests to read data from the storage layer. That is, the query layer may choose to perform other processing while a request to fetch data from the storage layer is in progress. Only when the query layer has completed all such processing does it wait for the response from the storage layer. Thus the wait time spent by the query layer (_Storage Read Execution Time_) is often lower than the sum of the times for round-trips to read tables and indexes.
+  - _Storage Write Execution Time_: The sum of all round-trip times taken to flush the write requests to tables and indexes.
+  - _Catalog Read Execution Time_: Time taken to read from the system catalog (typically during planning).
+  - _Storage Execution Time_ : Sum of _Storage Read_, _Storage Write_ and _Catalog Read_  execution times.
+  - _Time_: The total time taken by the request from the view point of the client as reported by ysqlsh. This includes _Planning_ and _Execution_ times along with the client to server latency.
 - **Distributed Storage Counters**: YugabyteDB adds specific counters related to the distributed execution of the query to the summary when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. Some of them are:
-    -   _Storage Table Read Requests_: Number of RPC round-trips made to the local [YB-TServer](../../../architecture/yb-tserver) for main table scans.
-    -   _Storage Table Rows Scanned_: The total number of rows visited in tables to identify the final resultset.
-    -   _Storage Table Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on a non-indexed table.
-    -   _Storage Index Rows Scanned_: The total number of rows visited in indexes to identify the final result set.
-    -   _Storage Index Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on an index.
-    -   _Storage Read Requests_: The sum of number of _table reads_ and _index reads_ across all plan nodes.
-    -   _Storage Rows Scanned_: Sum of _Storage Table/Index_ row counters.
-    -   _Storage Write Requests_: Sum of all _Storage Table Writes_ and _Storage Index Writes_.
-    -   _Catalog Read Requests_: Number of requests to read catalog information from [YB-Master](../../../architecture/yb-master).
-    -   _Catalog Write Requests_: Number of requests to write catalog information to [YB-Master](../../../architecture/yb-master).
-    -    _Storage Flush Requests_: Number of times buffered writes have been flushed to the local [YB-TServer](../../../architecture/yb-tserver).
+  - _Storage Table Read Requests_: Number of RPC round-trips made to the local [YB-TServer](../../../architecture/yb-tserver) for main table scans.
+  - _Storage Table Rows Scanned_: The total number of rows visited in tables to identify the final resultset.
+  - _Storage Table Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on a non-indexed table.
+  - _Storage Index Rows Scanned_: The total number of rows visited in indexes to identify the final result set.
+  - _Storage Index Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on an index.
+  - _Storage Read Requests_: The sum of number of _table reads_ and _index reads_ across all plan nodes.
+  - _Storage Rows Scanned_: Sum of _Storage Table/Index_ row counters.
+  - _Storage Write Requests_: Sum of all _Storage Table Writes_ and _Storage Index Writes_.
+  - _Catalog Read Requests_: Number of requests to read catalog information from [YB-Master](../../../architecture/yb-master).
+  - _Catalog Write Requests_: Number of requests to write catalog information to [YB-Master](../../../architecture/yb-master).
+  - _Storage Flush Requests_: Number of times buffered writes have been flushed to the local [YB-TServer](../../../architecture/yb-tserver).
 
 ## Using explain
 
-Let us go over a few examples to understand how to improve query performance using output of the `EXPLAIN ANALYZE`. First, set up a local cluster for testing out the examples.
+The following examples show how to improve query performance using output of the `EXPLAIN ANALYZE`. First, set up a local cluster for testing out the examples.
 
 {{<setup/local status="no" dataplacement="no">}}
 
-### Setup tables
+### Set up tables
 
-Let us create a key value table as follows:
+1. Create a key value table as follows:
 
-```sql
-CREATE TABLE kvstore (
-    key VARCHAR,
-    value VARCHAR,
-    PRIMARY KEY(key)
-);
-```
+    ```sql
+    CREATE TABLE kvstore (
+        key VARCHAR,
+        value VARCHAR,
+        PRIMARY KEY(key)
+    );
+    ```
 
-Add 10,000 key-values into the tables as follows:
+1. Add 10,000 key-values into the tables as follows:
 
-```sql
-SELECT setseed(0.5); -- to help generate the same random values
+    ```sql
+    SELECT setseed(0.5); -- to help generate the same random values
 
-INSERT INTO kvstore(key, value)
-        SELECT substr(md5(random()::text), 1, 7), substr(md5(random()::text), 1, 10)
-        FROM generate_series(1,10000);
+    INSERT INTO kvstore(key, value)
+            SELECT substr(md5(random()::text), 1, 7), substr(md5(random()::text), 1, 10)
+            FROM generate_series(1,10000);
+    ```
 
-```
+1. Run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command on the database to gather statistics for the query planner to use.
 
-Run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command on the database for stats to be gathered for the query planner to use.
+    ```sql
+    ANALYZE kvstore;
+    ```
 
-```sql
-ANALYZE kvstore;
-```
+## Speed up lookups
 
-## Speeding up lookups
-
-Let's fetch the details of the movie `Matrix` from the movies table.
-Now run `EXPLAIN` on a simple query to fetch a  from the `movies` table.
+Use `EXPLAIN` on a basic query to fetch a value from the `kvstore` table.
 
 {{<note>}}
-In all the outputs of the following examples, metrics/counters with value zero have been removed for brevity. `COSTS OFF` option has also been added to shows just the estimated costs.
+For brevity, all the output for the following examples excludes metrics/counters with value zero. `COSTS OFF` option has also been added to show just the estimated costs.
 {{</note>}}
 
 ```sql
@@ -127,7 +125,7 @@ You should see an output similar to the following:
 
 From line 3, you can see that an index scan was done on the table (via `Index Scan`) using the primary key `kvstore_pkey` to retrive one row (via `rows=1`). The `Storage Rows Scanned: 1` indicates that as only one row was looked up, this was an optimal execution.
 
-Now let's fetch the key for a given value.
+Fetch the key for a given value:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, COSTS OFF) select * from kvstore where value='85d083991d';
@@ -213,7 +211,7 @@ Notice that the operation has become an `Index Only Scan` instead of the `Index 
 
 ## Optimizing for ordering
 
-Let's fetch all the values starting with a prefix, say `ca`.
+Fetch all the values starting with a prefix, say `ca`.
 
 ```sql
 EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM kvstore WHERE value LIKE 'ca%' ORDER BY VALUE;
@@ -248,7 +246,7 @@ Only 41 rows were returned (`rows=41`) but a sequential scan (`Seq Scan on kvsto
 CREATE INDEX idx_value_3 ON kvstore(value ASC) INCLUDE(key);
 ```
 
-If you run the same query, you should see,
+If you run the same query, you should see the following output:
 
 ```yaml{linenos=inline, .nocopy}
 # EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM kvstore WHERE value LIKE 'ca%' ORDER BY VALUE;
@@ -276,4 +274,4 @@ Now, only 41 rows were scanned (via `Storage Rows Scanned: 41`) to retrieve 41 r
 - Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
 - Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
 - Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
-- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.
+- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) to show the query execution plan generated by YSQL.
