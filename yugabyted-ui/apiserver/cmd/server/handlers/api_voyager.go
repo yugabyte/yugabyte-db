@@ -23,6 +23,7 @@ import (
 )
 
 const LOGGER_FILE_NAME = "api_voyager"
+const MIGRATION_CAVEATS_UI_DISPLAY_STR ="MIGRATION CAVEATS"
 
 // Gets one row for each unique migration_uuid, and also gets the highest migration_phase and
 // invocation for import/export
@@ -602,33 +603,56 @@ func getMigrateSchemaTaskInfoFuture(log logger.Logger, conn *pgxpool.Pool, migra
     migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring.RefactorDetails =
         recommendedRefactoringList
 
-    conversionIssuesDetailsWithCountMap := map[string]models.UnsupportedSqlWithDetails{}
-    fmt.Println(migrateSchemaTaskInfo.SuggestionsErrors)
+    conversionIssuesForSuggestedRefacotring := map[string]models.UnsupportedSqlWithDetails{}
     for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
-        fmt.Println(conversionIssue)
-        conversionIssuesByType, ok :=
-            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType]
-        if ok {
-            conversionIssuesByType.Count = conversionIssuesByType.Count + 1
-            conversionIssuesByType.SuggestionsErrors = append(
-                conversionIssuesByType.SuggestionsErrors, conversionIssue)
-        } else {
-            var newConversionIssuesByType models.UnsupportedSqlWithDetails
-            newConversionIssuesByType.Count = 1
-            newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
-            newConversionIssuesByType.SuggestionsErrors =
-                append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
-            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType] =
+
+        if conversionIssue.IssueType == "migration_caveats" {
+            conversionIssuesByIssueType, ok :=
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType]
+
+            if ok {
+                conversionIssuesByIssueType.Count = conversionIssuesByIssueType.Count + 1
+                conversionIssuesByIssueType.SuggestionsErrors = append(
+                    conversionIssuesByIssueType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
+                    conversionIssuesByIssueType
+            } else {
+                var newConversionIssuesByType models.UnsupportedSqlWithDetails
+                newConversionIssuesByType.Count = 1
+                newConversionIssuesByType.UnsupportedType = MIGRATION_CAVEATS_UI_DISPLAY_STR
+                newConversionIssuesByType.SuggestionsErrors =
+                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
                     newConversionIssuesByType
+            }
+
+        } else {
+
+            conversionIssuesByObjectType, ok :=
+            conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType]
+            if ok {
+                conversionIssuesByObjectType.Count = conversionIssuesByObjectType.Count + 1
+                conversionIssuesByObjectType.SuggestionsErrors = append(
+                    conversionIssuesByObjectType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
+                    conversionIssuesByObjectType
+            } else {
+                var newConversionIssuesByType models.UnsupportedSqlWithDetails
+                newConversionIssuesByType.Count = 1
+                newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
+                newConversionIssuesByType.SuggestionsErrors =
+                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
+                    newConversionIssuesByType
+            }
+
         }
     }
-    fmt.Println(conversionIssuesDetailsWithCountMap)
 
     var conversionIssuesDetailsWithCountList []models.UnsupportedSqlWithDetails
-    for _, value := range conversionIssuesDetailsWithCountMap {
+    for _, value := range conversionIssuesForSuggestedRefacotring {
         conversionIssuesDetailsWithCountList = append(conversionIssuesDetailsWithCountList, value)
     }
-    fmt.Print(conversionIssuesDetailsWithCountList)
 
     migrateSchemaTaskInfo.CurrentAnalysisReport.UnsupportedFeatures =
         conversionIssuesDetailsWithCountList
