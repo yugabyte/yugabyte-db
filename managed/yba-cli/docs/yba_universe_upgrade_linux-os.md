@@ -4,7 +4,7 @@ VM Linux OS patch for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes of cloud type AWS, GCP and Azure.
+VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.
 
 ```
 yba universe upgrade linux-os [flags]
