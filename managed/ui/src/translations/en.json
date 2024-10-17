@@ -591,10 +591,12 @@
         "pods": "pods",
         "cores": "CPU cores",
         "memory": "Memory(Gib)",
+        "numVolumes": "Number of volumes",
         "volumeSize": "Volume Size(Gib)",
         "readReplicas": "Read Replicas",
         "scaleUp": "Scale Up",
-        "scaleDown": "Scale Down"
+        "scaleDown": "Scale Down",
+        "publicNetworkAccess": "Public Network Access"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",

@@ -214,7 +214,9 @@ public class UniverseCRUDHandler {
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
-            || isKubernetesNodeSpecUpdate(cluster, currentCluster);
+            || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || cluster.userIntent.enableExposingService
+                != currentCluster.userIntent.enableExposingService;
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
