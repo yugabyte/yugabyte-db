@@ -503,7 +503,22 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
 		{ "@!<=", BSON_INDEX_STRATEGY_DOLLAR_NOT_LTE, true },
 		false,
-	}
+	},
+
+	/* Miscellaneous operators */
+
+	{
+		{ "$comment", QUERY_OPERATOR_COMMENT, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$comment", QUERY_OPERATOR_COMMENT, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
+	},
 };
 
 static const int QueryOperatorSize = sizeof(QueryOperators) / sizeof(MongoOperatorInfo);

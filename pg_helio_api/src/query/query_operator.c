@@ -623,6 +623,13 @@ CreateQualForBsonValueExpressionCore(const bson_value_t *expression,
 					break;
 				}
 
+				case QUERY_OPERATOR_COMMENT:
+				{
+					/* Ignore comment */
+					qual = NULL;
+					break;
+				}
+
 				default:
 				{
 					/* Otherwise, it's a valid operator, create an OpExpr for the expression */
@@ -1147,7 +1154,10 @@ CreateQualsFromQueryDocIteratorInternal(bson_iter_t *queryDocIterator,
 														path);
 		}
 
-		quals = lappend(quals, qual);
+		if (qual != NULL)
+		{
+			quals = lappend(quals, qual);
+		}
 	}
 
 	return quals;
@@ -1178,6 +1188,12 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	}
 
 	MongoQueryOperatorType operatorType = operator->operatorType;
+
+	if (operatorType == QUERY_OPERATOR_COMMENT)
+	{
+		/* Skip $comment */
+		return NULL;
+	}
 
 	if (operatorType != QUERY_OPERATOR_AND &&
 		operatorType != QUERY_OPERATOR_OR &&

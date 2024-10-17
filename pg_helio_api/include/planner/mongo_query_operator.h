@@ -82,6 +82,9 @@ typedef enum MongoQueryOperatorType
 	QUERY_OPERATOR_NOT_LT,
 	QUERY_OPERATOR_NOT_LTE,
 
+	/* Miscellaneous operators */
+	QUERY_OPERATOR_COMMENT,
+
 	QUERY_OPERATOR_UNKNOWN
 } MongoQueryOperatorType;
 
