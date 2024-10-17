@@ -771,9 +771,13 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  private static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+  public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
     AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    return getYsqlPgConfCsv(auditLogConfig);
+  }
+
+  public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
