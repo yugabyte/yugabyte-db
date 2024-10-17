@@ -58,7 +58,7 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
     ```
 
     ```output
-    backup_23-04-25-16-54.tgz  version_metadata_backup.json
+    backup_23-04-25-16-54.tgz
     ```
 
 1. Verify that the backup file, with the correct timestamp, is in the specified output directory.
@@ -71,7 +71,6 @@ The following table describes optional flags you can include with the `createBac
 
 | Flag | Description | Default |
 | :--- | :---------- | :------ |
-| --data_dir | Data directory to be backed up. | "/opt/yugabyte" |
 | &#8209;&#8209;disable_version_check | Exclude version metadata when creating backup. | false |
 | --exclude_prometheus | Exclude Prometheus metric data from backup. | false |
 | --exclude_releases | Exclude YugabyteDB releases from backup. | false |
@@ -84,6 +83,8 @@ The following table describes optional flags you can include with the `createBac
 ## Restore YugabyteDB Anywhere
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
+
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/) using YBA Installer.
 
 1. Copy the backup file from your storage location.
 
@@ -109,12 +110,11 @@ The following table describes optional flags you can include with the `restoreBa
 
 | Flag | Description | Default |
 | :--- | :---------- | :------ |
-| --destination | Path to un-tar the backup. | "/opt/yugabyte" |
 | -h, --help | Help for `restoreBackup`. | |
-| --migration | Restore from a Replicated installation. | false |
+| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](../../install-yugabyte-platform/migrate-replicated/). | false |
 | --skip_dbdrop | Skip dropping the YugabyteDB Anywhere database before a migration restore. Valid only if --migration is true. | false |
 | --skip_restart | Don't restart processes during command execution. | true |
-| --use_system_pg | Use system path's `pg_restore` as opposed to installed binary. | false |
+| &#8209;&#8209;use_system_pg | Use system path's `pg_restore` as opposed to installed binary. | false |
 | --verbose | Display extra information in the output. | false |
 | -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. | |
 | --log_level (global flag) | Log level for this command.<br>Levels: panic, fatal, error, warn, info, debug, trace. | "info" |

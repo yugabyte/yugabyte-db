@@ -275,7 +275,7 @@ $ ls test_backup/
 ```
 
 ```output
-backup_23-04-25-16-54.tgz  version_metadata_backup.json
+backup_23-04-25-16-54.tgz
 ```
 
 To restore from the same backup, use the `restoreBackup` command:
