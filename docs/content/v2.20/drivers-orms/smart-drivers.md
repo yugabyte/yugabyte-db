@@ -204,7 +204,7 @@ When no topology keys are specified, nodes are selected as follows.
 {{% /tab %}}
 {{% tab header="Topology keys" lang="100-wh" %}}
 
-When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as follows.
+When topology keys are specified as `zoneA:1,zoneB:2`, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
@@ -217,7 +217,7 @@ When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as foll
 {{% /tab %}}
 {{% tab header="Fall back to topology keys" lang="100-wh" %}}
 
-When topology keys are specified as zoneA:1, zoneB:2, and fallback to topology keys only is true, nodes are selected as follows.
+When topology keys are specified as `zoneA:1,zoneB:2`, and fallback to topology keys only is true, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
