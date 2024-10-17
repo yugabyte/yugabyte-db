@@ -292,6 +292,25 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void PauseAllPodsInRelease(
+      Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle) {
+    // We just scale down the StatefulSet to 0 replicas to pause all.
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String selector = String.format("release=%s", universePrefix, appLabel);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "scale",
+            "statefulset",
+            "-l",
+            selector,
+            "--replicas=" + "0");
+    execCommand(config, commandList).processErrors();
+  }
+
+  @Override
   public void updateNumNodes(
       Map<String, String> config,
       String universePrefix,

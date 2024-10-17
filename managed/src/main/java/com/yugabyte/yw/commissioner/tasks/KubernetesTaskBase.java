@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.IOException;
@@ -191,6 +192,105 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         enableYbc,
         false /* usePreviousGflagsChecksum */);
+  }
+
+  public void createPauseKubernetesUniverseTasks(String universeName) {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    }
+
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+
+    SubTaskGroup pauseGroup = createSubTaskGroup("Pause Kubernetes Universe");
+    pauseGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+
+    KubernetesPlacement placement = new KubernetesPlacement(primaryCluster.placementInfo, false);
+
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+      Map<String, String> config = entry.getValue();
+
+      KubernetesCommandExecutor pauseTask =
+          createPauseKubernetesUniverseTaskAZ(
+              universeName,
+              taskParams().nodePrefix,
+              azCode,
+              config,
+              placement.masters.getOrDefault(azUUID, 0),
+              false, // isReadOnlyCluster
+              taskParams().useNewHelmNamingStyle,
+              taskParams().getUniverseUUID());
+
+      pauseGroup.addSubTask(pauseTask);
+    }
+
+    getRunnableTask().addSubTaskGroup(pauseGroup);
+  }
+
+  public void createResumeKubernetesUniverseTasks() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    String universeName = universe.getName();
+    log.info("Creating resume Kubernetes universe tasks for universe {}", universeName);
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    }
+
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+    UUID providerUUID = provider.getUuid();
+
+    SubTaskGroup resumeGroup = createSubTaskGroup("Resume Kubernetes Universe");
+    resumeGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+
+    KubernetesPlacement placement = new KubernetesPlacement(primaryCluster.placementInfo, false);
+
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+      Map<String, String> config = entry.getValue();
+
+      KubernetesCommandExecutor resumeTask =
+          createResumeKubernetesUniverseTaskAZ(
+              universeName,
+              taskParams().nodePrefix,
+              azCode,
+              config,
+              placement.masters.getOrDefault(azUUID, 0),
+              false, // isReadOnlyCluster
+              taskParams().useNewHelmNamingStyle,
+              taskParams().getUniverseUUID(),
+              providerUUID);
+
+      resumeGroup.addSubTask(resumeTask);
+    }
+    getRunnableTask().addSubTaskGroup(resumeGroup);
+
+    // Wait for nodes to start after resume
+    List<NodeDetails> tserverNodeList = universe.getTServers();
+    List<NodeDetails> masterNodeList = universe.getMasters();
+    createWaitForServersTasks(tserverNodeList, ServerType.TSERVER);
+    createWaitForServersTasks(masterNodeList, ServerType.MASTER);
+
+    createUnivManageAlertDefinitionsTask(true).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+    createSwamperTargetUpdateTask(false);
+
+    createMarkSourceMetricsTask(universe, MetricSourceState.ACTIVE)
+        .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+    createUpdateUniverseFieldsTask(
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.universePaused = false;
+          u.setUniverseDetails(details);
+        });
   }
 
   public void createPodsTask(
@@ -1425,6 +1525,77 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       createKubernetesYbcCopyPackageSubTask(
           subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags);
     }
+  }
+
+  public KubernetesCommandExecutor createPauseKubernetesUniverseTaskAZ(
+      String universeName,
+      String nodePrefix,
+      String azCode,
+      Map<String, String> config,
+      int newPlacementAzMasterCount,
+      boolean isReadOnlyCluster,
+      boolean useNewHelmNamingStyle,
+      UUID universeUUID) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.universeName = universeName;
+    params.commandType = KubernetesCommandExecutor.CommandType.PAUSE_AZ;
+    params.azCode = azCode;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azCode,
+            isReadOnlyCluster,
+            useNewHelmNamingStyle);
+    params.config = config;
+    String namespace =
+        KubernetesUtil.getKubernetesNamespace(
+            nodePrefix, azCode, config, useNewHelmNamingStyle, isReadOnlyCluster);
+    params.namespace = namespace;
+    params.setUniverseUUID(universeUUID);
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    return task;
+  }
+
+  public KubernetesCommandExecutor createResumeKubernetesUniverseTaskAZ(
+      String universeName,
+      String nodePrefix,
+      String azCode,
+      Map<String, String> config,
+      int newPlacementAzMasterCount,
+      boolean isReadOnlyCluster,
+      boolean useNewHelmNamingStyle,
+      UUID universeUUID,
+      UUID providerUUID) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    params.universeName = universeName;
+    params.commandType = KubernetesCommandExecutor.CommandType.RESUME_AZ;
+    params.azCode = azCode;
+    params.providerUUID = providerUUID;
+    params.universeDetails = taskParams();
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azCode,
+            isReadOnlyCluster,
+            useNewHelmNamingStyle);
+    params.config = config;
+    String namespace =
+        KubernetesUtil.getKubernetesNamespace(
+            nodePrefix, azCode, config, useNewHelmNamingStyle, isReadOnlyCluster);
+    params.namespace = namespace;
+    params.setUniverseUUID(universeUUID);
+    params.universeConfig = universe.getConfig();
+    params.ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    return task;
   }
 
   public KubernetesCommandExecutor garbageCollectMasterVolumes(

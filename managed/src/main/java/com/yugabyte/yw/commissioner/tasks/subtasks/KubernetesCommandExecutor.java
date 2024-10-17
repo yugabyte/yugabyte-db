@@ -114,6 +114,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     COPY_PACKAGE,
     YBC_ACTION,
     NAMESPACED_SVC_DELETE,
+    PAUSE_AZ,
+    RESUME_AZ,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -301,7 +303,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
-
+    boolean newNamingStyle = false;
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
@@ -345,7 +347,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          boolean newNamingStyle =
+          newNamingStyle =
               Universe.getOrBadRequest(taskParams().getUniverseUUID())
                   .getUniverseDetails()
                   .useNewHelmNamingStyle;
@@ -417,7 +419,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case STS_DELETE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+        newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
         kubernetesManagerFactory
@@ -459,6 +461,30 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
         ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
+        break;
+      case PAUSE_AZ:
+        newNamingStyle =
+            Universe.getOrBadRequest(taskParams().getUniverseUUID())
+                .getUniverseDetails()
+                .useNewHelmNamingStyle;
+        kubernetesManagerFactory
+            .getManager()
+            .PauseAllPodsInRelease(
+                config, taskParams().helmReleaseName, taskParams().namespace, newNamingStyle);
+
+        break;
+      case RESUME_AZ:
+        overridesFile = this.generateHelmOverride();
+        kubernetesManagerFactory
+            .getManager()
+            .helmResume(
+                taskParams().getUniverseUUID(),
+                taskParams().ybSoftwareVersion,
+                config,
+                taskParams().helmReleaseName,
+                taskParams().namespace,
+                overridesFile);
+
         break;
     }
   }

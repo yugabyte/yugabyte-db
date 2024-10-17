@@ -9,6 +9,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
+import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
 import java.lang.reflect.Field;
@@ -80,6 +82,16 @@ public enum TaskType {
 
   ResumeUniverse(
       com.yugabyte.yw.commissioner.tasks.ResumeUniverse.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.Universe),
+
+  PauseKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.Universe),
+
+  ResumeKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse.class,
       CustomerTask.TaskType.Resume,
       CustomerTask.TargetType.Universe),
 
@@ -1115,6 +1127,8 @@ public enum TaskType {
           .put(ReadOnlyKubernetesClusterCreate, 12)
           .put(ReadOnlyKubernetesClusterDelete, 13)
           .put(ResumeUniverse, 14)
+          .put(PauseKubernetesUniverse, 15) // You may want to assign a different code
+          .put(ResumeKubernetesUniverse, 16) // You may want to assign a different code
           // Upgrade/Maintenance (30-69):
           .put(CertsRotate, 30)
           .put(ConfigureDBApis, 31)
