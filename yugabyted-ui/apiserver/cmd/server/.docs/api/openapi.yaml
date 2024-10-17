@@ -2248,16 +2248,40 @@ components:
           $ref: '#/components/schemas/TargetSchemaRecommendations'
       title: Target YugabyteDB cluster size and schema recommendations
       type: object
+    UnsupportedSqlObjectData:
+      description: Unsupported SQL Object Data
+      example:
+        object_name: object_name
+        sql_statement: sql_statement
+      properties:
+        object_name:
+          type: string
+        sql_statement:
+          type: string
+      title: Unsupported SQL Object Data
+      type: object
     UnsupportedSqlInfo:
       description: Unsupported SQL Info
       example:
         unsupported_type: unsupported_type
+        objects:
+        - object_name: object_name
+          sql_statement: sql_statement
+        - object_name: object_name
+          sql_statement: sql_statement
         count: 1
+        docs_link: docs_link
       properties:
         unsupported_type:
           type: string
         count:
           type: integer
+        objects:
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlObjectData'
+          type: array
+        docs_link:
+          type: string
       title: Unsupported SQL Info
       type: object
     MigrationAssessmentReport:
@@ -2282,9 +2306,21 @@ components:
           recommendation_summary: recommendation_summary
         unsupported_features:
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
         recommended_refactoring:
           refactor_details:
           - sql_object_type: sql_object_type
@@ -2301,9 +2337,21 @@ components:
           total_vcpu: total_vcpu
         unsupported_functions:
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
         source_database:
           table_size: 0
           total_index_size: 5
@@ -2311,9 +2359,21 @@ components:
           total_table_size: 1
         unsupported_data_types:
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
         - unsupported_type: unsupported_type
+          objects:
+          - object_name: object_name
+            sql_statement: sql_statement
+          - object_name: object_name
+            sql_statement: sql_statement
           count: 1
+          docs_link: docs_link
       properties:
         assessment_status:
           type: boolean
@@ -4394,9 +4454,21 @@ components:
             recommendation_summary: recommendation_summary
           unsupported_features:
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
           recommended_refactoring:
             refactor_details:
             - sql_object_type: sql_object_type
@@ -4413,9 +4485,21 @@ components:
             total_vcpu: total_vcpu
           unsupported_functions:
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
           source_database:
             table_size: 0
             total_index_size: 5
@@ -4423,9 +4507,21 @@ components:
             total_table_size: 1
           unsupported_data_types:
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
           - unsupported_type: unsupported_type
+            objects:
+            - object_name: object_name
+              sql_statement: sql_statement
+            - object_name: object_name
+              sql_statement: sql_statement
             count: 1
+            docs_link: docs_link
       properties:
         data:
           $ref: '#/components/schemas/MigrationAssessmentReport'

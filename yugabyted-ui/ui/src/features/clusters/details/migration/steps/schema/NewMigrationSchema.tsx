@@ -169,7 +169,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
               isDone={schemaAPI.export_schema === "complete"}
               isLoading={schemaAPI.export_schema === "in-progress"}
               showInProgress={schemaAPI.export_schema === "in-progress"}
-              showTodo={!schemaAPI.export_schema || schemaAPI.export_schema === "N/A"}
               accordion={!(!schemaAPI.export_schema || schemaAPI.export_schema === "N/A")}
               contentSeparator={true}
             >
@@ -181,7 +180,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                         <Prereqs items={exportSchemaPrereqs}/>
                       </Box>
                       <Box my={2} width="fit-content">
-                        <Typography variant="body2" style={{ color: 'grey', fontSize: '0.7rem' }}>
+                        <Typography variant="body2">
                           <Trans
                             i18nKey="clusterDetail.voyager.migrateSchema.schemaExportDesc"
                             components={[<strong key="0" />, <strong key="1" />]}
@@ -223,7 +222,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                 }
 
 
-
                 return null;
               }}
             </StepCard>
@@ -246,24 +244,12 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                 (!schemaAPI.import_schema || schemaAPI.import_schema === "N/A")) ||
                 manualRefactorRequired
               }
-              showTooltip={
-                schemaAPI.export_schema !== "complete" &&
-                (!schemaAPI.analyze_schema || schemaAPI.analyze_schema === "N/A")
-              }
-              showTodo={
-                schemaAPI.export_schema === "complete" &&
-                (!schemaAPI.analyze_schema || schemaAPI.analyze_schema === "N/A")
-              }
-              hideContent={
-                schemaAPI.export_schema !== "complete" &&
-                (!schemaAPI.analyze_schema || schemaAPI.analyze_schema === "N/A")
-              }
             >
               {(status) => {
                 if (status === "TODO") {
                   return (
                     <>
-                      <Box mt={4} width="fit-content">
+                      <Box my={2} width="fit-content">
                         <Typography variant="body2">
                           {t("clusterDetail.voyager.migrateSchema.schemaAnalysisDesc")}
                         </Typography>
@@ -298,7 +284,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                 }
 
                 if (status === "IN_PROGRESS") {
-                  return (<></>);
+                  return;
                 }
 
                 return <SchemaAnalysis migration={migration} schemaAPI={schemaAPI} />;
@@ -315,14 +301,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
               isLoading={schemaAPI.import_schema === "in-progress"}
               showInProgress={schemaAPI.import_schema === "in-progress"}
               showTooltip={
-                schemaAPI.analyze_schema !== "complete" &&
-                (!schemaAPI.import_schema || schemaAPI.import_schema === "N/A")
-              }
-              showTodo={
-                schemaAPI.analyze_schema === "complete" &&
-                (!schemaAPI.import_schema || schemaAPI.import_schema === "N/A")
-              }
-              hideContent={
                 schemaAPI.analyze_schema !== "complete" &&
                 (!schemaAPI.import_schema || schemaAPI.import_schema === "N/A")
               }
@@ -362,6 +340,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                         }
                         showCopyIconButton={true}
                         preClassName={classes.commandCodeBlock}
+                        highlightSyntax={true}
                       />
                       <Box mt={2} mb={2} width="fit-content">
                         <Link
@@ -382,7 +361,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                 }
 
                 if (status === "IN_PROGRESS") {
-                  return (<></>);
+                  return;
                 }
 
                 return null;

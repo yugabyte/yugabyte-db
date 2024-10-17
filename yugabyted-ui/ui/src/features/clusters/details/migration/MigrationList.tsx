@@ -12,12 +12,11 @@ import {
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { GenericFailure, YBButton, YBInput, YBSelect, YBTable, YBTooltip } from "@app/components";
+import { GenericFailure, YBButton, YBInput, YBSelect, YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
-import clsx from "clsx";
 import { MigrationListSourceDBSidePanel, SourceDBProps } from "./MigrationListSourceDBSidePanel";
 import CaretRightIcon from "@app/assets/caret-right.svg";
 import CaretDownIcon from "@app/assets/caret-down.svg";
@@ -30,6 +29,7 @@ import EditIcon from "@app/assets/edit.svg";
 import { useLocalStorage } from "react-use";
 import { getMemorySizeUnits } from '@app/helpers';
 import PlusIcon from '@app/assets/plus.svg';
+import { ComplexityComponent } from "./ComplexityComponent";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -91,28 +91,6 @@ const useStyles = makeStyles((theme) => ({
     paddingBottom: "10px",
   },
 }));
-
-const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
-  const complexityL = complexity?.toLowerCase();
-
-  const totalComplexityCount = 3;
-  const activeComplexityCount = complexityL === "high" ? 3 : complexityL === "medium" ? 2 : 1;
-
-  return (
-    <YBTooltip title={complexity} placement="bottom-start">
-      <Box display="flex" alignItems="center" gridGap={6} width="fit-content">
-        {Array.from({ length: totalComplexityCount }).map((_, index) => (
-          <Box
-            className={clsx(
-              classes.complexity,
-              index < activeComplexityCount && classes.complexityActive
-            )}
-          />
-        ))}
-      </Box>
-    </YBTooltip>
-  );
-};
 
 interface MigrationListProps {
   migrationData?: Migration[];
@@ -392,7 +370,9 @@ export const MigrationList: FC<MigrationListProps> = ({
             name: "complexity",
             label: t("clusterDetail.voyager.complexity"),
             options: {
-              customBodyRender: ComplexityComponent(classes),
+              customBodyRender: (complexity: (typeof migrationNewData)[number]["complexity"]) => {
+                return <ComplexityComponent complexity={complexity ?? ""}/>;
+              },
               setCellHeaderProps: () => ({ style: { width: "120px", padding: "24px 16px" } }),
               setCellProps: () => ({ style: { padding: "16px 16px" } }),
             },

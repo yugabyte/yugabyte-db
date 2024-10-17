@@ -86,6 +86,7 @@ export type { TargetClusterSpec } from  './TargetClusterSpec';
 export type { TargetRecommendationItem } from  './TargetRecommendationItem';
 export type { TargetSchemaRecommendations } from  './TargetSchemaRecommendations';
 export type { UnsupportedSqlInfo } from  './UnsupportedSqlInfo';
+export type { UnsupportedSqlObjectData } from  './UnsupportedSqlObjectData';
 export type { UnsupportedSqlWithDetails } from  './UnsupportedSqlWithDetails';
 export type { VersionInfo } from  './VersionInfo';
 export type { VoyagerMigrateDataMetrics } from  './VoyagerMigrateDataMetrics';
