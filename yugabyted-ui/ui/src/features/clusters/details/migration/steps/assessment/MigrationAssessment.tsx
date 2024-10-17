@@ -285,6 +285,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
                   }
                   showCopyIconButton={true}
                   preClassName={classes.commandCodeBlock}
+                  highlightSyntax={true}
                 />
                 <Box mt={2} mb={2} width="fit-content">
                   <Link
