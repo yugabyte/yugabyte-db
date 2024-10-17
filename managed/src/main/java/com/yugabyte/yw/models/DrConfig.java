@@ -181,6 +181,21 @@ public class DrConfig extends Model {
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
   }
 
+  public boolean hasActiveXClusterConfig() {
+    if (xClusterConfigs.isEmpty()) {
+      return false;
+    }
+    if (xClusterConfigs.size() == 1) {
+      return true;
+    }
+    for (XClusterConfig xClusterConfig : xClusterConfigs) {
+      if (!xClusterConfig.isSecondary()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @JsonIgnore
   public Optional<XClusterConfig> getActiveXClusterConfig(
       UUID sourceUniverseUuid, UUID targetUniverseUuid) {

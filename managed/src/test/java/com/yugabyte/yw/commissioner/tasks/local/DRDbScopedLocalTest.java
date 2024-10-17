@@ -60,10 +60,10 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
   // 2.23.0.0-b691+ version does not require enable_xcluster_api_v2 and allowed_preview_flags_csv
   //   gflags to be set.
-  public static final String DB_SCOPED_STABLE_VERSION = "2024.1.1.0-b137";
+  public static final String DB_SCOPED_STABLE_VERSION = "2024.1.3.0-b105";
   public static String DB_SCOPED_STABLE_VERSION_URL =
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
-          + "local-provider-test/2024.1.1.0-b137/yugabyte-2024.1.1.0-b137-%s-%s.tar.gz";
+          + "local-provider-test/2024.1.3.0-b105/yugabyte-2024.1.3.0-b105-%s-%s.tar.gz";
 
   public static Map<String, String> dbScopedMasterGFlags =
       Map.of(
@@ -566,6 +566,49 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     for (Db db : dbs) {
       dropDatabase(sourceUniverse, db);
       dropDatabase(targetUniverse, db);
+    }
+  }
+
+  @Test
+  public void testDbScopedChangeReplica() throws InterruptedException {
+    CreateDRMetadata createData = defaultDbDRCreate(1, 1);
+    UUID drConfigUUID = createData.drConfigUUID;
+    Universe sourceUniverse = createData.sourceUniverse;
+    Universe targetUniverse = createData.targetUniverse;
+    List<Db> dbs = createData.dbs;
+    List<Table> tables = createData.tables;
+
+    Universe newTargetUniverse =
+        createDRUniverse(DB_SCOPED_STABLE_VERSION, "new-target-universe", true);
+    createTestSet(newTargetUniverse, dbs, tables);
+
+    // Replace replica to use newly created universe.
+    DrConfigReplaceReplicaForm replaceReplicaForm = new DrConfigReplaceReplicaForm();
+    replaceReplicaForm.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    replaceReplicaForm.drReplicaUniverseUuid = newTargetUniverse.getUniverseUUID();
+    Result replaceReplicaResult = replaceReplica(drConfigUUID, replaceReplicaForm);
+    assertOk(replaceReplicaResult);
+    JsonNode json = Json.parse(contentAsString(replaceReplicaResult));
+    TaskInfo taskInfo =
+        waitForTask(
+            UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, newTargetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(newTargetUniverse.getUniverseUUID()));
+
+    // Validate new replication works.
+    insertRow(sourceUniverse, tables.get(0), Map.of("id", "2", "name", "'val2'"));
+    validateRowCount(newTargetUniverse, tables.get(0), 2 /* expectedRows */);
+
+    insertRow(sourceUniverse, tables.get(1), Map.of("id", "11", "name", "'val11'"));
+    validateRowCount(newTargetUniverse, tables.get(1), 2 /* expectedRows */);
+
+    deleteDrConfig(drConfigUUID, sourceUniverse, newTargetUniverse);
+
+    for (Db db : dbs) {
+      dropDatabase(sourceUniverse, db);
+      dropDatabase(targetUniverse, db);
+      dropDatabase(newTargetUniverse, db);
     }
   }
 
