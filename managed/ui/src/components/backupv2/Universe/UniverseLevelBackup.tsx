@@ -128,9 +128,14 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
           <Tab eventKey="backupList" title="Backups" unmountOnExit>
             <BackupList allowTakingBackup universeUUID={uuid} allowedTasks={allowedTasks} />
           </Tab>
-          <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
-            <ScheduledBackup universeUUID={uuid} allowedTasks={allowedTasks} />
-          </Tab>
+          {
+            !isNewBackupPITREnabled && (
+              <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
+                <ScheduledBackup universeUUID={uuid} allowedTasks={allowedTasks} />
+              </Tab>
+            )
+          }
+
           {
             isNewBackupPITREnabled && (
               <Tab eventKey="backupScheduleNew" title="Scheduled Backup Policies" unmountOnExit>

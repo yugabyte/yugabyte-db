@@ -2603,7 +2603,8 @@
       "scheduled": {
         "empty": {
           "createSchduledPolicy": "Create Scheduled Backup Policy",
-          "subText": "Currently there are no Scheduled Backup Policies to show"
+          "subText": "Currently there are no Scheduled Backup Policies to show",
+          "noTablesOrPermission":"This universe does not have any tables to backup or backup/universe is disabled"
         },
         "create": {
           "title": "Create Scheduled Backup Policy",
@@ -2779,7 +2780,7 @@
           "date": "Date",
           "time": "Time",
           "secs": "Second",
-          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and {{to}}. <a>Learn more</a>"
+          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and <to/>. <a>Learn more</a>"
         },
         "target": {
           "selectUniverse": "Select a universe to restore to",
