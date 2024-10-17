@@ -3719,7 +3719,7 @@ process_open_files:
         "yb-postmaster": "Postmaster"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
-
+        "node_exporter": "Node Exporter"
 
 ysql_catalog_cache_misses:
   metric: "rpc_latency_count"
