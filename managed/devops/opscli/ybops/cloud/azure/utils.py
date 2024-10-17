@@ -99,7 +99,11 @@ class GetPriceWorker(Thread):
             for info in price_info.get('Items'):
                 # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
                 # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
-                if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
+                # Also there are separate enties for spot price and low priority,
+                # so filtering them out too.
+                if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0
+                        or info['skuName'].endswith('Low Priority')
+                        or info['skuName'].endswith('Spot')):
                     self.vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
             url = price_info.get('NextPageLink')
 
