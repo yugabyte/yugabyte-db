@@ -22,7 +22,7 @@ var upgradeVMImageCmd = &cobra.Command{
 	Aliases: []string{"vm-image", "linux-os"},
 	Short:   "VM Linux OS patch for a YugabyteDB Anywhere Universe",
 	Long: "VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes" +
-		" of cloud type AWS, GCP and Azure.",
+		" of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
