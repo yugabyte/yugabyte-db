@@ -132,6 +132,7 @@ typedef pgbson *(*GetDefaultSearchParamBsonFunc)(void);
 typedef pgbson *(*CalculateSearchParamBsonFunc)(bytea *indexOptions, Cardinality
 												indexRows);
 
+
 /*
  * Definition of an extensible vector index.
  * It contains the function pointers for
@@ -152,6 +153,8 @@ typedef struct
 	const char *kindName;
 
 	const char *indexAccessMethodName;
+
+	bool needsReorderAfterFilter;
 
 	ParseIndexCreationSpecFunc parseIndexCreationSpecFunc;
 

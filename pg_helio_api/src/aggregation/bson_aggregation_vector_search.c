@@ -74,7 +74,8 @@ static TargetEntry * AddCtidToQueryTargetList(Query *query,
 static Query * JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 													TargetEntry *leftJoinEntry,
 													TargetEntry *rightJoinEntry,
-													const TargetEntry *sortEntry);
+													const TargetEntry *sortEntry,
+													bool needsReordering);
 
 static void AddPathStringToHashset(List *indexIdList, HTAB *stringHashSet);
 
@@ -82,7 +83,8 @@ static Query * GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 													 AggregationPipelineBuildContext *
 													 context,
 													 const bson_value_t *filterBson,
-													 TargetEntry *sortEntry);
+													 TargetEntry *sortEntry,
+													 bool needsReordering);
 
 static void AddNullVectorCheckToQuery(Query *query, const Expr *vectorSortExpr);
 
@@ -116,6 +118,11 @@ static void ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPg
 												int32_t *queryVectorLength,
 												bson_value_t *filterBson,
 												bson_value_t *scoreBson);
+
+static Expr * GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid);
+
+static Query * ReorderQueryResults(Query *joinQuery,
+								   AggregationPipelineBuildContext *context);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -394,7 +401,8 @@ static Query *
 JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 									 TargetEntry *leftJoinEntry,
 									 TargetEntry *rightJoinEntry,
-									 const TargetEntry *sortEntry)
+									 const TargetEntry *sortEntry,
+									 bool needsReordering)
 {
 	Query *finalQuery = makeNode(Query);
 	finalQuery->commandType = CMD_SELECT;
@@ -567,10 +575,15 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 	sortBy->sortby_dir = SORTBY_DEFAULT; /* reset later */
 	sortBy->node = (Node *) orderVar;
 
-	resjunk = true;
+	if (!needsReordering)
+	{
+		/* Hide the orderVar if we don't need to reorder */
+		resjunk = true;
+	}
+
 	TargetEntry *topSortEntry = makeTargetEntry((Expr *) orderVar,
 												(AttrNumber) parseState->p_next_resno++,
-												pstrdup(sortEntry->resname),
+												pstrdup("sortScore"),
 												resjunk);
 	finalQuery->targetList = lappend(finalQuery->targetList, topSortEntry);
 	List *sortlist = addTargetToSortList(parseState, topSortEntry,
@@ -581,11 +594,34 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 
 	/* Add the similarity score field to the metadata in the document */
 	/* bson_document_add_score_field(document, similarityScore) */
+	/* Result:  "document": { ... , "$__cosmos_meta__.score": { "score": 0.9 } } */
 	Assert(IsA(sortEntry->expr, OpExpr));
 
 	OpExpr *vectorSortExpr = (OpExpr *) sortEntry->expr;
 	Oid similaritySearchOpOid = vectorSortExpr->opno;
 
+	Expr *scoreExpr = GenerateScoreExpr((Expr *) orderVar, similaritySearchOpOid);
+
+	List *args = list_make2(documentVar, scoreExpr);
+	FuncExpr *resultExpr = makeFuncExpr(
+		ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	documentEntry->expr = (Expr *) resultExpr;
+
+	return finalQuery;
+}
+
+
+/*
+ * Generates similar score expression based on the similarity search operator.
+ * cos: 1.0 - orderScore
+ * ip: -1.0 * orderScore
+ * l2: orderScore
+ */
+static Expr *
+GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid)
+{
 	Expr *scoreExpr = NULL;
 	if (similaritySearchOpOid == VectorCosineSimilaritySearchOperatorId())
 	{
@@ -619,14 +655,66 @@ JoinVectorSearchQueryWithFilterQuery(Query *leftQuery, Query *rightQuery,
 							"unsupported vector search operator type")));
 	}
 
-	List *args = list_make2(documentVar, scoreExpr);
-	FuncExpr *resultExpr = makeFuncExpr(
-		ApiBsonDocumentAddScoreFieldFunctionId(), BsonTypeId(), args, InvalidOid,
-		InvalidOid, COERCE_EXPLICIT_CALL);
+	return (Expr *) scoreExpr;
+}
 
-	documentEntry->expr = (Expr *) resultExpr;
 
-	return finalQuery;
+/*
+ * Adds a wrapper select query to the join query and re-order by the orderVar.
+ * To force the planner to re-order the query, we use orderVar + 0 for order by.
+ * e.g.
+ *    SELECT document FROM (JOIN c1 ON c1.ctid = c2.ctid limit k) ORDER BY c1.orderVal + 0
+ */
+static Query *
+ReorderQueryResults(Query *joinQuery, AggregationPipelineBuildContext *context)
+{
+	context->expandTargetList = true;
+	Query *wrapperQuery = MigrateQueryToSubQuery(joinQuery, context);
+
+	/* document var is added by the MigrateQueryToSubQuery */
+	/* orderScore var is the second target entry of subquery*/
+	/* Add the sort clause for the re-order query */
+	Var *orderVar = makeVar(1,
+							2,
+							FLOAT8OID,
+							-1,
+							InvalidOid,
+							0);
+
+	ParseState *parseState = make_parsestate(NULL);
+	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
+
+	/* set after what is already taken */
+	parseState->p_next_resno = list_length(wrapperQuery->targetList) + 1;
+
+	SortBy *sortBy = makeNode(SortBy);
+	sortBy->location = -1;
+	sortBy->sortby_dir = SORTBY_DEFAULT; /* reset later */
+
+	/* order by orderVar + 0 */
+	Const *zeroConst = makeConst(FLOAT8OID, -1, InvalidOid,
+								 sizeof(float8), Float8GetDatum(0),
+								 false, true);
+	Expr *scoreExpr = make_opclause(
+		Float8PlusOperatorId(), FLOAT8OID, false,
+		(Expr *) orderVar, (Expr *) zeroConst, InvalidOid, InvalidOid);
+
+	sortBy->node = (Node *) scoreExpr;
+
+	/* Hide the orderVar*/
+	bool resjunk = true;
+	TargetEntry *topSortEntry = makeTargetEntry((Expr *) scoreExpr,
+												(AttrNumber) parseState->p_next_resno++,
+												pstrdup("orderScore"),
+												resjunk);
+	wrapperQuery->targetList = lappend(wrapperQuery->targetList, topSortEntry);
+	List *sortlist = addTargetToSortList(parseState, topSortEntry,
+										 NIL, wrapperQuery->targetList, sortBy);
+
+	pfree(parseState);
+	wrapperQuery->sortClause = sortlist;
+
+	return wrapperQuery;
 }
 
 
@@ -713,7 +801,8 @@ static Query *
 GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 									  AggregationPipelineBuildContext *context,
 									  const bson_value_t *filterBson,
-									  TargetEntry *sortEntry)
+									  TargetEntry *sortEntry,
+									  bool needsReordering)
 {
 	RangeTblEntry *rte = linitial(searchQuery->rtable);
 
@@ -769,9 +858,12 @@ GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 	 *  FROM c1 JOIN c2 ON c2.ctid = c1.ctid
 	 *  ORDER BY c1.orderVal
 	 */
-	Query *joinedQuery = JoinVectorSearchQueryWithFilterQuery(searchQuery, filterQuery,
+	Query *joinedQuery = JoinVectorSearchQueryWithFilterQuery(searchQuery,
+															  filterQuery,
 															  leftCtidEntry,
-															  rightCtidEntry, sortEntry);
+															  rightCtidEntry,
+															  sortEntry,
+															  needsReordering);
 
 	return joinedQuery;
 }
@@ -1084,6 +1176,13 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 	/* Add the null vector check to the query, so that we don't return documents that don't have the vector field */
 	AddNullVectorCheckToQuery(query, processedSortExpr);
 
+
+	Node *limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
+										  Int64GetDatum(
+											  vectorSearchOptions->resultCount),
+										  false,
+										  true);
+
 	/* If there's a filter, add it to the query */
 	if (EnableVectorPreFilter &&
 		vectorSearchOptions->filterBson.value_type != BSON_TYPE_EOD &&
@@ -1100,17 +1199,32 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
 								"Filter is not supported for vector search on sharded collection.")));
 		}
 
+		const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+			vectorSearchOptions->vectorAccessMethodOid);
+		bool needsReordering = false;
+		if (definition != NULL)
+		{
+			needsReordering = definition->needsReorderAfterFilter;
+		}
+
 		query = GeneratePrefilteringVectorSearchQuery(query, context,
 													  &vectorSearchOptions->filterBson,
-													  sortEntry);
-	}
+													  sortEntry, needsReordering);
 
-	/* Add the limit to the query from k in the search spec */
-	query->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
-										   Int64GetDatum(
-											   vectorSearchOptions->resultCount),
-										   false,
-										   true);
+		/* Add the limit to the query before reordering */
+		query->limitCount = limitCount;
+
+		if (needsReordering)
+		{
+			/* Search result by iterative search may be disordered, so we need to reorder the result */
+			query = ReorderQueryResults(query, context);
+		}
+	}
+	else
+	{
+		/* Add the limit to the query from k in the search spec */
+		query->limitCount = limitCount;
+	}
 
 	/* Push next stage to a new subquery (since we did a sort) */
 	context->requiresSubQueryAfterProject = true;

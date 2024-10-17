@@ -256,6 +256,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the pg_vector hnsw ip similarity operator */
 	Oid VectorHNSWIPSimilarityOperatorFamilyId;
 
+	/* OID of the <float8> + <float8> operator */
+	Oid Float8PlusOperatorId;
+
 	/* OID of the <float8> - <float8> operator */
 	Oid Float8MinusOperatorId;
 
@@ -5117,6 +5120,26 @@ VectorOrderByQueryOperatorId(void)
 {
 	return GetBinaryOperatorId(&Cache.VectorOrderByQueryOperatorId,
 							   BsonTypeId(), "|=<>|", BsonTypeId());
+}
+
+
+/*
+ * Float8PlusOperatorId returns the OID of the <float8> + <float8> operator.
+ */
+Oid
+Float8PlusOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8PlusOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"), makeString("+"));
+
+		Cache.Float8PlusOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8PlusOperatorId;
 }
 
 

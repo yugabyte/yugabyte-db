@@ -110,6 +110,7 @@ static VectorIndexDefinition VectorIndexDefinitionArray[] = {
 	{
 		.kindName = "vector-ivf",
 		.indexAccessMethodName = "ivfflat",
+		.needsReorderAfterFilter = false,
 		.parseIndexCreationSpecFunc = &ParseIVFCreationSpec,
 		.generateIndexParamStrFunc = &GenerateIVFIndexParamStr,
 		.parseIndexSearchSpecFunc = &ParseIVFIndexSearchSpec,
@@ -122,6 +123,7 @@ static VectorIndexDefinition VectorIndexDefinitionArray[] = {
 	{
 		.kindName = "vector-hnsw",
 		.indexAccessMethodName = "hnsw",
+		.needsReorderAfterFilter = false,
 		.parseIndexCreationSpecFunc = &ParseHNSWCreationSpec,
 		.generateIndexParamStrFunc = &GenerateHNSWIndexParamStr,
 		.parseIndexSearchSpecFunc = &ParseHNSWIndexSearchSpec,
