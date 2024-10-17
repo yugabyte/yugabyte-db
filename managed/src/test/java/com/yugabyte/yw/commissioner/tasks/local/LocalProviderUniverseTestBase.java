@@ -1132,6 +1132,24 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
   }
 
+  protected void waitTillNumOfTservers(YBClient ybClient, int expected) {
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> getNumberOfTservers(ybClient), (num) -> num == expected);
+    boolean success = condition.retryUntilCond(500, TimeUnit.SECONDS.toMillis(60));
+    if (!success) {
+      throw new RuntimeException("Failed to wait till expected number of tservers");
+    }
+  }
+
+  protected Integer getNumberOfTservers(YBClient ybClient) {
+    try {
+      return ybClient.listTabletServers().getTabletServersCount();
+    } catch (Exception e) {
+      return 0;
+    }
+  }
+
   // This method waits for the next task to complete.
   protected TaskInfo waitForNextTask(UUID universeUuid, UUID lastTaskUuid, Duration timeout)
       throws InterruptedException {
