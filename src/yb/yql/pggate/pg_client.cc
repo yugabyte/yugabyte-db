@@ -518,6 +518,13 @@ class PgClient::Impl : public BigDataFetcher {
     return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
+  Result<tserver::PgListClonesResponsePB> ListDatabaseClones() {
+    tserver::PgListClonesRequestPB req;
+    tserver::PgListClonesResponsePB resp;
+    RETURN_NOT_OK(proxy_->ListClones(req, &resp, PrepareController()));
+    return resp;
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -1387,6 +1394,10 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
 
 Status PgClient::FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
   return impl_->FinishTransaction(commit, ddl_mode);
+}
+
+Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
+  return impl_->ListDatabaseClones();
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {

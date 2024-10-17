@@ -102,6 +102,8 @@ service PgClientService {
 
   rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 
+  rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
+
   // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
   // So GetReplicationSlot should be used everywhere.
   rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
@@ -1008,4 +1010,21 @@ message PgCronGetLastMinuteRequestPB {
 message PgCronGetLastMinuteResponsePB {
   int64 last_minute = 1;
   AppStatusPB status = 2;
+}
+message PgListClonesRequestPB{
+}
+
+message PgListClonesResponsePB {
+  AppStatusPB status = 1;
+  repeated PgDatabaseCloneInfoPB database_clones= 2;
+}
+
+message PgDatabaseCloneInfoPB {
+  uint32 db_id = 1;
+  string db_name = 2;
+  uint32 parent_db_id = 3;
+  string parent_db_name = 4;
+  string state = 5;
+  fixed64 as_of_time = 6;
+  string failure_reason = 7;
 }

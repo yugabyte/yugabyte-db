@@ -790,6 +790,16 @@ typedef struct PgServerMetricsInfo {
   const char* error;
 } YBCPgServerMetricsInfo;
 
+typedef struct PgDatabaseCloneInfo {
+  YBCPgOid db_id;
+  const char* db_name;
+  YBCPgOid parent_db_id;
+  const char* parent_db_name;
+  const char* state;
+  int64_t as_of_time;
+  const char* failure_reason;
+} YBCPgDatabaseCloneInfo;
+
 typedef struct PgExplicitRowLockParams {
   int rowmark;
   int pg_wait_policy;

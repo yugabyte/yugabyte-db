@@ -2708,6 +2708,34 @@ YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_
   return YBCStatusOK();
 }
 
+YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** database_clones, size_t* count) {
+  const auto result = pgapi->GetDatabaseClones();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& tserver_clone_entries = result.get().database_clones();
+  *count = tserver_clone_entries.size();
+  if (!tserver_clone_entries.empty()) {
+    *database_clones = static_cast<YBCPgDatabaseCloneInfo*>(
+        YBCPAlloc(sizeof(YBCPgDatabaseCloneInfo) * tserver_clone_entries.size()));
+    YBCPgDatabaseCloneInfo* cur_clone = *database_clones;
+    for (const auto& tserver_clone_entry : tserver_clone_entries) {
+      new (cur_clone) YBCPgDatabaseCloneInfo{
+          .db_id = tserver_clone_entry.db_id(),
+          .db_name = YBCPAllocStdString(tserver_clone_entry.db_name()),
+          .parent_db_id = tserver_clone_entry.parent_db_id(),
+          .parent_db_name = YBCPAllocStdString(tserver_clone_entry.parent_db_name()),
+          .state = YBCPAllocStdString(tserver_clone_entry.state()),
+          .as_of_time = YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(static_cast<int64_t>(
+              HybridTime(tserver_clone_entry.as_of_time()).GetPhysicalValueMicros())),
+          .failure_reason = YBCPAllocStdString(tserver_clone_entry.failure_reason()),
+      };
+      ++cur_clone;
+    }
+  }
+  return YBCStatusOK();
+}
+
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
 YBCStatus YBCSetCronLastMinute(int64_t last_minute) {
