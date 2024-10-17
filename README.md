@@ -4,7 +4,7 @@
 
 [![CI lints and tests](https://github.com/CrunchyData/pg_parquet/actions/workflows/ci.yml/badge.svg)](https://github.com/CrunchyData/pg_parquet/actions/workflows/ci.yml)
 
-`pg_parquet` is a PostgreSQL extension that allows you to read and write Parquet files, which are located in `S3` or `file system`, from PostgreSQL via `COPY TO/FROM` commands. It heavily uses [Apache Arrow](https://arrow.apache.org/rust/arrow/) project to read and write Parquet files and [pgrx](https://github.com/pgcentralfoundation/pgrx) project to extend PostgreSQL's `COPY` command.
+`pg_parquet` is a PostgreSQL extension that allows you to read and write Parquet files, which are located in `S3` or `file system`, from PostgreSQL via `COPY TO/FROM` commands. It depends on [Apache Arrow](https://arrow.apache.org/rust/arrow/) project to read and write Parquet files and [pgrx](https://github.com/pgcentralfoundation/pgrx) project to extend PostgreSQL's `COPY` command.
 
 ```sql
 -- Copy a query result into Parquet in S3
@@ -129,7 +129,7 @@ Alternatively, you can use the following environment variables when starting pos
 - `AWS_CONFIG_FILE`: an alternative location for the config file
 - `AWS_PROFILE`: the name of the profile from the credentials and config file (default profile name is `default`)
 
-> [!NOTICE]
+> [!NOTE]
 > To be able to write into a object store location, you need to grant `parquet_object_store_write` role to your current postgres user.
 > Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
 
