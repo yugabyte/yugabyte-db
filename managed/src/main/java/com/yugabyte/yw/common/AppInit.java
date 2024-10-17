@@ -50,6 +50,7 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.scheduler.Scheduler;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
@@ -132,6 +133,8 @@ public class AppInit {
           Customer customer = Customer.getAll().get(0);
           alertDestinationService.createDefaultDestination(customer.getUuid());
           alertConfigurationService.createDefaultConfigs(customer);
+          // Create system roles for the newly created customer.
+          R__Sync_System_Roles.syncSystemRoles();
         }
 
         String storagePath = AppConfigHelper.getStoragePath();
