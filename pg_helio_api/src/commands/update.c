@@ -2163,6 +2163,7 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 					  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 					  UpdateCandidate *updateCandidate, bool getOriginalDocument)
 {
+	uint64 planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE;
 	StringInfoData updateQuery;
 	List *sortFieldDocuments = sort != NULL ? PgbsonDecomposeFields(sort) : NIL;
 
@@ -2203,6 +2204,7 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 
 	if (objectIdFilter != NULL)
 	{
+		planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE_OBJECT_ID;
 		appendStringInfo(&updateQuery,
 						 " AND object_id OPERATOR(%s.=) $3::%s", CoreSchemaName,
 						 FullBsonTypeName);
@@ -2214,6 +2216,7 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 
 	if (list_length(sortFieldDocuments) > 0)
 	{
+		planId = 0;
 		appendStringInfoString(&updateQuery, " ORDER BY");
 
 		for (int i = 0; i < list_length(sortFieldDocuments); i++)
@@ -2249,9 +2252,23 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 	bool readOnly = false;
 	long maxTupleCount = 1;
 
-	SPI_execute_with_args(updateQuery.data, argCount, argTypes, argValues, argNulls,
-						  readOnly, maxTupleCount);
-	Assert(SPI_processed <= 1);
+	if (planId == 0)
+	{
+		SPI_execute_with_args(updateQuery.data, argCount, argTypes, argValues, argNulls,
+							  readOnly, maxTupleCount);
+		Assert(SPI_processed <= 1);
+	}
+	else
+	{
+		SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId,
+														shardTableName,
+														planId, updateQuery.data,
+														argTypes,
+														argCount);
+
+		SPI_execute_plan(plan, argValues, argNulls, readOnly, maxTupleCount);
+		Assert(SPI_processed <= 1);
+	}
 
 	foundDocument = SPI_processed > 0;
 	if (foundDocument && updateCandidate != NULL)
