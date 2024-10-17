@@ -502,7 +502,8 @@ Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
 }
 
 Status PgAutoAnalyzeService::IncreaseMutationCountersImpl(
-    const IncreaseMutationCountersRequestPB& req, IncreaseMutationCountersResponsePB* resp) {
+    const IncreaseMutationCountersRequestPB& req, IncreaseMutationCountersResponsePB* resp,
+    rpc::RpcContext& rpc) {
   VLOG_WITH_FUNC(3) << "req=" << req.ShortDebugString();
 
   for (const auto& elem : req.table_mutation_counts()) {

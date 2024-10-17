@@ -116,6 +116,12 @@ service PgClientService {
 
   rpc YCQLStatementStats(PgYCQLStatementStatsRequestPB)
       returns (PgYCQLStatementStatsResponsePB);
+
+  rpc CronSetLastMinute(PgCronSetLastMinuteRequestPB)
+      returns (PgCronSetLastMinuteResponsePB);
+
+  rpc CronGetLastMinute(PgCronGetLastMinuteRequestPB)
+  returns (PgCronGetLastMinuteResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -986,4 +992,20 @@ enum PgMetricsInfoStatus {
 message PgServersMetricsResponsePB {
   AppStatusPB status = 1;
   repeated PgServerMetricsInfoPB servers_metrics = 2;
+}
+
+message PgCronSetLastMinuteRequestPB {
+  int64 last_minute = 1;
+}
+
+message PgCronSetLastMinuteResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgCronGetLastMinuteRequestPB {
+}
+
+message PgCronGetLastMinuteResponsePB {
+  int64 last_minute = 1;
+  AppStatusPB status = 2;
 }

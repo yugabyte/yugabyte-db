@@ -285,6 +285,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
 
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,

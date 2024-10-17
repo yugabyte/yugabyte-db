@@ -2706,6 +2706,20 @@ YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
+YBCStatus YBCSetCronLastMinute(int64_t last_minute) {
+  return ToYBCStatus(pgapi->SetCronLastMinute(last_minute));
+}
+
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute) {
+  const auto result = pgapi->GetCronLastMinute();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *last_minute = result.get();
+
+  return YBCStatusOK();
+}
+
 uint64_t YBCPgGetCurrentReadTimePoint() {
   return pgapi->GetCurrentReadTimePoint();
 }
