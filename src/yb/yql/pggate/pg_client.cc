@@ -796,6 +796,15 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
+    tserver::PgServersMetricsRequestPB req;
+    tserver::PgServersMetricsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ServersMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1040,6 +1049,10 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_
 
 Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
+}
+
+Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
+  return impl_->ServersMetrics();
 }
 
 }  // namespace pggate

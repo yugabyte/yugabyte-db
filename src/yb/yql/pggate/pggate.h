@@ -705,6 +705,7 @@ class PgApiImpl {
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
  private:
   class Interrupter;
 

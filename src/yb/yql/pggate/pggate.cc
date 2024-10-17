@@ -2135,5 +2135,9 @@ Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
+Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
+    return pg_session_->ServersMetrics();
+}
+
 } // namespace pggate
 } // namespace yb

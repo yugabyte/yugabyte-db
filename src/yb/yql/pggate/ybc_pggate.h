@@ -726,6 +726,8 @@ YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
 
+YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** serverMetricsInfo, size_t* count);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

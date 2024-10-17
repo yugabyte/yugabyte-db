@@ -120,6 +120,8 @@ service TabletServerService {
   rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
       returns (CheckTserverTabletHealthResponsePB);
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
+
+  rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -164,6 +166,15 @@ message GetLockStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+message GetMetricsRequestPB {
+
+}
+
+message GetMetricsResponsePB {
+  repeated TserverMetricsInfoPB metrics  = 1;
+  optional TabletServerErrorPB error = 2;
 }
 
 message GetLogLocationRequestPB {

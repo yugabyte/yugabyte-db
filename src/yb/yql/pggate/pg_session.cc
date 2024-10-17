@@ -996,4 +996,8 @@ const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
 }
 
+Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
+  return pg_client_.ServersMetrics();
+}
+
 }  // namespace yb::pggate

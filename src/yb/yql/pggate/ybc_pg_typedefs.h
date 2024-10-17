@@ -539,6 +539,19 @@ typedef enum PgTransactionSetting {
   YB_TRANSACTIONAL
 } YBCPgTransactionSetting;
 
+typedef struct MetricsInfo {
+  const char* name;
+  const char* value;
+} YBCMetricsInfo;
+
+typedef struct PgServerMetricsInfo {
+  const char* uuid;
+  YBCMetricsInfo* metrics;
+  const size_t metrics_count;
+  const char* status;
+  const char* error;
+} YBCPgServerMetricsInfo;
+
 // The reserved database oid for system_postgres. Must be the same as
 // kPgSequencesDataTableOid (defined in entity_ids.h).
 static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;

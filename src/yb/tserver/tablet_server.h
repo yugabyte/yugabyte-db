@@ -328,6 +328,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
 
+  Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
   struct PgClientServiceHolder {
     template<class... Args>
     explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}

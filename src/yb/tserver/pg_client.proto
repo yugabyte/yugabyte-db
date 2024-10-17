@@ -88,6 +88,8 @@ service PgClientService {
 
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
+
+  rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -721,4 +723,24 @@ message PgGetNewObjectIdRequestPB {
 message PgGetNewObjectIdResponsePB {
   AppStatusPB status = 1;
   uint32 new_oid = 2;
+}
+
+message PgServersMetricsRequestPB {
+}
+
+message PgServerMetricsInfoPB {
+  string uuid = 1;
+  repeated TserverMetricsInfoPB metrics = 2;
+  PgMetricsInfoStatus status = 3;
+  string error = 4;
+}
+
+enum PgMetricsInfoStatus {
+  OK = 0;
+  ERROR = 1;
+}
+
+message PgServersMetricsResponsePB {
+  AppStatusPB status = 1;
+  repeated PgServerMetricsInfoPB servers_metrics = 2;
 }

@@ -84,6 +84,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

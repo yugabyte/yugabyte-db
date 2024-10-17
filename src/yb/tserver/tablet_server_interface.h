@@ -85,6 +85,8 @@ class TabletServerIf : public LocalTabletServer {
   client::YBClient* client() const {
     return client_future().get();
   }
+
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 };
 
 } // namespace tserver

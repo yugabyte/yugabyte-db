@@ -2416,6 +2416,11 @@ shoelace_obsolete| SELECT shoelace.sl_name,
   WHERE (NOT (EXISTS ( SELECT shoe.shoename
            FROM shoe
           WHERE (shoe.slcolor = shoelace.sl_color))));
+yb_servers_metrics| SELECT yb_servers_metrics.uuid,
+    yb_servers_metrics.metrics,
+    yb_servers_metrics.status,
+    yb_servers_metrics.error
+   FROM yb_servers_metrics() yb_servers_metrics(uuid, metrics, status, error);
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_text,

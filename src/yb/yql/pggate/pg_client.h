@@ -176,6 +176,8 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
   Status EnumerateActiveTransactions(

@@ -71,6 +71,7 @@ class TserverXClusterContextIf;
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
+    (ServersMetrics) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
     (TruncateTable) \
