@@ -540,10 +540,10 @@ class NodeChecker():
     def __init__(self, node, node_name, node_identifier, master_index, tserver_index, is_k8s,
                  yb_home_dir, ybc_dir, start_time_ms, ysql_port, internal_ysql_port, ycql_port,
                  redis_port, enable_tls_client, enable_tls, root_and_client_root_ca_same,
-                 ssl_protocol, enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
-                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
-                 time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
-                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 ssl_protocol, enable_connection_pooling, enable_ysql, enable_ysql_auth,
+                 master_http_port, tserver_http_port, ysql_server_http_port, node_version,
+                 is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
+                 otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
         self.node = node
         self.node_name = node_name
@@ -562,6 +562,7 @@ class NodeChecker():
         self.internal_ysql_port = internal_ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_connection_pooling = enable_connection_pooling
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
@@ -1592,7 +1593,8 @@ class NodeChecker():
                                            metrics=[metric])
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command("")
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                "", True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
@@ -2373,10 +2375,10 @@ def main():
         n.node_host, n.node_name, n.node_identifier, n.master_index, n.tserver_index, n.is_k8s,
         n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.internal_ysql_port, n.ycql_port,
         n.redis_port, n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same,
-        n.ssl_protocol, n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
-        n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
-        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.ssl_protocol, n.enable_connection_pooling, n.enable_ysql, n.enable_ysql_auth,
+        n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
+        n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
+        n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
