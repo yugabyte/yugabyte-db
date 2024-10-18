@@ -232,6 +232,9 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
+#define GUC_YB_CUSTOM_STICKY	0x100000 /* stickiness for custom string
+										  * variables */
+
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
 extern bool log_duration;
