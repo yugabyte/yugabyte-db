@@ -37,9 +37,10 @@ enum TransactionStatus {
 
   PROMOTED = 9;
 
-  // The APPLYING status is used in Raft in transaction participant tablets but not in status
-  // tablets.
+  // The APPLYING and PROMOTING statuses are used in Raft in transaction participant tablets but not
+  // in status tablets.
   APPLYING = 20;
+  PROMOTING = 24;
 
   // All following entries are not used in RAFT, but as events between status tablet and involved
   // tablets:
